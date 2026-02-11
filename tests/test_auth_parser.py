@@ -78,6 +78,8 @@ class TestExtractAuthFromCurl(unittest.TestCase):
     ('curl --header="Cookie: token=xyz" --header="User-Agent: Safari"', 'token=xyz', 'Safari'),
     # 空格处理 (auth_parser 会对 cookie 值进行 strip)
     ('curl -b "  name=value  " -A "Agent"', 'name=value', 'Agent'),
+    # 无冒号的 header (覆盖 _split_header 边界情况)
+    ('curl -H "Cookie: test" -H "X-Custom-Header" -A "Agent"', 'test', 'Agent'),
 ])
 def test_extract_auth_from_curl_variations(curl_text, expected_cookie, expected_ua):
     """测试各种 curl 命令格式的解析"""
