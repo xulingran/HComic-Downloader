@@ -1,0 +1,241 @@
+"""CBZ 打包和元数据生成模块"""
+import logging
+import os
+import re
+import zipfile
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional, TYPE_CHECKING
+from xml.etree.ElementTree import Element, SubElement, tostring
+from xml.dom import minidom
+
+from models import ComicInfo
+from utils import sanitize_filename
+
+if TYPE_CHECKING:
+    from config import Config
+
+logger = logging.getLogger(__name__)
+
+
+class CBZBuilder:
+    """CBZ 文件构建器"""
+
+    def __init__(self, filename_template: str = "{author}-{title}.cbz", config: Optional["Config"] = None):
+        self.filename_template = filename_template
+        self._config = config
+
+    def build_cbz(
+        self,
+        image_dir: str,
+        comic: ComicInfo,
+        output_path: Optional[str] = None,
+    ) -> str:
+        """创建 CBZ 文件
+
+        Args:
+            image_dir: 图片目录
+            comic: 漫画信息
+            output_path: 输出路径（可选，默认使用模板生成）
+
+        Returns:
+            CBZ 文件路径
+        """
+        # 确定输出路径
+        if output_path is None:
+            output_path = self._generate_output_path(comic)
+
+        # 确保输出目录存在
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        # 收集图片文件
+        image_files = self._collect_image_files(image_dir)
+        if not image_files:
+            raise ValueError(f"No images found in {image_dir}")
+
+        logger.info(f"Building CBZ: {output_path}")
+
+        # 创建 CBZ 文件
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # 添加 ComicInfo.xml
+            comic_info_xml = self.generate_comic_info_xml(comic)
+            zf.writestr('ComicInfo.xml', comic_info_xml)
+
+            # 添加图片
+            for i, img_path in enumerate(image_files, 1):
+                arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
+                zf.write(img_path, arcname)
+                logger.debug(f"Added: {arcname}")
+
+        logger.info(f"CBZ created: {output_path}")
+        return output_path
+
+    def generate_comic_info_xml(self, comic: ComicInfo) -> str:
+        """生成 ComicInfo.xml
+
+        Args:
+            comic: 漫画信息
+
+        Returns:
+            XML 字符串
+        """
+        root = Element('ComicInfo')
+        root.set('xmlns:xsd', 'http://www.w3.org/2001/XMLSchema')
+        root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+
+        # 标题
+        if comic.title:
+            self._add_element(root, 'Title', comic.title)
+            self._add_element(root, 'Series', comic.title)
+
+        # 作者 -> Writer
+        if comic.author:
+            self._add_element(root, 'Writer', comic.author)
+
+        # 分类 -> Genre
+        if comic.category:
+            self._add_element(root, 'Genre', comic.category)
+
+        # 标签
+        if comic.tags:
+            tags_str = ', '.join(str(tag) for tag in comic.tags if tag)
+            self._add_element(root, 'Tags', tags_str)
+
+        # 页数
+        if comic.pages > 0:
+            self._add_element(root, 'PageCount', str(comic.pages))
+
+        # 发布日期
+        if comic.publish_date:
+            year, month, day = self._parse_date(comic.publish_date)
+            if year:
+                self._add_element(root, 'Year', year)
+            if month:
+                self._add_element(root, 'Month', month)
+            if day:
+                self._add_element(root, 'Day', day)
+
+        # 预览 URL
+        if comic.preview_url:
+            self._add_element(root, 'Web', comic.preview_url)
+
+        # 页码（固定为1）
+        self._add_element(root, 'Number', '1')
+
+        # 格式化 XML
+        xml_bytes = tostring(root, encoding='utf-8')
+        dom = minidom.parseString(xml_bytes)
+        pretty_xml = dom.toprettyxml(indent='    ')
+
+        # 移除多余的空行
+        lines = [line for line in pretty_xml.split('\n') if line.strip()]
+        return '\n'.join(lines) + '\n'
+
+    def _add_element(self, parent: Element, tag: str, text: str):
+        """添加子元素"""
+        elem = SubElement(parent, tag)
+        elem.text = text
+
+    def _parse_date(self, date_str: str) -> tuple:
+        """解析日期字符串
+
+        Args:
+            date_str: YYYY-MM-DD 格式的日期
+
+        Returns:
+            (year, month, day) 元组
+        """
+        try:
+            parts = date_str.split('-')
+            if len(parts) >= 3:
+                return parts[0], parts[1], parts[2]
+            elif len(parts) == 2:
+                return parts[0], parts[1], ''
+            elif len(parts) == 1:
+                return parts[0], '', ''
+        except Exception:
+            pass
+        return '', '', ''
+
+    def _generate_output_path(self, comic: ComicInfo) -> str:
+        """生成输出路径
+
+        Args:
+            comic: 漫画信息
+
+        Returns:
+            输出文件路径
+        """
+        filename = self.filename_template.format(
+            author=comic.safe_author,
+            title=comic.safe_title,
+            id=comic.id,
+        )
+        # 确保以 .cbz 结尾
+        if not filename.endswith('.cbz'):
+            filename += '.cbz'
+
+        # 使用已有的配置或加载默认配置
+        if self._config:
+            download_dir = self._config.download_dir
+        else:
+            from config import Config
+            download_dir = Config.load().download_dir
+        return os.path.join(download_dir, filename)
+
+    def _collect_image_files(self, image_dir: str) -> List[str]:
+        """收集目录中的图片文件
+
+        Args:
+            image_dir: 图片目录
+
+        Returns:
+            排序后的图片路径列表
+        """
+        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
+        image_files = []
+
+        for filename in os.listdir(image_dir):
+            ext = os.path.splitext(filename)[1].lower()
+            if ext in image_extensions:
+                image_files.append(os.path.join(image_dir, filename))
+
+        # 按文件名排序
+        image_files.sort()
+        return image_files
+
+
+def build_cbz_simple(
+    image_dir: str,
+    output_path: str,
+    comic_info: Optional[ComicInfo] = None,
+) -> str:
+    """简单方式创建 CBZ（无 ComicInfo.xml）
+
+    Args:
+        image_dir: 图片目录
+        output_path: 输出路径
+        comic_info: 漫画信息（可选）
+
+    Returns:
+        CBZ 文件路径
+    """
+    builder = CBZBuilder()
+    image_files = builder._collect_image_files(image_dir)
+
+    if not image_files:
+        raise ValueError(f"No images found in {image_dir}")
+
+    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
+
+    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        # 如果提供了漫画信息，添加 ComicInfo.xml
+        if comic_info:
+            comic_info_xml = builder.generate_comic_info_xml(comic_info)
+            zf.writestr('ComicInfo.xml', comic_info_xml)
+
+        for i, img_path in enumerate(image_files, 1):
+            arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
+            zf.write(img_path, arcname)
+
+    return output_path
