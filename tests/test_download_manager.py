@@ -86,3 +86,57 @@ def test_add_multiple_tasks():
 
     assert len(dm.tasks) == 2
     assert len(dm.queue) == 2
+
+
+def test_pause_resume_task():
+    """测试暂停和继续任务"""
+    dm = DownloadManager()
+    comic = ComicInfo(id="123", title="Test", pages=10)
+    task_id = dm.add_task(comic)
+
+    # 模拟任务开始
+    dm.tasks[task_id].status = DownloadStatus.DOWNLOADING
+
+    # 暂停
+    assert dm.pause_task(task_id) is True
+    assert dm.tasks[task_id].status == DownloadStatus.PAUSED
+    assert dm.tasks[task_id]._pause_requested is True
+
+    # 继续
+    assert dm.resume_task(task_id) is True
+    assert dm.tasks[task_id].status == DownloadStatus.QUEUED
+    assert dm.tasks[task_id]._pause_requested is False
+
+
+def test_cancel_task():
+    """测试取消任务"""
+    dm = DownloadManager()
+    comic = ComicInfo(id="123", title="Test", pages=10)
+    task_id = dm.add_task(comic)
+
+    assert dm.cancel_task(task_id) is True
+    assert dm.tasks[task_id].status == DownloadStatus.CANCELLED
+    assert task_id not in dm.queue
+
+
+def test_get_stats():
+    """测试统计信息"""
+    dm = DownloadManager()
+    comics = [
+        ComicInfo(id="1", title="C1", pages=10),
+        ComicInfo(id="2", title="C2", pages=10),
+        ComicInfo(id="3", title="C3", pages=10),
+    ]
+    dm.add_tasks(comics)
+
+    # 修改状态
+    dm.tasks["_1"].status = DownloadStatus.DOWNLOADING
+    dm.tasks["_2"].status = DownloadStatus.PAUSED
+    dm.tasks["_3"].status = DownloadStatus.COMPLETED
+
+    stats = dm.get_stats()
+
+    assert stats["total"] == 3
+    assert stats["downloading"] == 1
+    assert stats["paused"] == 1
+    assert stats["completed"] == 1
