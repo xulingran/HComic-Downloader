@@ -15,7 +15,7 @@ from io import BytesIO
 
 from config import Config
 from auth_parser import extract_auth_from_curl
-from models import ComicInfo, PaginationInfo
+from models import ComicInfo, PaginationInfo, DownloadTask
 from parser import HComicParser
 from downloader import ComicDownloader, DownloadError
 from cbz_builder import CBZBuilder
@@ -26,6 +26,8 @@ from utils import (
     get_system_proxies,
 )
 from font_config import configure_font, get_font, get_font_string, FontConfig
+from download_manager import DownloadManager
+from download_manager_ui import DownloadManagerUI
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,13 @@ class HComicDownloaderGUI(tk.Tk):
             user_agent=self.config.auth_user_agent,
         )
         self.cbz_builder = CBZBuilder(self.config.cbz_filename_template, self.config)
+
+        # 下载管理器
+        self.download_manager = DownloadManager()
+        self.download_manager.set_callbacks(
+            on_task_update=self._on_download_task_update,
+            on_queue_complete=self._on_download_queue_complete,
+        )
 
         # 搜索结果显示
         self.search_results: List[ComicInfo] = []
@@ -307,18 +316,41 @@ class HComicDownloaderGUI(tk.Tk):
         # 跨平台滚动事件绑定（鼠标滚轮 + 触控板）
         self._bind_scroll_events()
 
+        # ===== 下载管理器面板（初始隐藏）=====
+        self.download_manager_ui = DownloadManagerUI(main_frame, self.download_manager)
+        self.download_manager_ui.panel.grid(row=3, column=0, sticky="ew")
+        self.download_manager_ui.panel.grid_remove()
+
         # ===== 进度区域 =====
         progress_frame = ttk.Frame(main_frame)
-        progress_frame.grid(row=3, column=0, sticky=(tk.W, tk.E))
+        progress_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
         progress_frame.columnconfigure(0, weight=1)
 
         self.status_var = tk.StringVar(value="就绪")
         self.status_label = ttk.Label(progress_frame, textvariable=self.status_var)
         self.status_label.grid(row=0, column=0, sticky=tk.W)
 
+        # 进度条容器
+        progress_container = ttk.Frame(progress_frame)
+        progress_container.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+        progress_container.columnconfigure(0, weight=1)
+
         self.progress_var = tk.DoubleVar(value=0)
-        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+        self.progress_bar = ttk.Progressbar(
+            progress_container,
+            variable=self.progress_var,
+            maximum=100
+        )
+        self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E))
+
+        # 展开/折叠按钮
+        self.expand_btn = ttk.Button(
+            progress_container,
+            text="▲",
+            width=3,
+            command=self._toggle_download_manager
+        )
+        self.expand_btn.grid(row=0, column=1, padx=(5, 0))
 
     def toggle_settings_panel(self):
         """切换设置面板展开/折叠状态。"""
@@ -1186,6 +1218,32 @@ class HComicDownloaderGUI(tk.Tk):
         except Exception as e:
             logger.error(f"打开下载目录失败: {e}")
             messagebox.showerror("错误", f"无法打开目录:\n{e}")
+
+    def _on_download_task_update(self, task: DownloadTask):
+        """下载任务更新回调"""
+        # 更新下载管理器 UI
+        if hasattr(self, 'download_manager_ui'):
+            self.download_manager_ui.update_task(task)
+
+        # 更新底部进度条（仅当前任务）
+        if self.download_manager.current_task_id == task.task_id:
+            progress = task.progress_percentage
+            self.progress_var.set(progress)
+            self.update_status(
+                f"[{task.progress_current}/{task.progress_total}] {task.comic.title}"
+            )
+
+    def _on_download_queue_complete(self):
+        """下载队列完成回调"""
+        self.after(0, lambda: self.update_status("所有下载已完成"))
+        self.after(0, lambda: self.progress_var.set(0))
+
+    def _toggle_download_manager(self):
+        """切换下载管理器显示"""
+        self.download_manager_ui.toggle()
+        # 更新按钮图标
+        icon = "▼" if self.download_manager_ui.is_expanded else "▲"
+        self.expand_btn.config(text=icon)
 
     def update_status(self, message: str):
         """更新状态信息"""
