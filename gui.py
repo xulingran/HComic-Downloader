@@ -1071,8 +1071,15 @@ class HComicDownloaderGUI(tk.Tk):
         def do_batch_download():
             batch_delay = self._get_batch_delay_seconds()
             for i, comic in enumerate(comics):
+                # 创建批量下载上下文
+                batch_context = {
+                    "comic_index": i + 1,
+                    "total_comics": total,
+                    "title": comic.title
+                }
+
                 # 更新状态
-                self.after(0, lambda c=i+1, t=total, ct=comic.title: self.update_status(f"下载中 [{c}/{t}]: {ct}"))
+                self.after(0, lambda c=i+1, t=total, ct=comic.title: self.update_status(f"准备下载 [{c}/{t}]: {ct}"))
                 self.after(0, lambda: self.progress_var.set(0))
 
                 temp_dir = None
@@ -1083,6 +1090,7 @@ class HComicDownloaderGUI(tk.Tk):
                         self.download_dir_var.get(),
                         progress_callback=self._progress_callback,
                         delay_after=batch_delay if i < len(comics) - 1 else 0,
+                        comic_info=batch_context,
                     )
 
                     self.after(0, lambda: self.update_status(f"打包中 [{i+1}/{total}]: {comic.title}"))
@@ -1807,13 +1815,31 @@ class HComicDownloaderGUI(tk.Tk):
 
         threading.Thread(target=do_download, daemon=True).start()
 
-    def _progress_callback(self, current: int, total: int, status: str):
-        """进度回调"""
+    def _progress_callback(self, current: int, total: int, status: str, comic_info: Optional[dict] = None):
+        """进度回调
+
+        Args:
+            current: 当前进度
+            total: 总进度
+            status: 状态信息
+            comic_info: 批量下载时的漫画信息字典，包含 comic_index, total_comics, title
+        """
         def update():
             progress = (current / total * 100) if total > 0 else 0
             self.progress_var.set(progress)
-            self.update_status(status)
+
+            # 如果有漫画信息（批量下载场景），显示双层进度
+            if comic_info:
+                comic_index = comic_info.get("comic_index", 0)
+                total_comics = comic_info.get("total_comics", 1)
+                title = comic_info.get("title", "未知")
+                full_status = f"[{comic_index}/{total_comics}] [{current}/{total}] {title} - {status}"
+            else:
+                full_status = status
+
+            self.update_status(full_status)
         self.after(0, update)
+
 
     def download_complete(self, output_path: str):
         """下载完成"""

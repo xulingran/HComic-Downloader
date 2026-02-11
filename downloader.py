@@ -99,16 +99,18 @@ class ComicDownloader:
         self,
         comic: ComicInfo,
         output_dir: str,
-        progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        progress_callback: Optional[Callable[[int, int, str, Optional[dict]], None]] = None,
         delay_after: int = 0,
+        comic_info: Optional[dict] = None,
     ) -> str:
         """下载完整漫画
 
         Args:
             comic: 漫画信息
             output_dir: 输出目录
-            progress_callback: 进度回调函数(current, total, status)
+            progress_callback: 进度回调函数(current, total, status, comic_info)
             delay_after: 下载完成后延迟的秒数（用于批量下载）
+            comic_info: 漫画信息字典，用于批量下载时传递上下文
 
         Returns:
             临时图片目录路径
@@ -156,26 +158,26 @@ class ComicDownloader:
 
                 # 更新进度
                 if progress_callback:
-                    progress_callback(downloaded, total, f"下载中... ({downloaded}/{total})")
+                    progress_callback(downloaded, total, f"下载中... ({downloaded}/{total})", comic_info)
 
         # 检查失败数量
         if failed_urls:
             failed_count = len(failed_urls)
             logger.warning(f"Download completed with {failed_count} failures")
             if progress_callback:
-                progress_callback(downloaded, total, f"完成，{failed_count} 页失败")
+                progress_callback(downloaded, total, f"完成，{failed_count} 页失败", comic_info)
             # 抛出异常，让调用方知道下载不完整
             raise DownloadError(f"下载不完整: {failed_count}/{total} 页下载失败，请检查网络连接后重试")
         else:
             logger.info(f"Download completed: {comic.title}")
             if progress_callback:
-                progress_callback(downloaded, total, "下载完成")
+                progress_callback(downloaded, total, "下载完成", comic_info)
 
         # 批量下载延迟
         if delay_after > 0:
             logger.info(f"Waiting {delay_after}s before next download")
             if progress_callback:
-                progress_callback(downloaded, total, f"等待 {delay_after} 秒...")
+                progress_callback(downloaded, total, f"等待 {delay_after} 秒...", comic_info)
             time.sleep(delay_after)
 
         return str(temp_dir)
