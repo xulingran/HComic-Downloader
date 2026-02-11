@@ -100,6 +100,7 @@ class ComicDownloader:
         comic: ComicInfo,
         output_dir: str,
         progress_callback: Optional[Callable[[int, int, str], None]] = None,
+        delay_after: int = 0,
     ) -> str:
         """下载完整漫画
 
@@ -107,6 +108,7 @@ class ComicDownloader:
             comic: 漫画信息
             output_dir: 输出目录
             progress_callback: 进度回调函数(current, total, status)
+            delay_after: 下载完成后延迟的秒数（用于批量下载）
 
         Returns:
             临时图片目录路径
@@ -162,10 +164,19 @@ class ComicDownloader:
             logger.warning(f"Download completed with {failed_count} failures")
             if progress_callback:
                 progress_callback(downloaded, total, f"完成，{failed_count} 页失败")
+            # 抛出异常，让调用方知道下载不完整
+            raise DownloadError(f"下载不完整: {failed_count}/{total} 页下载失败，请检查网络连接后重试")
         else:
             logger.info(f"Download completed: {comic.title}")
             if progress_callback:
                 progress_callback(downloaded, total, "下载完成")
+
+        # 批量下载延迟
+        if delay_after > 0:
+            logger.info(f"Waiting {delay_after}s before next download")
+            if progress_callback:
+                progress_callback(downloaded, total, f"等待 {delay_after} 秒...")
+            time.sleep(delay_after)
 
         return str(temp_dir)
 

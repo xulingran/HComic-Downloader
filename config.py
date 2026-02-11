@@ -20,6 +20,8 @@ class Config:
     # 登录配置
     auth_cookie: str = ""  # 从 curl 提取的 Cookie
     auth_user_agent: str = ""  # 从 curl 提取的 User-Agent
+    # 批量下载延迟（秒）
+    batch_download_delay: int = 1  # 每本漫画下载间隔，默认1秒
 
     def __post_init__(self):
         """确保下载目录存在"""
@@ -51,4 +53,5 @@ class Config:
                 'show_preview': self.show_preview,
                 'auth_cookie': self.auth_cookie,
                 'auth_user_agent': self.auth_user_agent,
+                'batch_download_delay': self.batch_download_delay,
             }, f, ensure_ascii=False, indent=2)
