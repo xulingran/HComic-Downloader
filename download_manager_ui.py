@@ -201,10 +201,6 @@ class DownloadManagerUI:
             text="▶ 全部继续" if is_paused else "⏸ 全部暂停"
         )
 
-    def _refresh_task_list(self):
-        """刷新任务列表（占位）"""
-        pass
-
     def update_stats(self):
         """更新统计信息"""
         stats = self.dm.get_stats()
@@ -270,9 +266,6 @@ class DownloadManagerUI:
         self.dm.cancel_task(task_id)
         self.refresh_task_list()
 
-    def _refresh_task_list(self):
-        """内部刷新方法（别名）"""
-        self.refresh_task_list()
 
 
 class DownloadItemWidget:

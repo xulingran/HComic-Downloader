@@ -102,9 +102,7 @@ class PaginationInfo:
 
 
 from enum import Enum
-from dataclasses import dataclass, field
 import time
-from typing import Optional
 
 
 class DownloadStatus(Enum):
