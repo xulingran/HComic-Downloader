@@ -212,3 +212,238 @@ class DownloadManagerUI:
         downloading = stats["downloading"]
 
         self.stats_label.config(text=f"下载队列 ({total}本)")
+
+    def refresh_task_list(self):
+        """刷新任务列表"""
+        # 清理旧组件
+        for widget in self._task_widgets.values():
+            widget.frame.destroy()
+        self._task_widgets.clear()
+
+        # 按队列顺序创建新组件
+        for task_id in self.dm.queue:
+            task = self.dm.tasks.get(task_id)
+            if not task:
+                continue
+
+            widget = DownloadItemWidget(
+                self.list_frame,
+                task,
+                self.view_mode,
+                on_play=lambda tid=task_id: self._on_task_play(tid),
+                on_pause=lambda tid=task_id: self._on_task_pause(tid),
+                on_cancel=lambda tid=task_id: self._on_task_cancel(tid),
+            )
+            widget.frame.pack(fill="x", pady=2)
+            self._task_widgets[task_id] = widget
+
+        # 更新统计
+        self.update_stats()
+
+    def update_task(self, task: DownloadTask):
+        """更新单个任务 UI"""
+        task_id = task.task_id
+
+        # 如果组件不存在，刷新整个列表
+        if task_id not in self._task_widgets:
+            self.refresh_task_list()
+            return
+
+        # 更新现有组件
+        widget = self._task_widgets[task_id]
+        widget.update(task)
+
+        # 如果任务完成/取消/失败，延迟刷新列表
+        if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED):
+            self.panel.after(1000, self.refresh_task_list)
+
+    def _on_task_play(self, task_id: str):
+        """播放按钮点击"""
+        self.dm.resume_task(task_id)
+
+    def _on_task_pause(self, task_id: str):
+        """暂停按钮点击"""
+        self.dm.pause_task(task_id)
+
+    def _on_task_cancel(self, task_id: str):
+        """取消按钮点击"""
+        self.dm.cancel_task(task_id)
+        self.refresh_task_list()
+
+    def _refresh_task_list(self):
+        """内部刷新方法（别名）"""
+        self.refresh_task_list()
+
+
+class DownloadItemWidget:
+    """单个下载任务的 UI 表示"""
+
+    # 高度配置
+    COMPACT_HEIGHT = 50
+    DETAIL_HEIGHT = 90
+    THUMB_SIZE_COMPACT = 40
+    THUMB_SIZE_DETAIL = 70
+
+    # 状态图标映射
+    STATUS_ICONS = {
+        DownloadStatus.QUEUED: "⏳",
+        DownloadStatus.DOWNLOADING: "⬇",
+        DownloadStatus.PAUSED: "⏸",
+        DownloadStatus.COMPLETED: "✓",
+        DownloadStatus.FAILED: "✗",
+        DownloadStatus.CANCELLED: "⏹",
+    }
+
+    def __init__(
+        self,
+        parent: tk.Widget,
+        task: DownloadTask,
+        view_mode: ViewMode,
+        on_play: Optional[Callable[[], None]] = None,
+        on_pause: Optional[Callable[[], None]] = None,
+        on_cancel: Optional[Callable[[], None]] = None,
+    ):
+        self.task = task
+        self.view_mode = view_mode
+        self.on_play = on_play
+        self.on_pause = on_pause
+        self.on_cancel = on_cancel
+
+        # 创建 Frame
+        self.frame = ttk.Frame(parent, relief="groove", borderwidth=1)
+
+        # 缩略图（使用标签占位）
+        self.thumb_label = ttk.Label(
+            self.frame,
+            text="📷",
+            font=("TkDefaultFont", 20),
+            width=3,
+            anchor="center"
+        )
+        self.thumb_label.pack(side="left", padx=5, pady=5)
+
+        # 信息区
+        self.info_frame = ttk.Frame(self.frame)
+        self.info_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+
+        # 标题行
+        title_row = ttk.Frame(self.info_frame)
+        title_row.pack(fill="x")
+
+        self.status_icon = ttk.Label(title_row, text=self.STATUS_ICONS.get(task.status, "?"))
+        self.status_icon.pack(side="left", padx=(0, 5))
+
+        self.title_label = ttk.Label(
+            title_row,
+            text=task.comic.title,
+            font=("TkDefaultFont", 10, "bold")
+        )
+        self.title_label.pack(side="left")
+
+        # 进度区
+        self.progress_frame = ttk.Frame(self.info_frame)
+        self.progress_frame.pack(fill="x", pady=(3, 0))
+
+        self.progress_bar = ttk.Progressbar(
+            self.progress_frame,
+            mode="determinate",
+            maximum=100
+        )
+        self.progress_bar.pack(side="left", fill="x", expand=True)
+
+        self.progress_label = ttk.Label(self.progress_frame, text="0%", width=4)
+        self.progress_label.pack(side="left", padx=(5, 0))
+
+        # 控制按钮
+        self.controls_frame = ttk.Frame(self.frame)
+        self.controls_frame.pack(side="right", padx=5, pady=5)
+
+        self.play_btn = ttk.Button(
+            self.controls_frame,
+            text="▶",
+            width=3,
+            command=self._on_play_clicked
+        )
+        self.play_btn.pack(side="left", padx=1)
+
+        self.pause_btn = ttk.Button(
+            self.controls_frame,
+            text="⏸",
+            width=3,
+            command=self._on_pause_clicked
+        )
+        self.pause_btn.pack(side="left", padx=1)
+
+        self.cancel_btn = ttk.Button(
+            self.controls_frame,
+            text="✕",
+            width=3,
+            command=self._on_cancel_clicked
+        )
+        self.cancel_btn.pack(side="left", padx=1)
+
+        # 初始更新
+        self.update(task)
+
+    def _on_play_clicked(self):
+        if self.on_play:
+            self.on_play()
+
+    def _on_pause_clicked(self):
+        if self.on_pause:
+            self.on_pause()
+
+    def _on_cancel_clicked(self):
+        if self.on_cancel:
+            self.on_cancel()
+
+    def update(self, task: DownloadTask):
+        """更新 UI 状态"""
+        self.task = task
+
+        # 更新进度
+        pct = task.progress_percentage
+        self.progress_bar["value"] = pct
+        self.progress_label.config(text=f"{pct:.0f}%")
+
+        # 更新状态图标
+        icon = self.STATUS_ICONS.get(task.status, "?")
+        self.status_icon.config(text=icon)
+
+        # 更新按钮状态
+        self._update_buttons()
+
+        # 根据状态调整颜色
+        if task.status == DownloadStatus.FAILED:
+            self.title_label.config(foreground="red")
+        elif task.status == DownloadStatus.COMPLETED:
+            self.title_label.config(foreground="green")
+        else:
+            self.title_label.config(foreground="black")
+
+    def _update_buttons(self):
+        """根据状态更新按钮"""
+        status = self.task.status
+
+        # 播放按钮：仅在暂停时可用
+        play_state = "normal" if status == DownloadStatus.PAUSED else "disabled"
+        self.play_btn.config(state=play_state)
+
+        # 暂停按钮：仅在下载中时可用
+        pause_state = "normal" if status == DownloadStatus.DOWNLOADING else "disabled"
+        self.pause_btn.config(state=pause_state)
+
+        # 取消按钮：已完成/已取消时禁用
+        cancel_disabled = status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED)
+        self.cancel_btn.config(state="disabled" if cancel_disabled else "normal")
+
+    def set_view_mode(self, view_mode: ViewMode):
+        """切换视图模式"""
+        self.view_mode = view_mode
+
+        if view_mode == ViewMode.COMPACT:
+            self.thumb_label.config(width=3, font=("TkDefaultFont", 16))
+            self.frame.configure(height=self.COMPACT_HEIGHT)
+        else:
+            self.thumb_label.config(width=5, font=("TkDefaultFont", 24))
+            self.frame.configure(height=self.DETAIL_HEIGHT)
