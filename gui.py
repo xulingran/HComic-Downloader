@@ -214,6 +214,15 @@ class HComicDownloaderGUI(tk.Tk):
         self.concurrent_var = tk.IntVar(value=self.config.concurrent_downloads)
         ttk.Spinbox(self.settings_frame, from_=1, to=10, textvariable=self.concurrent_var, width=5).grid(row=0, column=5)
 
+        ttk.Label(self.settings_frame, text="批量延迟(秒):").grid(row=0, column=6, padx=(20, 5))
+        self.batch_delay_var = tk.IntVar(value=self.config.batch_download_delay)
+        self.batch_delay_spinbox = ttk.Spinbox(
+            self.settings_frame, from_=0, to=60, textvariable=self.batch_delay_var, width=5
+        )
+        self.batch_delay_spinbox.grid(row=0, column=7, padx=(0, 5))
+        # 限制输入为整数
+        self.batch_delay_spinbox.config(validate="key", validatecommand=(self.register(self._validate_batch_delay), '%P'))
+
         # 第二行：字体设置
         ttk.Label(self.settings_frame, text="字体:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
         self.font_var = tk.StringVar(value=self.config.font_name or "自动检测")
@@ -519,6 +528,30 @@ class HComicDownloaderGUI(tk.Tk):
         self._content_height = max(1, int(getattr(event, "height", 1)))
         canvas_width = max(1, self.canvas.winfo_width())
         self.canvas.configure(scrollregion=(0, 0, canvas_width, self._content_height))
+
+    def _validate_batch_delay(self, value: str) -> bool:
+        """验证批量下载延迟输入（仅允许 0-60 的整数或空字符串）"""
+        if value == "":
+            return True
+        try:
+            delay = int(value)
+            return 0 <= delay <= 60
+        except ValueError:
+            return False
+
+    def _get_batch_delay_seconds(self) -> int:
+        """安全获取批量下载延迟秒数，避免 IntVar 空值触发 TclError。"""
+        raw_value = self.batch_delay_spinbox.get().strip() if hasattr(self, "batch_delay_spinbox") else ""
+        try:
+            delay = int(raw_value)
+        except (ValueError, TypeError):
+            delay = 0
+
+        # 兜底限制范围，避免粘贴等场景绕过 Spinbox 预期范围
+        delay = max(0, min(60, delay))
+        if raw_value != str(delay):
+            self.batch_delay_var.set(delay)
+        return delay
 
     def _on_window_resize(self, event):
         """处理窗口大小变化事件"""
@@ -1036,6 +1069,7 @@ class HComicDownloaderGUI(tk.Tk):
         results = {"success": [], "failed": []}
 
         def do_batch_download():
+            batch_delay = self._get_batch_delay_seconds()
             for i, comic in enumerate(comics):
                 # 更新状态
                 self.after(0, lambda c=i+1, t=total, ct=comic.title: self.update_status(f"下载中 [{c}/{t}]: {ct}"))
@@ -1043,11 +1077,12 @@ class HComicDownloaderGUI(tk.Tk):
 
                 temp_dir = None
                 try:
-                    # 下载图片
+                    # 下载图片（传入延迟参数，每本漫画下载完成后等待）
                     temp_dir = self.downloader.download_comic(
                         comic,
                         self.download_dir_var.get(),
                         progress_callback=self._progress_callback,
+                        delay_after=batch_delay if i < len(comics) - 1 else 0,
                     )
 
                     self.after(0, lambda: self.update_status(f"打包中 [{i+1}/{total}]: {comic.title}"))
