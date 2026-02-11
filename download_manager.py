@@ -1,5 +1,6 @@
 """下载管理器核心模块"""
 import logging
+import os
 import threading
 import time
 from typing import Dict, List, Optional, Callable
@@ -215,3 +216,86 @@ class DownloadManager:
                 "cancelled": sum(1 for t in self.tasks.values() if t.status == DownloadStatus.CANCELLED),
             }
             return stats
+
+    def clear_completed(self):
+        """清理已完成/已取消/已失败的任务"""
+        with self._lock:
+            to_remove = [
+                task_id for task_id, task in self.tasks.items()
+                if task.status in (
+                    DownloadStatus.COMPLETED,
+                    DownloadStatus.CANCELLED,
+                    DownloadStatus.FAILED
+                )
+            ]
+            for task_id in to_remove:
+                del self.tasks[task_id]
+                if task_id in self.queue:
+                    self.queue.remove(task_id)
+
+
+class ComicDownloadManager(DownloadManager):
+    """漫画下载管理器 - 集成 ComicDownloader"""
+
+    def __init__(self, downloader, cbz_builder, output_dir: str):
+        super().__init__()
+        self.downloader = downloader
+        self.cbz_builder = cbz_builder
+        self.output_dir = output_dir
+
+    def set_output_dir(self, output_dir: str):
+        """设置输出目录"""
+        self.output_dir = output_dir
+
+    def _process_task(self, task_id: str):
+        """处理单个下载任务"""
+        task = self.tasks.get(task_id)
+        if not task or task.status != DownloadStatus.QUEUED:
+            return
+
+        self.current_task_id = task_id
+        task.status = DownloadStatus.DOWNLOADING
+        task.started_at = time.time()
+        self._notify_task_update(task)
+
+        temp_dir = None
+        try:
+            # 下载图片
+            def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
+                task.progress_current = current
+                task.progress_total = total
+                self._notify_task_update(task)
+
+            temp_dir = self.downloader.download_comic(
+                task.comic,
+                self.output_dir,
+                progress_callback=progress_callback,
+            )
+
+            # 检查是否被取消
+            if task._cancel_requested:
+                raise Exception("Download cancelled")
+
+            task.temp_dir = temp_dir
+            self._notify_task_update(task)
+
+            # 打包为 CBZ
+            output_path = self.cbz_builder.build_cbz(temp_dir, task.comic)
+
+            # 清理临时目录
+            self.downloader.cleanup_temp_dir(temp_dir)
+
+            task.status = DownloadStatus.COMPLETED
+            logger.info(f"Task {task_id} completed: {output_path}")
+
+        except Exception as e:
+            logger.error(f"Task {task_id} failed: {e}")
+            task.status = DownloadStatus.FAILED
+            task.error_message = str(e)
+
+            if temp_dir and os.path.exists(temp_dir):
+                self.downloader.cleanup_temp_dir(temp_dir)
+
+        finally:
+            self.current_task_id = None
+            self._notify_task_update(task)
