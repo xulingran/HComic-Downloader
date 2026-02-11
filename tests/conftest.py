@@ -23,18 +23,8 @@ def parser():
 
 
 @pytest.fixture
-def temp_config(tmp_path, monkeypatch):
+def temp_config(tmp_path):
     """创建临时配置目录的 fixture"""
     config_dir = tmp_path / ".hcomic_downloader"
     config_dir.mkdir()
-    config_file = config_dir / "config.json"
-
-    def _load_config() -> Config:
-        if config_file.exists():
-            return Config.load(str(config_file))
-        return Config()
-
-    # monkeypatch 确保测试使用临时目录
-    monkeypatch.setattr("config.os.path.join", lambda *args: str(config_file))
-
-    return _load_config
+    return config_dir
