@@ -7,7 +7,23 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
-| #1272 | 11:31 PM | ✅ | Committed bug fixes and documentation updates | ~222 |
-| #1271 | " | 🟣 | Committed staged changes to hcomic_downloader repository | ~244 |
 | #1190 | 7:09 PM | 🟣 | Expanded CBZ builder test coverage | ~275 |
+
+### Feb 12, 2026
+
+| ID | Time | T | Title | Read |
+|----|------|---|-------|------|
+| #1347 | 12:33 AM | 🟣 | Queue Processor and State Controls Implemented | ~406 |
+| #1345 | " | 🟣 | DownloadManager Queue Processor and State Controls Implemented | ~353 |
+| #1343 | " | 🟣 | DownloadManager Queue Control Tests Added | ~263 |
+| #1342 | " | 🔵 | Existing Download Manager Test Infrastructure | ~316 |
+| #1338 | 12:31 AM | 🟣 | DownloadManager Core Class Implementation | ~357 |
+| #1335 | " | 🟣 | Download Manager Core Implementation | ~271 |
+| #1334 | " | 🟣 | Download Manager Data Model Implemented and Tested | ~274 |
+| #1333 | " | 🟣 | Download Manager Core Implementation - Tasks 1-3 Complete | ~385 |
+| #1331 | 12:30 AM | 🟣 | Download Manager Test Suite Expanded | ~255 |
+| #1330 | " | 🟣 | Download Manager Data Models Created | ~246 |
+| #1328 | 12:29 AM | 🟣 | Task 1 Complete: DownloadTask and DownloadStatus Models Added | ~353 |
+| #1326 | " | 🟣 | DownloadTask and DownloadStatus Models Added | ~258 |
+| #1323 | 12:28 AM | 🟣 | Download Manager Test Suite Created | ~250 |
 </claude-mem-context>
