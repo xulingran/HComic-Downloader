@@ -15,7 +15,7 @@ from io import BytesIO
 
 from config import Config
 from auth_parser import extract_auth_from_curl
-from models import ComicInfo, PaginationInfo, DownloadTask
+from models import ComicInfo, PaginationInfo, DownloadTask, DownloadStatus
 from parser import HComicParser
 from downloader import ComicDownloader, DownloadError
 from cbz_builder import CBZBuilder
@@ -1253,6 +1253,15 @@ class HComicDownloaderGUI(tk.Tk):
             message = f"批量下载完成\n\n成功: {success} 本"
             if failed > 0:
                 message += f"\n失败: {failed} 本"
+                # 显示失败的漫画标题和错误信息
+                failed_tasks = [
+                    task for task in self.download_manager.tasks.values()
+                    if task.status == DownloadStatus.FAILED
+                ]
+                for task in failed_tasks:
+                    message += f"\n  - {task.comic.title}"
+                    if task.error_message:
+                        message += f": {task.error_message}"
             if cancelled > 0:
                 message += f"\n取消: {cancelled} 本"
 

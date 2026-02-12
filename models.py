@@ -141,6 +141,10 @@ class DownloadTask:
     started_at: Optional[float] = None
     _pause_requested: bool = False
     _cancel_requested: bool = False
+    failed_pages: List[int] = field(default_factory=list)
+    completed_pages: List[int] = field(default_factory=list)
+    retry_count: int = 0
+    last_failed_at: Optional[float] = None
 
     @property
     def task_id(self) -> str:

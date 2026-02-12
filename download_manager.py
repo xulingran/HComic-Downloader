@@ -5,6 +5,7 @@ import threading
 import time
 from typing import Dict, List, Optional, Callable
 
+from downloader import DownloadResult
 from models import ComicInfo, DownloadTask, DownloadStatus
 
 logger = logging.getLogger(__name__)
@@ -210,6 +211,38 @@ class DownloadManager:
             logger.info(f"Task {task_id} cancelled")
             return True
 
+    def retry_task(self, task_id: str) -> bool:
+        """重试失败的任务
+
+        Args:
+            task_id: 任务ID
+
+        Returns:
+            是否成功重置任务
+        """
+        should_start = False
+        with self._lock:
+            task = self.tasks.get(task_id)
+            if not task or task.status != DownloadStatus.FAILED:
+                return False
+
+            # 重置任务状态
+            task.status = DownloadStatus.QUEUED
+            task.retry_count += 1
+            task.error_message = None
+            # 保留 failed_pages 和 completed_pages 用于断点续传
+            self._notify_task_update(task)
+            logger.info(f"Task {task_id} queued for retry (attempt #{task.retry_count})")
+
+            # 检查是否需要启动队列处理器
+            should_start = not self.is_running
+
+        # 在锁外启动处理器
+        if should_start:
+            self.start()
+
+        return True
+
     def toggle_global_pause(self) -> bool:
         """切换全局暂停状态"""
         self.global_pause = not self.global_pause
@@ -221,6 +254,8 @@ class DownloadManager:
         with self._lock:
             stats = {
                 "total": len(self.tasks),
+                "incomplete": sum(1 for t in self.tasks.values()
+                               if t.status not in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED)),
                 "queued": sum(1 for t in self.tasks.values() if t.status == DownloadStatus.QUEUED),
                 "downloading": sum(1 for t in self.tasks.values() if t.status == DownloadStatus.DOWNLOADING),
                 "paused": sum(1 for t in self.tasks.values() if t.status == DownloadStatus.PAUSED),
@@ -278,15 +313,17 @@ class ComicDownloadManager(DownloadManager):
 
         temp_dir = None
         try:
-            # 下载图片
+            # 下载图片（支持断点续传）
             def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
                 task.progress_current = current
                 task.progress_total = total
                 self._notify_task_update(task)
 
-            temp_dir = self.downloader.download_comic(
+            result: DownloadResult = self.downloader.download_comic_resume(
                 task.comic,
                 self.output_dir,
+                completed_pages=task.completed_pages,
+                failed_pages=task.failed_pages,
                 progress_callback=progress_callback,
             )
 
@@ -294,17 +331,31 @@ class ComicDownloadManager(DownloadManager):
             if task._cancel_requested:
                 raise Exception("Download cancelled")
 
+            temp_dir = result.temp_dir
             task.temp_dir = temp_dir
+            task.completed_pages = result.completed_pages
+            task.failed_pages = result.failed_pages
             self._notify_task_update(task)
 
-            # 打包为 CBZ
-            output_path = self.cbz_builder.build_cbz(temp_dir, task.comic)
+            if result.success:
+                # 下载成功，打包为 CBZ
+                output_path = self.cbz_builder.build_cbz(temp_dir, task.comic)
 
-            # 清理临时目录
-            self.downloader.cleanup_temp_dir(temp_dir)
+                # 清理临时目录（成功时清理）
+                self.downloader.cleanup_temp_dir(temp_dir)
+                task.temp_dir = None
 
-            task.status = DownloadStatus.COMPLETED
-            logger.info(f"Task {task_id} completed: {output_path}")
+                task.status = DownloadStatus.COMPLETED
+                logger.info(f"Task {task_id} completed: {output_path}")
+            else:
+                # 下载失败，更新失败信息
+                task.status = DownloadStatus.FAILED
+                task.failed_pages = result.failed_pages
+                task.completed_pages = result.completed_pages
+                task.last_failed_at = time.time()
+                task.error_message = result.error_message or "下载失败"
+                logger.error(f"Task {task_id} failed: {task.error_message}")
+                # 失败时不清理临时目录，保留已下载的图片用于重试
 
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}")
@@ -312,8 +363,34 @@ class ComicDownloadManager(DownloadManager):
             if task.status != DownloadStatus.CANCELLED:
                 task.status = DownloadStatus.FAILED
                 task.error_message = str(e)
+                task.last_failed_at = time.time()
+                # 对于非下载相关的异常（如 CBZ 打包失败），
+                # 如果已经有下载进度，保留它以便可能的重试
+                if temp_dir and os.path.exists(temp_dir):
+                    # 尝试从临时目录扫描已下载的文件来更新进度
+                    try:
+                        import glob
+                        downloaded_files = glob.glob(os.path.join(temp_dir, "*.jpg"))
+                        # 从文件名提取页码（格式: 001.jpg, 002.jpg 等）
+                        completed_from_files = []
+                        for f in downloaded_files:
+                            try:
+                                page_num = int(os.path.basename(f).split('.')[0])
+                                completed_from_files.append(page_num)
+                            except (ValueError, IndexError):
+                                continue
+                        if completed_from_files:
+                            task.completed_pages = sorted(completed_from_files)
+                            task.progress_current = len(task.completed_pages)
+                            # 假设未下载的页面都是失败的
+                            all_pages = set(range(1, task.comic.pages + 1))
+                            task.failed_pages = sorted(all_pages - set(task.completed_pages))
+                    except Exception as scan_error:
+                        logger.warning(f"Failed to scan temp dir for progress: {scan_error}")
+                # 失败时不清理临时目录，保留已下载的图片
 
-            if temp_dir and os.path.exists(temp_dir):
+            # 如果任务被取消，清理临时目录
+            if task.status == DownloadStatus.CANCELLED and temp_dir and os.path.exists(temp_dir):
                 self.downloader.cleanup_temp_dir(temp_dir)
 
         finally:

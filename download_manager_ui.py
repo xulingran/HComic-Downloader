@@ -204,10 +204,10 @@ class DownloadManagerUI:
     def update_stats(self):
         """更新统计信息"""
         stats = self.dm.get_stats()
-        total = stats["total"]
+        incomplete = stats["incomplete"]
         downloading = stats["downloading"]
 
-        self.stats_label.config(text=f"下载队列 ({total}本)")
+        self.stats_label.config(text=f"下载队列 ({incomplete}本)")
 
     def refresh_task_list(self):
         """刷新任务列表"""
@@ -229,6 +229,7 @@ class DownloadManagerUI:
                 on_play=lambda tid=task_id: self._on_task_play(tid),
                 on_pause=lambda tid=task_id: self._on_task_pause(tid),
                 on_cancel=lambda tid=task_id: self._on_task_cancel(tid),
+                on_retry=lambda tid=task_id: self._on_task_retry(tid),
             )
             widget.frame.pack(fill="x", pady=2)
             self._task_widgets[task_id] = widget
@@ -266,6 +267,10 @@ class DownloadManagerUI:
         self.dm.cancel_task(task_id)
         self.refresh_task_list()
 
+    def _on_task_retry(self, task_id: str):
+        """重试按钮点击"""
+        self.dm.retry_task(task_id)
+
 
 
 class DownloadItemWidget:
@@ -284,7 +289,8 @@ class DownloadItemWidget:
     MARGIN = 30  # 边距余量
 
     # 每个字符平均宽度（根据字体估算）
-    CHAR_WIDTH_ESTIMATE = 7  # 10号bold字体约7px/字符
+    # 中文字符约14px，英文约7px，使用10px作为保守估算
+    CHAR_WIDTH_ESTIMATE = 10
 
     # 状态图标映射
     STATUS_ICONS = {
@@ -304,17 +310,19 @@ class DownloadItemWidget:
         on_play: Optional[Callable[[], None]] = None,
         on_pause: Optional[Callable[[], None]] = None,
         on_cancel: Optional[Callable[[], None]] = None,
+        on_retry: Optional[Callable[[], None]] = None,
     ):
         self.task = task
         self.view_mode = view_mode
         self.on_play = on_play
         self.on_pause = on_pause
         self.on_cancel = on_cancel
+        self.on_retry = on_retry
 
         # 创建 Frame
         self.frame = ttk.Frame(parent, relief="groove", borderwidth=1)
 
-        # 缩略图（使用标签占位）
+        # 缩略图（使用标签占位）- 最左侧
         self.thumb_label = ttk.Label(
             self.frame,
             text="📷",
@@ -324,7 +332,43 @@ class DownloadItemWidget:
         )
         self.thumb_label.pack(side="left", padx=5, pady=5)
 
-        # 信息区
+        # 控制按钮 - 先 pack 右侧固定宽度区域，确保按钮始终可见
+        self.controls_frame = ttk.Frame(self.frame)
+        self.controls_frame.pack(side="right", padx=5, pady=5)
+
+        self.play_btn = ttk.Button(
+            self.controls_frame,
+            text="▶",
+            width=3,
+            command=self._on_play_clicked
+        )
+        self.play_btn.pack(side="left", padx=1)
+
+        self.pause_btn = ttk.Button(
+            self.controls_frame,
+            text="⏸",
+            width=3,
+            command=self._on_pause_clicked
+        )
+        self.pause_btn.pack(side="left", padx=1)
+
+        self.cancel_btn = ttk.Button(
+            self.controls_frame,
+            text="✕",
+            width=3,
+            command=self._on_cancel_clicked
+        )
+        self.cancel_btn.pack(side="left", padx=1)
+
+        self.retry_btn = ttk.Button(
+            self.controls_frame,
+            text="🔄",
+            width=3,
+            command=self._on_retry_clicked
+        )
+        self.retry_btn.pack(side="left", padx=1)
+
+        # 信息区 - 后 pack，填充剩余空间
         self.info_frame = ttk.Frame(self.frame)
         self.info_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
 
@@ -364,34 +408,6 @@ class DownloadItemWidget:
         self.progress_label = ttk.Label(self.progress_frame, text="0%", width=4)
         self.progress_label.pack(side="left", padx=(5, 0))
 
-        # 控制按钮
-        self.controls_frame = ttk.Frame(self.frame)
-        self.controls_frame.pack(side="right", padx=5, pady=5)
-
-        self.play_btn = ttk.Button(
-            self.controls_frame,
-            text="▶",
-            width=3,
-            command=self._on_play_clicked
-        )
-        self.play_btn.pack(side="left", padx=1)
-
-        self.pause_btn = ttk.Button(
-            self.controls_frame,
-            text="⏸",
-            width=3,
-            command=self._on_pause_clicked
-        )
-        self.pause_btn.pack(side="left", padx=1)
-
-        self.cancel_btn = ttk.Button(
-            self.controls_frame,
-            text="✕",
-            width=3,
-            command=self._on_cancel_clicked
-        )
-        self.cancel_btn.pack(side="left", padx=1)
-
         # 初始更新
         self.update(task)
 
@@ -407,13 +423,21 @@ class DownloadItemWidget:
         if self.on_cancel:
             self.on_cancel()
 
+    def _on_retry_clicked(self):
+        if self.on_retry:
+            self.on_retry()
+
     def _on_title_row_configure(self, event):
         """标题行尺寸变化时，动态调整标题显示长度"""
         if not hasattr(self, '_full_title'):
             return
 
-        available_width = event.width - self.STATUS_ICON_WIDTH
-        max_chars = max(10, (available_width - 10) // self.CHAR_WIDTH_ESTIMATE)
+        # 计算可用宽度，预留安全边距
+        # event.width 是 title_row 的实际宽度
+        # 减去状态图标宽度和额外的安全边距
+        safe_margin = 15  # 额外的安全边距
+        available_width = event.width - self.STATUS_ICON_WIDTH - safe_margin
+        max_chars = max(8, available_width // self.CHAR_WIDTH_ESTIMATE)
 
         title_text = self._truncate_text(self._full_title, max_chars)
 
@@ -443,7 +467,19 @@ class DownloadItemWidget:
         # 更新进度
         pct = task.progress_percentage
         self.progress_bar["value"] = pct
-        self.progress_label.config(text=f"{pct:.0f}%")
+
+        # 根据状态显示不同的进度文本
+        if task.status == DownloadStatus.FAILED and (task.completed_pages or task.failed_pages):
+            completed = len(task.completed_pages)
+            failed = len(task.failed_pages)
+            total = task.progress_total or task.comic.pages
+            progress_text = f"{completed}✓ {failed}✗ /{total}"
+        elif task.status == DownloadStatus.COMPLETED:
+            progress_text = "100%"
+        else:
+            progress_text = f"{pct:.0f}%"
+
+        self.progress_label.config(text=progress_text)
 
         # 更新状态图标
         icon = self.STATUS_ICONS.get(task.status, "?")
@@ -464,8 +500,8 @@ class DownloadItemWidget:
         """根据状态更新按钮"""
         status = self.task.status
 
-        # 播放按钮：仅在暂停时可用
-        play_state = "normal" if status == DownloadStatus.PAUSED else "disabled"
+        # 播放按钮：暂停或失败时可用（失败时等同于重试）
+        play_state = "normal" if status in (DownloadStatus.PAUSED, DownloadStatus.FAILED) else "disabled"
         self.play_btn.config(state=play_state)
 
         # 暂停按钮：仅在下载中时可用
@@ -475,6 +511,13 @@ class DownloadItemWidget:
         # 取消按钮：已完成/已取消时禁用
         cancel_disabled = status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED)
         self.cancel_btn.config(state="disabled" if cancel_disabled else "normal")
+
+        # 重试按钮：仅在失败时显示和可用
+        if status == DownloadStatus.FAILED:
+            self.retry_btn.pack(side="left", padx=1)
+            self.retry_btn.config(state="normal")
+        else:
+            self.retry_btn.pack_forget()
 
     def set_view_mode(self, view_mode: ViewMode):
         """切换视图模式"""

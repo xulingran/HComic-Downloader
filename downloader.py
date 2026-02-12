@@ -3,6 +3,7 @@ import logging
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
 from io import BytesIO
@@ -41,6 +42,15 @@ logger = logging.getLogger(__name__)
 class DownloadError(Exception):
     """下载错误"""
     pass
+
+
+@dataclass
+class DownloadResult:
+    success: bool
+    completed_pages: List[int]
+    failed_pages: List[int]
+    temp_dir: str
+    error_message: Optional[str] = None
 
 
 class ComicDownloader:
@@ -103,7 +113,7 @@ class ComicDownloader:
         delay_after: int = 0,
         comic_info: Optional[dict] = None,
     ) -> str:
-        """下载完整漫画
+        """下载完整漫画（向后兼容，内部调用 download_comic_resume）
 
         Args:
             comic: 漫画信息
@@ -114,73 +124,24 @@ class ComicDownloader:
 
         Returns:
             临时图片目录路径
+
+        Raises:
+            DownloadError: 当下载不完整时抛出
         """
-        # 创建临时目录
-        temp_dir = Path(output_dir) / f"temp_{comic.id}"
-        ensure_dir(str(temp_dir))
+        result = self.download_comic_resume(
+            comic=comic,
+            output_dir=output_dir,
+            progress_callback=progress_callback,
+            delay_after=delay_after,
+            comic_info=comic_info,
+            completed_pages=None,
+            failed_pages=None,
+        )
 
-        # 获取所有图片 URL
-        image_urls = comic.get_all_image_urls()
-        total = len(image_urls)
+        if not result.success:
+            raise DownloadError(result.error_message or "下载失败")
 
-        if total == 0:
-            raise DownloadError("No images to download")
-
-        logger.info(f"Starting download: {comic.title} ({total} pages)")
-
-        # 多线程下载
-        downloaded = 0
-        failed_urls = []
-
-        with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
-            # 提交所有任务
-            future_to_url = {
-                executor.submit(
-                    self._download_image_task,
-                    url,
-                    temp_dir / f"{i+1:03d}.jpg",
-                ): url
-                for i, url in enumerate(image_urls)
-            }
-
-            # 处理完成的任务
-            for future in as_completed(future_to_url):
-                url = future_to_url[future]
-                try:
-                    success = future.result()
-                    if success:
-                        downloaded += 1
-                    else:
-                        failed_urls.append(url)
-                except Exception as e:
-                    logger.error(f"Download error for {url}: {e}")
-                    failed_urls.append(url)
-
-                # 更新进度
-                if progress_callback:
-                    progress_callback(downloaded, total, f"下载中... ({downloaded}/{total})", comic_info)
-
-        # 检查失败数量
-        if failed_urls:
-            failed_count = len(failed_urls)
-            logger.warning(f"Download completed with {failed_count} failures")
-            if progress_callback:
-                progress_callback(downloaded, total, f"完成，{failed_count} 页失败", comic_info)
-            # 抛出异常，让调用方知道下载不完整
-            raise DownloadError(f"下载不完整: {failed_count}/{total} 页下载失败，请检查网络连接后重试")
-        else:
-            logger.info(f"Download completed: {comic.title}")
-            if progress_callback:
-                progress_callback(downloaded, total, "下载完成", comic_info)
-
-        # 批量下载延迟
-        if delay_after > 0:
-            logger.info(f"Waiting {delay_after}s before next download")
-            if progress_callback:
-                progress_callback(downloaded, total, f"等待 {delay_after} 秒...", comic_info)
-            time.sleep(delay_after)
-
-        return str(temp_dir)
+        return result.temp_dir
 
     def _download_image_task(self, url: str, output_path: Path) -> bool:
         """下载单张图片的任务
@@ -296,6 +257,150 @@ class ComicDownloader:
                 update_status()
 
         return downloaded_paths
+
+    def download_comic_resume(
+        self,
+        comic: ComicInfo,
+        output_dir: str,
+        progress_callback: Optional[Callable[[int, int, str, Optional[dict]], None]] = None,
+        delay_after: int = 0,
+        comic_info: Optional[dict] = None,
+        completed_pages: Optional[List[int]] = None,
+        failed_pages: Optional[List[int]] = None,
+    ) -> DownloadResult:
+        """断点续传下载漫画
+
+        Args:
+            comic: 漫画信息
+            output_dir: 输出目录
+            progress_callback: 进度回调函数(current, total, status, comic_info)
+            delay_after: 下载完成后延迟的秒数（用于批量下载）
+            comic_info: 漫画信息字典，用于批量下载时传递上下文
+            completed_pages: 已完成的页码列表（1-based），这些页面会被跳过
+            failed_pages: 之前失败的页码列表（1-based），会优先重试这些
+
+        Returns:
+            DownloadResult 对象，包含下载结果和状态
+        """
+        # 初始化已完成和失败页面列表
+        completed_pages = completed_pages or []
+        failed_pages = failed_pages or []
+        completed_set = set(completed_pages)
+
+        # 创建或复用临时目录
+        temp_dir = Path(output_dir) / f"temp_{comic.id}"
+        ensure_dir(str(temp_dir))
+
+        # 获取所有图片 URL
+        image_urls = comic.get_all_image_urls()
+        total = len(image_urls)
+
+        if total == 0:
+            return DownloadResult(
+                success=False,
+                completed_pages=[],
+                failed_pages=[],
+                temp_dir=str(temp_dir),
+                error_message="No images to download"
+            )
+
+        # 计算需要下载的页面
+        # 1. 优先重试之前失败的页面
+        # 2. 然后下载尚未完成的页面
+        pages_to_download = []
+
+        # 添加失败的页面（优先）
+        for page_num in failed_pages:
+            if 1 <= page_num <= total:
+                pages_to_download.append(page_num)
+
+        # 添加未完成的页面
+        for page_num in range(1, total + 1):
+            if page_num not in completed_set and page_num not in pages_to_download:
+                pages_to_download.append(page_num)
+
+        if not pages_to_download:
+            logger.info(f"All pages already downloaded: {comic.title}")
+            if progress_callback:
+                progress_callback(total, total, "所有页面已下载", comic_info)
+            return DownloadResult(
+                success=True,
+                completed_pages=list(range(1, total + 1)),
+                failed_pages=[],
+                temp_dir=str(temp_dir)
+            )
+
+        logger.info(f"Resuming download: {comic.title} ({len(pages_to_download)}/{total} pages remaining)")
+
+        # 跟踪下载状态
+        new_completed = []
+        new_failed = []
+        downloaded_count = len(completed_pages)
+
+        with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
+            # 提交任务
+            future_to_page = {}
+            for page_num in pages_to_download:
+                url = image_urls[page_num - 1]  # 转换为 0-based 索引
+                output_path = temp_dir / f"{page_num:03d}.jpg"
+                future = executor.submit(
+                    self._download_image_task,
+                    url,
+                    output_path,
+                )
+                future_to_page[future] = page_num
+
+            # 处理完成的任务
+            for future in as_completed(future_to_page):
+                page_num = future_to_page[future]
+                try:
+                    success = future.result()
+                    if success:
+                        downloaded_count += 1
+                        new_completed.append(page_num)
+                    else:
+                        new_failed.append(page_num)
+                except Exception as e:
+                    logger.error(f"Download error for page {page_num}: {e}")
+                    new_failed.append(page_num)
+
+                # 更新进度
+                if progress_callback:
+                    status = f"下载中... ({downloaded_count}/{total})"
+                    if new_failed:
+                        status += f"，失败: {len(new_failed)}"
+                    progress_callback(downloaded_count, total, status, comic_info)
+
+        # 合并结果
+        all_completed = completed_pages + new_completed
+        all_failed = new_failed
+
+        # 判断是否成功
+        success = len(all_failed) == 0
+
+        if success:
+            logger.info(f"Download completed: {comic.title}")
+            if progress_callback:
+                progress_callback(downloaded_count, total, "下载完成", comic_info)
+        else:
+            logger.warning(f"Download completed with {len(all_failed)} failures")
+            if progress_callback:
+                progress_callback(downloaded_count, total, f"完成，{len(all_failed)} 页失败", comic_info)
+
+        # 批量下载延迟
+        if delay_after > 0:
+            logger.info(f"Waiting {delay_after}s before next download")
+            if progress_callback:
+                progress_callback(downloaded_count, total, f"等待 {delay_after} 秒...", comic_info)
+            time.sleep(delay_after)
+
+        return DownloadResult(
+            success=success,
+            completed_pages=all_completed,
+            failed_pages=all_failed,
+            temp_dir=str(temp_dir),
+            error_message=None if success else f"下载不完整: {len(all_failed)}/{total} 页下载失败"
+        )
 
     def cleanup_temp_dir(self, temp_dir: str):
         """清理临时目录
