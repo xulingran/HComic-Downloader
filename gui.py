@@ -255,6 +255,19 @@ class HComicDownloaderGUI(tk.Tk):
         self.font_size_var = tk.IntVar(value=self.config.font_size)
         ttk.Spinbox(self.settings_frame, from_=8, to=20, textvariable=self.font_size_var, width=5, command=self._on_font_size_changed).grid(row=1, column=4, pady=(5, 0))
 
+        # 主题设置
+        ttk.Label(self.settings_frame, text="主题:").grid(row=1, column=6, padx=(20, 5), pady=(5, 0))
+        self.theme_mode_var = tk.StringVar(value=self._get_theme_display_name(self.config.theme_mode))
+        theme_combo = ttk.Combobox(
+            self.settings_frame,
+            textvariable=self.theme_mode_var,
+            values=["自动", "浅色", "深色"],
+            state="readonly",
+            width=8
+        )
+        theme_combo.grid(row=1, column=7, pady=(5, 0))
+        theme_combo.bind("<<ComboboxSelected>>", self._on_theme_change)
+
         # 第三行：预览图设置
         preview_check = ttk.Checkbutton(
             self.settings_frame,
@@ -691,6 +704,25 @@ class HComicDownloaderGUI(tk.Tk):
         # 重新创建字体配置
         self.font_config = FontConfig(self.config)
         logger.info(f"字体大小已更改为: {self.config.font_size}")
+
+    def _get_theme_display_name(self, mode: str) -> str:
+        """获取主题显示名称"""
+        return {"auto": "自动", "light": "浅色", "dark": "深色"}.get(mode, "自动")
+
+    def _on_theme_change(self, event=None):
+        """用户切换主题时立即生效"""
+        display_to_mode = {"自动": ThemeMode.AUTO, "浅色": ThemeMode.LIGHT, "深色": ThemeMode.DARK}
+        mode_str = self.theme_mode_var.get()
+        mode = display_to_mode.get(mode_str, ThemeMode.AUTO)
+
+        self.theme_manager.set_mode(mode)
+
+        # 保存配置
+        self.config.theme_mode = mode.value
+        self.config.save(self._get_config_path())
+
+        # 触发界面刷新（set_mode 已触发回调，这里确保刷新）
+        self._on_theme_change_refresh()
 
     def _on_preview_changed(self):
         """预览图设置变化事件"""
