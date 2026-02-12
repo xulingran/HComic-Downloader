@@ -28,6 +28,7 @@ from utils import (
 from font_config import configure_font, get_font, get_font_string, FontConfig
 from download_manager import ComicDownloadManager
 from download_manager_ui import DownloadManagerUI
+from theme_manager import ThemeManager, ThemeMode
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,12 @@ class HComicDownloaderGUI(tk.Tk):
         # 初始化字体配置（传入配置对象）
         self.font_config = FontConfig.create_instance(self.config)
         logger.info(f"使用字体: {self.font_config.get_best_font()}")
+
+        # 初始化主题管理器
+        theme_mode = ThemeMode(self.config.theme_mode)
+        self.theme_manager = ThemeManager.initialize(theme_mode)
+        self.theme_manager.register_callback(self._on_theme_change_refresh)
+        logger.info(f"主题模式: {theme_mode.value}, 当前主题: {self.theme_manager.current_theme}")
 
         # 导出系统代理到环境变量，确保所有请求路径行为一致
         export_system_proxies_to_env()
@@ -247,6 +254,19 @@ class HComicDownloaderGUI(tk.Tk):
         ttk.Label(self.settings_frame, text="字体大小:").grid(row=1, column=3, padx=(20, 5), pady=(5, 0))
         self.font_size_var = tk.IntVar(value=self.config.font_size)
         ttk.Spinbox(self.settings_frame, from_=8, to=20, textvariable=self.font_size_var, width=5, command=self._on_font_size_changed).grid(row=1, column=4, pady=(5, 0))
+
+        # 主题设置
+        ttk.Label(self.settings_frame, text="主题:").grid(row=1, column=6, padx=(20, 5), pady=(5, 0))
+        self.theme_mode_var = tk.StringVar(value=self._get_theme_display_name(self.config.theme_mode))
+        theme_combo = ttk.Combobox(
+            self.settings_frame,
+            textvariable=self.theme_mode_var,
+            values=["自动", "浅色", "深色"],
+            state="readonly",
+            width=8
+        )
+        theme_combo.grid(row=1, column=7, pady=(5, 0))
+        theme_combo.bind("<<ComboboxSelected>>", self._on_theme_change)
 
         # 第三行：预览图设置
         preview_check = ttk.Checkbutton(
@@ -684,6 +704,22 @@ class HComicDownloaderGUI(tk.Tk):
         # 重新创建字体配置
         self.font_config = FontConfig(self.config)
         logger.info(f"字体大小已更改为: {self.config.font_size}")
+
+    def _get_theme_display_name(self, mode: str) -> str:
+        """获取主题显示名称"""
+        return {"auto": "自动", "light": "浅色", "dark": "深色"}.get(mode, "自动")
+
+    def _on_theme_change(self, event=None):
+        """用户切换主题时立即生效"""
+        display_to_mode = {"自动": ThemeMode.AUTO, "浅色": ThemeMode.LIGHT, "深色": ThemeMode.DARK}
+        mode_str = self.theme_mode_var.get()
+        mode = display_to_mode.get(mode_str, ThemeMode.AUTO)
+
+        self.theme_manager.set_mode(mode)  # 会自动触发回调刷新界面
+
+        # 保存配置
+        self.config.theme_mode = mode.value
+        self.config.save(self._get_config_path())
 
     def _on_preview_changed(self):
         """预览图设置变化事件"""
@@ -1604,6 +1640,18 @@ class HComicDownloaderGUI(tk.Tk):
         bg = ttk.Style().lookup("TFrame", "background")
         return bg or "#f0f0f0"
 
+    def _on_theme_change_refresh(self):
+        """主题变化时刷新界面"""
+        # 刷新所有卡片颜色
+        for i, frame in enumerate(self.result_frames):
+            self._update_card_colors(frame, self.search_results[i] if i < len(self.search_results) else None)
+
+        # 刷新下载管理器面板
+        if hasattr(self, 'download_manager_ui'):
+            self.download_manager_ui.refresh_theme()
+
+        logger.debug("界面主题已刷新")
+
     def create_comic_card(self, comic: ComicInfo, row: int, col: int) -> tk.Frame:
         """创建漫画卡片"""
         frame = ttk.Frame(self.scrollable_frame, relief="solid", borderwidth=1, padding="5")
@@ -1639,8 +1687,8 @@ class HComicDownloaderGUI(tk.Tk):
             placeholder = tk.Label(
                 frame,
                 text="NSFW",
-                bg="#3d3d3d",
-                fg="#e5e5e5",
+                bg=self.theme_manager.get_color("card_bg"),
+                fg=self.theme_manager.get_color("text"),
                 font=get_font("small", bold=True),
                 width=placeholder_width,
                 height=2,
@@ -1663,8 +1711,8 @@ class HComicDownloaderGUI(tk.Tk):
             pady=0,
             highlightthickness=0,
             bg=card_bg,
-            fg="black",
-            insertbackground="black",
+            fg=self.theme_manager.get_color("text"),
+            insertbackground=self.theme_manager.get_color("insert"),
             width=max(12, int(card_inner_width / max(7, tkfont.Font(font=get_font("normal", bold=True)).measure("测")))),
         )
         title_widget.grid(row=1, column=0, sticky=(tk.W, tk.E))
@@ -1679,13 +1727,13 @@ class HComicDownloaderGUI(tk.Tk):
             bd=0,
             relief="flat",
             font=get_font("small"),
-            fg="gray",
+            fg=self.theme_manager.get_color("text_secondary"),
             cursor="xterm",
             padx=0,
             pady=0,
             highlightthickness=0,
             bg=card_bg,
-            insertbackground="black",
+            insertbackground=self.theme_manager.get_color("insert"),
             width=max(12, int(card_inner_width / max(7, tkfont.Font(font=get_font("small")).measure("测")))),
         )
         author_widget.grid(row=2, column=0, sticky=(tk.W, tk.E))
@@ -1693,7 +1741,13 @@ class HComicDownloaderGUI(tk.Tk):
 
         # 页数
         pages_text = f"页数: {comic.pages}"
-        pages_label = tk.Label(frame, text=pages_text, foreground="gray", font=get_font("small"))
+        pages_label = tk.Label(
+            frame,
+            text=pages_text,
+            foreground=self.theme_manager.get_color("text_secondary"),
+            bg=card_bg,
+            font=get_font("small")
+        )
         pages_label.grid(row=3, column=0, sticky=tk.W)
 
         # 下载按钮
@@ -1733,6 +1787,35 @@ class HComicDownloaderGUI(tk.Tk):
             self.update_card_visual(frame, True)
 
         return frame
+
+    def _update_card_colors(self, frame: tk.Frame, comic: 'ComicInfo' = None):
+        """更新单个卡片的颜色"""
+        try:
+            card_bg = self._get_frame_background()
+            text_color = self.theme_manager.get_color("text")
+            text_secondary = self.theme_manager.get_color("text_secondary")
+            insert_color = self.theme_manager.get_color("insert")
+
+            for widget in frame.winfo_children():
+                try:
+                    if isinstance(widget, tk.Text):
+                        # 根据网格位置判断是标题还是作者
+                        grid_info = widget.grid_info()
+                        row = int(grid_info.get('row', 0))
+                        if row == 1:  # 标题
+                            widget.config(bg=card_bg, fg=text_color, insertbackground=insert_color)
+                        elif row == 2:  # 作者
+                            widget.config(bg=card_bg, fg=text_secondary, insertbackground=insert_color)
+                    elif isinstance(widget, tk.Label):
+                        widget_text = widget.cget("text")
+                        if "NSFW" in widget_text:
+                            widget.config(bg=card_bg, fg=text_color)
+                        else:
+                            widget.config(foreground=text_secondary, bg=card_bg)
+                except tk.TclError:
+                    pass  # 控件可能已销毁
+        except Exception as e:
+            logger.debug(f"更新卡片颜色失败: {e}")
 
     def _schedule_cover_load(self, url: str, label: ttk.Label, card_width: int = 200):
         """调度封面加载任务（固定并发，避免线程爆炸）"""
