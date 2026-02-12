@@ -13,6 +13,8 @@
 
 | ID | Time | T | Title | Read |
 |----|------|---|-------|------|
+| #1443 | 12:52 AM | 🟣 | Download Manager Tests Passing | ~156 |
+| #1439 | 12:50 AM | 🟣 | Download Manager Implementation Complete - All Tests Passing | ~348 |
 | #1347 | 12:33 AM | 🟣 | Queue Processor and State Controls Implemented | ~406 |
 | #1345 | " | 🟣 | DownloadManager Queue Processor and State Controls Implemented | ~353 |
 | #1343 | " | 🟣 | DownloadManager Queue Control Tests Added | ~263 |

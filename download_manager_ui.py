@@ -192,7 +192,7 @@ class DownloadManagerUI:
         self.view_toggle_btn.config(
             text="详细 ▼" if self.view_mode == ViewMode.DETAIL else "简洁 ▼"
         )
-        self._refresh_task_list()
+        self.refresh_task_list()
 
     def _toggle_global_pause(self):
         """切换全局暂停"""

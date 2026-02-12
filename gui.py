@@ -1097,8 +1097,9 @@ class HComicDownloaderGUI(tk.Tk):
         if not comics:
             return
 
-        # 更新输出目录
+        # 更新输出目录和批量下载间隔
         self.download_manager.set_output_dir(self.download_dir_var.get())
+        self.download_manager.set_delay_after(self._get_batch_delay_seconds())
 
         # 添加任务到队列
         self.download_manager.add_tasks(comics)
@@ -1188,7 +1189,12 @@ class HComicDownloaderGUI(tk.Tk):
             messagebox.showerror("错误", f"无法打开目录:\n{e}")
 
     def _on_download_task_update(self, task: DownloadTask):
-        """下载任务更新回调"""
+        """下载任务更新回调（可能在后台线程调用）"""
+        # 使用 after() 确保 UI 更新在主线程执行
+        self.after(0, lambda: self._update_ui_for_task(task))
+
+    def _update_ui_for_task(self, task: DownloadTask):
+        """在主线程更新 UI"""
         # 更新下载管理器 UI
         if hasattr(self, 'download_manager_ui'):
             self.download_manager_ui.update_task(task)

@@ -102,6 +102,10 @@ class DownloadManager:
     def _get_next_task(self) -> Optional[str]:
         """获取下一个可处理的任务"""
         with self._lock:
+            # 记录本轮扫描中遇到的暂停任务数
+            paused_count = 0
+            total_tasks = len(self.queue)
+
             while self.queue:
                 task_id = self.queue[0]
                 task = self.tasks.get(task_id)
@@ -110,9 +114,18 @@ class DownloadManager:
                     self.queue.pop(0)
                     continue
 
+                # 跳过已完成的任务（取消/完成/失败）
+                if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED):
+                    self.queue.pop(0)
+                    continue
+
                 # 跳过暂停的任务，轮转到队列尾部
                 if task.status == DownloadStatus.PAUSED:
+                    paused_count += 1
                     self.queue.append(self.queue.pop(0))
+                    # 如果所有任务都是暂停状态，退出本轮扫描
+                    if paused_count >= total_tasks:
+                        return None
                     continue
 
                 return task_id
@@ -242,10 +255,15 @@ class ComicDownloadManager(DownloadManager):
         self.downloader = downloader
         self.cbz_builder = cbz_builder
         self.output_dir = output_dir
+        self.delay_after = 0  # 批量下载间隔（秒）
 
     def set_output_dir(self, output_dir: str):
         """设置输出目录"""
         self.output_dir = output_dir
+
+    def set_delay_after(self, delay: int):
+        """设置批量下载间隔（秒）"""
+        self.delay_after = delay
 
     def _process_task(self, task_id: str):
         """处理单个下载任务"""
@@ -290,8 +308,10 @@ class ComicDownloadManager(DownloadManager):
 
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}")
-            task.status = DownloadStatus.FAILED
-            task.error_message = str(e)
+            # 如果任务已被取消，保留 CANCELLED 状态，不要覆盖为 FAILED
+            if task.status != DownloadStatus.CANCELLED:
+                task.status = DownloadStatus.FAILED
+                task.error_message = str(e)
 
             if temp_dir and os.path.exists(temp_dir):
                 self.downloader.cleanup_temp_dir(temp_dir)
@@ -299,3 +319,15 @@ class ComicDownloadManager(DownloadManager):
         finally:
             self.current_task_id = None
             self._notify_task_update(task)
+
+            # 批量下载间隔（如果不是队列中最后一个任务）
+            if self.delay_after > 0 and task_id in self.queue:
+                # 检查是否还有未完成的任务
+                has_pending = any(
+                    self.tasks.get(tid, None) and
+                    self.tasks[tid].status in (DownloadStatus.QUEUED, DownloadStatus.PAUSED)
+                    for tid in self.queue
+                )
+                if has_pending:
+                    logger.info(f"Waiting {self.delay_after}s before next download")
+                    time.sleep(self.delay_after)
