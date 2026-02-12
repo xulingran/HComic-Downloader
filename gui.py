@@ -28,6 +28,7 @@ from utils import (
 from font_config import configure_font, get_font, get_font_string, FontConfig
 from download_manager import ComicDownloadManager
 from download_manager_ui import DownloadManagerUI
+from theme_manager import ThemeManager, ThemeMode
 
 logger = logging.getLogger(__name__)
 
@@ -50,6 +51,12 @@ class HComicDownloaderGUI(tk.Tk):
         # 初始化字体配置（传入配置对象）
         self.font_config = FontConfig.create_instance(self.config)
         logger.info(f"使用字体: {self.font_config.get_best_font()}")
+
+        # 初始化主题管理器
+        theme_mode = ThemeMode(self.config.theme_mode)
+        self.theme_manager = ThemeManager.initialize(theme_mode)
+        self.theme_manager.register_callback(self._on_theme_change_refresh)
+        logger.info(f"主题模式: {theme_mode.value}, 当前主题: {self.theme_manager.current_theme}")
 
         # 导出系统代理到环境变量，确保所有请求路径行为一致
         export_system_proxies_to_env()
@@ -1603,6 +1610,18 @@ class HComicDownloaderGUI(tk.Tk):
         """获取与卡片一致的背景色"""
         bg = ttk.Style().lookup("TFrame", "background")
         return bg or "#f0f0f0"
+
+    def _on_theme_change_refresh(self):
+        """主题变化时刷新界面"""
+        # 刷新所有卡片颜色
+        for i, frame in enumerate(self.result_frames):
+            self._update_card_colors(frame, self.search_results[i] if i < len(self.search_results) else None)
+
+        # 刷新下载管理器面板
+        if hasattr(self, 'download_manager_ui'):
+            self.download_manager_ui.refresh_theme()
+
+        logger.debug("界面主题已刷新")
 
     def create_comic_card(self, comic: ComicInfo, row: int, col: int) -> tk.Frame:
         """创建漫画卡片"""
