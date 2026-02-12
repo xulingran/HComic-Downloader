@@ -205,5 +205,64 @@ class TestConfigOtherFields(unittest.TestCase):
             os.unlink(config_path)
 
 
+class TestThemeModeConfig(unittest.TestCase):
+    """测试主题配置"""
+
+    def test_default_theme_mode_is_auto(self):
+        """默认主题模式为 auto"""
+        config = Config()
+        self.assertEqual(config.theme_mode, "auto", "theme_mode 默认值应为 'auto'")
+
+    def test_theme_mode_persists(self):
+        """主题模式持久化"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+
+        try:
+            config = Config(theme_mode="dark")
+            config.save(config_path)
+
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.theme_mode, "dark", "应从文件加载 dark 主题模式")
+        finally:
+            os.unlink(config_path)
+
+    def test_theme_mode_light_persists(self):
+        """light 主题模式持久化"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+
+        try:
+            config = Config(theme_mode="light")
+            config.save(config_path)
+
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.theme_mode, "light", "应从文件加载 light 主题模式")
+        finally:
+            os.unlink(config_path)
+
+    def test_load_legacy_config_without_theme_mode(self):
+        """测试加载旧版本配置（没有 theme_mode 字段）"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+            # 旧版本配置，没有 theme_mode 字段
+            json.dump({
+                'download_dir': '/tmp/test',
+                'concurrent_downloads': 4,
+                'timeout': 30,
+                'retry_times': 3,
+                'cbz_filename_template': '{author}-{title}.cbz',
+                'font_name': '',
+                'font_size': 12,
+            }, f)
+
+        try:
+            config = Config.load(config_path)
+            # 应使用默认值 auto
+            self.assertEqual(config.theme_mode, "auto", "旧配置应使用默认值 auto")
+        finally:
+            os.unlink(config_path)
+
+
 if __name__ == '__main__':
     unittest.main()
