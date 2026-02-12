@@ -336,21 +336,14 @@ class DownloadItemWidget:
         self.controls_frame = ttk.Frame(self.frame)
         self.controls_frame.pack(side="right", padx=5, pady=5)
 
-        self.play_btn = ttk.Button(
+        # 合并的暂停/继续按钮
+        self.toggle_btn = ttk.Button(
             self.controls_frame,
-            text="▶",
+            text="⏸",  # 初始显示暂停图标
             width=3,
-            command=self._on_play_clicked
+            command=self._on_toggle_clicked
         )
-        self.play_btn.pack(side="left", padx=1)
-
-        self.pause_btn = ttk.Button(
-            self.controls_frame,
-            text="⏸",
-            width=3,
-            command=self._on_pause_clicked
-        )
-        self.pause_btn.pack(side="left", padx=1)
+        self.toggle_btn.pack(side="left", padx=1)
 
         self.cancel_btn = ttk.Button(
             self.controls_frame,
@@ -411,13 +404,17 @@ class DownloadItemWidget:
         # 初始更新
         self.update(task)
 
-    def _on_play_clicked(self):
-        if self.on_play:
-            self.on_play()
-
-    def _on_pause_clicked(self):
-        if self.on_pause:
-            self.on_pause()
+    def _on_toggle_clicked(self):
+        """根据当前状态执行暂停或继续"""
+        status = self.task.status
+        if status == DownloadStatus.DOWNLOADING:
+            # 正在下载 → 暂停
+            if self.on_pause:
+                self.on_pause()
+        elif status in (DownloadStatus.PAUSED, DownloadStatus.FAILED):
+            # 已暂停或失败 → 继续/重试
+            if self.on_play:
+                self.on_play()
 
     def _on_cancel_clicked(self):
         if self.on_cancel:
@@ -500,19 +497,23 @@ class DownloadItemWidget:
         """根据状态更新按钮"""
         status = self.task.status
 
-        # 播放按钮：暂停或失败时可用（失败时等同于重试）
-        play_state = "normal" if status in (DownloadStatus.PAUSED, DownloadStatus.FAILED) else "disabled"
-        self.play_btn.config(state=play_state)
-
-        # 暂停按钮：仅在下载中时可用
-        pause_state = "normal" if status == DownloadStatus.DOWNLOADING else "disabled"
-        self.pause_btn.config(state=pause_state)
+        # 切换按钮：根据状态显示不同图标和可用性
+        if status == DownloadStatus.DOWNLOADING:
+            self.toggle_btn.config(text="⏸", state="normal")
+        elif status == DownloadStatus.PAUSED:
+            self.toggle_btn.config(text="▶", state="normal")
+        elif status == DownloadStatus.FAILED:
+            # 失败时显示继续按钮（继续会触发重试逻辑）
+            self.toggle_btn.config(text="▶", state="normal")
+        else:
+            # 其他状态（QUEUED, COMPLETED, CANCELLED）禁用切换按钮
+            self.toggle_btn.config(state="disabled")
 
         # 取消按钮：已完成/已取消时禁用
         cancel_disabled = status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED)
         self.cancel_btn.config(state="disabled" if cancel_disabled else "normal")
 
-        # 重试按钮：仅在失败时显示和可用
+        # 重试按钮：仅在失败时显示
         if status == DownloadStatus.FAILED:
             self.retry_btn.pack(side="left", padx=1)
             self.retry_btn.config(state="normal")
