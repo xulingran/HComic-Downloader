@@ -7,6 +7,7 @@ from typing import Optional, Callable, Dict
 
 from models import DownloadTask, DownloadStatus
 from download_manager import DownloadManager
+from theme_manager import ThemeManager
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,9 @@ class DownloadManagerUI:
         self.parent = parent
         self.dm = download_manager
 
+        # 主题管理器
+        self.theme_manager = ThemeManager.get_instance()
+
         # 状态
         self.is_expanded = False
         self.view_mode = ViewMode.COMPACT
@@ -52,7 +56,7 @@ class DownloadManagerUI:
 
     def _create_panel(self):
         """创建主面板（可动画容器）"""
-        self.panel = tk.Frame(self.parent, bg="#f0f0f0", relief="solid", bd=1)
+        self.panel = tk.Frame(self.parent, bg=self.theme_manager.get_color("background"), relief="solid", bd=1)
         self.panel.grid(row=2, column=0, sticky="nsew")
         self.panel.grid_remove()  # 初始隐藏
 
@@ -97,7 +101,7 @@ class DownloadManagerUI:
     def _create_list_container(self):
         """创建列表容器"""
         # 使用 Canvas + Frame 实现滚动
-        self.list_canvas = tk.Canvas(self.panel, highlightthickness=0, bg="#f0f0f0")
+        self.list_canvas = tk.Canvas(self.panel, highlightthickness=0, bg=self.theme_manager.get_color("background"))
         self.list_canvas.pack(side="left", fill="both", expand=True, padx=10, pady=5)
 
         self.scrollbar = ttk.Scrollbar(
@@ -271,6 +275,17 @@ class DownloadManagerUI:
         """重试按钮点击"""
         self.dm.retry_task(task_id)
 
+    def refresh_theme(self):
+        """刷新主题相关颜色"""
+        # 更新面板背景色
+        bg = self.theme_manager.get_color("background")
+        self.panel.config(bg=bg)
+        self.list_canvas.config(bg=bg)
+
+        # 刷新所有任务组件的主题
+        for widget in self._task_widgets.values():
+            widget.refresh_theme()
+
 
 
 class DownloadItemWidget:
@@ -318,6 +333,9 @@ class DownloadItemWidget:
         self.on_pause = on_pause
         self.on_cancel = on_cancel
         self.on_retry = on_retry
+
+        # 主题管理器
+        self.theme_manager = ThemeManager.get_instance()
 
         # 创建 Frame
         self.frame = ttk.Frame(parent, relief="groove", borderwidth=1)
@@ -491,7 +509,7 @@ class DownloadItemWidget:
         elif task.status == DownloadStatus.COMPLETED:
             self.title_label.config(foreground="green")
         else:
-            self.title_label.config(foreground="black")
+            self.title_label.config(foreground=self.theme_manager.get_color("text"))
 
     def _update_buttons(self):
         """根据状态更新按钮"""
@@ -530,3 +548,8 @@ class DownloadItemWidget:
         else:
             self.thumb_label.config(width=5, font=("TkDefaultFont", 24))
             self.frame.configure(height=self.DETAIL_HEIGHT)
+
+    def refresh_theme(self):
+        """刷新主题相关颜色"""
+        # 重新应用当前状态的颜色设置
+        self.update(self.task)

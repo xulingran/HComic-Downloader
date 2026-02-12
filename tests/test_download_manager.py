@@ -5,6 +5,7 @@ import time
 
 import pytest
 
+from downloader import DownloadResult
 from download_manager import ComicDownloadManager, DownloadManager
 from models import ComicInfo, DownloadStatus, DownloadTask
 
@@ -170,14 +171,43 @@ def test_start_with_only_paused_tasks_does_not_complete_queue():
 
 
 class _FakeDownloader:
-    def download_comic(self, comic, output_dir, progress_callback=None):
+    def download_comic_resume(
+        self,
+        comic,
+        output_dir,
+        progress_callback=None,
+        delay_after=0,
+        comic_info=None,
+        completed_pages=None,
+        failed_pages=None,
+    ):
         total = 3
-        for i in range(1, total + 1):
-            time.sleep(0.08)
-            if progress_callback:
-                progress_callback(i, total, "downloading", None)
+        temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
+        os.makedirs(temp_dir, exist_ok=True)
 
-        return os.path.join(output_dir, f"temp_{comic.id}")
+        completed = list(completed_pages or [])
+        for i in range(1, total + 1):
+            if i in completed:
+                continue
+            time.sleep(0.08)
+            completed.append(i)
+            if progress_callback:
+                progress_callback(len(completed), total, "downloading", comic_info)
+
+        return DownloadResult(
+            success=True,
+            completed_pages=completed,
+            failed_pages=[],
+            temp_dir=temp_dir,
+        )
+
+    def download_comic(self, comic, output_dir, progress_callback=None):
+        result = self.download_comic_resume(
+            comic=comic,
+            output_dir=output_dir,
+            progress_callback=progress_callback,
+        )
+        return result.temp_dir
 
     def cleanup_temp_dir(self, temp_dir):
         shutil.rmtree(temp_dir, ignore_errors=True)
