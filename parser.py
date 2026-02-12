@@ -186,7 +186,8 @@ class HComicParser:
         if not isinstance(favourites_data, dict):
             return [], None, True
 
-        if not all(k in favourites_data for k in ("docs", "pages", "total")):
+        # 空字典表示 Cookie 过期或收藏夹为空，统一返回 needs_login=True
+        if not favourites_data or not all(k in favourites_data for k in ("docs", "pages", "total")):
             return [], None, True
 
         docs = favourites_data.get("docs")

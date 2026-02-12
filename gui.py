@@ -8,7 +8,7 @@ from queue import Queue, Empty
 from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import font as tkfont
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox, scrolledtext, simpledialog
 from typing import List, Optional, Tuple
 from PIL import Image, ImageTk
 from io import BytesIO
@@ -847,14 +847,16 @@ class HComicDownloaderGUI(tk.Tk):
         # 初始禁用
         self.prev_page_btn.state(['disabled'])
 
-        # 页数标签
+        # 页数标签（点击可跳转）
         self.page_label_var = tk.StringVar(value="1/1")
         self.page_label = ttk.Label(
             toolbar,
             textvariable=self.page_label_var,
-            font=get_font("normal")
+            font=get_font("normal"),
+            cursor="hand2"
         )
         self.page_label.grid(row=0, column=6, padx=(0, 5))
+        self.page_label.bind("<Button-1>", lambda e: self.go_to_page_dialog())
 
         # 翻页按钮：下一页
         self.next_page_btn = ttk.Button(
@@ -969,6 +971,32 @@ class HComicDownloaderGUI(tk.Tk):
         self.current_page += 1
         self._load_page()
 
+    def go_to_page_dialog(self):
+        """弹出对话框跳转到指定页码"""
+        # 只有一页时无需跳转
+        if self.total_pages <= 1:
+            messagebox.showinfo("提示", "当前只有一页")
+            return
+
+        # 检查是否已开始搜索
+        if self.current_view_mode == "search" and not self.has_search_started:
+            messagebox.showinfo("提示", "请先进行搜索")
+            return
+
+        # 弹出输入对话框
+        dialog = simpledialog.askinteger(
+            "跳转页码",
+            f"请输入页码 (1-{self.total_pages}):",
+            parent=self,
+            minvalue=1,
+            maxvalue=self.total_pages,
+            initialvalue=self.current_page
+        )
+
+        if dialog is not None and dialog != self.current_page:
+            self.current_page = dialog
+            self._load_page()
+
     def _load_page(self):
         """加载指定页码的搜索结果"""
         if self.current_view_mode == "search" and not self.has_search_started:
@@ -993,8 +1021,9 @@ class HComicDownloaderGUI(tk.Tk):
                         return
                     self.after(0, lambda: self.display_results(results, pagination))
                 except Exception as e:
-                    logger.error(f"Favourites page load error: {e}")
-                    self.after(0, lambda: self.search_error(str(e)))
+                    error_msg = str(e)
+                    logger.error(f"Favourites page load error: {error_msg}")
+                    self.after(0, lambda: self.search_error(error_msg))
 
             threading.Thread(target=do_load_favourites, daemon=True).start()
             return
@@ -1005,8 +1034,9 @@ class HComicDownloaderGUI(tk.Tk):
                 results, pagination = self.parser.search(self.current_search_keyword, page=self.current_page)
                 self.after(0, lambda: self.display_results(results, pagination))
             except Exception as e:
-                logger.error(f"Page load error: {e}")
-                self.after(0, lambda: self.search_error(str(e)))
+                error_msg = str(e)
+                logger.error(f"Page load error: {error_msg}")
+                self.after(0, lambda: self.search_error(error_msg))
 
         threading.Thread(target=do_search, daemon=True).start()
 
@@ -1015,8 +1045,8 @@ class HComicDownloaderGUI(tk.Tk):
         self.search_btn.config(state=tk.NORMAL)
         self.favourites_btn.config(state=tk.NORMAL)
         self.update_pagination_controls()
-        self.update_status("收藏夹需要登录，请先应用登录信息")
-        messagebox.showwarning("需要登录", "请先应用登录信息后再查看收藏夹")
+        self.update_status("登录信息已过期或收藏夹为空")
+        messagebox.showwarning("提示", "登录信息已过期或收藏夹为空")
 
     def view_favourites(self):
         """加载收藏夹（重置为第1页）。"""
@@ -1042,8 +1072,9 @@ class HComicDownloaderGUI(tk.Tk):
                     return
                 self.after(0, lambda: self.display_results(results, pagination))
             except Exception as e:
-                logger.error(f"Load favourites error: {e}")
-                self.after(0, lambda: self.search_error(str(e)))
+                error_msg = str(e)
+                logger.error(f"Load favourites error: {error_msg}")
+                self.after(0, lambda: self.search_error(error_msg))
 
         threading.Thread(target=do_load_favourites, daemon=True).start()
 
@@ -1369,8 +1400,9 @@ class HComicDownloaderGUI(tk.Tk):
                 results, pagination = self.parser.search(keyword, page=self.current_page)
                 self.after(0, lambda: self.display_results(results, pagination))
             except Exception as e:
-                logger.error(f"Search error: {e}")
-                self.after(0, lambda: self.search_error(str(e)))
+                error_msg = str(e)
+                logger.error(f"Search error: {error_msg}")
+                self.after(0, lambda: self.search_error(error_msg))
 
         threading.Thread(target=do_search, daemon=True).start()
 
@@ -1866,8 +1898,9 @@ class HComicDownloaderGUI(tk.Tk):
                 self.after(0, lambda: self.download_complete(output_path))
 
             except Exception as e:
-                logger.error(f"Download error: {e}")
-                self.after(0, lambda: self.download_error(str(e), temp_dir))
+                error_msg = str(e)
+                logger.error(f"Download error: {error_msg}")
+                self.after(0, lambda: self.download_error(error_msg, temp_dir))
 
         threading.Thread(target=do_download, daemon=True).start()
 

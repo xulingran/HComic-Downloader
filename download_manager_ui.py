@@ -277,6 +277,15 @@ class DownloadItemWidget:
     THUMB_SIZE_COMPACT = 40
     THUMB_SIZE_DETAIL = 70
 
+    # 控件固定宽度估算（像素）
+    CONTROLS_WIDTH = 90  # 3个按钮(各30px左右) + 间距
+    STATUS_ICON_WIDTH = 25  # 状态图标宽度
+    THUMBNAIL_WIDTH = 50  # 缩略图区域宽度
+    MARGIN = 30  # 边距余量
+
+    # 每个字符平均宽度（根据字体估算）
+    CHAR_WIDTH_ESTIMATE = 7  # 10号bold字体约7px/字符
+
     # 状态图标映射
     STATUS_ICONS = {
         DownloadStatus.QUEUED: "⏳",
@@ -320,18 +329,26 @@ class DownloadItemWidget:
         self.info_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
 
         # 标题行
-        title_row = ttk.Frame(self.info_frame)
-        title_row.pack(fill="x")
+        self.title_row = ttk.Frame(self.info_frame)
+        self.title_row.pack(fill="x")
 
-        self.status_icon = ttk.Label(title_row, text=self.STATUS_ICONS.get(task.status, "?"))
+        self.status_icon = ttk.Label(self.title_row, text=self.STATUS_ICONS.get(task.status, "?"))
         self.status_icon.pack(side="left", padx=(0, 5))
 
+        # 保存完整标题
+        self._full_title = task.comic.title
+
+        # 创建标题标签，初始显示完整标题（后面会根据宽度调整）
         self.title_label = ttk.Label(
-            title_row,
+            self.title_row,
             text=task.comic.title,
-            font=("TkDefaultFont", 10, "bold")
+            font=("TkDefaultFont", 10, "bold"),
+            anchor="w"  # 左对齐
         )
-        self.title_label.pack(side="left")
+        self.title_label.pack(side="left", fill="x", expand=True)
+
+        # 绑定到 title_row 的尺寸变化事件
+        self.title_row.bind("<Configure>", self._on_title_row_configure)
 
         # 进度区
         self.progress_frame = ttk.Frame(self.info_frame)
@@ -390,9 +407,38 @@ class DownloadItemWidget:
         if self.on_cancel:
             self.on_cancel()
 
+    def _on_title_row_configure(self, event):
+        """标题行尺寸变化时，动态调整标题显示长度"""
+        if not hasattr(self, '_full_title'):
+            return
+
+        available_width = event.width - self.STATUS_ICON_WIDTH
+        max_chars = max(10, (available_width - 10) // self.CHAR_WIDTH_ESTIMATE)
+
+        title_text = self._truncate_text(self._full_title, max_chars)
+
+        # 只有当文本实际变化时才更新，避免闪烁
+        if self.title_label.cget("text") != title_text:
+            self.title_label.config(text=title_text)
+
+    def _truncate_text(self, text: str, max_chars: int) -> str:
+        """截断文本，超出长度显示省略号"""
+        if len(text) <= max_chars:
+            return text
+        # 确保至少留3个字符给"..."
+        if max_chars <= 3:
+            return text[:max_chars]
+        return text[:max_chars-3] + "..."
+
     def update(self, task: DownloadTask):
         """更新 UI 状态"""
         self.task = task
+
+        # 如果标题变化，更新并触发重新计算
+        if task.comic.title != getattr(self, '_full_title', None):
+            self._full_title = task.comic.title
+            # 生成事件触发标题重新计算
+            self.title_row.event_generate("<Configure>")
 
         # 更新进度
         pct = task.progress_percentage
