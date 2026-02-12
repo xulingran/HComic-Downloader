@@ -1,5 +1,12 @@
+import os
+import shutil
+import threading
+import time
+
 import pytest
-from models import DownloadTask, DownloadStatus, ComicInfo
+
+from download_manager import ComicDownloadManager, DownloadManager
+from models import ComicInfo, DownloadStatus, DownloadTask
 
 
 def test_download_status_enum():
@@ -43,10 +50,6 @@ def test_download_task_progress_update():
     assert task.progress_total == 10
 
 
-import threading
-from download_manager import DownloadManager
-
-
 def test_download_manager_init():
     """测试 DownloadManager 初始化"""
     dm = DownloadManager()
@@ -56,8 +59,8 @@ def test_download_manager_init():
     assert dm.is_running is False
     assert dm.global_pause is False
     assert dm.current_task_id is None
-    assert isinstance(dm._lock, threading.Lock)
-    assert isinstance(dm._stop_event, threading.Event)
+    assert isinstance(dm._lock, type(threading.Lock()))
+    assert isinstance(dm._stop_event, type(threading.Event()))
 
 
 def test_add_single_task():
@@ -140,3 +143,78 @@ def test_get_stats():
     assert stats["downloading"] == 1
     assert stats["paused"] == 1
     assert stats["completed"] == 1
+
+
+def test_start_with_only_paused_tasks_does_not_complete_queue():
+    """全部任务都暂停时，不应触发队列完成"""
+    dm = DownloadManager()
+    queue_complete_called = []
+
+    dm.set_callbacks(on_queue_complete=lambda: queue_complete_called.append(True))
+
+    comic = ComicInfo(id="123", title="Test", pages=10)
+    task_id = dm.add_task(comic)
+    assert dm.pause_task(task_id) is True
+
+    dm.start()
+    time.sleep(0.2)
+
+    assert dm.is_running is True
+    assert queue_complete_called == []
+
+    dm.stop()
+    deadline = time.time() + 1
+    while dm.is_running and time.time() < deadline:
+        time.sleep(0.01)
+    assert dm.is_running is False
+
+
+class _FakeDownloader:
+    def download_comic(self, comic, output_dir, progress_callback=None):
+        total = 3
+        for i in range(1, total + 1):
+            time.sleep(0.08)
+            if progress_callback:
+                progress_callback(i, total, "downloading", None)
+
+        return os.path.join(output_dir, f"temp_{comic.id}")
+
+    def cleanup_temp_dir(self, temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+class _FakeCBZBuilder:
+    def build_cbz(self, temp_dir, comic):
+        os.makedirs(temp_dir, exist_ok=True)
+        output_path = os.path.join(temp_dir, f"{comic.id}.cbz")
+        with open(output_path, "wb") as f:
+            f.write(b"")
+        return output_path
+
+
+def test_pause_downloading_task_keeps_paused_state(tmp_path):
+    """下载中暂停后，任务不应被置为 COMPLETED"""
+    dm = ComicDownloadManager(
+        downloader=_FakeDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    task_id = dm.add_task(ComicInfo(id="123", title="Test", pages=3))
+
+    dm.start()
+
+    deadline = time.time() + 1
+    while dm.tasks[task_id].status == DownloadStatus.QUEUED and time.time() < deadline:
+        time.sleep(0.01)
+    assert dm.tasks[task_id].status == DownloadStatus.DOWNLOADING
+
+    assert dm.pause_task(task_id) is True
+
+    time.sleep(0.4)
+    assert dm.tasks[task_id].status == DownloadStatus.PAUSED
+
+    dm.stop()
+    deadline = time.time() + 1
+    while dm.is_running and time.time() < deadline:
+        time.sleep(0.01)
+    assert dm.is_running is False

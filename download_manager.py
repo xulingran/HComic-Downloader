@@ -90,6 +90,10 @@ class DownloadManager:
             # 获取下一个任务
             task_id = self._get_next_task()
             if not task_id:
+                # 仍有待处理任务（例如全部处于暂停状态）时继续等待
+                if self._has_pending_tasks():
+                    time.sleep(0.1)
+                    continue
                 break
 
             self._process_task(task_id)
@@ -132,6 +136,14 @@ class DownloadManager:
                 return task_id
 
             return None
+
+    def _has_pending_tasks(self) -> bool:
+        """检查是否仍有未完成任务（包括暂停中的任务）"""
+        with self._lock:
+            return any(
+                task.status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED)
+                for task in self.tasks.values()
+            )
 
     def _process_task(self, task_id: str):
         """处理单个任务（子类可覆盖）"""
@@ -332,6 +344,13 @@ class ComicDownloadManager(DownloadManager):
                 raise Exception("Download cancelled")
 
             temp_dir = result.temp_dir
+
+            # 下载过程收到了暂停请求：保留已下载内容，维持 PAUSED 状态
+            if task._pause_requested:
+                task.temp_dir = temp_dir
+                task.status = DownloadStatus.PAUSED
+                logger.info(f"Task {task_id} paused after current checkpoint")
+                return
             task.temp_dir = temp_dir
             task.completed_pages = result.completed_pages
             task.failed_pages = result.failed_pages
