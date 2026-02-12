@@ -1711,8 +1711,8 @@ class HComicDownloaderGUI(tk.Tk):
             pady=0,
             highlightthickness=0,
             bg=card_bg,
-            fg="black",
-            insertbackground="black",
+            fg=self.theme_manager.get_color("text"),
+            insertbackground=self.theme_manager.get_color("insert"),
             width=max(12, int(card_inner_width / max(7, tkfont.Font(font=get_font("normal", bold=True)).measure("测")))),
         )
         title_widget.grid(row=1, column=0, sticky=(tk.W, tk.E))
@@ -1727,13 +1727,13 @@ class HComicDownloaderGUI(tk.Tk):
             bd=0,
             relief="flat",
             font=get_font("small"),
-            fg="gray",
+            fg=self.theme_manager.get_color("text_secondary"),
             cursor="xterm",
             padx=0,
             pady=0,
             highlightthickness=0,
             bg=card_bg,
-            insertbackground="black",
+            insertbackground=self.theme_manager.get_color("insert"),
             width=max(12, int(card_inner_width / max(7, tkfont.Font(font=get_font("small")).measure("测")))),
         )
         author_widget.grid(row=2, column=0, sticky=(tk.W, tk.E))
@@ -1741,7 +1741,13 @@ class HComicDownloaderGUI(tk.Tk):
 
         # 页数
         pages_text = f"页数: {comic.pages}"
-        pages_label = tk.Label(frame, text=pages_text, foreground="gray", font=get_font("small"))
+        pages_label = tk.Label(
+            frame,
+            text=pages_text,
+            foreground=self.theme_manager.get_color("text_secondary"),
+            bg=card_bg,
+            font=get_font("small")
+        )
         pages_label.grid(row=3, column=0, sticky=tk.W)
 
         # 下载按钮
@@ -1781,6 +1787,26 @@ class HComicDownloaderGUI(tk.Tk):
             self.update_card_visual(frame, True)
 
         return frame
+
+    def _update_card_colors(self, frame: tk.Frame, comic: 'ComicInfo' = None):
+        """更新单个卡片的颜色"""
+        try:
+            card_bg = self._get_frame_background()
+            text_color = self.theme_manager.get_color("text")
+            text_secondary = self.theme_manager.get_color("text_secondary")
+            insert_color = self.theme_manager.get_color("insert")
+
+            # 更新卡片内所有子控件
+            for widget in frame.winfo_children():
+                try:
+                    if isinstance(widget, tk.Text):
+                        widget.config(bg=card_bg, fg=text_color, insertbackground=insert_color)
+                    elif isinstance(widget, tk.Label):
+                        widget.config(foreground=text_secondary, bg=card_bg)
+                except tk.TclError:
+                    pass  # 控件可能已销毁
+        except Exception as e:
+            logger.debug(f"更新卡片颜色失败: {e}")
 
     def _schedule_cover_load(self, url: str, label: ttk.Label, card_width: int = 200):
         """调度封面加载任务（固定并发，避免线程爆炸）"""
