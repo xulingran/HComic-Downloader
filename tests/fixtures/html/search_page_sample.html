@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head><title>Search Results</title></head>
+<body>
+<script type="text/worker">
+    var appData = {
+        data: {
+            comics: [
+                {
+                    id: "12345",
+                    media_id: "abcde12345",
+                    comic_source: "MMCG_SHORT",
+                    title: {
+                        display: "测试漫画标题",
+                        japanese: "テスト漫画",
+                        english: "Test Manga"
+                    },
+                    num_pages: 20,
+                    tags: [
+                        {type: "artist", name: "测试作者"},
+                        {type: "category", name_zh: "漫画分类"},
+                        {type: "tag", name: "标签A"},
+                        {type: "tag", name: "标签B"}
+                    ],
+                    upload_date: 1704067200
+                }
+            ],
+            pages: {
+                pages: 5,
+                total: 48,
+                limit: 10
+            }
+        }
+    };
+</script>
+</body>
+</html>
