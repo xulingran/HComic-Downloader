@@ -183,6 +183,17 @@ class CBZBuilder:
             download_dir = Config.load().download_dir
         return os.path.join(download_dir, filename)
 
+    def get_output_path(self, comic: ComicInfo) -> str:
+        """获取漫画的输出路径（不创建文件）
+
+        Args:
+            comic: 漫画信息
+
+        Returns:
+            输出文件路径
+        """
+        return self._generate_output_path(comic)
+
     def _collect_image_files(self, image_dir: str) -> List[str]:
         """收集目录中的图片文件
 

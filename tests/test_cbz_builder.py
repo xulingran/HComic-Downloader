@@ -1,4 +1,5 @@
 """测试 cbz_builder.py CBZ 打包功能"""
+import os
 import zipfile
 import pytest
 from pathlib import Path
@@ -172,3 +173,54 @@ class TestCBZBuilder:
             # 有 comic_info 时应包含 ComicInfo.xml
             assert 'ComicInfo.xml' in namelist
             assert len([n for n in namelist if n.endswith('.jpg')]) == 3
+
+
+class TestGetOutputPath:
+    """测试 get_output_path 方法"""
+
+    @pytest.fixture
+    def builder(self):
+        return CBZBuilder()
+
+    @pytest.fixture
+    def sample_comic(self):
+        return ComicInfo(
+            id="123",
+            title="测试漫画",
+            author="测试作者",
+            pages=10,
+        )
+
+    def test_get_output_path_returns_expected_format(self, builder, sample_comic):
+        """测试返回正确格式的路径"""
+        path = builder.get_output_path(sample_comic)
+        assert path.endswith(".cbz")
+        assert "测试作者-测试漫画" in path
+
+    def test_get_output_path_does_not_create_file(self, sample_comic, tmp_path):
+        """测试不会创建文件"""
+        # 使用临时目录作为下载目录
+        from config import Config
+
+        # 创建使用临时目录的配置
+        test_config = Config(download_dir=str(tmp_path))
+        builder_with_config = CBZBuilder(config=test_config)
+
+        path = builder_with_config.get_output_path(sample_comic)
+        import os
+        assert not os.path.exists(path)
+
+    def test_get_output_path_with_special_characters(self, builder):
+        """测试特殊字符被正确处理"""
+        comic = ComicInfo(
+            id="456",
+            title="漫画/测试:标题",
+            author="作者<测试>",
+            pages=5,
+        )
+        path = builder.get_output_path(comic)
+        # 特殊字符应被 sanitize_filename 处理
+        assert "/" not in os.path.basename(path)
+        assert ":" not in os.path.basename(path)
+        assert "<" not in os.path.basename(path)
+        assert ">" not in os.path.basename(path)
