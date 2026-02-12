@@ -715,14 +715,11 @@ class HComicDownloaderGUI(tk.Tk):
         mode_str = self.theme_mode_var.get()
         mode = display_to_mode.get(mode_str, ThemeMode.AUTO)
 
-        self.theme_manager.set_mode(mode)
+        self.theme_manager.set_mode(mode)  # 会自动触发回调刷新界面
 
         # 保存配置
         self.config.theme_mode = mode.value
         self.config.save(self._get_config_path())
-
-        # 触发界面刷新（set_mode 已触发回调，这里确保刷新）
-        self._on_theme_change_refresh()
 
     def _on_preview_changed(self):
         """预览图设置变化事件"""
