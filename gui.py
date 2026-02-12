@@ -15,7 +15,7 @@ from io import BytesIO
 
 from config import Config
 from auth_parser import extract_auth_from_curl
-from models import ComicInfo, PaginationInfo
+from models import ComicInfo, PaginationInfo, DownloadTask
 from parser import HComicParser
 from downloader import ComicDownloader, DownloadError
 from cbz_builder import CBZBuilder
@@ -26,6 +26,8 @@ from utils import (
     get_system_proxies,
 )
 from font_config import configure_font, get_font, get_font_string, FontConfig
+from download_manager import ComicDownloadManager
+from download_manager_ui import DownloadManagerUI
 
 logger = logging.getLogger(__name__)
 
@@ -66,6 +68,17 @@ class HComicDownloaderGUI(tk.Tk):
             user_agent=self.config.auth_user_agent,
         )
         self.cbz_builder = CBZBuilder(self.config.cbz_filename_template, self.config)
+
+        # 下载管理器（使用 ComicDownloadManager）
+        self.download_manager = ComicDownloadManager(
+            downloader=self.downloader,
+            cbz_builder=self.cbz_builder,
+            output_dir=self.config.download_dir,
+        )
+        self.download_manager.set_callbacks(
+            on_task_update=self._on_download_task_update,
+            on_queue_complete=self._on_download_queue_complete,
+        )
 
         # 搜索结果显示
         self.search_results: List[ComicInfo] = []
@@ -307,18 +320,41 @@ class HComicDownloaderGUI(tk.Tk):
         # 跨平台滚动事件绑定（鼠标滚轮 + 触控板）
         self._bind_scroll_events()
 
+        # ===== 下载管理器面板（初始隐藏）=====
+        self.download_manager_ui = DownloadManagerUI(main_frame, self.download_manager)
+        self.download_manager_ui.panel.grid(row=3, column=0, sticky="ew")
+        self.download_manager_ui.panel.grid_remove()
+
         # ===== 进度区域 =====
         progress_frame = ttk.Frame(main_frame)
-        progress_frame.grid(row=3, column=0, sticky=(tk.W, tk.E))
+        progress_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
         progress_frame.columnconfigure(0, weight=1)
 
         self.status_var = tk.StringVar(value="就绪")
         self.status_label = ttk.Label(progress_frame, textvariable=self.status_var)
         self.status_label.grid(row=0, column=0, sticky=tk.W)
 
+        # 进度条容器
+        progress_container = ttk.Frame(progress_frame)
+        progress_container.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+        progress_container.columnconfigure(0, weight=1)
+
         self.progress_var = tk.DoubleVar(value=0)
-        self.progress_bar = ttk.Progressbar(progress_frame, variable=self.progress_var, maximum=100)
-        self.progress_bar.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+        self.progress_bar = ttk.Progressbar(
+            progress_container,
+            variable=self.progress_var,
+            maximum=100
+        )
+        self.progress_bar.grid(row=0, column=0, sticky=(tk.W, tk.E))
+
+        # 展开/折叠按钮
+        self.expand_btn = ttk.Button(
+            progress_container,
+            text="▲",
+            width=3,
+            command=self._toggle_download_manager
+        )
+        self.expand_btn.grid(row=0, column=1, padx=(5, 0))
 
     def toggle_settings_panel(self):
         """切换设置面板展开/折叠状态。"""
@@ -1057,63 +1093,28 @@ class HComicDownloaderGUI(tk.Tk):
         self.execute_batch_download(download_list)
 
     def execute_batch_download(self, comics: list[ComicInfo]):
-        """执行批量下载
+        """执行批量下载（使用下载管理器）"""
+        if not comics:
+            return
 
-        Args:
-            comics: 要下载的漫画列表
-        """
+        # 更新输出目录和批量下载间隔
+        self.download_manager.set_output_dir(self.download_dir_var.get())
+        self.download_manager.set_delay_after(self._get_batch_delay_seconds())
+
+        # 添加任务到队列
+        self.download_manager.add_tasks(comics)
+
+        # 展开下载管理器
+        if not self.download_manager_ui.is_expanded:
+            self._toggle_download_manager()
+
+        # 刷新 UI 显示所有任务
+        self.download_manager_ui.refresh_task_list()
+
+        # 启动下载处理器
         self.is_batch_downloading = True
         self.update_toolbar_buttons()
-
-        total = len(comics)
-        results = {"success": [], "failed": []}
-
-        def do_batch_download():
-            batch_delay = self._get_batch_delay_seconds()
-            for i, comic in enumerate(comics):
-                # 创建批量下载上下文
-                batch_context = {
-                    "comic_index": i + 1,
-                    "total_comics": total,
-                    "title": comic.title
-                }
-
-                # 更新状态
-                self.after(0, lambda c=i+1, t=total, ct=comic.title: self.update_status(f"准备下载 [{c}/{t}]: {ct}"))
-                self.after(0, lambda: self.progress_var.set(0))
-
-                temp_dir = None
-                try:
-                    # 下载图片（传入延迟参数，每本漫画下载完成后等待）
-                    temp_dir = self.downloader.download_comic(
-                        comic,
-                        self.download_dir_var.get(),
-                        progress_callback=self._progress_callback,
-                        delay_after=batch_delay if i < len(comics) - 1 else 0,
-                        comic_info=batch_context,
-                    )
-
-                    self.after(0, lambda: self.update_status(f"打包中 [{i+1}/{total}]: {comic.title}"))
-
-                    # 打包为 CBZ
-                    output_path = self.cbz_builder.build_cbz(temp_dir, comic)
-
-                    # 清理临时目录
-                    self.downloader.cleanup_temp_dir(temp_dir)
-
-                    results["success"].append(comic)
-                    logger.info(f"批量下载成功: {comic.title}")
-
-                except Exception as e:
-                    logger.error(f"批量下载失败: {comic.title}, 错误: {e}")
-                    results["failed"].append((comic, str(e)))
-                    if temp_dir and os.path.exists(temp_dir):
-                        self.downloader.cleanup_temp_dir(temp_dir)
-
-            # 下载完成，显示汇总
-            self.after(0, lambda: self.show_batch_download_summary(results))
-
-        threading.Thread(target=do_batch_download, daemon=True).start()
+        self.download_manager.start()
 
     def show_batch_download_summary(self, results: dict):
         """显示批量下载汇总
@@ -1186,6 +1187,61 @@ class HComicDownloaderGUI(tk.Tk):
         except Exception as e:
             logger.error(f"打开下载目录失败: {e}")
             messagebox.showerror("错误", f"无法打开目录:\n{e}")
+
+    def _on_download_task_update(self, task: DownloadTask):
+        """下载任务更新回调（可能在后台线程调用）"""
+        # 使用 after() 确保 UI 更新在主线程执行
+        self.after(0, lambda: self._update_ui_for_task(task))
+
+    def _update_ui_for_task(self, task: DownloadTask):
+        """在主线程更新 UI"""
+        # 更新下载管理器 UI
+        if hasattr(self, 'download_manager_ui'):
+            self.download_manager_ui.update_task(task)
+
+        # 更新底部进度条（仅当前任务）
+        if self.download_manager.current_task_id == task.task_id:
+            progress = task.progress_percentage
+            self.progress_var.set(progress)
+            self.update_status(
+                f"[{task.progress_current}/{task.progress_total}] {task.comic.title}"
+            )
+
+    def _on_download_queue_complete(self):
+        """下载队列完成回调"""
+        def on_complete():
+            self.is_batch_downloading = False
+            self.update_toolbar_buttons()
+
+            stats = self.download_manager.get_stats()
+            success = stats["completed"]
+            failed = stats["failed"]
+            cancelled = stats["cancelled"]
+
+            # 显示汇总
+            message = f"批量下载完成\n\n成功: {success} 本"
+            if failed > 0:
+                message += f"\n失败: {failed} 本"
+            if cancelled > 0:
+                message += f"\n取消: {cancelled} 本"
+
+            messagebox.showinfo("完成", message)
+
+            # 清理已完成的任务
+            self.download_manager.clear_completed()
+            self.download_manager_ui.refresh_task_list()
+
+            self.update_status("就绪")
+            self.progress_var.set(0)
+
+        self.after(0, on_complete)
+
+    def _toggle_download_manager(self):
+        """切换下载管理器显示"""
+        self.download_manager_ui.toggle()
+        # 更新按钮图标
+        icon = "▼" if self.download_manager_ui.is_expanded else "▲"
+        self.expand_btn.config(text=icon)
 
     def update_status(self, message: str):
         """更新状态信息"""
