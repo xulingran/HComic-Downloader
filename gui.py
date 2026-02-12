@@ -1687,8 +1687,8 @@ class HComicDownloaderGUI(tk.Tk):
             placeholder = tk.Label(
                 frame,
                 text="NSFW",
-                bg="#3d3d3d",
-                fg="#e5e5e5",
+                bg=self.theme_manager.get_color("card_bg"),
+                fg=self.theme_manager.get_color("text"),
                 font=get_font("small", bold=True),
                 width=placeholder_width,
                 height=2,
@@ -1796,13 +1796,22 @@ class HComicDownloaderGUI(tk.Tk):
             text_secondary = self.theme_manager.get_color("text_secondary")
             insert_color = self.theme_manager.get_color("insert")
 
-            # 更新卡片内所有子控件
             for widget in frame.winfo_children():
                 try:
                     if isinstance(widget, tk.Text):
-                        widget.config(bg=card_bg, fg=text_color, insertbackground=insert_color)
+                        # 根据网格位置判断是标题还是作者
+                        grid_info = widget.grid_info()
+                        row = int(grid_info.get('row', 0))
+                        if row == 1:  # 标题
+                            widget.config(bg=card_bg, fg=text_color, insertbackground=insert_color)
+                        elif row == 2:  # 作者
+                            widget.config(bg=card_bg, fg=text_secondary, insertbackground=insert_color)
                     elif isinstance(widget, tk.Label):
-                        widget.config(foreground=text_secondary, bg=card_bg)
+                        widget_text = widget.cget("text")
+                        if "NSFW" in widget_text:
+                            widget.config(bg=card_bg, fg=text_color)
+                        else:
+                            widget.config(foreground=text_secondary, bg=card_bg)
                 except tk.TclError:
                     pass  # 控件可能已销毁
         except Exception as e:
