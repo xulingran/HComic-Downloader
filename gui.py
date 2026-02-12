@@ -29,6 +29,7 @@ from font_config import configure_font, get_font, get_font_string, FontConfig
 from download_manager import ComicDownloadManager
 from download_manager_ui import DownloadManagerUI
 from theme_manager import ThemeManager, ThemeMode
+from file_conflict_dialog import show_conflict_dialog
 
 logger = logging.getLogger(__name__)
 
@@ -1277,10 +1278,92 @@ class HComicDownloaderGUI(tk.Tk):
         # 开始批量下载
         self.execute_batch_download(download_list)
 
+    def detect_file_conflicts(self, comics: list[ComicInfo]) -> tuple[list[ComicInfo], list[tuple[int, ComicInfo, str]]]:
+        """检测文件冲突
+
+        Args:
+            comics: 待下载漫画列表
+
+        Returns:
+            (无冲突的漫画列表, 冲突列表)
+            冲突列表格式: [(原索引, ComicInfo, 文件名), ...]
+        """
+        conflicts = []
+        no_conflict = []
+
+        for i, comic in enumerate(comics):
+            output_path = self.cbz_builder.get_output_path(comic)
+            filename = os.path.basename(output_path)
+
+            if os.path.exists(output_path):
+                conflicts.append((i, comic, filename))
+            else:
+                no_conflict.append(comic)
+
+        return no_conflict, conflicts
+
+    def handle_file_conflicts(self, conflicts: list[tuple[int, ComicInfo, str]]) -> tuple[list[ComicInfo], list[ComicInfo]]:
+        """处理文件冲突
+
+        Args:
+            conflicts: 冲突列表 [(原索引, ComicInfo, 文件名), ...]
+
+        Returns:
+            (选择覆盖的漫画列表, 选择跳过的漫画列表)
+        """
+        if not conflicts:
+            return [], []
+
+        # 提取冲突漫画和文件名
+        conflict_comics = [c[1] for c in conflicts]
+        conflict_filenames = [c[2] for c in conflicts]
+
+        # 显示对话框
+        decisions = show_conflict_dialog(self, conflict_comics, conflict_filenames)
+
+        if decisions is None:
+            # 用户取消
+            return [], conflict_comics  # 全部视为跳过
+
+        overwrite = []
+        skip = []
+
+        for i, (orig_idx, comic, filename) in enumerate(conflicts):
+            if decisions.get(i, False):
+                overwrite.append(comic)
+            else:
+                skip.append(comic)
+
+        return overwrite, skip
+
     def execute_batch_download(self, comics: list[ComicInfo]):
         """执行批量下载（使用下载管理器）"""
         if not comics:
             return
+
+        # 检测文件冲突
+        no_conflict, conflicts = self.detect_file_conflicts(comics)
+
+        # 如果有冲突，让用户处理
+        if conflicts:
+            overwrite, skip = self.handle_file_conflicts(conflicts)
+
+            # 如果用户取消了所有冲突处理（全部跳过或取消对话框）
+            if not no_conflict and not overwrite:
+                messagebox.showinfo("提示", "所有下载任务已取消")
+                return
+
+            # 合并无冲突和选择覆盖的漫画
+            comics = no_conflict + overwrite
+
+            if not comics:
+                messagebox.showinfo("提示", "没有漫画需要下载")
+                return
+
+            # 显示处理结果
+            skip_count = len(skip)
+            if skip_count > 0:
+                self.update_status(f"已跳过 {skip_count} 个同名文件")
 
         # 更新输出目录和批量下载间隔
         self.download_manager.set_output_dir(self.download_dir_var.get())
