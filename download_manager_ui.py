@@ -294,13 +294,10 @@ class DownloadItemWidget:
     # 高度配置
     COMPACT_HEIGHT = 50
     DETAIL_HEIGHT = 90
-    THUMB_SIZE_COMPACT = 40
-    THUMB_SIZE_DETAIL = 70
 
     # 控件固定宽度估算（像素）
     CONTROLS_WIDTH = 90  # 3个按钮(各30px左右) + 间距
     STATUS_ICON_WIDTH = 25  # 状态图标宽度
-    THUMBNAIL_WIDTH = 50  # 缩略图区域宽度
     MARGIN = 30  # 边距余量
 
     # 每个字符平均宽度（根据字体估算）
@@ -340,16 +337,6 @@ class DownloadItemWidget:
         # 创建 Frame
         self.frame = ttk.Frame(parent, relief="groove", borderwidth=1)
 
-        # 缩略图（使用标签占位）- 最左侧
-        self.thumb_label = ttk.Label(
-            self.frame,
-            text="📷",
-            font=("TkDefaultFont", 20),
-            width=3,
-            anchor="center"
-        )
-        self.thumb_label.pack(side="left", padx=5, pady=5)
-
         # 控制按钮 - 先 pack 右侧固定宽度区域，确保按钮始终可见
         self.controls_frame = ttk.Frame(self.frame)
         self.controls_frame.pack(side="right", padx=5, pady=5)
@@ -381,7 +368,7 @@ class DownloadItemWidget:
 
         # 信息区 - 后 pack，填充剩余空间
         self.info_frame = ttk.Frame(self.frame)
-        self.info_frame.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+        self.info_frame.pack(side="left", fill="both", expand=True, padx=(10, 5), pady=5)
 
         # 标题行
         self.title_row = ttk.Frame(self.info_frame)
@@ -543,10 +530,8 @@ class DownloadItemWidget:
         self.view_mode = view_mode
 
         if view_mode == ViewMode.COMPACT:
-            self.thumb_label.config(width=3, font=("TkDefaultFont", 16))
             self.frame.configure(height=self.COMPACT_HEIGHT)
         else:
-            self.thumb_label.config(width=5, font=("TkDefaultFont", 24))
             self.frame.configure(height=self.DETAIL_HEIGHT)
 
     def refresh_theme(self):
