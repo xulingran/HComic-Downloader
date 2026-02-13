@@ -157,11 +157,12 @@ class CBZBuilder:
             pass
         return '', '', ''
 
-    def _generate_output_path(self, comic: ComicInfo) -> str:
+    def _generate_output_path(self, comic: ComicInfo, download_dir: str = None) -> str:
         """生成输出路径
 
         Args:
             comic: 漫画信息
+            download_dir: 下载目录（可选，默认使用配置中的目录）
 
         Returns:
             输出文件路径
@@ -175,24 +176,26 @@ class CBZBuilder:
         if not filename.endswith('.cbz'):
             filename += '.cbz'
 
-        # 使用已有的配置或加载默认配置
-        if self._config:
-            download_dir = self._config.download_dir
-        else:
-            from config import Config
-            download_dir = Config.load().download_dir
+        # 优先使用传入的目录，否则使用配置中的目录
+        if download_dir is None:
+            if self._config:
+                download_dir = self._config.download_dir
+            else:
+                from config import Config
+                download_dir = Config.load().download_dir
         return os.path.join(download_dir, filename)
 
-    def get_output_path(self, comic: ComicInfo) -> str:
+    def get_output_path(self, comic: ComicInfo, download_dir: str = None) -> str:
         """获取漫画的输出路径（不创建文件）
 
         Args:
             comic: 漫画信息
+            download_dir: 下载目录（可选，默认使用配置中的目录）
 
         Returns:
             输出文件路径
         """
-        return self._generate_output_path(comic)
+        return self._generate_output_path(comic, download_dir)
 
     def _collect_image_files(self, image_dir: str) -> List[str]:
         """收集目录中的图片文件

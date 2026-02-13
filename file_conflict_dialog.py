@@ -119,12 +119,19 @@ class FileConflictDialog(tk.Toplevel):
         radio_frame = ttk.LabelFrame(main_frame, text="默认操作", padding="5")
         radio_frame.pack(fill=tk.X, pady=(0, 10))
 
-        actions = [
-            (ConflictAction.OVERWRITE, "覆盖"),
-            (ConflictAction.SKIP, "跳过"),
-            (ConflictAction.OVERWRITE_ALL, "覆盖全部"),
-            (ConflictAction.SKIP_ALL, "跳过全部"),
-        ]
+        # 单个文件时只显示覆盖/跳过，多个文件时显示全部选项
+        if len(self.conflict_items) == 1:
+            actions = [
+                (ConflictAction.OVERWRITE, "覆盖"),
+                (ConflictAction.SKIP, "跳过"),
+            ]
+        else:
+            actions = [
+                (ConflictAction.OVERWRITE, "覆盖"),
+                (ConflictAction.SKIP, "跳过"),
+                (ConflictAction.OVERWRITE_ALL, "覆盖全部"),
+                (ConflictAction.SKIP_ALL, "跳过全部"),
+            ]
 
         for action, text in actions:
             rb = ttk.Radiobutton(

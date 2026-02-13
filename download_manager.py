@@ -369,7 +369,9 @@ class ComicDownloadManager(DownloadManager):
 
             if result.success:
                 # 下载成功，打包为 CBZ
-                output_path = self.cbz_builder.build_cbz(temp_dir, task.comic)
+                # 使用 download_manager 的 output_dir 而非配置文件中的目录
+                output_path = self.cbz_builder.get_output_path(task.comic, self.output_dir)
+                output_path = self.cbz_builder.build_cbz(temp_dir, task.comic, output_path)
 
                 # 清理临时目录（成功时清理）
                 self.downloader.cleanup_temp_dir(temp_dir)

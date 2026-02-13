@@ -1291,8 +1291,11 @@ class HComicDownloaderGUI(tk.Tk):
         conflicts = []
         no_conflict = []
 
+        # 使用 GUI 当前显示的目录，而非配置文件中的目录
+        current_dir = self.download_dir_var.get()
+
         for i, comic in enumerate(comics):
-            output_path = self.cbz_builder.get_output_path(comic)
+            output_path = self.cbz_builder.get_output_path(comic, current_dir)
             filename = os.path.basename(output_path)
 
             if os.path.exists(output_path):
@@ -2122,6 +2125,18 @@ class HComicDownloaderGUI(tk.Tk):
             messagebox.showinfo("提示", "已有下载任务进行中，请等待完成")
             return
 
+        # 检测文件冲突
+        current_dir = self.download_dir_var.get()
+        output_path = self.cbz_builder.get_output_path(comic, current_dir)
+
+        if os.path.exists(output_path):
+            filename = os.path.basename(output_path)
+            # 使用冲突对话框处理单个文件冲突
+            decisions = show_conflict_dialog(self, [comic], [filename])
+            if decisions is None or not decisions.get(0, False):
+                # 用户取消或选择跳过
+                return
+
         # 确认下载
         if not messagebox.askyesno("确认下载", f"是否下载:\n{comic.title}\n\n作者: {comic.author or '未知'}\n页数: {comic.pages}"):
             return
@@ -2145,10 +2160,11 @@ class HComicDownloaderGUI(tk.Tk):
 
                 self.after(0, lambda: self.update_status("正在打包 CBZ..."))
 
-                # 打包为 CBZ
+                # 打包为 CBZ，传递明确的输出路径
                 output_path = self.cbz_builder.build_cbz(
                     temp_dir,
                     comic,
+                    self.cbz_builder.get_output_path(comic, current_dir),
                 )
 
                 # 清理临时目录
