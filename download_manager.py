@@ -107,9 +107,9 @@ class DownloadManager:
     def _get_next_task(self) -> Optional[str]:
         """获取下一个可处理的任务"""
         with self._lock:
-            # 记录本轮扫描中遇到的暂停任务数
+            # 记录本轮扫描中遇到的暂停/失败任务数
             paused_count = 0
-            total_tasks = len(self.queue)
+            failed_count = 0
 
             while self.queue:
                 task_id = self.queue[0]
@@ -119,9 +119,21 @@ class DownloadManager:
                     self.queue.pop(0)
                     continue
 
-                # 跳过已完成的任务（取消/完成/失败）
-                if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED):
+                # 跳过已完成的任务（取消/完成）- 从队列移除
+                if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED):
                     self.queue.pop(0)
+                    # 队列长度变化，重置计数器
+                    paused_count = 0
+                    failed_count = 0
+                    continue
+
+                # 跳过失败的任务 - 保留在队列中供重试
+                if task.status == DownloadStatus.FAILED:
+                    failed_count += 1
+                    self.queue.append(self.queue.pop(0))
+                    # 如果所有任务都是失败状态，退出本轮扫描
+                    if failed_count >= len(self.queue):
+                        return None
                     continue
 
                 # 跳过暂停的任务，轮转到队列尾部
@@ -129,7 +141,7 @@ class DownloadManager:
                     paused_count += 1
                     self.queue.append(self.queue.pop(0))
                     # 如果所有任务都是暂停状态，退出本轮扫描
-                    if paused_count >= total_tasks:
+                    if paused_count >= len(self.queue):
                         return None
                     continue
 
@@ -278,14 +290,13 @@ class DownloadManager:
             return stats
 
     def clear_completed(self):
-        """清理已完成/已取消/已失败的任务"""
+        """清理已完成/已取消的任务（失败任务保留供重试）"""
         with self._lock:
             to_remove = [
                 task_id for task_id, task in self.tasks.items()
                 if task.status in (
                     DownloadStatus.COMPLETED,
                     DownloadStatus.CANCELLED,
-                    DownloadStatus.FAILED
                 )
             ]
             for task_id in to_remove:
