@@ -21,9 +21,9 @@ class ViewMode(Enum):
 class DownloadManagerUI:
     """下载管理器 UI 面板"""
 
-    # 动画配置
-    ANIM_DURATION_MS = 250
-    ANIM_INTERVAL_MS = 16  # ~60fps
+    # 动画配置（优化掉帧问题）
+    ANIM_DURATION_MS = 300    # 延长动画时间使过渡更平滑
+    ANIM_INTERVAL_MS = 33     # 降低到 30fps，更符合 tkinter 实际性能
     EXPANDED_HEIGHT = 400
     COLLAPSED_HEIGHT = 0
 
@@ -149,6 +149,13 @@ class DownloadManagerUI:
         if expand:
             self.panel.grid()
             self._current_height = 1  # 避免除零
+            # 动画期间隐藏列表内容，避免 Canvas 重绘导致掉帧
+            self.list_canvas.pack_forget()
+            self.scrollbar.pack_forget()
+        else:
+            # 收起动画前也隐藏内容
+            self.list_canvas.pack_forget()
+            self.scrollbar.pack_forget()
 
         self._anim_start_height = self._current_height
         self._anim_end_height = self.EXPANDED_HEIGHT if expand else 0
@@ -183,8 +190,14 @@ class DownloadManagerUI:
             # 动画结束
             self._current_height = self._anim_end_height
             self.panel.configure(height=self._current_height)
-            if not self.is_expanded:
+
+            # 展开完成后恢复显示列表内容
+            if self.is_expanded:
+                self.list_canvas.pack(side="left", fill="both", expand=True, padx=10, pady=5)
+                self.scrollbar.pack(side="right", fill="y")
+            else:
                 self.panel.grid_remove()
+
             self._anim_after_id = None
 
     def _toggle_view_mode(self):
