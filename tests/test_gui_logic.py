@@ -3,6 +3,9 @@
 import unittest
 
 from gui_logic import (
+    build_batch_summary,
+    calculate_grid_columns,
+    format_download_speed,
     is_moeimg_detail_ready,
     should_block_source_change,
     should_ignore_gui_callback,
@@ -67,6 +70,20 @@ class TestGuiLogic(unittest.TestCase):
         self.assertTrue(should_block_source_change(True, False, False))
         self.assertTrue(should_block_source_change(False, True, False))
         self.assertTrue(should_block_source_change(False, False, True))
+
+    def test_calculate_grid_columns(self):
+        self.assertEqual(calculate_grid_columns(1200, 220, 40), 5)
+        self.assertEqual(calculate_grid_columns(200, 220, 40), 1)
+
+    def test_format_download_speed(self):
+        self.assertEqual(format_download_speed(0), "0.0 页/秒")
+        self.assertEqual(format_download_speed(1.26), "1.3 页/秒")
+
+    def test_build_batch_summary(self):
+        text = build_batch_summary({"completed": 5, "failed": 1, "cancelled": 2})
+        self.assertIn("成功: 5 本", text)
+        self.assertIn("失败: 1 本", text)
+        self.assertIn("取消: 2 本", text)
 
 
 if __name__ == "__main__":

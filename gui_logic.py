@@ -45,3 +45,26 @@ def should_block_source_change(
 ) -> bool:
     """下载相关任务进行中时，禁止切换来源。"""
     return bool(is_downloading or is_batch_downloading or is_preparing_details)
+
+
+def calculate_grid_columns(window_width: int, min_card_width: int, padding: int) -> int:
+    """计算结果网格列数（最少 1 列）。"""
+    safe_min_width = max(1, min_card_width)
+    safe_padding = max(0, padding)
+    available = max(1, window_width - safe_padding)
+    return max(1, available // safe_min_width)
+
+
+def format_download_speed(pages_per_sec: float) -> str:
+    """格式化下载速度显示。"""
+    if pages_per_sec <= 0:
+        return "0.0 页/秒"
+    return f"{pages_per_sec:.1f} 页/秒"
+
+
+def build_batch_summary(stats: dict) -> str:
+    """构建批量下载汇总文本。"""
+    success = int(stats.get("completed", 0))
+    failed = int(stats.get("failed", 0))
+    cancelled = int(stats.get("cancelled", 0))
+    return f"批量下载完成\n\n成功: {success} 本\n失败: {failed} 本\n取消: {cancelled} 本"

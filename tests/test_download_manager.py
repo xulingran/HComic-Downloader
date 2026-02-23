@@ -37,6 +37,8 @@ def test_download_task_creation():
     assert task.temp_dir is None
     assert task.error_message is None
     assert task.started_at is None
+    assert task.download_speed == 0.0
+    assert task.current_downloading_page == 0
 
 
 def test_download_task_progress_update():
@@ -273,3 +275,166 @@ def test_prepare_comic_hook_called_before_download(tmp_path):
 
     assert prepared == ["hook"]
     assert dm.tasks[task_id].comic.pages == 3
+
+
+def test_get_next_task_locked_all_paused_returns_none():
+    dm = DownloadManager()
+    t1 = dm.add_task(ComicInfo(id="p1", title="P1", pages=1))
+    t2 = dm.add_task(ComicInfo(id="p2", title="P2", pages=1))
+    dm.tasks[t1].status = DownloadStatus.PAUSED
+    dm.tasks[t2].status = DownloadStatus.PAUSED
+
+    with dm._lock:
+        assert dm._get_next_task_locked() is None
+
+
+def test_get_next_task_locked_all_failed_returns_none():
+    dm = DownloadManager()
+    t1 = dm.add_task(ComicInfo(id="f1", title="F1", pages=1))
+    t2 = dm.add_task(ComicInfo(id="f2", title="F2", pages=1))
+    dm.tasks[t1].status = DownloadStatus.FAILED
+    dm.tasks[t2].status = DownloadStatus.FAILED
+
+    with dm._lock:
+        assert dm._get_next_task_locked() is None
+
+
+def test_get_next_task_locked_mixed_states_finds_queued():
+    dm = DownloadManager()
+    t1 = dm.add_task(ComicInfo(id="m1", title="M1", pages=1))
+    t2 = dm.add_task(ComicInfo(id="m2", title="M2", pages=1))
+    t3 = dm.add_task(ComicInfo(id="m3", title="M3", pages=1))
+    dm.tasks[t1].status = DownloadStatus.PAUSED
+    dm.tasks[t2].status = DownloadStatus.FAILED
+    dm.tasks[t3].status = DownloadStatus.QUEUED
+
+    with dm._lock:
+        assert dm._get_next_task_locked() == t3
+
+
+class _AlwaysFailDownloader:
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+        if progress_callback:
+            progress_callback(1, 3, "downloading", None)
+        temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
+        os.makedirs(temp_dir, exist_ok=True)
+        return DownloadResult(
+            success=False,
+            completed_pages=[1],
+            failed_pages=[2, 3],
+            temp_dir=temp_dir,
+            error_message="mock failure",
+        )
+
+    def cleanup_temp_dir(self, temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+class _SlowSuccessDownloader:
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+        temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
+        os.makedirs(temp_dir, exist_ok=True)
+        total = max(1, comic.pages)
+        for i in range(1, total + 1):
+            time.sleep(0.05)
+            if progress_callback:
+                progress_callback(i, total, "downloading", None)
+        return DownloadResult(
+            success=True,
+            completed_pages=list(range(1, total + 1)),
+            failed_pages=[],
+            temp_dir=temp_dir,
+        )
+
+    def cleanup_temp_dir(self, temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def test_task_lifecycle_queued_to_completed(tmp_path):
+    dm = ComicDownloadManager(
+        downloader=_SlowSuccessDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    task_id = dm.add_task(ComicInfo(id="life_ok", title="Lifecycle OK", pages=3))
+    dm._process_task(task_id)
+
+    task = dm.tasks[task_id]
+    assert task.status == DownloadStatus.COMPLETED
+    assert task.progress_current == 3
+    assert task.progress_total == 3
+    assert task.download_speed > 0
+
+
+def test_task_lifecycle_queued_to_failed_to_retry(tmp_path):
+    dm = ComicDownloadManager(
+        downloader=_AlwaysFailDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    dm.set_auto_retry_max_attempts(0)
+    task_id = dm.add_task(ComicInfo(id="life_fail", title="Lifecycle Fail", pages=3))
+    dm._process_task(task_id)
+
+    assert dm.tasks[task_id].status == DownloadStatus.FAILED
+    assert dm.retry_task(task_id) is True
+    assert dm.tasks[task_id].status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING)
+    dm.stop()
+
+
+def test_task_pause_during_download(tmp_path):
+    dm = ComicDownloadManager(
+        downloader=_SlowSuccessDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    task_id = dm.add_task(ComicInfo(id="pause_1", title="Pause", pages=5))
+    dm.start()
+
+    deadline = time.time() + 1
+    while dm.tasks[task_id].status == DownloadStatus.QUEUED and time.time() < deadline:
+        time.sleep(0.01)
+    assert dm.pause_task(task_id) is True
+
+    time.sleep(0.3)
+    assert dm.tasks[task_id].status == DownloadStatus.PAUSED
+    dm.stop()
+
+
+def test_task_cancel_during_download(tmp_path):
+    dm = ComicDownloadManager(
+        downloader=_SlowSuccessDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    task_id = dm.add_task(ComicInfo(id="cancel_1", title="Cancel", pages=5))
+    dm.start()
+
+    deadline = time.time() + 1
+    while dm.tasks[task_id].status == DownloadStatus.QUEUED and time.time() < deadline:
+        time.sleep(0.01)
+    assert dm.cancel_task(task_id) is True
+
+    time.sleep(0.3)
+    assert dm.tasks[task_id].status == DownloadStatus.CANCELLED
+    dm.stop()
+
+
+def test_auto_retry_respects_max_attempts(tmp_path):
+    dm = ComicDownloadManager(
+        downloader=_AlwaysFailDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    dm.set_auto_retry_max_attempts(1)
+    task_id = dm.add_task(ComicInfo(id="retry_1", title="Retry", pages=3))
+    dm.start()
+
+    deadline = time.time() + 2
+    while dm.tasks[task_id].status not in (DownloadStatus.FAILED, DownloadStatus.COMPLETED) and time.time() < deadline:
+        time.sleep(0.02)
+
+    task = dm.tasks[task_id]
+    assert task.status == DownloadStatus.FAILED
+    assert task.retry_count == 1
+    dm.stop()

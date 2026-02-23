@@ -10,6 +10,7 @@ from typing import Optional, Callable, Dict
 from models import DownloadTask, DownloadStatus
 from download_manager import DownloadManager
 from theme_manager import ThemeManager
+from gui_logic import format_download_speed
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +105,7 @@ class DownloadManagerUI:
     def _create_header(self):
         """创建头部"""
         self.header = ttk.Frame(self.panel)
-        self.header.pack(fill="x", padx=10, pady=5)
+        self.header.pack(fill="x", padx=10, pady=(5, 2))
 
         # 统计标签
         self.stats_label = ttk.Label(self.header, text="下载队列 (0本)")
@@ -138,6 +139,12 @@ class DownloadManagerUI:
             width=3,
             command=self.toggle
         ).pack(side="left", padx=2)
+
+        # 顶部汇总行
+        self.summary_label = ttk.Label(self.panel, text="下载中 0/0 | 已完成 0 | 失败 0 | 排队 0")
+        self.summary_label.pack(fill="x", padx=10, pady=(0, 2))
+        self.summary_progress = ttk.Progressbar(self.panel, mode="determinate", maximum=100, value=0)
+        self.summary_progress.pack(fill="x", padx=10, pady=(0, 4))
 
     def _create_list_container(self):
         """创建列表容器"""
@@ -301,9 +308,23 @@ class DownloadManagerUI:
         """更新统计信息"""
         stats = self.dm.get_stats()
         incomplete = stats["incomplete"]
+        total = max(0, stats["total"])
         downloading = stats["downloading"]
+        queued = stats["queued"]
+        completed = stats["completed"]
+        failed = stats["failed"]
+        cancelled = stats["cancelled"]
 
         self.stats_label.config(text=f"下载队列 ({incomplete}本)")
+        self.summary_label.config(
+            text=f"下载中 {downloading}/{total} | 已完成 {completed} | 失败 {failed} | 排队 {queued}"
+        )
+
+        if total > 0:
+            finished = completed + failed + cancelled
+            self.summary_progress["value"] = (finished / total) * 100
+        else:
+            self.summary_progress["value"] = 0
 
     def refresh_task_list(self):
         """刷新任务列表"""
@@ -495,7 +516,7 @@ class DownloadItemWidget:
         )
         self.progress_bar.pack(side="left", fill="x", expand=True)
 
-        self.progress_label = ttk.Label(self.progress_frame, text="0%", width=4)
+        self.progress_label = ttk.Label(self.progress_frame, text="0/0页 | 0.0 页/秒")
         self.progress_label.pack(side="left", padx=(5, 0))
 
         # 初始更新
@@ -562,16 +583,11 @@ class DownloadItemWidget:
         pct = task.progress_percentage
         self.progress_bar["value"] = pct
 
-        # 根据状态显示不同的进度文本
-        if task.status == DownloadStatus.FAILED and (task.completed_pages or task.failed_pages):
-            completed = len(task.completed_pages)
-            failed = len(task.failed_pages)
-            total = task.progress_total or task.comic.pages
-            progress_text = f"{completed}✓ {failed}✗ /{total}"
-        elif task.status == DownloadStatus.COMPLETED:
-            progress_text = "100%"
-        else:
-            progress_text = f"{pct:.0f}%"
+        current = task.progress_current
+        total = task.progress_total or task.comic.pages
+        progress_text = f"{current}/{total}页 | {format_download_speed(task.download_speed)}"
+        if task.failed_pages:
+            progress_text += f" | {len(task.failed_pages)}页失败"
 
         self.progress_label.config(text=progress_text)
 

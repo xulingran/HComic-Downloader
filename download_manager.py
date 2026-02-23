@@ -127,12 +127,13 @@ class DownloadManager:
 
     def _get_next_task_locked(self) -> Optional[str]:
         """获取下一个可处理的任务（调用方需持有 _lock）。"""
-        # 记录本轮扫描中遇到的暂停/失败任务数
-        paused_count = 0
-        failed_count = 0
+        seen: set[str] = set()
 
         while self.queue:
             task_id = self.queue[0]
+            if task_id in seen:
+                return None
+
             task = self.tasks.get(task_id)
 
             if not task:
@@ -142,27 +143,12 @@ class DownloadManager:
             # 跳过已完成的任务（取消/完成）- 从队列移除
             if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED):
                 self.queue.pop(0)
-                # 队列长度变化，重置计数器
-                paused_count = 0
-                failed_count = 0
                 continue
 
-            # 跳过失败的任务 - 保留在队列中供重试
-            if task.status == DownloadStatus.FAILED:
-                failed_count += 1
+            # 跳过失败/暂停任务，轮转到队列尾部
+            if task.status in (DownloadStatus.FAILED, DownloadStatus.PAUSED):
+                seen.add(task_id)
                 self.queue.append(self.queue.pop(0))
-                # 如果所有任务都是失败状态，退出本轮扫描
-                if failed_count >= len(self.queue):
-                    return None
-                continue
-
-            # 跳过暂停的任务，轮转到队列尾部
-            if task.status == DownloadStatus.PAUSED:
-                paused_count += 1
-                self.queue.append(self.queue.pop(0))
-                # 如果所有任务都是暂停状态，退出本轮扫描
-                if paused_count >= len(self.queue):
-                    return None
                 continue
 
             return task_id
@@ -403,6 +389,9 @@ class ComicDownloadManager(DownloadManager):
             def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
                 task.progress_current = current
                 task.progress_total = total
+                elapsed = time.time() - task.started_at if task.started_at else 0.0
+                task.download_speed = (current / elapsed) if elapsed > 0 else 0.0
+                task.current_downloading_page = min(total, current + 1) if total > 0 else 0
                 self._notify_task_update(task)
 
             result: DownloadResult = self.downloader.download_comic_resume(
@@ -441,6 +430,7 @@ class ComicDownloadManager(DownloadManager):
                 task.temp_dir = None
 
                 task.status = DownloadStatus.COMPLETED
+                task.current_downloading_page = 0
                 logger.info(f"Task {task_id} completed: {output_path}")
             else:
                 # 下载失败，检查是否可自动重试
@@ -460,6 +450,7 @@ class ComicDownloadManager(DownloadManager):
                     self._notify_queue_changed()
                 else:
                     task.status = DownloadStatus.FAILED
+                    task.current_downloading_page = 0
                     logger.error(f"Task {task_id} failed after {task.retry_count} retries: {task.error_message}")
                     # 失败时不清理临时目录，保留已下载的图片用于手动重试
 
@@ -504,6 +495,7 @@ class ComicDownloadManager(DownloadManager):
                     self._notify_queue_changed()
                 else:
                     task.status = DownloadStatus.FAILED
+                    task.current_downloading_page = 0
                     logger.error(f"Task {task_id} failed after {task.retry_count} retries: {task.error_message}")
                     # 失败时不清理临时目录，保留已下载的图片用于手动重试
 

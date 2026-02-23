@@ -14,6 +14,10 @@ from utils import apply_system_proxy_to_session
 logger = logging.getLogger(__name__)
 
 
+class ParserResponseError(RuntimeError):
+    """响应读取/解析相关异常。"""
+
+
 class HComicParser:
     """h-comic.com 解析器"""
 
@@ -27,6 +31,10 @@ class HComicParser:
 
     # 正则表达式
     PAYLOAD_REGEX = re.compile(r"data:\s*\[null,\s*(\{.*?\})\s*],\s*form:", re.S)
+    PAYLOAD_FALLBACK_REGEXES = (
+        re.compile(r"data:\s*\[null,\s*(\{.*?\})\s*],", re.S),
+        re.compile(r"data:\s*\[null,\s*(\{.*?\})\s*](?:\s|$)", re.S),
+    )
 
     def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = ""):
         self.timeout = timeout
@@ -75,9 +83,25 @@ class HComicParser:
         """
         # 强制使用 UTF-8 编码（服务器返回的编码信息可能不正确）
         # 必须在访问 response.text 之前设置编码
-        if not response.encoding or response.encoding.lower() in ('iso-8859-1', 'latin-1'):
-            response.encoding = 'utf-8'
-        return response.text
+        try:
+            if not response.encoding or response.encoding.lower() in ('iso-8859-1', 'latin-1'):
+                response.encoding = 'utf-8'
+            return response.text
+        except Exception as e:
+            raise ParserResponseError(f"响应文本解码失败: {e}") from e
+
+    def _request_text(self, url: str) -> str:
+        """发起请求并返回响应文本，附带结构化错误信息。"""
+        try:
+            response = self.session.get(url, timeout=self.timeout)
+            response.raise_for_status()
+            return self._get_response_text(response)
+        except requests.Timeout as e:
+            raise ParserResponseError(f"请求超时: {url}") from e
+        except requests.ConnectionError as e:
+            raise ParserResponseError(f"连接失败: {url}") from e
+        except requests.RequestException as e:
+            raise ParserResponseError(f"请求失败: {url} ({e})") from e
 
     def search(self, keyword: str, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
         """搜索漫画
@@ -91,10 +115,8 @@ class HComicParser:
         """
         url = self._build_search_url(keyword, page)
         try:
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-            return self.parse_search_page(self._get_response_text(response), requested_page=page)
-        except requests.RequestException as e:
+            return self.parse_search_page(self._request_text(url), requested_page=page)
+        except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error(f"Search failed: {e}")
             return [], None
 
@@ -106,10 +128,8 @@ class HComicParser:
         """
         url = self._build_favourites_url(page)
         try:
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-            return self.parse_favourites_page(self._get_response_text(response), requested_page=page)
-        except requests.RequestException as e:
+            return self.parse_favourites_page(self._request_text(url), requested_page=page)
+        except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error(f"Load favourites failed: {e}")
             return [], None, False
 
@@ -125,10 +145,8 @@ class HComicParser:
         """
         url = f"{self.INDEX}/comics/{slug or '1'}?id={comic_id}"
         try:
-            response = self.session.get(url, timeout=self.timeout)
-            response.raise_for_status()
-            return self.parse_comic_detail(self._get_response_text(response))
-        except requests.RequestException as e:
+            return self.parse_comic_detail(self._request_text(url))
+        except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error(f"Get comic detail failed: {e}")
             return None
 
@@ -403,6 +421,12 @@ class HComicParser:
     def _extract_payload_data(cls, resp_text: str) -> dict:
         """从页面中提取 payload 数据"""
         m = cls.PAYLOAD_REGEX.search(resp_text)
+        if not m:
+            for fallback in cls.PAYLOAD_FALLBACK_REGEXES:
+                m = fallback.search(resp_text)
+                if m:
+                    logger.warning("Primary payload regex failed, using fallback regex")
+                    break
         if not m:
             raise ValueError("h-comic payload not found")
         payload_obj = cls._jsobj_to_dict(m.group(1))

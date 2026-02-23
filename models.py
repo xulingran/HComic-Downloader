@@ -153,6 +153,8 @@ class DownloadTask:
     _cancel_requested: bool = False
     failed_pages: List[int] = field(default_factory=list)
     completed_pages: List[int] = field(default_factory=list)
+    download_speed: float = 0.0
+    current_downloading_page: int = 0
     retry_count: int = 0
     last_failed_at: Optional[float] = None
 
