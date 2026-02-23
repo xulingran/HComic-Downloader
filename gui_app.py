@@ -29,7 +29,7 @@ from font_config import configure_font, get_font, get_font_string, FontConfig
 from download_manager import ComicDownloadManager
 from theme_manager import ThemeManager, ThemeMode
 from file_conflict_dialog import show_conflict_dialog
-from panels import DownloadPanel, SettingsPanel, StatusBar
+from panels import DownloadPanel, SearchPanel, SettingsPanel, StatusBar
 from panels.comic_card import (
     build_comic_card_frame,
     copy_selected_text,
@@ -457,6 +457,17 @@ class HComicDownloaderGUI(tk.Tk):
         search_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         search_frame.columnconfigure(0, weight=1)
 
+        self.search_panel = SearchPanel(
+            main_frame,
+            parser=self.parser,
+            config=self.config,
+            font_config=self.font_config,
+            on_download=self.download_comic,
+            on_batch_download=self.execute_batch_download,
+            on_status_update=self.update_status,
+        )
+        self.search_panel.bind_host(self)
+
         self.search_var = tk.StringVar()
         self.search_entry = ttk.Entry(search_frame, textvariable=self.search_var, font=get_font("normal"))
         self.search_entry.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
@@ -484,10 +495,10 @@ class HComicDownloaderGUI(tk.Tk):
         self.source_combo.grid(row=0, column=2, padx=(0, 8))
         self.source_combo.bind("<<ComboboxSelected>>", self._on_source_changed)
 
-        self.search_btn = ttk.Button(search_frame, text="搜索", command=self.search)
+        self.search_btn = ttk.Button(search_frame, text="搜索", command=self.search_panel.search)
         self.search_btn.grid(row=0, column=3)
 
-        self.favourites_btn = ttk.Button(search_frame, text="收藏夹", command=self.view_favourites)
+        self.favourites_btn = ttk.Button(search_frame, text="收藏夹", command=self.search_panel.view_favourites)
         self.favourites_btn.grid(row=0, column=4, padx=(8, 0))
 
         self.toggle_settings_btn = ttk.Button(
@@ -553,7 +564,7 @@ class HComicDownloaderGUI(tk.Tk):
         results_frame.rowconfigure(1, weight=1)  # 改为 row=1，因为 row=0 是工具栏
 
         # 创建批量操作工具栏
-        self.batch_toolbar = self.create_batch_toolbar(results_frame)
+        self.batch_toolbar = self.search_panel.create_batch_toolbar(results_frame)
 
         # 画布和滚动条
         self.canvas = tk.Canvas(results_frame, highlightthickness=0, bg=self.theme_manager.get_color("background"))
@@ -588,6 +599,7 @@ class HComicDownloaderGUI(tk.Tk):
             on_status_update=self.update_status,
             anchor_widget=self.status_bar,
         )
+        self.download_panel.bind_host(self)
         # 向后兼容：保留原属性名，减少现有逻辑改动
         self.download_manager_ui = self.download_panel.ui
 
