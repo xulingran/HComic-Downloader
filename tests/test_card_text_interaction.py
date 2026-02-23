@@ -1,4 +1,5 @@
 """卡片文本交互功能测试"""
+import tkinter as tk
 import unittest
 from unittest.mock import MagicMock
 
@@ -17,7 +18,10 @@ class TestCardTextInteraction(unittest.TestCase):
                 # 测试中不需要居中窗口
                 pass
 
-        self.app = TestGUI()
+        try:
+            self.app = TestGUI()
+        except tk.TclError as exc:
+            self.skipTest(f"Tk 不可用: {exc}")
         self.app.withdraw()
 
     def tearDown(self):
