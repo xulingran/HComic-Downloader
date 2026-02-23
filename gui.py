@@ -9,14 +9,14 @@ from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk, messagebox, scrolledtext, simpledialog
-from typing import List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple
 from PIL import Image, ImageTk
 from io import BytesIO
 
 from config import Config
 from auth_parser import extract_auth_from_curl
 from models import ComicInfo, PaginationInfo, DownloadTask, DownloadStatus
-from parser import HComicParser
+from parser import MultiSourceParser
 from downloader import ComicDownloader, DownloadError
 from cbz_builder import CBZBuilder
 from utils import (
@@ -30,12 +30,23 @@ from download_manager import ComicDownloadManager
 from download_manager_ui import DownloadManagerUI
 from theme_manager import ThemeManager, ThemeMode
 from file_conflict_dialog import show_conflict_dialog
+from gui_logic import (
+    is_moeimg_detail_ready,
+    should_block_source_change,
+    should_ignore_gui_callback,
+    stop_download_manager_for_shutdown,
+)
 
 logger = logging.getLogger(__name__)
 
 
 class HComicDownloaderGUI(tk.Tk):
     """HComic Downloader 主窗口"""
+    QUERY_MODE_OPTIONS: Tuple[Tuple[str, str], ...] = (
+        ("keyword", "关键词"),
+        ("author", "作者"),
+        ("tag", "Tag"),
+    )
 
     def __init__(self):
         super().__init__()
@@ -58,6 +69,9 @@ class HComicDownloaderGUI(tk.Tk):
         # 从配置加载主题模式
         theme_mode = self._parse_theme_mode(self.config.theme_mode)
         self.theme_manager.set_mode(theme_mode)
+        # 初始化 ttk 样式（用于主题切换）
+        self.style = ttk.Style()
+        self._configure_ttk_styles()
         # 注册主题变化回调
         self.theme_manager.register_callback(self._on_theme_change_refresh)
         # 主线程轮询系统主题变化（仅 AUTO 模式生效）
@@ -69,17 +83,27 @@ class HComicDownloaderGUI(tk.Tk):
         export_system_proxies_to_env()
 
         # 初始化组件
-        self.parser = HComicParser(
+        # 启动默认来源固定为 h-comic，运行时可切换。
+        self.config.default_source = "hcomic"
+        self.parser = MultiSourceParser(
             timeout=self.config.timeout,
+            default_source="hcomic",
+            source_auth=self.config.source_auth,
             cookie=self.config.auth_cookie,
             user_agent=self.config.auth_user_agent,
         )
+        self.source_options = self.parser.get_source_options()
+        self.source_key_to_label = {key: label for key, label in self.source_options}
+        self.source_label_to_key = {label: key for key, label in self.source_options}
+        self.query_mode_key_to_label = {key: label for key, label in self.QUERY_MODE_OPTIONS}
+        self.query_mode_label_to_key = {label: key for key, label in self.QUERY_MODE_OPTIONS}
+        current_source_auth = self.config.get_source_auth(self.parser.current_source)
         self.downloader = ComicDownloader(
             concurrent_downloads=self.config.concurrent_downloads,
             timeout=self.config.timeout,
             retry_times=self.config.retry_times,
-            cookie=self.config.auth_cookie,
-            user_agent=self.config.auth_user_agent,
+            cookie=current_source_auth.get("cookie", ""),
+            user_agent=current_source_auth.get("user_agent", ""),
         )
         self.cbz_builder = CBZBuilder(self.config.cbz_filename_template, self.config)
 
@@ -88,11 +112,13 @@ class HComicDownloaderGUI(tk.Tk):
             downloader=self.downloader,
             cbz_builder=self.cbz_builder,
             output_dir=self.config.download_dir,
+            prepare_comic=self.parser.prepare_for_download,
         )
         self.download_manager.set_callbacks(
             on_task_update=self._on_download_task_update,
             on_queue_complete=self._on_download_queue_complete,
         )
+        self.download_manager.set_auto_retry_max_attempts(self.config.auto_retry_max_attempts)
 
         # 搜索结果显示
         self.search_results: List[ComicInfo] = []
@@ -120,11 +146,16 @@ class HComicDownloaderGUI(tk.Tk):
         self.selected_comics: set[ComicInfo] = set()  # 选中的漫画集合
         self.is_batch_downloading: bool = False        # 批量下载进行中
         self.batch_select_mode_var = tk.BooleanVar(value=False)  # 批量选择模式
+        self.is_preparing_details: bool = False        # 下载前详情预取中
+        self.detail_prefetch_generation: int = 0       # 结果列表详情预取代次
+        self.moeimg_detail_ready_keys: set[str] = set()
+        self._is_destroying: bool = False
 
         # 翻页状态
         self.current_page: int = 1                    # 当前页码
         self.total_pages: int = 1                     # 总页数
         self.current_search_keyword: str = ""         # 当前搜索关键词（用于翻页）
+        self.current_search_mode: str = "keyword"     # 当前搜索模式（用于翻页）
         self.has_search_started: bool = False         # 是否已发起过搜索（允许空关键词翻页）
         self.current_view_mode: str = "search"        # 当前视图模式：search / favourites
         self.card_title_expanded: dict[str, bool] = {}  # 卡片标题展开状态
@@ -152,12 +183,12 @@ class HComicDownloaderGUI(tk.Tk):
         # 创建界面
         self.create_widgets()
 
-        # 初始化登录状态展示并执行静默校验
-        if self.config.auth_cookie and self.config.auth_user_agent:
-            self.login_status_var.set("已加载登录配置（待校验）")
-            self._verify_login_async()
-        else:
-            self.login_status_var.set("未配置登录信息")
+        # 同步来源选择器到当前来源
+        if hasattr(self, "source_var"):
+            self.source_var.set(self.source_key_to_label.get(self.parser.current_source, "h-comic"))
+
+        # 初始化登录状态展示（不自动发起网络校验，避免启动即产生后台请求）
+        self._update_login_status_for_current_source()
         self._refresh_proxy_status()
 
         # 绑定窗口大小变化事件
@@ -175,11 +206,143 @@ class HComicDownloaderGUI(tk.Tk):
         y = (self.winfo_screenheight() // 2) - (height // 2)
         self.geometry(f'{width}x{height}+{x}+{y}')
 
+    def _get_current_source(self) -> str:
+        if hasattr(self, "source_var"):
+            selected = self.source_label_to_key.get(self.source_var.get())
+            if selected:
+                return selected
+        return self.parser.current_source
+
+    def _get_selected_query_mode(self) -> str:
+        if hasattr(self, "query_mode_var"):
+            selected = self.query_mode_label_to_key.get(self.query_mode_var.get())
+            if selected:
+                return selected
+        return "keyword"
+
+    def _build_search_keyword(self, keyword: str, query_mode: str) -> str:
+        text = (keyword or "").strip()
+        source = self._get_current_source()
+        if source != "moeimg":
+            return text
+        if query_mode == "author":
+            return f"Author: {text}" if text else "Author:"
+        if query_mode == "tag":
+            return f"Tag: {text}" if text else "Tag:"
+        return text
+
+    def _source_requires_login(self, source: Optional[str] = None) -> bool:
+        current = source or self._get_current_source()
+        return current == "hcomic"
+
+    def _sync_auth_for_source(self, source: str):
+        auth = self.config.get_source_auth(source)
+        self.parser.configure_auth(
+            cookie=auth.get("cookie", ""),
+            user_agent=auth.get("user_agent", ""),
+            source=source,
+        )
+        if source == self._get_current_source():
+            self.downloader.configure_auth(
+                cookie=auth.get("cookie", ""),
+                user_agent=auth.get("user_agent", ""),
+            )
+
+    def _update_login_status_for_current_source(self, auto_verify: bool = False):
+        source = self._get_current_source()
+        if not self._source_requires_login(source):
+            self.login_status_var.set("当前来源无需登录信息")
+            return
+
+        auth = self.config.get_source_auth(source)
+        if auth.get("cookie") and auth.get("user_agent"):
+            self.login_status_var.set("已加载登录配置（待校验）")
+            if auto_verify:
+                self._verify_login_async()
+        else:
+            self.login_status_var.set("未配置登录信息")
+
+    def _clear_results_for_source_switch(self):
+        self.cover_load_generation += 1
+        self._clear_pending_image_updates()
+        for frame in self.result_frames:
+            frame.destroy()
+        self.result_frames.clear()
+        self.search_results = []
+        self.selected_comics.clear()
+        self.image_cache.clear()
+        self.card_title_expanded.clear()
+        self.moeimg_detail_ready_keys.clear()
+        with self.cover_loading_lock:
+            self.cover_loading_keys.clear()
+        if hasattr(self, "update_toolbar_buttons"):
+            self.update_toolbar_buttons()
+        if hasattr(self, "update_pagination_controls"):
+            self.update_pagination_controls()
+
+    def _on_source_changed(self, event=None):
+        selected_source = self.source_label_to_key.get(self.source_var.get())
+        if not selected_source:
+            return
+
+        if (
+            selected_source != self.parser.current_source
+            and should_block_source_change(
+                self.is_downloading,
+                self.is_batch_downloading,
+                self.is_preparing_details,
+            )
+        ):
+            # 下载进行中禁止切换来源，避免中途改写会话认证导致任务失败
+            self.source_var.set(
+                self.source_key_to_label.get(self.parser.current_source, self.parser.current_source)
+            )
+            messagebox.showinfo("提示", "下载进行中，暂不支持切换来源")
+            return
+
+        if selected_source == self.parser.current_source:
+            return
+
+        self.parser.set_source(selected_source)
+        self.config.default_source = selected_source
+        self._sync_auth_for_source(selected_source)
+
+        self.current_view_mode = "search"
+        self.current_page = 1
+        self.total_pages = 1
+        self.current_search_keyword = ""
+        self.current_search_mode = self._get_selected_query_mode()
+        self.has_search_started = False
+        self._clear_results_for_source_switch()
+        self.update_status(f"已切换来源: {self.source_key_to_label.get(selected_source, selected_source)}")
+        self._update_login_status_for_current_source()
+
+        try:
+            self.config.save(self._get_config_path())
+        except Exception as e:
+            logger.error(f"保存配置失败: {e}")
+
     def destroy(self):
         """销毁窗口前清理主题回调，避免单例持有失效引用。"""
+        self._is_destroying = True
+        # 保存配置
+        self._save_all_settings()
+
         if getattr(self, "_theme_poll_after_id", None):
             self.after_cancel(self._theme_poll_after_id)
             self._theme_poll_after_id = None
+        if getattr(self, "_scroll_reset_after_id", None):
+            self.after_cancel(self._scroll_reset_after_id)
+            self._scroll_reset_after_id = None
+        if hasattr(self, "_clear_pending_image_updates"):
+            self._clear_pending_image_updates()
+        stop_download_manager_for_shutdown(getattr(self, "download_manager", None))
+        if hasattr(self, "cover_executor"):
+            try:
+                self.cover_executor.shutdown(wait=False, cancel_futures=True)
+            except TypeError:
+                # 兼容较旧 Python 版本（无 cancel_futures 参数）
+                self.cover_executor.shutdown(wait=False)
         if hasattr(self, "theme_manager"):
             self.theme_manager.unregister_callback(self._on_theme_change_refresh)
         super().destroy()
@@ -216,7 +379,7 @@ class HComicDownloaderGUI(tk.Tk):
     def create_widgets(self):
         """创建界面组件"""
         # 主容器
-        main_frame = ttk.Frame(self, padding="10")
+        main_frame = ttk.Frame(self, padding="10", style="Main.TFrame")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
         # 配置网格权重
@@ -226,7 +389,7 @@ class HComicDownloaderGUI(tk.Tk):
         main_frame.rowconfigure(2, weight=1)  # 结果区域可扩展
 
         # ===== 搜索栏 =====
-        search_frame = ttk.Frame(main_frame)
+        search_frame = ttk.Frame(main_frame, style="Main.TFrame")
         search_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         search_frame.columnconfigure(0, weight=1)
 
@@ -235,26 +398,47 @@ class HComicDownloaderGUI(tk.Tk):
         self.search_entry.grid(row=0, column=0, sticky=(tk.W, tk.E), padx=(0, 10))
         self.search_entry.bind('<Return>', lambda e: self.search())
 
+        self.query_mode_var = tk.StringVar(value=self.query_mode_key_to_label["keyword"])
+        self.query_mode_combo = ttk.Combobox(
+            search_frame,
+            textvariable=self.query_mode_var,
+            values=[label for _, label in self.QUERY_MODE_OPTIONS],
+            state="readonly",
+            width=7,
+        )
+        self.query_mode_combo.grid(row=0, column=1, padx=(0, 8))
+
+        self.source_var = tk.StringVar(value=self.source_key_to_label.get(self.parser.current_source, "h-comic"))
+        self.source_combo = ttk.Combobox(
+            search_frame,
+            textvariable=self.source_var,
+            values=[label for _, label in self.source_options],
+            state="readonly",
+            width=12,
+        )
+        self.source_combo.grid(row=0, column=2, padx=(0, 8))
+        self.source_combo.bind("<<ComboboxSelected>>", self._on_source_changed)
+
         self.search_btn = ttk.Button(search_frame, text="搜索", command=self.search)
-        self.search_btn.grid(row=0, column=1)
+        self.search_btn.grid(row=0, column=3)
 
         self.favourites_btn = ttk.Button(search_frame, text="收藏夹", command=self.view_favourites)
-        self.favourites_btn.grid(row=0, column=2, padx=(8, 0))
+        self.favourites_btn.grid(row=0, column=4, padx=(8, 0))
 
         self.toggle_settings_btn = ttk.Button(
             search_frame,
             text="展开设置 ▼",
             command=self.toggle_settings_panel
         )
-        self.toggle_settings_btn.grid(row=0, column=3, padx=(8, 0))
+        self.toggle_settings_btn.grid(row=0, column=5, padx=(8, 0))
 
         # ===== 设置栏 =====
-        self.settings_container = ttk.Frame(main_frame, height=0)
+        self.settings_container = ttk.Frame(main_frame, height=0, style="Main.TFrame")
         self.settings_container.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         self.settings_container.grid_propagate(False)
         self.settings_container.columnconfigure(0, weight=1)
 
-        self.settings_frame = ttk.LabelFrame(self.settings_container, text="设置", padding="5")
+        self.settings_frame = ttk.LabelFrame(self.settings_container, text="设置", padding="5", style="Settings.TLabelframe")
         self.settings_frame.grid(row=0, column=0, sticky=(tk.W, tk.E))
 
         # 第一行：下载目录和并发数
@@ -276,6 +460,13 @@ class HComicDownloaderGUI(tk.Tk):
         self.batch_delay_spinbox.grid(row=0, column=7, padx=(0, 5))
         # 限制输入为整数
         self.batch_delay_spinbox.config(validate="key", validatecommand=(self.register(self._validate_batch_delay), '%P'))
+
+        ttk.Label(self.settings_frame, text="自动重试:").grid(row=0, column=8, padx=(20, 5))
+        self.auto_retry_var = tk.IntVar(value=self.config.auto_retry_max_attempts)
+        self.auto_retry_spinbox = ttk.Spinbox(
+            self.settings_frame, from_=0, to=5, textvariable=self.auto_retry_var, width=5
+        )
+        self.auto_retry_spinbox.grid(row=0, column=9, padx=(0, 5))
 
         # 第二行：字体设置
         ttk.Label(self.settings_frame, text="字体:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
@@ -349,7 +540,7 @@ class HComicDownloaderGUI(tk.Tk):
         self._set_settings_button_text()
 
         # ===== 搜索结果区域 =====
-        results_frame = ttk.LabelFrame(main_frame, text="搜索结果", padding="5")
+        results_frame = ttk.LabelFrame(main_frame, text="搜索结果", padding="5", style="Results.TLabelframe")
         results_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         results_frame.columnconfigure(0, weight=1)
         results_frame.rowconfigure(1, weight=1)  # 改为 row=1，因为 row=0 是工具栏
@@ -358,9 +549,9 @@ class HComicDownloaderGUI(tk.Tk):
         self.batch_toolbar = self.create_batch_toolbar(results_frame)
 
         # 画布和滚动条
-        self.canvas = tk.Canvas(results_frame, highlightthickness=0)
+        self.canvas = tk.Canvas(results_frame, highlightthickness=0, bg=self.theme_manager.get_color("background"))
         scrollbar = ttk.Scrollbar(results_frame, orient="vertical", command=self.canvas.yview)
-        self.scrollable_frame = ttk.Frame(self.canvas)
+        self.scrollable_frame = ttk.Frame(self.canvas, style="Scrollable.TFrame")
 
         self.scrollable_frame.bind("<Configure>", self._on_scrollable_frame_configure)
 
@@ -374,13 +565,8 @@ class HComicDownloaderGUI(tk.Tk):
         # 跨平台滚动事件绑定（鼠标滚轮 + 触控板）
         self._bind_scroll_events()
 
-        # ===== 下载管理器面板（初始隐藏）=====
-        self.download_manager_ui = DownloadManagerUI(main_frame, self.download_manager)
-        self.download_manager_ui.panel.grid(row=3, column=0, sticky="ew")
-        self.download_manager_ui.panel.grid_remove()
-
         # ===== 进度区域 =====
-        progress_frame = ttk.Frame(main_frame)
+        progress_frame = ttk.Frame(main_frame, style="Progress.TFrame")
         progress_frame.grid(row=4, column=0, sticky=(tk.W, tk.E))
         progress_frame.columnconfigure(0, weight=1)
 
@@ -389,7 +575,7 @@ class HComicDownloaderGUI(tk.Tk):
         self.status_label.grid(row=0, column=0, sticky=tk.W)
 
         # 进度条容器
-        progress_container = ttk.Frame(progress_frame)
+        progress_container = ttk.Frame(progress_frame, style="Progress.TFrame")
         progress_container.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
         progress_container.columnconfigure(0, weight=1)
 
@@ -409,6 +595,13 @@ class HComicDownloaderGUI(tk.Tk):
             command=self._toggle_download_manager
         )
         self.expand_btn.grid(row=0, column=1, padx=(5, 0))
+
+        # ===== 下载管理器面板（锚在进度区上方，避免动画触发整页重排）=====
+        self.download_manager_ui = DownloadManagerUI(
+            main_frame,
+            self.download_manager,
+            anchor_widget=progress_frame,
+        )
 
     def toggle_settings_panel(self):
         """切换设置面板展开/折叠状态。"""
@@ -554,11 +747,14 @@ class HComicDownloaderGUI(tk.Tk):
         # 同时绑定窗口级、控件级与 all 级，提升命中率。
         for widget in (self.canvas, self.scrollable_frame):
             widget.bind("<MouseWheel>", self._on_mousewheel, add="+")
-            widget.bind("<TouchpadScroll>", self._on_touchpad_scroll, add="+")
+            # TouchpadScroll 只在 macOS 上可用
+            if platform.system() == "Darwin":
+                widget.bind("<TouchpadScroll>", self._on_touchpad_scroll, add="+")
             widget.bind("<Button-4>", self._on_mousewheel_linux_button, add="+")
             widget.bind("<Button-5>", self._on_mousewheel_linux_button, add="+")
         self.bind_all("<MouseWheel>", self._on_mousewheel, add="+")
-        self.bind_all("<TouchpadScroll>", self._on_touchpad_scroll, add="+")
+        if platform.system() == "Darwin":
+            self.bind_all("<TouchpadScroll>", self._on_touchpad_scroll, add="+")
         self.bind_all("<Button-4>", self._on_mousewheel_linux_button, add="+")
         self.bind_all("<Button-5>", self._on_mousewheel_linux_button, add="+")
 
@@ -732,12 +928,52 @@ class HComicDownloaderGUI(tk.Tk):
         self.font_config = FontConfig(self.config)
         logger.info(f"字体已更改为: {self.font_config.get_best_font()}")
 
+        # 保存配置
+        try:
+            self.config.save(self._get_config_path())
+        except Exception as e:
+            logger.error(f"保存配置失败: {e}")
+
     def _on_font_size_changed(self):
         """字体大小变化事件"""
         self.config.font_size = self.font_size_var.get()
         # 重新创建字体配置
         self.font_config = FontConfig(self.config)
         logger.info(f"字体大小已更改为: {self.config.font_size}")
+
+        # 保存配置
+        try:
+            self.config.save(self._get_config_path())
+        except Exception as e:
+            logger.error(f"保存配置失败: {e}")
+
+    def _save_all_settings(self):
+        """保存所有设置到配置文件"""
+        try:
+            # 更新配置值
+            self.config.download_dir = self.download_dir_var.get()
+            self.config.concurrent_downloads = self.concurrent_var.get()
+            self.config.batch_download_delay = self.batch_delay_var.get()
+            self.config.auto_retry_max_attempts = self.auto_retry_var.get()
+
+            # 字体
+            font = self.font_var.get()
+            self.config.font_name = "" if font == "自动检测" else font
+
+            # 主题
+            self.config.theme_mode = self._display_to_theme_mode(self.theme_mode_var.get())
+            self.config.default_source = self._get_current_source()
+
+            # 保存到文件
+            self.config.save(self._get_config_path())
+
+            # 更新下载管理器设置
+            if hasattr(self, "download_manager"):
+                self.download_manager.set_auto_retry_max_attempts(self.config.auto_retry_max_attempts)
+
+            logger.info("所有设置已保存")
+        except Exception as e:
+            logger.error(f"保存设置失败: {e}")
 
     def _on_preview_changed(self):
         """预览图设置变化事件"""
@@ -784,8 +1020,46 @@ class HComicDownloaderGUI(tk.Tk):
 
         logger.info(f"主题设置已更改为: {mode_str}")
 
+    def _configure_ttk_styles(self):
+        """配置 ttk 组件样式以支持主题切换"""
+        theme = self.theme_manager
+        bg_color = theme.get_color("background")
+        card_bg = theme.get_color("card_bg")
+        text_color = theme.get_color("text")
+        text_secondary = theme.get_color("text_secondary")
+
+        # 主框架样式
+        self.style.configure("Main.TFrame", background=bg_color)
+        # 搜索结果区域样式
+        self.style.configure("Results.TLabelframe", background=bg_color)
+        self.style.configure("Results.TLabelframe.Label", background=bg_color, foreground=text_color)
+        # 工具栏样式
+        self.style.configure("Toolbar.TFrame", background=bg_color)
+        # 可滚动框架样式
+        self.style.configure("Scrollable.TFrame", background=bg_color)
+        # 卡片框架样式
+        self.style.configure("Card.TFrame", background=card_bg)
+        # 设置面板样式
+        self.style.configure("Settings.TLabelframe", background=bg_color)
+        self.style.configure("Settings.TLabelframe.Label", background=bg_color, foreground=text_color)
+        # 进度区域样式
+        self.style.configure("Progress.TFrame", background=bg_color)
+        # 标签样式
+        self.style.configure("TLabel", background=bg_color, foreground=text_color)
+        self.style.configure("Secondary.TLabel", background=bg_color, foreground=text_secondary)
+
+        # 更新根窗口背景
+        self.configure(bg=bg_color)
+
     def _on_theme_change_refresh(self):
         """主题变化时刷新界面"""
+        # 更新 ttk 样式
+        self._configure_ttk_styles()
+
+        # 更新 canvas 背景色
+        if hasattr(self, 'canvas'):
+            self.canvas.config(bg=self.theme_manager.get_color("background"))
+
         # 更新卡片颜色
         for frame in self.result_frames:
             self._update_card_colors(frame)
@@ -798,19 +1072,13 @@ class HComicDownloaderGUI(tk.Tk):
             self.download_manager_ui.refresh_theme()
 
     def _update_card_colors(self, frame: tk.Frame):
-        """更新卡片主题相关颜色"""
+        """更新卡片主题相关颜色（仅处理 tk 子组件，ttk 组件由 style 控制）"""
         theme = self.theme_manager
         card_bg = theme.get_color("card_bg")
         text_primary = theme.get_color("text")
         text_secondary = theme.get_color("text_secondary")
 
-        # 更新卡片背景（仅 tk 组件）
-        try:
-            frame.config(bg=card_bg)
-        except tk.TclError:
-            pass
-
-        # 更新子组件配色
+        # 更新子组件配色（仅 tk 组件）
         for widget in frame.winfo_children():
             if isinstance(widget, tk.Frame):
                 try:
@@ -867,9 +1135,9 @@ class HComicDownloaderGUI(tk.Tk):
             messagebox.showerror("登录信息提取失败", str(e))
             return
 
-        self.config.auth_cookie = cookie
-        self.config.auth_user_agent = user_agent
-        self.parser.configure_auth(cookie=cookie, user_agent=user_agent)
+        current_source = self._get_current_source()
+        self.config.set_source_auth(current_source, cookie=cookie, user_agent=user_agent)
+        self.parser.configure_auth(cookie=cookie, user_agent=user_agent, source=current_source)
         self.downloader.configure_auth(cookie=cookie, user_agent=user_agent)
 
         try:
@@ -923,7 +1191,8 @@ class HComicDownloaderGUI(tk.Tk):
     def _refresh_proxy_status(self, show_message: bool = False):
         """刷新并应用系统代理到现有会话。"""
         proxies = get_system_proxies()
-        apply_system_proxy_to_session(self.parser.session)
+        for session in self.parser.get_sessions():
+            apply_system_proxy_to_session(session)
         apply_system_proxy_to_session(self.downloader.session)
 
         status_text = self._format_proxy_status(proxies)
@@ -949,7 +1218,7 @@ class HComicDownloaderGUI(tk.Tk):
         Returns:
             工具栏框架
         """
-        toolbar = ttk.Frame(parent)
+        toolbar = ttk.Frame(parent, style="Toolbar.TFrame")
         toolbar.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=(0, 5))
 
         # 批量选择模式
@@ -1110,6 +1379,13 @@ class HComicDownloaderGUI(tk.Tk):
         else:
             self.next_page_btn.state(['disabled'])
 
+    def _scroll_results_to_top(self):
+        """将结果列表滚动到顶部。"""
+        try:
+            self.canvas.yview_moveto(0.0)
+        except tk.TclError:
+            logger.debug("结果列表已销毁，跳过滚动到顶部")
+
     def go_previous_page(self):
         """跳转到上一页"""
         if self.current_page <= 1:
@@ -1157,6 +1433,12 @@ class HComicDownloaderGUI(tk.Tk):
         if self.current_view_mode == "search" and not self.has_search_started:
             messagebox.showinfo("提示", "请先进行搜索")
             return
+        if self.current_view_mode == "favourites" and not self.parser.source_supports_favourites():
+            self.current_view_mode = "search"
+            self.update_status("当前来源暂不支持收藏夹")
+            return
+
+        self._scroll_results_to_top()
 
         # 禁用翻页按钮
         self.prev_page_btn.state(['disabled'])
@@ -1205,6 +1487,10 @@ class HComicDownloaderGUI(tk.Tk):
 
     def view_favourites(self):
         """加载收藏夹（重置为第1页）。"""
+        if not self.parser.source_supports_favourites():
+            messagebox.showwarning("提示", "当前来源暂不支持收藏夹")
+            return
+
         previous_mode = self.current_view_mode
         previous_page = self.current_page
 
@@ -1267,16 +1553,55 @@ class HComicDownloaderGUI(tk.Tk):
         if self.is_downloading or self.is_batch_downloading:
             messagebox.showinfo("提示", "已有下载任务进行中，请等待完成")
             return
+        if self.is_preparing_details:
+            messagebox.showinfo("提示", "正在获取漫画详情，请稍后")
+            return
 
         # 转换为列表保持顺序
         download_list = list(self.selected_comics)
+        self.is_preparing_details = True
+        self.search_btn.config(state=tk.DISABLED)
+        self.favourites_btn.config(state=tk.DISABLED)
+        self.update_status("正在获取批量下载详情...")
+
+        def update_prepare_progress(current: int, total: int, comic: ComicInfo):
+            self.after(
+                0,
+                lambda c=current, t=total, title=comic.title: self.update_status(
+                    f"正在获取详情 ({c}/{t}): {title}"
+                ),
+            )
+
+        def do_prepare_and_continue():
+            try:
+                prepared_list = self._ensure_comics_detail_ready(download_list, progress_callback=update_prepare_progress)
+            except Exception as e:
+                error_msg = str(e)
+                self.after(0, lambda msg=error_msg: self._on_batch_prepare_failed(msg))
+                return
+            self.after(0, lambda: self._on_batch_prepare_ready(prepared_list))
+
+        threading.Thread(target=do_prepare_and_continue, daemon=True).start()
+
+    def _on_batch_prepare_ready(self, comics: list[ComicInfo]):
+        self.is_preparing_details = False
+        self.search_btn.config(state=tk.NORMAL)
+        self.favourites_btn.config(state=tk.NORMAL)
 
         # 显示确认对话框
-        if not self.confirm_batch_download(download_list):
+        if not self.confirm_batch_download(comics):
+            self.update_status("已取消批量下载")
             return
 
         # 开始批量下载
-        self.execute_batch_download(download_list)
+        self.execute_batch_download(comics)
+
+    def _on_batch_prepare_failed(self, error_msg: str):
+        self.is_preparing_details = False
+        self.search_btn.config(state=tk.NORMAL)
+        self.favourites_btn.config(state=tk.NORMAL)
+        self.update_status(f"获取详情失败: {error_msg}")
+        messagebox.showerror("错误", f"批量下载前获取详情失败:\n{error_msg}")
 
     def detect_file_conflicts(self, comics: list[ComicInfo]) -> tuple[list[ComicInfo], list[tuple[int, ComicInfo, str]]]:
         """检测文件冲突
@@ -1461,8 +1786,13 @@ class HComicDownloaderGUI(tk.Tk):
 
     def _on_download_task_update(self, task: DownloadTask):
         """下载任务更新回调（可能在后台线程调用）"""
+        if should_ignore_gui_callback(self._is_destroying):
+            return
         # 使用 after() 确保 UI 更新在主线程执行
-        self.after(0, lambda: self._update_ui_for_task(task))
+        try:
+            self.after(0, lambda: self._update_ui_for_task(task))
+        except tk.TclError:
+            logger.debug("窗口已销毁，忽略下载任务更新")
 
     def _update_ui_for_task(self, task: DownloadTask):
         """在主线程更新 UI"""
@@ -1480,7 +1810,12 @@ class HComicDownloaderGUI(tk.Tk):
 
     def _on_download_queue_complete(self):
         """下载队列完成回调"""
+        if should_ignore_gui_callback(self._is_destroying):
+            return
+
         def on_complete():
+            if should_ignore_gui_callback(self._is_destroying):
+                return
             self.is_batch_downloading = False
             self.update_toolbar_buttons()
 
@@ -1514,7 +1849,10 @@ class HComicDownloaderGUI(tk.Tk):
             self.update_status("就绪")
             self.progress_var.set(0)
 
-        self.after(0, on_complete)
+        try:
+            self.after(0, on_complete)
+        except tk.TclError:
+            logger.debug("窗口已销毁，忽略队列完成回调")
 
     def _toggle_download_manager(self):
         """切换下载管理器显示"""
@@ -1630,19 +1968,26 @@ class HComicDownloaderGUI(tk.Tk):
 
     def search(self):
         """执行搜索（重置为第1页）"""
-        keyword = self.search_var.get().strip()
+        input_keyword = self.search_var.get().strip()
+        query_mode = self._get_selected_query_mode()
+        keyword = self._build_search_keyword(input_keyword, query_mode)
 
         self.current_view_mode = "search"
 
         # 保存搜索关键词，重置页码
         self.current_search_keyword = keyword
+        self.current_search_mode = query_mode
         self.has_search_started = True
         self.current_page = 1
 
         # 禁用搜索按钮
         self.search_btn.config(state=tk.DISABLED)
-        if keyword:
-            self.update_status(f"正在搜索: {keyword}...")
+        if input_keyword:
+            if query_mode == "keyword":
+                self.update_status(f"正在搜索: {input_keyword}...")
+            else:
+                mode_label = self.query_mode_key_to_label.get(query_mode, query_mode)
+                self.update_status(f"正在按{mode_label}搜索: {input_keyword}...")
         else:
             self.update_status("正在搜索...")
 
@@ -1693,14 +2038,17 @@ class HComicDownloaderGUI(tk.Tk):
 
         # 清除旧结果
         self.cover_load_generation += 1
+        self.detail_prefetch_generation += 1
         self._clear_pending_image_updates()
         for frame in self.result_frames:
             frame.destroy()
         self.result_frames.clear()
         self.image_cache.clear()
         self.card_title_expanded.clear()
+        self.moeimg_detail_ready_keys.clear()
         with self.cover_loading_lock:
             self.cover_loading_keys.clear()
+        self._scroll_results_to_top()
 
         if not results:
             self.update_status("未找到相关漫画")
@@ -1725,6 +2073,137 @@ class HComicDownloaderGUI(tk.Tk):
             col = i % self.columns
             frame = self.create_comic_card(comic, row, col)
             self.result_frames.append(frame)
+
+        self._start_result_detail_prefetch(results)
+
+    @staticmethod
+    def _is_moeimg_comic(comic: ComicInfo) -> bool:
+        return (comic.source_site or "").strip().lower() == "moeimg"
+
+    @staticmethod
+    def _detail_ready_key(comic: ComicInfo) -> str:
+        return f"{(comic.source_site or '').strip().lower()}:{comic.id}"
+
+    @staticmethod
+    def _dedupe_text_values(values: List[str]) -> List[str]:
+        output: List[str] = []
+        seen: set[str] = set()
+        for value in values:
+            text = (value or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            output.append(text)
+        return output
+
+    def _is_moeimg_detail_ready(self, comic: ComicInfo) -> bool:
+        return is_moeimg_detail_ready(comic)
+
+    def _merge_prepared_comic(self, target: ComicInfo, prepared: ComicInfo):
+        """将详情结果合并回现有对象，保持引用稳定。"""
+        if prepared.title:
+            target.title = prepared.title
+        if prepared.author:
+            target.author = prepared.author
+        if prepared.pages > target.pages:
+            target.pages = prepared.pages
+        if prepared.category and not target.category:
+            target.category = prepared.category
+        if prepared.publish_date and not target.publish_date:
+            target.publish_date = prepared.publish_date
+        if prepared.cover_url:
+            target.cover_url = prepared.cover_url
+        if prepared.preview_url:
+            target.preview_url = prepared.preview_url
+        if prepared.media_id:
+            target.media_id = prepared.media_id
+        if prepared.comic_source:
+            target.comic_source = prepared.comic_source
+        if prepared.source_site:
+            target.source_site = prepared.source_site
+
+        if prepared.tags:
+            target.tags = self._dedupe_text_values((target.tags or []) + list(prepared.tags))
+        if prepared.image_urls:
+            target.image_urls = self._dedupe_text_values(list(prepared.image_urls))
+
+    def _prepare_single_comic_detail(self, comic: ComicInfo) -> ComicInfo:
+        prepared = self.parser.prepare_for_download(comic)
+        if isinstance(prepared, ComicInfo):
+            self._merge_prepared_comic(comic, prepared)
+
+        if self._is_moeimg_comic(comic) and comic.image_urls and comic.pages > 0:
+            self.moeimg_detail_ready_keys.add(self._detail_ready_key(comic))
+        return comic
+
+    def _ensure_comics_detail_ready(
+        self,
+        comics: list[ComicInfo],
+        progress_callback: Optional[Callable[[int, int, ComicInfo], None]] = None,
+    ) -> list[ComicInfo]:
+        if not comics:
+            return comics
+
+        total = len(comics)
+        for idx, comic in enumerate(comics, start=1):
+            if progress_callback:
+                progress_callback(idx, total, comic)
+
+            if not self._is_moeimg_comic(comic):
+                continue
+
+            if self._is_moeimg_detail_ready(comic):
+                continue
+
+            prepared = self._prepare_single_comic_detail(comic)
+            if not self._is_moeimg_detail_ready(prepared):
+                raise RuntimeError(f"详情未完整获取: {comic.title}")
+
+        return comics
+
+    def _update_visible_card_metadata(self, comic: ComicInfo):
+        author_text = f"作者: {comic.author or '未知'}"
+        pages_text = f"页数: {comic.pages}"
+        card_key = self._get_card_key(comic)
+
+        for frame in self.result_frames:
+            if getattr(frame, "comic_ref", None) is not comic and getattr(frame, "comic_key", "") != card_key:
+                continue
+
+            author_widget = getattr(frame, "author_widget", None)
+            if author_widget and author_widget.winfo_exists():
+                self._set_text_widget_content(author_widget, author_text, 1)
+
+            pages_label = getattr(frame, "pages_label", None)
+            if pages_label and pages_label.winfo_exists():
+                pages_label.config(text=pages_text)
+            break
+
+    def _start_result_detail_prefetch(self, results: List[ComicInfo]):
+        target_comics = [comic for comic in results if self._is_moeimg_comic(comic)]
+        if not target_comics:
+            return
+
+        generation = self.detail_prefetch_generation
+
+        def do_prefetch():
+            for comic in target_comics:
+                if generation != self.detail_prefetch_generation:
+                    return
+                if self._is_moeimg_detail_ready(comic):
+                    continue
+                try:
+                    self._prepare_single_comic_detail(comic)
+                    self.after(0, lambda c=comic, g=generation: self._on_result_detail_prefetched(c, g))
+                except Exception as e:
+                    logger.warning(f"Result detail prefetch failed: {comic.title} ({e})")
+
+        threading.Thread(target=do_prefetch, daemon=True).start()
+
+    def _on_result_detail_prefetched(self, comic: ComicInfo, generation: int):
+        if generation != self.detail_prefetch_generation:
+            return
+        self._update_visible_card_metadata(comic)
 
     @staticmethod
     def _get_card_key(comic: ComicInfo) -> str:
@@ -1847,8 +2326,9 @@ class HComicDownloaderGUI(tk.Tk):
 
     def create_comic_card(self, comic: ComicInfo, row: int, col: int) -> tk.Frame:
         """创建漫画卡片"""
-        frame = ttk.Frame(self.scrollable_frame, relief="solid", borderwidth=1, padding="5")
+        frame = ttk.Frame(self.scrollable_frame, relief="solid", borderwidth=1, padding="5", style="Card.TFrame")
         frame.comic_ref = comic
+        frame.comic_key = self._get_card_key(comic)
         frame.columnconfigure(0, weight=1)
 
         # 配置列权重，使卡片可以均匀分布
@@ -1871,9 +2351,13 @@ class HComicDownloaderGUI(tk.Tk):
             # 显示预览图模式
             img_label = ttk.Label(frame)
             img_label.grid(row=0, column=0, pady=(0, 5))
+            img_label._cover_url = comic.cover_url or ""
+            img_label._cover_card_width = card_width
+            img_label._card_click_handler = lambda e, c=comic, f=frame: self._on_card_click(e, c, f)
 
             # 异步加载封面（传入卡片宽度）
             if comic.cover_url:
+                img_label.config(text="加载中...")
                 self._schedule_cover_load(comic.cover_url, img_label, card_width)
         else:
             # 不显示预览图模式 - 显示紧凑的 NSFW 占位符
@@ -1936,6 +2420,7 @@ class HComicDownloaderGUI(tk.Tk):
         author_widget.is_secondary_text = True
         author_widget.grid(row=2, column=0, sticky=(tk.W, tk.E))
         self._set_text_widget_content(author_widget, author_text, 1)
+        frame.author_widget = author_widget
 
         # 页数
         pages_text = f"页数: {comic.pages}"
@@ -1948,6 +2433,7 @@ class HComicDownloaderGUI(tk.Tk):
         )
         pages_label.is_secondary_text = True
         pages_label.grid(row=3, column=0, sticky=tk.W)
+        frame.pages_label = pages_label
 
         # 下载按钮
         download_btn = ttk.Button(
@@ -1971,12 +2457,12 @@ class HComicDownloaderGUI(tk.Tk):
 
         # 仅在批量模式时允许卡片点选（封面/空白/页数字段可触发）
         clickable_widgets = [frame, pages_label]
-        if self.show_preview_var.get() and comic.cover_url:
-            clickable_widgets.append(img_label)
-        elif not self.show_preview_var.get():
+        if not self.show_preview_var.get():
             clickable_widgets.append(placeholder)
         for widget in clickable_widgets:
             widget.bind('<Button-1>', lambda e, c=comic, f=frame: self._on_card_click(e, c, f))
+        if self.show_preview_var.get() and comic.cover_url:
+            img_label.bind("<Button-1>", img_label._card_click_handler)
 
         # 下载按钮点击时阻止事件冒泡到卡片
         download_btn.bind('<Button-1>', lambda e, b=download_btn: b.focus_set())
@@ -2053,11 +2539,57 @@ class HComicDownloaderGUI(tk.Tk):
             self.after(0, lambda l=label, p=photo: self._safe_update_image(l, p))
         except Exception as e:
             logger.debug(f"Failed to load cover: {e}")
-            # 不更新失败文本，因为卡片可能已被销毁
+            if generation == self.cover_load_generation:
+                self.after(
+                    0,
+                    lambda l=label, u=url, w=card_width, g=generation: self._show_cover_retry_icon(l, u, w, g),
+                )
         finally:
             if cache_key:
                 with self.cover_loading_lock:
                     self.cover_loading_keys.discard(cache_key)
+
+    def _show_cover_retry_icon(self, label: ttk.Label, url: str, card_width: int, generation: int):
+        """封面加载失败时显示重试图标。"""
+        if generation != self.cover_load_generation:
+            return
+        try:
+            if not label.winfo_exists():
+                return
+            label._cover_url = url
+            label._cover_card_width = card_width
+            label.config(image="", text="⚠\n重试", cursor="hand2")
+            label.image = None
+            label.bind("<Button-1>", lambda e, l=label: self._retry_cover_load(e, l))
+        except tk.TclError:
+            logger.debug("封面标签已销毁，跳过失败图标更新")
+
+    def _retry_cover_load(self, event, label: ttk.Label):
+        """重试封面加载。"""
+        url = getattr(label, "_cover_url", "")
+        card_width = getattr(label, "_cover_card_width", 200)
+        if not url:
+            return "break"
+        try:
+            if not label.winfo_exists():
+                return "break"
+            label.config(image="", text="加载中...", cursor="")
+            label.image = None
+        except tk.TclError:
+            return "break"
+
+        self._schedule_cover_load(url, label, card_width)
+        return "break"
+
+    @staticmethod
+    def _restore_cover_click_binding(label: ttk.Label):
+        """恢复封面正常点击行为（批量选择）。"""
+        label_dict = getattr(label, "__dict__", {})
+        if "_card_click_handler" not in label_dict:
+            return
+        handler = label_dict.get("_card_click_handler")
+        if callable(handler):
+            label.bind("<Button-1>", handler)
 
     def _safe_update_image(self, label: ttk.Label, photo):
         """安全地更新 label 的图片，处理 label 已被销毁的情况
@@ -2074,7 +2606,8 @@ class HComicDownloaderGUI(tk.Tk):
 
             # 检查 label 是否仍然有效（未被销毁）
             if label.winfo_exists():
-                label.config(image=photo)
+                self._restore_cover_click_binding(label)
+                label.config(image=photo, text="", cursor="")
                 label.image = photo
         except tk.TclError:
             # label 已被销毁，忽略错误
@@ -2102,7 +2635,8 @@ class HComicDownloaderGUI(tk.Tk):
         for label, photo in pending_updates:
             try:
                 if label.winfo_exists():
-                    label.config(image=photo)
+                    self._restore_cover_click_binding(label)
+                    label.config(image=photo, text="", cursor="")
                     label.image = photo
             except tk.TclError:
                 logger.debug("Label已被销毁，跳过图片更新")
@@ -2124,25 +2658,61 @@ class HComicDownloaderGUI(tk.Tk):
         if self.is_downloading:
             messagebox.showinfo("提示", "已有下载任务进行中，请等待完成")
             return
+        if self.is_preparing_details:
+            messagebox.showinfo("提示", "正在获取漫画详情，请稍后")
+            return
+
+        self.is_preparing_details = True
+        self.search_btn.config(state=tk.DISABLED)
+        self.favourites_btn.config(state=tk.DISABLED)
+        self.update_status(f"正在确认详情: {comic.title}...")
+
+        def do_prepare():
+            try:
+                prepared_list = self._ensure_comics_detail_ready([comic])
+                comic_to_download = prepared_list[0] if prepared_list else comic
+                self.after(0, lambda c=comic_to_download: self._continue_single_download(c))
+            except Exception as e:
+                self.after(0, lambda err=str(e), title=comic.title: self._on_single_prepare_failed(title, err))
+
+        threading.Thread(target=do_prepare, daemon=True).start()
+
+    def _on_single_prepare_failed(self, comic_title: str, error_msg: str):
+        self.is_preparing_details = False
+        self.search_btn.config(state=tk.NORMAL)
+        self.favourites_btn.config(state=tk.NORMAL)
+        logger.warning(f"Prepare comic before download failed: {error_msg}")
+        self.update_status(f"获取详情失败: {comic_title}")
+        messagebox.showerror("错误", f"下载前获取详情失败:\n{error_msg}")
+
+    def _continue_single_download(self, comic_to_download: ComicInfo):
+        self.is_preparing_details = False
+        self.search_btn.config(state=tk.NORMAL)
+        self.favourites_btn.config(state=tk.NORMAL)
 
         # 检测文件冲突
         current_dir = self.download_dir_var.get()
-        output_path = self.cbz_builder.get_output_path(comic, current_dir)
+        target_output_path = self.cbz_builder.get_output_path(comic_to_download, current_dir)
 
-        if os.path.exists(output_path):
-            filename = os.path.basename(output_path)
+        if os.path.exists(target_output_path):
+            filename = os.path.basename(target_output_path)
             # 使用冲突对话框处理单个文件冲突
-            decisions = show_conflict_dialog(self, [comic], [filename])
+            decisions = show_conflict_dialog(self, [comic_to_download], [filename])
             if decisions is None or not decisions.get(0, False):
                 # 用户取消或选择跳过
+                self.update_status("已取消下载")
                 return
 
         # 确认下载
-        if not messagebox.askyesno("确认下载", f"是否下载:\n{comic.title}\n\n作者: {comic.author or '未知'}\n页数: {comic.pages}"):
+        if not messagebox.askyesno(
+            "确认下载",
+            f"是否下载:\n{comic_to_download.title}\n\n作者: {comic_to_download.author or '未知'}\n页数: {comic_to_download.pages}",
+        ):
+            self.update_status("已取消下载")
             return
 
         self.is_downloading = True
-        self.update_status(f"准备下载: {comic.title}...")
+        self.update_status(f"准备下载: {comic_to_download.title}...")
         self.progress_var.set(0)
 
         # 更新下载器配置
@@ -2153,7 +2723,7 @@ class HComicDownloaderGUI(tk.Tk):
             try:
                 # 下载图片
                 temp_dir = self.downloader.download_comic(
-                    comic,
+                    comic_to_download,
                     self.download_dir_var.get(),
                     progress_callback=self._progress_callback,
                 )
@@ -2163,8 +2733,8 @@ class HComicDownloaderGUI(tk.Tk):
                 # 打包为 CBZ，传递明确的输出路径
                 output_path = self.cbz_builder.build_cbz(
                     temp_dir,
-                    comic,
-                    self.cbz_builder.get_output_path(comic, current_dir),
+                    comic_to_download,
+                    target_output_path,
                 )
 
                 # 清理临时目录

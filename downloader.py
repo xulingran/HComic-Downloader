@@ -1,6 +1,7 @@
 """漫画下载模块"""
 import logging
 import os
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -68,6 +69,7 @@ class ComicDownloader:
         self.timeout = timeout
         self.retry_times = retry_times
         self.session = self._create_session()
+        self.default_user_agent = self.session.headers.get("User-Agent", "")
         self.configure_auth(cookie=cookie, user_agent=user_agent)
 
     def _create_session(self) -> requests.Session:
@@ -98,12 +100,30 @@ class ComicDownloader:
         ua = (user_agent or "").strip()
         ck = (cookie or "").strip()
 
-        if ua:
-            self.session.headers["User-Agent"] = ua
+        self.session.headers["User-Agent"] = ua or self.default_user_agent
         if ck:
             self.session.headers["Cookie"] = ck
         else:
             self.session.headers.pop("Cookie", None)
+
+    @staticmethod
+    def _safe_source_site(source_site: str) -> str:
+        site = (source_site or "hcomic").strip().lower()
+        site = re.sub(r"[^a-z0-9_-]+", "_", site)
+        return site or "hcomic"
+
+    @classmethod
+    def _build_temp_dir_name(cls, comic: ComicInfo) -> str:
+        site = cls._safe_source_site(getattr(comic, "source_site", "hcomic"))
+        comic_id = str(comic.id or "unknown")
+        return f"temp_{site}_{comic_id}"
+
+    @classmethod
+    def _build_referer(cls, comic: ComicInfo) -> str:
+        site = cls._safe_source_site(getattr(comic, "source_site", "hcomic"))
+        if site == "moeimg":
+            return "https://moeimg.fan/"
+        return "https://h-comic.com/"
 
     def download_comic(
         self,
@@ -225,11 +245,17 @@ class ComicDownloader:
         completed = 0
         failed = 0
         downloaded_paths = []
+        last_progress_ts = 0.0
 
-        def update_status():
+        def update_status(force: bool = False):
+            nonlocal last_progress_ts
             if progress_callback:
+                now = time.monotonic()
+                if not force and (now - last_progress_ts) < 0.1 and (completed + failed) < total:
+                    return
                 status = f"下载中... ({completed}/{total}, 失败: {failed})"
                 progress_callback(completed, total, status)
+                last_progress_ts = now
 
         with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
             future_to_info = {
@@ -256,6 +282,7 @@ class ComicDownloader:
 
                 update_status()
 
+        update_status(force=True)
         return downloaded_paths
 
     def download_comic_resume(
@@ -288,8 +315,11 @@ class ComicDownloader:
         completed_set = set(completed_pages)
 
         # 创建或复用临时目录
-        temp_dir = Path(output_dir) / f"temp_{comic.id}"
+        temp_dir = Path(output_dir) / self._build_temp_dir_name(comic)
         ensure_dir(str(temp_dir))
+
+        # 不同来源要求不同 Referer
+        self.session.headers["Referer"] = self._build_referer(comic)
 
         # 获取所有图片 URL
         image_urls = comic.get_all_image_urls()
@@ -336,6 +366,7 @@ class ComicDownloader:
         new_completed = []
         new_failed = []
         downloaded_count = len(completed_pages)
+        last_progress_ts = 0.0
 
         with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
             # 提交任务
@@ -366,10 +397,16 @@ class ComicDownloader:
 
                 # 更新进度
                 if progress_callback:
+                    now = time.monotonic()
                     status = f"下载中... ({downloaded_count}/{total})"
                     if new_failed:
                         status += f"，失败: {len(new_failed)}"
-                    progress_callback(downloaded_count, total, status, comic_info)
+                    if (
+                        (now - last_progress_ts) >= 0.1
+                        or downloaded_count >= total
+                    ):
+                        progress_callback(downloaded_count, total, status, comic_info)
+                        last_progress_ts = now
 
         # 合并结果
         all_completed = completed_pages + new_completed

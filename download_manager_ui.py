@@ -1,5 +1,7 @@
 """下载管理器 UI 组件"""
 import logging
+import os
+import time
 import tkinter as tk
 from tkinter import ttk
 from enum import Enum
@@ -21,18 +23,30 @@ class ViewMode(Enum):
 class DownloadManagerUI:
     """下载管理器 UI 面板"""
 
-    # 动画配置（优化掉帧问题）
-    ANIM_DURATION_MS = 300    # 延长动画时间使过渡更平滑
-    ANIM_INTERVAL_MS = 33     # 降低到 30fps，更符合 tkinter 实际性能
+    # 动画配置
+    ANIM_DURATION_MS = 200
+    ANIM_TARGET_FPS = 120
     EXPANDED_HEIGHT = 400
     COLLAPSED_HEIGHT = 0
 
-    def __init__(self, parent: tk.Widget, download_manager: DownloadManager):
+    def __init__(
+        self,
+        parent: tk.Widget,
+        download_manager: DownloadManager,
+        anchor_widget: Optional[tk.Widget] = None,
+    ):
         self.parent = parent
         self.dm = download_manager
+        self.anchor_widget = anchor_widget
+        self._use_place_layout = anchor_widget is not None
 
         # 主题管理器
         self.theme_manager = ThemeManager.get_instance()
+
+        # 动画参数（支持环境变量覆盖）
+        self._anim_duration_ms = self.ANIM_DURATION_MS
+        self._anim_interval_ms = max(4, int(1000 / self.ANIM_TARGET_FPS))
+        self._load_animation_config()
 
         # 状态
         self.is_expanded = False
@@ -41,10 +55,10 @@ class DownloadManagerUI:
 
         # 动画状态
         self._anim_after_id = None
-        self._anim_step = 0
-        self._anim_total_steps = 0
         self._anim_start_height = 0
         self._anim_end_height = 0
+        self._anim_start_time = 0.0
+        self._suspend_list_layout_updates = False
 
         # UI 组件存储
         self._task_widgets: Dict[str, 'DownloadItemWidget'] = {}
@@ -54,11 +68,38 @@ class DownloadManagerUI:
         self._create_header()
         self._create_list_container()
 
+    def _load_animation_config(self):
+        """从环境变量加载动画参数，便于按设备性能调优"""
+        fps_text = os.getenv("HCOMIC_ANIM_FPS", "").strip()
+        duration_text = os.getenv("HCOMIC_ANIM_DURATION_MS", "").strip()
+
+        if fps_text:
+            try:
+                fps = int(fps_text)
+                if 30 <= fps <= 240:
+                    self._anim_interval_ms = max(4, int(1000 / fps))
+            except ValueError:
+                logger.warning("忽略无效的 HCOMIC_ANIM_FPS: %s", fps_text)
+
+        if duration_text:
+            try:
+                duration = int(duration_text)
+                if 80 <= duration <= 600:
+                    self._anim_duration_ms = duration
+            except ValueError:
+                logger.warning("忽略无效的 HCOMIC_ANIM_DURATION_MS: %s", duration_text)
+
     def _create_panel(self):
         """创建主面板（可动画容器）"""
         self.panel = tk.Frame(self.parent, bg=self.theme_manager.get_color("background"), relief="solid", bd=1)
-        self.panel.grid(row=2, column=0, sticky="nsew")
-        self.panel.grid_remove()  # 初始隐藏
+        self.panel.grid_propagate(False)
+        if self._use_place_layout:
+            self.panel.place_forget()
+            self.parent.bind("<Configure>", self._on_layout_configure, add="+")
+            self.anchor_widget.bind("<Configure>", self._on_layout_configure, add="+")
+        else:
+            self.panel.grid(row=2, column=0, sticky="nsew")
+            self.panel.grid_remove()  # 初始隐藏
 
     def _create_header(self):
         """创建头部"""
@@ -128,11 +169,40 @@ class DownloadManagerUI:
 
     def _on_frame_configure(self, event=None):
         """列表内容变化时更新滚动区域"""
+        if self._suspend_list_layout_updates:
+            return
         self.list_canvas.configure(scrollregion=self.list_canvas.bbox("all"))
 
     def _on_canvas_configure(self, event):
         """Canvas 大小变化时更新内部 Frame 宽度"""
+        if self._suspend_list_layout_updates:
+            return
         self.list_canvas.itemconfig(self._list_window, width=event.width)
+
+    def _sync_list_geometry_once(self):
+        """在动画结束后一次性同步列表尺寸和滚动区域"""
+        width = self.list_canvas.winfo_width()
+        if width > 0:
+            self.list_canvas.itemconfig(self._list_window, width=width)
+        bbox = self.list_canvas.bbox("all")
+        self.list_canvas.configure(scrollregion=bbox if bbox else (0, 0, 0, 0))
+
+    def _position_panel(self, height: int):
+        """使用 place 布局时，将面板固定在进度区上方"""
+        if not self._use_place_layout:
+            return
+        self.parent.update_idletasks()
+        anchor_y = self.anchor_widget.winfo_y()
+        # 添加顶部偏移量，避免遮挡标题栏（Windows 上边框计算有差异）
+        top_offset = 5
+        y = max(0, anchor_y - height - top_offset)
+        self.panel.place(x=0, y=y, relwidth=1, height=max(0, height))
+        self.panel.lift()
+
+    def _on_layout_configure(self, event=None):
+        """父容器或锚点尺寸变化时，修正面板位置"""
+        if self._use_place_layout and (self.is_expanded or self._anim_after_id):
+            self._position_panel(self._current_height)
 
     def toggle(self):
         """切换展开/折叠"""
@@ -145,31 +215,29 @@ class DownloadManagerUI:
             self._anim_after_id = None
 
         self.is_expanded = expand
+        self._suspend_list_layout_updates = True
 
         if expand:
-            self.panel.grid()
-            self._current_height = 1  # 避免除零
-            # 动画期间隐藏列表内容，避免 Canvas 重绘导致掉帧
-            self.list_canvas.pack_forget()
-            self.scrollbar.pack_forget()
-        else:
-            # 收起动画前也隐藏内容
-            self.list_canvas.pack_forget()
-            self.scrollbar.pack_forget()
+            if self._use_place_layout:
+                self._position_panel(max(1, self._current_height))
+            else:
+                self.panel.grid()
+            self._current_height = max(1, self._current_height)
+
+        # 动画期间隐藏列表内容，避免 Canvas 重绘导致掉帧
+        self.list_canvas.pack_forget()
+        self.scrollbar.pack_forget()
 
         self._anim_start_height = self._current_height
         self._anim_end_height = self.EXPANDED_HEIGHT if expand else 0
-        self._anim_step = 0
-        self._anim_total_steps = max(
-            1,
-            self.ANIM_DURATION_MS // self.ANIM_INTERVAL_MS
-        )
+        self._anim_start_time = time.perf_counter()
 
         self._run_animation_step()
 
     def _run_animation_step(self):
         """执行动画单帧"""
-        progress = min(1.0, (self._anim_step + 1) / self._anim_total_steps)
+        elapsed_ms = (time.perf_counter() - self._anim_start_time) * 1000.0
+        progress = min(1.0, elapsed_ms / self._anim_duration_ms)
         # ease-out cubic
         eased = 1 - (1 - progress) ** 3
 
@@ -178,25 +246,36 @@ class DownloadManagerUI:
             (self._anim_end_height - self._anim_start_height) * eased
         )
         self._current_height = new_height
-        self.panel.configure(height=new_height)
+        if self._use_place_layout:
+            self._position_panel(new_height)
+        else:
+            self.panel.configure(height=new_height)
 
-        if self._anim_step + 1 < self._anim_total_steps:
-            self._anim_step += 1
-            self._anim_after_id = self.panel.after(
-                self.ANIM_INTERVAL_MS,
+        if progress < 1.0:
+                self._anim_after_id = self.panel.after(
+                self._anim_interval_ms,
                 self._run_animation_step
             )
         else:
             # 动画结束
             self._current_height = self._anim_end_height
-            self.panel.configure(height=self._current_height)
+            if self._use_place_layout:
+                self._position_panel(self._current_height)
+            else:
+                self.panel.configure(height=self._current_height)
 
             # 展开完成后恢复显示列表内容
             if self.is_expanded:
                 self.list_canvas.pack(side="left", fill="both", expand=True, padx=10, pady=5)
                 self.scrollbar.pack(side="right", fill="y")
+                self._suspend_list_layout_updates = False
+                self._sync_list_geometry_once()
             else:
-                self.panel.grid_remove()
+                if self._use_place_layout:
+                    self.panel.place_forget()
+                else:
+                    self.panel.grid_remove()
+                self._suspend_list_layout_updates = False
 
             self._anim_after_id = None
 

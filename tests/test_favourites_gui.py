@@ -1,5 +1,6 @@
 """收藏夹 GUI 行为测试"""
 import time
+import tkinter as tk
 import unittest
 from unittest.mock import patch
 
@@ -29,8 +30,15 @@ class TestFavouritesGUI(unittest.TestCase):
             def center_window(self):
                 pass
 
-        self.app = TestGUI()
+        try:
+            self.app = TestGUI()
+        except tk.TclError as exc:
+            self.skipTest(f"Tk 不可用: {exc}")
         self.app.withdraw()
+        # 固定测试来源为 hcomic，避免受本机配置 default_source 污染
+        self.app.source_var.set("h-comic")
+        with patch.object(self.app.config, "save", lambda *args, **kwargs: None):
+            self.app._on_source_changed()
 
     def tearDown(self):
         self.app.destroy()
@@ -139,6 +147,29 @@ class TestFavouritesGUI(unittest.TestCase):
         self.assertEqual(called_search, [("", 2)])
         self.assertFalse(mock_info.called)
 
+    def test_pagination_load_scrolls_to_top(self):
+        called_search = []
+        comic = ComicInfo(id="s3", title="翻页结果", pages=3, media_id="ms3", comic_source="NH")
+
+        def fake_search(keyword, page=1):
+            called_search.append((keyword, page))
+            return [comic], PaginationInfo(current_page=page, total_pages=3, total_items=3, limit=10)
+
+        self.app.parser.search = fake_search
+        self.app.current_view_mode = "search"
+        self.app.current_search_keyword = "abc"
+        self.app.has_search_started = True
+        self.app.current_page = 2
+        self.app.total_pages = 3
+        self.app.canvas.yview_moveto = unittest.mock.MagicMock()
+
+        with patch("gui.threading.Thread", ImmediateThread):
+            self.app._load_page()
+
+        ok = self._wait_until(lambda: bool(called_search))
+        self.assertTrue(ok)
+        self.app.canvas.yview_moveto.assert_any_call(0.0)
+
     @patch("tkinter.messagebox.showwarning")
     def test_view_favourites_login_required_keeps_existing_results(self, mock_warning):
         old_comic = ComicInfo(id="old", title="旧结果", pages=5, media_id="oldm", comic_source="NH")
@@ -153,6 +184,40 @@ class TestFavouritesGUI(unittest.TestCase):
         self.assertEqual(len(self.app.search_results), 1)
         self.assertEqual(self.app.search_results[0].id, "old")
         self.assertEqual(self.app.current_view_mode, "search")
+
+    @patch("tkinter.messagebox.showwarning")
+    def test_view_favourites_unsupported_source_shows_warning(self, mock_warning):
+        self.app.source_var.set("moeimg.fan")
+        with patch.object(self.app.config, "save", lambda *args, **kwargs: None):
+            self.app._on_source_changed()
+        self.assertEqual(self.app.parser.current_source, "moeimg")
+
+        self.app.view_favourites()
+        self.assertTrue(mock_warning.called)
+        self.assertEqual(self.app.current_view_mode, "search")
+
+    def test_moeimg_query_mode_author_transforms_search_keyword(self):
+        called_search = []
+        comic = ComicInfo(id="m1", title="作者搜索结果", pages=1, source_site="moeimg")
+
+        def fake_search(keyword, page=1):
+            called_search.append((keyword, page))
+            return [comic], PaginationInfo(current_page=page, total_pages=1, total_items=1, limit=10)
+
+        self.app.source_var.set("moeimg.fan")
+        with patch.object(self.app.config, "save", lambda *args, **kwargs: None):
+            self.app._on_source_changed()
+
+        self.app.parser.search = fake_search
+        self.app.query_mode_var.set("作者")
+        self.app.search_var.set("horn-wood")
+
+        with patch("gui.threading.Thread", ImmediateThread):
+            self.app.search()
+
+        ok = self._wait_until(lambda: bool(called_search))
+        self.assertTrue(ok)
+        self.assertEqual(called_search, [("Author: horn-wood", 1)])
 
 
 if __name__ == "__main__":

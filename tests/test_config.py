@@ -264,5 +264,57 @@ class TestThemeModeConfig(unittest.TestCase):
             os.unlink(config_path)
 
 
+class TestMultiSourceConfig(unittest.TestCase):
+    """测试多来源配置与兼容迁移"""
+
+    def test_default_source_and_auth_defaults(self):
+        config = Config()
+        self.assertEqual(config.default_source, "hcomic")
+        self.assertIn("hcomic", config.source_auth)
+        self.assertIn("moeimg", config.source_auth)
+        self.assertEqual(config.source_auth["hcomic"]["cookie"], "")
+        self.assertEqual(config.source_auth["hcomic"]["user_agent"], "")
+
+    def test_source_auth_round_trip(self):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+
+        try:
+            config = Config(default_source="moeimg")
+            config.set_source_auth("hcomic", cookie="hc=1", user_agent="HC-UA")
+            config.set_source_auth("moeimg", cookie="mi=2", user_agent="MI-UA")
+            config.save(config_path)
+
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.default_source, "moeimg")
+            self.assertEqual(loaded.get_source_auth("hcomic")["cookie"], "hc=1")
+            self.assertEqual(loaded.get_source_auth("moeimg")["user_agent"], "MI-UA")
+            # 旧字段与 hcomic 保持兼容同步
+            self.assertEqual(loaded.auth_cookie, "hc=1")
+            self.assertEqual(loaded.auth_user_agent, "HC-UA")
+        finally:
+            os.unlink(config_path)
+
+    def test_legacy_auth_fields_migrate_to_source_auth(self):
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+            json.dump(
+                {
+                    "download_dir": "/tmp/test",
+                    "auth_cookie": "legacy_cookie=1",
+                    "auth_user_agent": "Legacy-UA/1.0",
+                },
+                f,
+            )
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.get_source_auth("hcomic")["cookie"], "legacy_cookie=1")
+            self.assertEqual(loaded.get_source_auth("hcomic")["user_agent"], "Legacy-UA/1.0")
+            self.assertEqual(loaded.get_source_auth("moeimg")["cookie"], "")
+        finally:
+            os.unlink(config_path)
+
+
 if __name__ == '__main__':
     unittest.main()

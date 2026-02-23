@@ -3,8 +3,8 @@ import json
 import logging
 import re
 from datetime import datetime, timezone
-from typing import List, Optional, Tuple
-from urllib.parse import quote
+from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote, urljoin
 
 import requests
 
@@ -298,6 +298,7 @@ class HComicParser:
             preview_url=preview_url,
             media_id=str(data.get("media_id") or ""),
             comic_source=data.get("comic_source", ""),
+            source_site="hcomic",
         )
 
     @classmethod
@@ -492,3 +493,573 @@ class HComicParser:
             图片 URL 列表
         """
         return comic.get_all_image_urls()
+
+
+class MoeImgParser:
+    """moeimg.fan 解析器。"""
+
+    BASE_URL = "https://moeimg.fan"
+    QUERY_MODE_REGEX = re.compile(r"^\s*(author|artist|tag)\s*:\s*(.*?)\s*$", re.IGNORECASE)
+    ENTITY_ID_IN_TEXT_REGEX = re.compile(r"(?:^|/)(?:fa)?(\d+)(?:/|$)")
+    HEADERS = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
+        "Accept": "application/json,text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
+        "Referer": f"{BASE_URL}/",
+    }
+    CHAPTER_IMAGE_REGEX = re.compile(r'data-url=["\']([^"\']+)["\']')
+
+    def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = ""):
+        self.timeout = timeout
+        self.session = requests.Session()
+        self.session.headers.update(self.HEADERS)
+        apply_system_proxy_to_session(self.session)
+        self.configure_auth(cookie=cookie, user_agent=user_agent)
+        self._manga_detail_cache: Dict[str, dict] = {}
+        self._author_id_cache: Dict[str, str] = {}
+        self._tag_id_cache: Dict[str, str] = {}
+
+    def configure_auth(self, cookie: str = "", user_agent: str = ""):
+        """配置登录相关请求头。"""
+        ua = (user_agent or "").strip()
+        ck = (cookie or "").strip()
+
+        self.session.headers["User-Agent"] = ua or self.HEADERS["User-Agent"]
+        if ck:
+            self.session.headers["Cookie"] = ck
+        else:
+            self.session.headers.pop("Cookie", None)
+
+    def verify_login_status(self) -> Tuple[bool, str]:
+        """moeimg 当前接入范围不依赖登录。"""
+        return True, "当前来源无需登录校验"
+
+    def search(self, keyword: str, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+        """搜索漫画。"""
+        mode, keyword = self._parse_query_mode(keyword)
+        try:
+            page_num = max(1, int(page))
+        except (TypeError, ValueError):
+            page_num = 1
+
+        if mode == "keyword" and not keyword:
+            # moeimg 在 query 为空时，/spa/search 返回空结果；改走最新更新接口。
+            data = self._request_json("/spa/latest-manga", params={"page": page_num})
+        elif mode == "keyword":
+            data = self._request_json("/spa/search", params={"query": keyword, "page": page_num})
+        else:
+            data = self._search_entity(mode=mode, keyword=keyword, page=page_num)
+
+        if not data:
+            return [], None
+
+        comics = self._parse_search_manga_list(data)
+
+        pagination = self._parse_pagination(
+            data.get("pagi"),
+            requested_page=page_num,
+            current_count=len(comics),
+        )
+        return comics, pagination
+
+    def favourites(self, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+        """moeimg 当前版本不支持收藏夹。"""
+        return [], None, False
+
+    def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
+        """获取漫画详情并补全可下载图片地址。"""
+        detail_data = self._get_manga_detail_payload(comic_id)
+        if not isinstance(detail_data, dict):
+            return None
+
+        detail = detail_data.get("detail") or {}
+        if not isinstance(detail, dict):
+            detail = {}
+
+        read_data = self._request_json(f"/spa/manga/{comic_id}/read")
+        chapter_detail = {}
+        if isinstance(read_data, dict):
+            chapter_detail = read_data.get("chapter_detail") or {}
+            if not isinstance(chapter_detail, dict):
+                chapter_detail = {}
+
+        title = (
+            (detail.get("manga_name") or "").strip()
+            or (detail.get("ja_manga_name") or "").strip()
+            or "未知标题"
+        )
+
+        authors_data = detail_data.get("authors") or detail.get("authors") or detail_data.get("author") or []
+        author = self._extract_first_name(authors_data, "author_name")
+        tags = self._extract_manga_tags(detail_data, detail, chapter_detail=chapter_detail)
+        category = (detail.get("category") or "").strip() or None
+
+        publish_date = self._format_iso_date(
+            chapter_detail.get("chapter_date_published") or detail.get("manga_date_published")
+        )
+
+        cover_url = detail.get("manga_cover_img") or detail.get("manga_cover_img_full")
+        preview_url = f"{self.BASE_URL}/post/fa{comic_id}"
+
+        server = chapter_detail.get("server") or ""
+        if not server:
+            slaves = chapter_detail.get("slaves")
+            if isinstance(slaves, list):
+                for candidate in slaves:
+                    if isinstance(candidate, str) and candidate.strip():
+                        server = candidate.strip()
+                        break
+
+        chapter_content = chapter_detail.get("chapter_content") or ""
+        image_paths = self.CHAPTER_IMAGE_REGEX.findall(chapter_content)
+        if not image_paths and chapter_content:
+            image_paths = re.findall(r'(?:data-url|data-src|src)=["\']([^"\']+)["\']', chapter_content)
+
+        image_urls: List[str] = []
+        seen: set[str] = set()
+        for raw_path in image_paths:
+            path = (raw_path or "").strip()
+            if not path:
+                continue
+            if path.startswith(("data:", "javascript:")):
+                continue
+            image_url = path if path.startswith(("http://", "https://")) else urljoin(server, path)
+            if not image_url or image_url in seen:
+                continue
+            seen.add(image_url)
+            image_urls.append(image_url)
+
+        preview_pages = self._count_preview_images(detail_data.get("preview_imgs"))
+        try:
+            total_pages = int(chapter_detail.get("total") or 0)
+        except (TypeError, ValueError):
+            total_pages = 0
+        pages = max(
+            total_pages,
+            len(image_urls),
+            preview_pages,
+        )
+
+        return ComicInfo(
+            id=str(detail.get("manga_id") or comic_id),
+            title=title,
+            author=author,
+            pages=pages,
+            category=category,
+            tags=tags,
+            publish_date=publish_date,
+            cover_url=cover_url,
+            preview_url=preview_url,
+            media_id=str(detail.get("manga_id") or comic_id),
+            comic_source="MOEIMG",
+            source_site="moeimg",
+            image_urls=image_urls,
+        )
+
+    def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Optional[dict]:
+        url = f"{self.BASE_URL}{path}"
+        try:
+            response = self.session.get(url, params=params, timeout=self.timeout)
+            response.raise_for_status()
+            return response.json()
+        except (requests.RequestException, ValueError) as e:
+            logger.error(f"MoeImg request failed: {url} ({e})")
+            return None
+
+    def _search_entity(self, mode: str, keyword: str, page: int) -> Optional[dict]:
+        entity_id = self._resolve_entity_id(mode=mode, keyword=keyword)
+        if not entity_id:
+            return None
+        path = "/spa/author" if mode == "author" else "/spa/genre"
+        return self._request_json(f"{path}/{entity_id}", params={"page": page})
+
+    def _resolve_entity_id(self, mode: str, keyword: str) -> Optional[str]:
+        token = (keyword or "").strip()
+        if not token:
+            return None
+
+        direct_id = self._extract_entity_id(token)
+        if direct_id:
+            return direct_id
+
+        normalized = self._normalize_lookup_text(token)
+        if not normalized:
+            return None
+
+        cache = self._author_id_cache if mode == "author" else self._tag_id_cache
+        cached = cache.get(normalized)
+        if cached:
+            return cached
+
+        resolved = self._lookup_entity_id_from_search(mode=mode, keyword=token)
+        if resolved:
+            cache[normalized] = resolved
+        return resolved
+
+    def _lookup_entity_id_from_search(self, mode: str, keyword: str) -> Optional[str]:
+        search_data = self._request_json("/spa/search", params={"query": keyword, "page": 1})
+        if not isinstance(search_data, dict):
+            return None
+
+        manga_list = search_data.get("manga_list")
+        if not isinstance(manga_list, list):
+            return None
+
+        target = self._normalize_lookup_text(keyword)
+        if not target:
+            return None
+
+        name_key = "author_name" if mode == "author" else "tag_name"
+        id_key = "author_id" if mode == "author" else "tag_id"
+
+        for item in manga_list:
+            if not isinstance(item, dict):
+                continue
+            manga_id = item.get("manga_id")
+            if manga_id is None:
+                continue
+            detail = self._get_manga_detail_payload(str(manga_id))
+            if not isinstance(detail, dict):
+                continue
+            entity_items = detail.get("authors") if mode == "author" else detail.get("tags")
+            if not isinstance(entity_items, list):
+                continue
+
+            for entity_item in entity_items:
+                if not isinstance(entity_item, dict):
+                    continue
+                candidate_id = entity_item.get(id_key)
+                if candidate_id is None:
+                    continue
+                candidate_name = self._normalize_lookup_text(entity_item.get(name_key))
+                if candidate_name == target:
+                    return str(candidate_id)
+        return None
+
+    @classmethod
+    def _parse_query_mode(cls, keyword: str) -> Tuple[str, str]:
+        text = (keyword or "").strip()
+        if not text:
+            return "keyword", ""
+        match = cls.QUERY_MODE_REGEX.match(text)
+        if not match:
+            return "keyword", text
+
+        mode = (match.group(1) or "").strip().lower()
+        value = (match.group(2) or "").strip()
+        if mode in ("author", "artist"):
+            return "author", value
+        if mode == "tag":
+            return "tag", value
+        return "keyword", text
+
+    @classmethod
+    def _extract_entity_id(cls, text: str) -> Optional[str]:
+        raw = (text or "").strip()
+        if not raw:
+            return None
+
+        path_match = cls.ENTITY_ID_IN_TEXT_REGEX.search(raw)
+        if path_match:
+            return path_match.group(1)
+
+        return None
+
+    @staticmethod
+    def _normalize_lookup_text(text: Any) -> str:
+        value = str(text or "").strip().lower()
+        value = re.sub(r"[_\-]+", " ", value)
+        value = re.sub(r"\s+", " ", value)
+        return value
+
+    def _parse_search_manga_list(self, data: Dict[str, Any]) -> List[ComicInfo]:
+        items = data.get("manga_list") or []
+        if not isinstance(items, list):
+            return []
+
+        comics: List[ComicInfo] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            manga_id = item.get("manga_id")
+            if manga_id is None:
+                continue
+
+            title = (item.get("manga_name") or "").strip() or "未知标题"
+            cover_url = item.get("manga_cover_img")
+            preview_url = f"{self.BASE_URL}/post/fa{manga_id}"
+            language = (item.get("language") or "").strip()
+            tags = [language] if language else []
+
+            comics.append(
+                ComicInfo(
+                    id=str(manga_id),
+                    title=title,
+                    author=None,
+                    pages=0,
+                    category=None,
+                    tags=tags,
+                    publish_date=None,
+                    cover_url=cover_url,
+                    preview_url=preview_url,
+                    media_id=str(manga_id),
+                    comic_source="MOEIMG",
+                    source_site="moeimg",
+                )
+            )
+        return comics
+
+    def _get_manga_detail_payload(self, comic_id: str) -> Optional[dict]:
+        key = str(comic_id)
+        cached = self._manga_detail_cache.get(key)
+        if isinstance(cached, dict):
+            return cached
+
+        payload = self._request_json(f"/spa/manga/{comic_id}")
+        if isinstance(payload, dict):
+            self._manga_detail_cache[key] = payload
+            return payload
+        return None
+
+    @classmethod
+    def _extract_manga_tags(
+        cls,
+        detail_data: Dict[str, Any],
+        detail: Dict[str, Any],
+        chapter_detail: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        tag_values: List[str] = []
+        tag_values.extend(cls._extract_names(detail_data.get("tags"), "tag_name"))
+        tag_values.extend(cls._extract_names(detail.get("tags"), "tag_name"))
+        tag_values.extend(cls._extract_names(detail_data.get("parody"), "tag_name"))
+        tag_values.extend(cls._extract_names(detail.get("parody"), "tag_name"))
+        tag_values.extend(cls._extract_names(detail_data.get("characters"), "tag_name"))
+        tag_values.extend(cls._extract_names(detail.get("characters"), "tag_name"))
+
+        if isinstance(chapter_detail, dict):
+            tag_values.extend(cls._extract_names(chapter_detail.get("tags"), "tag_name"))
+
+        language = (detail.get("language") or detail_data.get("language") or "").strip()
+        if language:
+            tag_values.append(language)
+
+        return cls._dedupe_keep_order(tag_values)
+
+    @staticmethod
+    def _extract_names(items: Any, key: str) -> List[str]:
+        names: List[str] = []
+        if isinstance(items, str):
+            text = items.strip()
+            return [text] if text else names
+
+        if isinstance(items, dict):
+            items = [items]
+
+        if not isinstance(items, list):
+            return names
+
+        for item in items:
+            if isinstance(item, str):
+                text = item.strip()
+                if text:
+                    names.append(text)
+                continue
+            if not isinstance(item, dict):
+                continue
+            name = (item.get(key) or item.get("name") or item.get("tag_name") or item.get("author_name") or "").strip()
+            if name:
+                names.append(name)
+        return MoeImgParser._dedupe_keep_order(names)
+
+    @classmethod
+    def _extract_first_name(cls, items: list, key: str) -> Optional[str]:
+        names = cls._extract_names(items, key)
+        return names[0] if names else None
+
+    @staticmethod
+    def _dedupe_keep_order(values: List[str]) -> List[str]:
+        deduped: List[str] = []
+        seen: set[str] = set()
+        for value in values:
+            text = (value or "").strip()
+            if not text or text in seen:
+                continue
+            seen.add(text)
+            deduped.append(text)
+        return deduped
+
+    @staticmethod
+    def _count_preview_images(preview_data: Any) -> int:
+        if isinstance(preview_data, list):
+            return sum(1 for item in preview_data if isinstance(item, str) and item.strip())
+        if not isinstance(preview_data, dict):
+            return 0
+
+        pages = preview_data.get("pages")
+        if not isinstance(pages, dict):
+            return 0
+
+        total = 0
+        for value in pages.values():
+            if isinstance(value, list):
+                total += sum(1 for item in value if isinstance(item, str) and item.strip())
+        return total
+
+    @staticmethod
+    def _format_iso_date(date_text: Any) -> Optional[str]:
+        if not date_text:
+            return None
+        text = str(date_text).strip()
+        if not text:
+            return None
+        try:
+            if text.endswith("Z"):
+                text = text[:-1] + "+00:00"
+            return datetime.fromisoformat(text).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _parse_pagination(
+        pagi: Any,
+        requested_page: int,
+        current_count: int,
+    ) -> Optional[PaginationInfo]:
+        if not isinstance(pagi, dict):
+            return None
+        cur_page = max(1, int(pagi.get("cur_page") or requested_page or 1))
+        pages_data = pagi.get("pages") or []
+        total_pages = max(1, len(pages_data) if isinstance(pages_data, list) else cur_page)
+        limit = max(1, int(pagi.get("limit") or current_count or 1))
+        offset = max(0, int(pagi.get("offset") or 0))
+        total_items = max(current_count, offset + current_count)
+        return PaginationInfo(
+            current_page=min(cur_page, total_pages),
+            total_pages=total_pages,
+            limit=limit,
+            total_items=total_items,
+        )
+
+
+class MultiSourceParser:
+    """多来源解析器分发层。"""
+
+    SOURCE_OPTIONS = (
+        ("hcomic", "h-comic"),
+        ("moeimg", "moeimg.fan"),
+    )
+
+    def __init__(
+        self,
+        timeout: int = 30,
+        default_source: str = "hcomic",
+        source_auth: Optional[dict[str, dict[str, str]]] = None,
+        cookie: str = "",
+        user_agent: str = "",
+    ):
+        self.timeout = timeout
+        self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
+        # 兼容旧调用：若传了全局 cookie/user_agent，作为 hcomic 默认认证。
+        if cookie or user_agent:
+            self.source_auth["hcomic"] = {
+                "cookie": (cookie or "").strip(),
+                "user_agent": (user_agent or "").strip(),
+            }
+
+        self.parsers = {
+            "hcomic": HComicParser(
+                timeout=timeout,
+                cookie=self.source_auth["hcomic"]["cookie"],
+                user_agent=self.source_auth["hcomic"]["user_agent"],
+            ),
+            "moeimg": MoeImgParser(
+                timeout=timeout,
+                cookie=self.source_auth["moeimg"]["cookie"],
+                user_agent=self.source_auth["moeimg"]["user_agent"],
+            ),
+        }
+        self.current_source = default_source if default_source in self.parsers else "hcomic"
+
+    @staticmethod
+    def _normalize_source_auth(source_auth: Optional[dict]) -> dict[str, dict[str, str]]:
+        normalized = {
+            "hcomic": {"cookie": "", "user_agent": ""},
+            "moeimg": {"cookie": "", "user_agent": ""},
+        }
+        if not isinstance(source_auth, dict):
+            return normalized
+
+        for source, auth in source_auth.items():
+            if source not in normalized or not isinstance(auth, dict):
+                continue
+            normalized[source]["cookie"] = str(auth.get("cookie", "") or "").strip()
+            normalized[source]["user_agent"] = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
+
+        return normalized
+
+    @property
+    def session(self) -> requests.Session:
+        return self.parsers[self.current_source].session
+
+    def get_sessions(self) -> list[requests.Session]:
+        return [self.parsers["hcomic"].session, self.parsers["moeimg"].session]
+
+    def get_source_options(self) -> tuple[tuple[str, str], ...]:
+        return self.SOURCE_OPTIONS
+
+    def set_source(self, source: str):
+        if source in self.parsers:
+            self.current_source = source
+
+    def source_supports_favourites(self, source: Optional[str] = None) -> bool:
+        current = source or self.current_source
+        return current == "hcomic"
+
+    def get_auth(self, source: Optional[str] = None) -> tuple[str, str]:
+        current = source or self.current_source
+        auth = self.source_auth.get(current, {"cookie": "", "user_agent": ""})
+        return auth.get("cookie", ""), auth.get("user_agent", "")
+
+    def configure_auth(self, cookie: str = "", user_agent: str = "", source: Optional[str] = None):
+        current = source or self.current_source
+        if current not in self.parsers:
+            return
+        cookie = (cookie or "").strip()
+        user_agent = (user_agent or "").strip()
+        self.source_auth[current] = {"cookie": cookie, "user_agent": user_agent}
+        self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent)
+
+    def verify_login_status(self) -> Tuple[bool, str]:
+        return self.parsers[self.current_source].verify_login_status()
+
+    def search(self, keyword: str, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+        return self.parsers[self.current_source].search(keyword, page=page)
+
+    def favourites(self, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+        if not self.source_supports_favourites():
+            return [], None, False
+        return self.parsers[self.current_source].favourites(page=page)
+
+    def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
+        return self.parsers[self.current_source].get_comic_detail(comic_id, slug=slug)
+
+    def prepare_for_download(self, comic: ComicInfo) -> ComicInfo:
+        source = (comic.source_site or self.current_source or "hcomic").lower()
+        parser = self.parsers.get(source)
+        if not parser:
+            return comic
+
+        # 对已有下载地址且页数有效的条目，不再重复请求详情。
+        if comic.image_urls and comic.pages > 0:
+            return comic
+
+        # hcomic 默认搜索结果已足够下载，仅在关键字段缺失时补详情。
+        if source == "hcomic":
+            if comic.media_id and comic.pages > 0:
+                return comic
+            detail = parser.get_comic_detail(comic.id)
+            return detail or comic
+
+        # moeimg 需要通过详情接口补齐章节图片地址。
+        detail = parser.get_comic_detail(comic.id)
+        return detail or comic

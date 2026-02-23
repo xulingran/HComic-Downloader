@@ -3,6 +3,7 @@ import json
 import os
 import tempfile
 import time
+import tkinter as tk
 import unittest
 from unittest.mock import patch
 
@@ -15,20 +16,26 @@ class TestLoginImportGUI(unittest.TestCase):
     def setUp(self):
         self.temp_dir = tempfile.mkdtemp()
         self.config_path = os.path.join(self.temp_dir, "config.json")
+        config_path = self.config_path
 
         class TestGUI(HComicDownloaderGUI):
+            test_config_path = config_path
+
             def center_window(self):
                 pass
 
             def _get_config_path(self):
                 return self.test_config_path
 
-        self.app = TestGUI()
+        try:
+            self.app = TestGUI()
+        except tk.TclError as exc:
+            self.skipTest(f"Tk 不可用: {exc}")
         self.app.withdraw()
-        self.app.test_config_path = self.config_path
 
     def tearDown(self):
-        self.app.destroy()
+        if hasattr(self, "app"):
+            self.app.destroy()
         if os.path.exists(self.config_path):
             os.unlink(self.config_path)
         os.rmdir(self.temp_dir)
@@ -92,6 +99,36 @@ class TestLoginImportGUI(unittest.TestCase):
 
         self.assertEqual(self.app.login_status_var.get(), "登录疑似失效（检测到登录入口）")
 
+    @patch("tkinter.messagebox.showerror")
+    def test_apply_login_persists_per_source(self, _mock_showerror):
+        self.app.parser.verify_login_status = lambda: (True, "登录校验通过")
+
+        # hcomic 登录信息
+        self.app.source_var.set("h-comic")
+        self.app._on_source_changed()
+        self.app.login_curl_text.insert(
+            "1.0",
+            "curl 'https://h-comic.com/' -b 'hc=1' -H 'User-Agent: HC-UA'",
+        )
+        self.app.apply_login_from_curl()
+        self.app.login_curl_text.delete("1.0", "end")
+
+        # moeimg 登录信息
+        self.app.source_var.set("moeimg.fan")
+        self.app._on_source_changed()
+        self.app.login_curl_text.insert(
+            "1.0",
+            "curl 'https://moeimg.fan/' -b 'mi=2' -H 'User-Agent: MI-UA'",
+        )
+        self.app.apply_login_from_curl()
+
+        hcomic_auth = self.app.config.get_source_auth("hcomic")
+        moeimg_auth = self.app.config.get_source_auth("moeimg")
+        self.assertEqual(hcomic_auth["cookie"], "hc=1")
+        self.assertEqual(hcomic_auth["user_agent"], "HC-UA")
+        self.assertEqual(moeimg_auth["cookie"], "mi=2")
+        self.assertEqual(moeimg_auth["user_agent"], "MI-UA")
+
     def test_initial_load_should_read_saved_auth_config(self):
         with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False, encoding='utf-8') as f:
             config_path = f.name
@@ -117,7 +154,10 @@ class TestLoginImportGUI(unittest.TestCase):
             def _get_config_path(self):
                 return self.test_config_path
 
-        app = LoadConfigGUI()
+        try:
+            app = LoadConfigGUI()
+        except tk.TclError as exc:
+            self.skipTest(f"Tk 不可用: {exc}")
         app.withdraw()
         try:
             self.assertEqual(app.config.auth_cookie, "persisted_cookie=1")

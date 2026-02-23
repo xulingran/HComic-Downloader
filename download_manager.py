@@ -26,6 +26,7 @@ class DownloadManager:
 
         # 线程同步
         self._lock = threading.Lock()
+        self._queue_condition = threading.Condition(self._lock)
         self._stop_event = threading.Event()
 
         # 回调
@@ -42,6 +43,7 @@ class DownloadManager:
             self.queue.append(task_id)
 
         logger.info(f"Added task {task_id}: {comic.title}")
+        self._notify_queue_changed()
         return task_id
 
     def add_tasks(self, comics: List[ComicInfo]) -> List[str]:
@@ -75,25 +77,39 @@ class DownloadManager:
     def stop(self):
         """停止队列处理器"""
         self._stop_event.set()
+        self._notify_queue_changed()
         logger.info("Download manager stop requested")
 
     def _process_queue(self):
         """队列处理主循环（在后台线程运行）"""
         logger.info("Queue processor started")
 
-        while not self._stop_event.is_set():
-            # 检查全局暂停
-            if self.global_pause:
-                time.sleep(0.1)
-                continue
+        while True:
+            should_exit = False
+            task_id = None
+            with self._queue_condition:
+                while True:
+                    if self._stop_event.is_set():
+                        should_exit = True
+                        break
 
-            # 获取下一个任务
-            task_id = self._get_next_task()
-            if not task_id:
-                # 仍有待处理任务（例如全部处于暂停状态）时继续等待
-                if self._has_pending_tasks():
-                    time.sleep(0.1)
-                    continue
+                    if self.global_pause:
+                        self._queue_condition.wait()
+                        continue
+
+                    task_id = self._get_next_task_locked()
+                    if task_id:
+                        break
+
+                    # 仍有待处理任务（例如全部处于暂停状态）时阻塞等待状态变化
+                    if self._has_pending_tasks_locked():
+                        self._queue_condition.wait()
+                        continue
+
+                    should_exit = True
+                    break
+
+            if should_exit:
                 break
 
             self._process_task(task_id)
@@ -107,55 +123,68 @@ class DownloadManager:
     def _get_next_task(self) -> Optional[str]:
         """获取下一个可处理的任务"""
         with self._lock:
-            # 记录本轮扫描中遇到的暂停/失败任务数
-            paused_count = 0
-            failed_count = 0
+            return self._get_next_task_locked()
 
-            while self.queue:
-                task_id = self.queue[0]
-                task = self.tasks.get(task_id)
+    def _get_next_task_locked(self) -> Optional[str]:
+        """获取下一个可处理的任务（调用方需持有 _lock）。"""
+        # 记录本轮扫描中遇到的暂停/失败任务数
+        paused_count = 0
+        failed_count = 0
 
-                if not task:
-                    self.queue.pop(0)
-                    continue
+        while self.queue:
+            task_id = self.queue[0]
+            task = self.tasks.get(task_id)
 
-                # 跳过已完成的任务（取消/完成）- 从队列移除
-                if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED):
-                    self.queue.pop(0)
-                    # 队列长度变化，重置计数器
-                    paused_count = 0
-                    failed_count = 0
-                    continue
+            if not task:
+                self.queue.pop(0)
+                continue
 
-                # 跳过失败的任务 - 保留在队列中供重试
-                if task.status == DownloadStatus.FAILED:
-                    failed_count += 1
-                    self.queue.append(self.queue.pop(0))
-                    # 如果所有任务都是失败状态，退出本轮扫描
-                    if failed_count >= len(self.queue):
-                        return None
-                    continue
+            # 跳过已完成的任务（取消/完成）- 从队列移除
+            if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED):
+                self.queue.pop(0)
+                # 队列长度变化，重置计数器
+                paused_count = 0
+                failed_count = 0
+                continue
 
-                # 跳过暂停的任务，轮转到队列尾部
-                if task.status == DownloadStatus.PAUSED:
-                    paused_count += 1
-                    self.queue.append(self.queue.pop(0))
-                    # 如果所有任务都是暂停状态，退出本轮扫描
-                    if paused_count >= len(self.queue):
-                        return None
-                    continue
+            # 跳过失败的任务 - 保留在队列中供重试
+            if task.status == DownloadStatus.FAILED:
+                failed_count += 1
+                self.queue.append(self.queue.pop(0))
+                # 如果所有任务都是失败状态，退出本轮扫描
+                if failed_count >= len(self.queue):
+                    return None
+                continue
 
-                return task_id
+            # 跳过暂停的任务，轮转到队列尾部
+            if task.status == DownloadStatus.PAUSED:
+                paused_count += 1
+                self.queue.append(self.queue.pop(0))
+                # 如果所有任务都是暂停状态，退出本轮扫描
+                if paused_count >= len(self.queue):
+                    return None
+                continue
 
-            return None
+            return task_id
+
+        return None
 
     def _has_pending_tasks(self) -> bool:
         """检查是否仍有未完成任务（包括暂停中的任务）"""
         with self._lock:
-            return any(
-                task.status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED)
-                for task in self.tasks.values()
-            )
+            return self._has_pending_tasks_locked()
+
+    def _has_pending_tasks_locked(self) -> bool:
+        """检查是否仍有未完成任务（调用方需持有 _lock）。"""
+        return any(
+            task.status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED)
+            for task in self.tasks.values()
+        )
+
+    def _notify_queue_changed(self):
+        """唤醒队列处理线程，响应任务状态变化。"""
+        with self._queue_condition:
+            self._queue_condition.notify_all()
 
     def _process_task(self, task_id: str):
         """处理单个任务（子类可覆盖）"""
@@ -179,6 +208,7 @@ class DownloadManager:
 
     def pause_task(self, task_id: str) -> bool:
         """暂停指定任务"""
+        changed = False
         with self._lock:
             task = self.tasks.get(task_id)
             if not task:
@@ -189,13 +219,15 @@ class DownloadManager:
                 task.status = DownloadStatus.PAUSED
                 self._notify_task_update(task)
                 logger.info(f"Task {task_id} paused")
-                return True
+                changed = True
             elif task.status == DownloadStatus.QUEUED:
                 task.status = DownloadStatus.PAUSED
                 self._notify_task_update(task)
-                return True
+                changed = True
 
-        return False
+        if changed:
+            self._notify_queue_changed()
+        return changed
 
     def resume_task(self, task_id: str) -> bool:
         """继续指定任务"""
@@ -212,11 +244,12 @@ class DownloadManager:
             # 如果处理器未运行，启动它
             if not self.is_running:
                 self.start()
-
-            return True
+        self._notify_queue_changed()
+        return True
 
     def cancel_task(self, task_id: str) -> bool:
         """取消指定任务"""
+        changed = False
         with self._lock:
             task = self.tasks.get(task_id)
             if not task:
@@ -233,7 +266,10 @@ class DownloadManager:
 
             self._notify_task_update(task)
             logger.info(f"Task {task_id} cancelled")
-            return True
+            changed = True
+        if changed:
+            self._notify_queue_changed()
+        return changed
 
     def retry_task(self, task_id: str) -> bool:
         """重试失败的任务
@@ -264,12 +300,14 @@ class DownloadManager:
         # 在锁外启动处理器
         if should_start:
             self.start()
+        self._notify_queue_changed()
 
         return True
 
     def toggle_global_pause(self) -> bool:
         """切换全局暂停状态"""
         self.global_pause = not self.global_pause
+        self._notify_queue_changed()
         logger.info(f"Global pause: {self.global_pause}")
         return self.global_pause
 
@@ -291,6 +329,7 @@ class DownloadManager:
 
     def clear_completed(self):
         """清理已完成/已取消的任务（失败任务保留供重试）"""
+        changed = False
         with self._lock:
             to_remove = [
                 task_id for task_id, task in self.tasks.items()
@@ -303,17 +342,36 @@ class DownloadManager:
                 del self.tasks[task_id]
                 if task_id in self.queue:
                     self.queue.remove(task_id)
+                changed = True
+        if changed:
+            self._notify_queue_changed()
 
 
 class ComicDownloadManager(DownloadManager):
     """漫画下载管理器 - 集成 ComicDownloader"""
 
-    def __init__(self, downloader, cbz_builder, output_dir: str):
+    def __init__(
+        self,
+        downloader,
+        cbz_builder,
+        output_dir: str,
+        prepare_comic: Optional[Callable[[ComicInfo], ComicInfo]] = None,
+    ):
         super().__init__()
         self.downloader = downloader
         self.cbz_builder = cbz_builder
         self.output_dir = output_dir
+        self.prepare_comic = prepare_comic
         self.delay_after = 0  # 批量下载间隔（秒）
+        self.auto_retry_max_attempts = 2  # 自动重试次数（默认2次）
+
+    def set_auto_retry_max_attempts(self, attempts: int):
+        """设置自动重试次数
+
+        Args:
+            attempts: 最大自动重试次数（0-5，0表示禁用）
+        """
+        self.auto_retry_max_attempts = max(0, min(5, attempts))
 
     def set_output_dir(self, output_dir: str):
         """设置输出目录"""
@@ -336,6 +394,11 @@ class ComicDownloadManager(DownloadManager):
 
         temp_dir = None
         try:
+            if self.prepare_comic:
+                prepared = self.prepare_comic(task.comic)
+                if prepared is not None:
+                    task.comic = prepared
+
             # 下载图片（支持断点续传）
             def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
                 task.progress_current = current
@@ -380,20 +443,30 @@ class ComicDownloadManager(DownloadManager):
                 task.status = DownloadStatus.COMPLETED
                 logger.info(f"Task {task_id} completed: {output_path}")
             else:
-                # 下载失败，更新失败信息
-                task.status = DownloadStatus.FAILED
+                # 下载失败，检查是否可自动重试
                 task.failed_pages = result.failed_pages
                 task.completed_pages = result.completed_pages
                 task.last_failed_at = time.time()
                 task.error_message = result.error_message or "下载失败"
-                logger.error(f"Task {task_id} failed: {task.error_message}")
-                # 失败时不清理临时目录，保留已下载的图片用于重试
+
+                # 自动重试逻辑
+                if task.retry_count < self.auto_retry_max_attempts:
+                    task.retry_count += 1
+                    task.status = DownloadStatus.QUEUED
+                    task.temp_dir = temp_dir  # 保留临时目录用于断点续传
+                    logger.warning(
+                        f"Task {task_id} failed, auto-retrying ({task.retry_count}/{self.auto_retry_max_attempts}): {task.error_message}"
+                    )
+                    self._notify_queue_changed()
+                else:
+                    task.status = DownloadStatus.FAILED
+                    logger.error(f"Task {task_id} failed after {task.retry_count} retries: {task.error_message}")
+                    # 失败时不清理临时目录，保留已下载的图片用于手动重试
 
         except Exception as e:
             logger.error(f"Task {task_id} failed: {e}")
             # 如果任务已被取消，保留 CANCELLED 状态，不要覆盖为 FAILED
             if task.status != DownloadStatus.CANCELLED:
-                task.status = DownloadStatus.FAILED
                 task.error_message = str(e)
                 task.last_failed_at = time.time()
                 # 对于非下载相关的异常（如 CBZ 打包失败），
@@ -419,7 +492,20 @@ class ComicDownloadManager(DownloadManager):
                             task.failed_pages = sorted(all_pages - set(task.completed_pages))
                     except Exception as scan_error:
                         logger.warning(f"Failed to scan temp dir for progress: {scan_error}")
-                # 失败时不清理临时目录，保留已下载的图片
+
+                # 自动重试逻辑
+                if task.retry_count < self.auto_retry_max_attempts:
+                    task.retry_count += 1
+                    task.status = DownloadStatus.QUEUED
+                    task.temp_dir = temp_dir  # 保留临时目录用于断点续传
+                    logger.warning(
+                        f"Task {task_id} failed with exception, auto-retrying ({task.retry_count}/{self.auto_retry_max_attempts}): {task.error_message}"
+                    )
+                    self._notify_queue_changed()
+                else:
+                    task.status = DownloadStatus.FAILED
+                    logger.error(f"Task {task_id} failed after {task.retry_count} retries: {task.error_message}")
+                    # 失败时不清理临时目录，保留已下载的图片用于手动重试
 
             # 如果任务被取消，清理临时目录
             if task.status == DownloadStatus.CANCELLED and temp_dir and os.path.exists(temp_dir):

@@ -19,6 +19,8 @@ class ComicInfo:
         preview_url: 详情页 URL
         media_id: 媒体 ID (用于图片 URL)
         comic_source: 图源 (MMCG_SHORT, MMCG_LONG, NH)
+        source_site: 来源站点标识 (hcomic/moeimg)
+        image_urls: 直接可下载的图片链接列表（可选，优先于 media_id 规则）
     """
     id: str = ""
     title: str = ""
@@ -31,6 +33,8 @@ class ComicInfo:
     preview_url: str = ""
     media_id: str = ""
     comic_source: str = ""
+    source_site: str = "hcomic"
+    image_urls: List[str] = field(default_factory=list)
 
     @property
     def safe_title(self) -> str:
@@ -62,17 +66,23 @@ class ComicInfo:
 
     def get_all_image_urls(self) -> List[str]:
         """获取所有页面的图片 URL"""
+        if self.image_urls:
+            return list(self.image_urls)
         return [self.get_image_url(page) for page in range(1, self.pages + 1)]
 
     def __hash__(self) -> int:
         """使 ComicInfo 可哈希，用于存储在 set 中"""
-        return hash((self.id, self.comic_source))
+        return hash((self.source_site, self.id, self.comic_source))
 
     def __eq__(self, other) -> bool:
         """比较两个 ComicInfo 是否相等"""
         if not isinstance(other, ComicInfo):
             return False
-        return self.id == other.id and self.comic_source == other.comic_source
+        return (
+            self.source_site == other.source_site
+            and self.id == other.id
+            and self.comic_source == other.comic_source
+        )
 
 
 @dataclass
@@ -149,7 +159,7 @@ class DownloadTask:
     @property
     def task_id(self) -> str:
         """生成唯一任务 ID"""
-        return f"{self.comic.comic_source}_{self.comic.id}"
+        return f"{self.comic.source_site}_{self.comic.comic_source}_{self.comic.id}"
 
     @property
     def progress_percentage(self) -> float:

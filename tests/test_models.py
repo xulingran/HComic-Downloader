@@ -10,6 +10,8 @@ class TestComicInfo:
         assert comic.title == ""
         assert comic.pages == 0
         assert comic.tags == []
+        assert comic.source_site == "hcomic"
+        assert comic.image_urls == []
 
     def test_safe_title_property(self):
         comic = ComicInfo(title="正常标题")
@@ -45,6 +47,17 @@ class TestComicInfo:
         assert urls[0] == "https://h-comic.link/api/mms/abcde/pages/1"
         assert urls[2] == "https://h-comic.link/api/mms/abcde/pages/3"
 
+    def test_get_all_image_urls_prefers_explicit_urls(self):
+        comic = ComicInfo(
+            id="12345",
+            media_id="abcde",
+            comic_source="MMCG_SHORT",
+            pages=3,
+            image_urls=["https://example.com/1.webp", "https://example.com/2.webp"],
+        )
+        urls = comic.get_all_image_urls()
+        assert urls == ["https://example.com/1.webp", "https://example.com/2.webp"]
+
     def test_hashable_and_equality(self):
         comic1 = ComicInfo(id="1", comic_source="MMCG_SHORT")
         comic2 = ComicInfo(id="1", comic_source="MMCG_SHORT")
@@ -54,6 +67,12 @@ class TestComicInfo:
         assert comic1 != comic3
         assert hash(comic1) == hash(comic2)
         assert len({comic1, comic2, comic3}) == 2
+
+    def test_hashable_and_equality_include_source_site(self):
+        comic1 = ComicInfo(id="1", comic_source="MMCG_SHORT", source_site="hcomic")
+        comic2 = ComicInfo(id="1", comic_source="MMCG_SHORT", source_site="moeimg")
+        assert comic1 != comic2
+        assert len({comic1, comic2}) == 2
 
 
 class TestPaginationInfo:

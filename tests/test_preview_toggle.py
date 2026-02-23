@@ -33,7 +33,10 @@ class TestPreviewToggleGUI(unittest.TestCase):
                 return self.test_config_path
 
         # 创建 GUI 实例（HComicDownloaderGUI 继承自 tk.Tk，会自己创建窗口）
-        app = TestGUI()
+        try:
+            app = TestGUI()
+        except tk.TclError as exc:
+            self.skipTest(f"Tk 不可用: {exc}")
         app.withdraw()  # 隐藏窗口
         app.test_config_path = self.config_path
 
@@ -155,7 +158,7 @@ class TestPreviewToggleGUI(unittest.TestCase):
                 "配置文件名应为 config.json"
             )
             self.assertTrue(
-                '.hcomic_downloader' in config_path or config_path.startswith('/'),
+                '.hcomic_downloader' in config_path or os.path.isabs(config_path),
                 "配置路径应包含目录或为绝对路径"
             )
         finally:
@@ -205,9 +208,44 @@ class TestPreviewToggleGUI(unittest.TestCase):
 
             app._mark_scroll_idle()
 
-            label.config.assert_called_once_with(image=photo)
+            label.config.assert_called_once_with(image=photo, text="", cursor="")
             self.assertIs(label.image, photo)
             self.assertFalse(app._pending_image_updates)
+        finally:
+            app.destroy()
+
+    def test_load_cover_failure_shows_retry_icon(self):
+        """封面加载失败时应显示重试图标"""
+        app = self._create_test_gui()
+        try:
+            app.cover_load_generation = 5
+            label = tk.Label(app.scrollable_frame)
+            label.grid(row=999, column=0)
+            app.parser.session.get = MagicMock(side_effect=RuntimeError("cover failed"))
+
+            app.load_cover("https://example.com/cover.jpg", label, card_width=180, generation=5)
+            app.update()
+
+            self.assertIn("重试", label.cget("text"))
+            self.assertEqual(label.cget("cursor"), "hand2")
+        finally:
+            app.destroy()
+
+    def test_retry_cover_load_reschedules_download(self):
+        """点击失败图标后应重新调度封面下载"""
+        app = self._create_test_gui()
+        try:
+            label = tk.Label(app.scrollable_frame)
+            label.grid(row=999, column=0)
+            label._cover_url = "https://example.com/cover.jpg"
+            label._cover_card_width = 170
+            app._schedule_cover_load = MagicMock()
+
+            result = app._retry_cover_load(None, label)
+
+            app._schedule_cover_load.assert_called_once_with("https://example.com/cover.jpg", label, 170)
+            self.assertEqual(result, "break")
+            self.assertEqual(label.cget("text"), "加载中...")
         finally:
             app.destroy()
 
@@ -250,7 +288,10 @@ class TestPreviewCardRendering(unittest.TestCase):
             def _get_config_path(self):
                 return self.test_config_path
 
-        app = TestGUI()
+        try:
+            app = TestGUI()
+        except tk.TclError as exc:
+            self.skipTest(f"Tk 不可用: {exc}")
         app.withdraw()  # 隐藏窗口
         app.test_config_path = self.config_path
         return app

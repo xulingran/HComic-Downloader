@@ -134,9 +134,10 @@ def test_get_stats():
     dm.add_tasks(comics)
 
     # 修改状态
-    dm.tasks["_1"].status = DownloadStatus.DOWNLOADING
-    dm.tasks["_2"].status = DownloadStatus.PAUSED
-    dm.tasks["_3"].status = DownloadStatus.COMPLETED
+    task_id_map = {task.comic.id: task_id for task_id, task in dm.tasks.items()}
+    dm.tasks[task_id_map["1"]].status = DownloadStatus.DOWNLOADING
+    dm.tasks[task_id_map["2"]].status = DownloadStatus.PAUSED
+    dm.tasks[task_id_map["3"]].status = DownloadStatus.COMPLETED
 
     stats = dm.get_stats()
 
@@ -214,12 +215,15 @@ class _FakeDownloader:
 
 
 class _FakeCBZBuilder:
-    def build_cbz(self, temp_dir, comic):
+    def build_cbz(self, temp_dir, comic, output_path=None):
         os.makedirs(temp_dir, exist_ok=True)
-        output_path = os.path.join(temp_dir, f"{comic.id}.cbz")
+        output_path = output_path or os.path.join(temp_dir, f"{comic.id}.cbz")
         with open(output_path, "wb") as f:
             f.write(b"")
         return output_path
+
+    def get_output_path(self, comic, output_dir):
+        return os.path.join(output_dir, f"{comic.id}.cbz")
 
 
 def test_pause_downloading_task_keeps_paused_state(tmp_path):
@@ -248,3 +252,24 @@ def test_pause_downloading_task_keeps_paused_state(tmp_path):
     while dm.is_running and time.time() < deadline:
         time.sleep(0.01)
     assert dm.is_running is False
+
+
+def test_prepare_comic_hook_called_before_download(tmp_path):
+    prepared = []
+
+    def prepare_comic(comic):
+        prepared.append(comic.id)
+        comic.pages = 3
+        return comic
+
+    dm = ComicDownloadManager(
+        downloader=_FakeDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+        prepare_comic=prepare_comic,
+    )
+    task_id = dm.add_task(ComicInfo(id="hook", title="Need Prepare", pages=0))
+    dm._process_task(task_id)
+
+    assert prepared == ["hook"]
+    assert dm.tasks[task_id].comic.pages == 3
