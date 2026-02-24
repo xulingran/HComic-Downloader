@@ -87,6 +87,8 @@ class HComicDownloaderGUI(tk.Tk):
         self.theme_manager.set_mode(theme_mode)
         # 初始化 ttk 样式（用于主题切换）
         self.style = ttk.Style()
+        # 记录启动时系统默认 ttk 主题，浅色模式时回退到该主题
+        self._default_ttk_theme = self.style.theme_use()
         self._configure_ttk_styles()
         # 注册主题变化回调
         self.theme_manager.register_callback(self._on_theme_change_refresh)
@@ -198,6 +200,8 @@ class HComicDownloaderGUI(tk.Tk):
 
         # 创建界面
         self.create_widgets()
+        # 启动时主动应用一次主题，确保 tk 组件（如 ScrolledText/根 Frame）配色正确
+        self._on_theme_change_refresh()
 
         # 同步来源选择器到当前来源
         if hasattr(self, "source_var"):
@@ -1026,6 +1030,21 @@ class HComicDownloaderGUI(tk.Tk):
     def _configure_ttk_styles(self):
         """配置 ttk 组件样式以支持主题切换"""
         theme = self.theme_manager
+
+        # 先切换基础 ttk 主题，再配置自定义样式，避免 theme_use 重置已有样式。
+        if theme.current_theme == "dark":
+            target_ttk_theme = "clam"
+        else:
+            target_ttk_theme = getattr(self, "_default_ttk_theme", "default")
+        try:
+            if self.style.theme_use() != target_ttk_theme:
+                self.style.theme_use(target_ttk_theme)
+        except tk.TclError:
+            logger.warning(f"切换 ttk 主题失败: {target_ttk_theme}")
+
+        # 浅色主题每次都重新读取系统原生背景，避免启动快照在后续主题切换后失效。
+        self._sync_light_background_from_native_theme()
+
         bg_color = theme.get_color("background")
         card_bg = theme.get_color("card_bg")
         text_color = theme.get_color("text")
@@ -1051,17 +1070,104 @@ class HComicDownloaderGUI(tk.Tk):
         self.style.configure("TLabel", background=bg_color, foreground=text_color)
         self.style.configure("Secondary.TLabel", background=bg_color, foreground=text_secondary)
 
+        # Entry 样式
+        self.style.configure(
+            "TEntry",
+            fieldbackground=card_bg,
+            background=card_bg,
+            foreground=text_color,
+            insertcolor=theme.get_color("insert"),
+        )
+
+        # Combobox 样式 - 基础样式
+        self.style.configure(
+            "TCombobox",
+            fieldbackground=card_bg,
+            background=card_bg,
+            foreground=text_color,
+            selectbackground=theme.get_color("accent"),
+            selectforeground="white",
+        )
+        self.style.map(
+            "TCombobox",
+            fieldbackground=[("readonly", card_bg), ("active", card_bg), ("disabled", card_bg)],
+            selectbackground=[("readonly", theme.get_color("accent"))],
+            selectforeground=[("readonly", "white")],
+            foreground=[("readonly", text_color)],
+        )
+        # Spinbox 样式
+        self.style.configure(
+            "TSpinbox",
+            fieldbackground=card_bg,
+            background=bg_color,
+            foreground=text_color,
+            insertcolor=theme.get_color("insert"),
+        )
+
+        # Button 样式
+        self.style.configure(
+            "TButton",
+            background=card_bg,
+            foreground=text_color,
+        )
+
+        # Checkbutton 样式
+        self.style.configure(
+            "TCheckbutton",
+            background=bg_color,
+            foreground=text_color,
+        )
+        self.style.map("TCheckbutton", background=[("active", bg_color)])
+
+        # Progressbar 样式 - 水平进度条
+        self.style.configure(
+            "Horizontal.TProgressbar",
+            background=theme.get_color("accent"),
+            troughcolor=card_bg,
+            bordercolor=card_bg,
+            lightcolor=theme.get_color("accent"),
+            darkcolor=theme.get_color("accent"),
+        )
+
+        # Labelframe 样式
+        self.style.configure("TLabelframe", background=bg_color)
+        self.style.configure("TLabelframe.Label", background=bg_color, foreground=text_color)
+
         # 更新根窗口背景
         self.configure(bg=bg_color)
+
+    def _sync_light_background_from_native_theme(self):
+        """在浅色主题下将系统原生背景同步到 light 配色。"""
+        if self.theme_manager.current_theme != "light":
+            return
+
+        candidates = (
+            self.style.lookup("TFrame", "background"),
+            self.style.lookup(".", "background"),
+            self.cget("bg"),
+        )
+
+        for raw_color in candidates:
+            if not raw_color:
+                continue
+            try:
+                rgb = self.winfo_rgb(raw_color)
+            except tk.TclError:
+                continue
+
+            native_bg = "#{:02x}{:02x}{:02x}".format(rgb[0] >> 8, rgb[1] >> 8, rgb[2] >> 8)
+            self.theme_manager.set_light_background(native_bg)
+            return
 
     def _on_theme_change_refresh(self):
         """主题变化时刷新界面"""
         # 更新 ttk 样式
         self._configure_ttk_styles()
+        bg_color = self.theme_manager.get_color("background")
 
         # 更新 canvas 背景色
         if hasattr(self, 'canvas'):
-            self.canvas.config(bg=self.theme_manager.get_color("background"))
+            self.canvas.config(bg=bg_color)
 
         # 更新卡片颜色
         for frame in self.result_frames:
@@ -1073,6 +1179,14 @@ class HComicDownloaderGUI(tk.Tk):
         # 更新下载管理器 UI 主题
         if hasattr(self, 'download_manager_ui'):
             self.download_manager_ui.refresh_theme()
+
+        # 更新设置面板主题
+        if hasattr(self, 'settings_panel'):
+            self.settings_panel.refresh_theme()
+
+        # 更新状态栏主题
+        if hasattr(self, 'status_bar'):
+            self.status_bar.refresh_theme()
 
     def _update_card_colors(self, frame: tk.Frame):
         """更新卡片主题相关颜色（仅处理 tk 子组件，ttk 组件由 style 控制）"""

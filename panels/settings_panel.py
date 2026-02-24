@@ -140,3 +140,25 @@ class SettingsPanel(tk.Frame):
                 fonts.append(font)
         fonts.extend(sorted([f for f in available if f not in preferred]))
         return fonts
+
+    def refresh_theme(self):
+        """应用当前主题颜色到面板内的 tk 组件"""
+        from theme_manager import ThemeManager
+
+        theme = ThemeManager.get_instance()
+        bg_color = theme.get_color("background")
+        card_bg = theme.get_color("card_bg")
+        text_color = theme.get_color("text")
+        insert_color = theme.get_color("insert")
+
+        # SettingsPanel 根组件是 tk.Frame，需要手动刷新背景
+        self.config(bg=bg_color)
+
+        # 更新 ScrolledText (登录 curl 输入框)
+        self.login_curl_text.config(
+            bg=card_bg,
+            fg=text_color,
+            insertbackground=insert_color,
+            selectbackground=theme.get_color("accent"),
+            selectforeground="white",
+        )

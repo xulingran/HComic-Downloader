@@ -1,6 +1,7 @@
 """主题管理器 - 支持自动/浅色/深色三种模式"""
 import logging
 import platform
+import re
 import subprocess
 import threading
 from enum import Enum
@@ -81,6 +82,13 @@ class ThemeManager:
     def mode(self) -> ThemeMode:
         """获取主题模式"""
         return self._mode
+
+    def set_light_background(self, color: str):
+        """设置浅色主题的背景色（用于匹配系统原生背景）"""
+        if not isinstance(color, str) or not re.fullmatch(r"#[0-9a-fA-F]{6}", color):
+            logger.warning(f"无效浅色背景值，忽略设置: {color!r}")
+            return
+        self._COLORS["light"]["background"] = color
 
     def get_color(self, key: str) -> str:
         """获取当前主题下的颜色值

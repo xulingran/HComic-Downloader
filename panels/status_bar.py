@@ -6,12 +6,15 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional
 
+from theme_manager import ThemeManager
+
 
 class StatusBar(tk.Frame):
     """状态栏 + 进度条。"""
 
     def __init__(self, parent: tk.Widget, on_toggle_download_panel: Optional[Callable[[], None]] = None):
         super().__init__(parent)
+        self.theme_manager = ThemeManager.get_instance()
         self.columnconfigure(0, weight=1)
 
         self.status_var = tk.StringVar(value="就绪")
@@ -44,3 +47,11 @@ class StatusBar(tk.Frame):
     def update_login_status(self, logged_in: bool, source: str):
         status = "已登录" if logged_in else "未登录"
         self.update_message(f"来源 {source}: {status}")
+
+    def refresh_theme(self):
+        """应用主题颜色到状态栏"""
+        bg_color = self.theme_manager.get_color("background")
+        # 更新 Frame 背景
+        self.config(bg=bg_color)
+        # 更新进度条样式
+        self.progress_bar.config(style="Horizontal.TProgressbar")
