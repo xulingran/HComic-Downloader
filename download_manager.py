@@ -342,6 +342,7 @@ class ComicDownloadManager(DownloadManager):
         cbz_builder,
         output_dir: str,
         prepare_comic: Optional[Callable[[ComicInfo], ComicInfo]] = None,
+        output_format: str = "cbz",
     ):
         super().__init__()
         self.downloader = downloader
@@ -350,6 +351,7 @@ class ComicDownloadManager(DownloadManager):
         self.prepare_comic = prepare_comic
         self.delay_after = 0  # 批量下载间隔（秒）
         self.auto_retry_max_attempts = 2  # 自动重试次数（默认2次）
+        self.output_format = output_format  # 输出格式: folder | zip | cbz
 
     def set_auto_retry_max_attempts(self, attempts: int):
         """设置自动重试次数
@@ -366,6 +368,37 @@ class ComicDownloadManager(DownloadManager):
     def set_delay_after(self, delay: int):
         """设置批量下载间隔（秒）"""
         self.delay_after = delay
+
+    def set_output_format(self, output_format: str):
+        """设置输出格式
+
+        Args:
+            output_format: 输出格式 ("folder" | "zip" | "cbz")
+        """
+        if output_format in ("folder", "zip", "cbz"):
+            self.output_format = output_format
+            logger.info(f"Output format set to: {output_format}")
+
+    def _process_output_by_format(self, temp_dir: str, comic) -> str:
+        """根据输出格式处理下载内容
+
+        Args:
+            temp_dir: 临时图片目录
+            comic: 漫画信息
+
+        Returns:
+            输出路径
+        """
+        if self.output_format == "folder":
+            # 保存为普通文件夹（移动临时目录）
+            return self.cbz_builder.save_as_folder(temp_dir, comic, self.output_dir)
+        elif self.output_format == "zip":
+            # 打包为 ZIP
+            return self.cbz_builder.build_zip(temp_dir, comic, self.output_dir)
+        else:  # cbz (默认)
+            # 打包为 CBZ
+            output_path = self.cbz_builder.get_output_path_for_format(comic, "cbz", self.output_dir)
+            return self.cbz_builder.build_cbz(temp_dir, comic)
 
     def _process_task(self, task_id: str):
         """处理单个下载任务"""
@@ -420,13 +453,12 @@ class ComicDownloadManager(DownloadManager):
             self._notify_task_update(task)
 
             if result.success:
-                # 下载成功，打包为 CBZ
-                # 使用 download_manager 的 output_dir 而非配置文件中的目录
-                output_path = self.cbz_builder.get_output_path(task.comic, self.output_dir)
-                output_path = self.cbz_builder.build_cbz(temp_dir, task.comic, output_path)
+                # 下载成功，根据输出格式处理
+                output_path = self._process_output_by_format(temp_dir, task.comic)
 
-                # 清理临时目录（成功时清理）
-                self.downloader.cleanup_temp_dir(temp_dir)
+                # 清理临时目录（文件夹模式已移动，其他模式需要清理）
+                if self.output_format != "folder":
+                    self.downloader.cleanup_temp_dir(temp_dir)
                 task.temp_dir = None
 
                 task.status = DownloadStatus.COMPLETED

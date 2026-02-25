@@ -35,6 +35,7 @@ class SettingsPanel(tk.Frame):
         self.font_var = tk.StringVar(value=config.font_name or "自动检测")
         self.font_size_var = tk.IntVar(value=config.font_size)
         self.theme_mode_var = tk.StringVar(value={"auto": "自动", "light": "浅色", "dark": "深色"}.get(config.theme_mode, "自动"))
+        self.output_format_var = tk.StringVar(value={"cbz": "CBZ格式", "zip": "ZIP格式", "folder": "文件夹"}.get(config.output_format, "CBZ格式"))
         self.show_preview_var = tk.BooleanVar(value=bool(config.show_preview))
         self.login_status_var = tk.StringVar(value="未配置登录信息")
         self.proxy_status_var = tk.StringVar(value="未检测")
@@ -84,6 +85,11 @@ class SettingsPanel(tk.Frame):
         theme_combo.grid(row=1, column=6, pady=(5, 0), sticky=tk.W)
         theme_combo.bind("<<ComboboxSelected>>", self._on_theme_changed)
 
+        ttk.Label(self.settings_frame, text="输出格式:").grid(row=1, column=7, padx=(20, 5), pady=(5, 0))
+        output_format_combo = ttk.Combobox(self.settings_frame, textvariable=self.output_format_var, values=["CBZ格式", "ZIP格式", "文件夹"], state="readonly", width=10)
+        output_format_combo.grid(row=1, column=8, pady=(5, 0), sticky=tk.W)
+        output_format_combo.bind("<<ComboboxSelected>>", self._on_output_format_changed)
+
         ttk.Checkbutton(self.settings_frame, text="显示预览图", variable=self.show_preview_var, command=self._on_preview_changed).grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(5, 0))
 
         ttk.Label(self.settings_frame, text="登录 curl:").grid(row=3, column=0, sticky=tk.NW, pady=(8, 0))
@@ -120,6 +126,9 @@ class SettingsPanel(tk.Frame):
         mode = {"自动": "auto", "浅色": "light", "深色": "dark"}.get(display, "auto")
         self.on_theme_change(mode)
 
+    def _on_output_format_changed(self, event=None):
+        self._save_all_settings()
+
     def _save_all_settings(self):
         self.config_obj.download_dir = self.download_dir_var.get()
         self.config_obj.concurrent_downloads = int(self.concurrent_var.get())
@@ -129,6 +138,7 @@ class SettingsPanel(tk.Frame):
         self.config_obj.font_size = int(self.font_size_var.get())
         self.config_obj.show_preview = bool(self.show_preview_var.get())
         self.config_obj.theme_mode = {"自动": "auto", "浅色": "light", "深色": "dark"}.get(self.theme_mode_var.get(), "auto")
+        self.config_obj.output_format = {"CBZ格式": "cbz", "ZIP格式": "zip", "文件夹": "folder"}.get(self.output_format_var.get(), "cbz")
         self.on_config_change(self.config_obj)
 
     def _get_font_list(self):

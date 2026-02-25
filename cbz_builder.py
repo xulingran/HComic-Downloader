@@ -2,6 +2,7 @@
 import logging
 import os
 import re
+import shutil
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -46,7 +47,9 @@ class CBZBuilder:
             output_path = self._generate_output_path(comic)
 
         # 确保输出目录存在
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        output_dir = os.path.dirname(output_path)
+        if output_dir:
+            os.makedirs(output_dir, exist_ok=True)
 
         # 收集图片文件
         image_files = self._collect_image_files(image_dir)
@@ -217,6 +220,168 @@ class CBZBuilder:
         # 按文件名排序
         image_files.sort()
         return image_files
+
+    def build_zip(
+        self,
+        image_dir: str,
+        comic: ComicInfo,
+        output_path: Optional[str] = None,
+    ) -> str:
+        """创建 ZIP 文件（不含 ComicInfo.xml）
+
+        Args:
+            image_dir: 图片目录
+            comic: 漫画信息
+            output_path: 输出路径（可选，默认使用模板生成）
+
+        Returns:
+            ZIP 文件路径
+        """
+        # 确定输出路径
+        if output_path is None:
+            output_path = self._generate_output_path_for_format(comic, "zip")
+
+        # 确保输出目录存在
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+
+        # 收集图片文件
+        image_files = self._collect_image_files(image_dir)
+        if not image_files:
+            raise ValueError(f"No images found in {image_dir}")
+
+        logger.info(f"Building ZIP: {output_path}")
+
+        # 创建 ZIP 文件
+        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for i, img_path in enumerate(image_files, 1):
+                arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
+                zf.write(img_path, arcname)
+                logger.debug(f"Added: {arcname}")
+
+        logger.info(f"ZIP created: {output_path}")
+        return output_path
+
+    def save_as_folder(
+        self,
+        image_dir: str,
+        comic: ComicInfo,
+        output_dir: Optional[str] = None,
+    ) -> str:
+        """保存为普通文件夹（移动并重命名临时目录）
+
+        Args:
+            image_dir: 图片临时目录
+            comic: 漫画信息
+            output_dir: 输出目录（可选，默认使用配置中的目录）
+
+        Returns:
+            文件夹路径
+        """
+        # 确定输出路径
+        folder_name = self._generate_folder_name(comic)
+
+        # 优先使用传入的目录，否则使用配置中的目录
+        if output_dir is None:
+            if self._config:
+                output_dir = self._config.download_dir
+            else:
+                from config import Config
+                output_dir = Config.load().download_dir
+
+        output_path = os.path.join(output_dir, folder_name)
+
+        # 确保输出目录存在
+        os.makedirs(output_dir, exist_ok=True)
+
+        # 如果目标文件夹已存在，先删除（覆盖）
+        if os.path.exists(output_path):
+            logger.warning(f"Target folder exists, removing: {output_path}")
+            shutil.rmtree(output_path)
+
+        # 移动临时目录到目标位置
+        logger.info(f"Moving folder: {image_dir} -> {output_path}")
+        shutil.move(image_dir, output_path)
+
+        logger.info(f"Folder saved: {output_path}")
+        return output_path
+
+    def _generate_output_path_for_format(
+        self,
+        comic: ComicInfo,
+        format_type: str,
+        download_dir: str = None,
+    ) -> str:
+        """根据格式生成输出路径
+
+        Args:
+            comic: 漫画信息
+            format_type: 格式类型 ("cbz" | "zip")
+            download_dir: 下载目录（可选）
+
+        Returns:
+            输出文件路径
+        """
+        ext = ".cbz" if format_type == "cbz" else ".zip"
+        filename = self._generate_folder_name(comic) + ext
+
+        # 优先使用传入的目录，否则使用配置中的目录
+        if download_dir is None:
+            if self._config:
+                download_dir = self._config.download_dir
+            else:
+                from config import Config
+                download_dir = Config.load().download_dir
+
+        return os.path.join(download_dir, filename)
+
+    def _generate_folder_name(self, comic: ComicInfo) -> str:
+        """生成文件夹名称
+
+        Args:
+            comic: 漫画信息
+
+        Returns:
+            文件夹名称
+        """
+        # 使用与 CBZ 模板类似的命名，但去掉扩展名
+        folder_name = f"{comic.safe_author}-{comic.safe_title}"
+        # 清理非法字符
+        folder_name = re.sub(r'[<>"/\\|?*]', '_', folder_name)
+        folder_name = folder_name.strip('. ')
+        if not folder_name:
+            folder_name = f"comic_{comic.id}"
+        return folder_name
+
+    def get_output_path_for_format(
+        self,
+        comic: ComicInfo,
+        output_format: str,
+        download_dir: str = None,
+    ) -> str:
+        """获取漫画的输出路径（不创建文件/文件夹）
+
+        Args:
+            comic: 漫画信息
+            output_format: 输出格式 ("folder" | "zip" | "cbz")
+            download_dir: 下载目录（可选，默认使用配置中的目录）
+
+        Returns:
+            输出路径
+        """
+        if output_format == "folder":
+            # 优先使用传入的目录，否则使用配置中的目录
+            if download_dir is None:
+                if self._config:
+                    download_dir = self._config.download_dir
+                else:
+                    from config import Config
+                    download_dir = Config.load().download_dir
+            folder_name = self._generate_folder_name(comic)
+            return os.path.join(download_dir, folder_name)
+        elif output_format == "zip":
+            return self._generate_output_path_for_format(comic, "zip", download_dir)
+        else:  # cbz
+            return self._generate_output_path(comic, download_dir)
 
 
 def build_cbz_simple(

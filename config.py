@@ -12,6 +12,8 @@ class Config:
     timeout: int = 30
     retry_times: int = 3
     cbz_filename_template: str = "{author}-{title}.cbz"
+    # 输出格式: folder | zip | cbz
+    output_format: str = "cbz"
     # 字体配置（空字符串表示自动检测）
     font_name: str = ""  # 留空则自动选择最佳中文字体
     font_size: int = 12  # 基础字体大小
@@ -37,6 +39,9 @@ class Config:
         self.source_auth = self._normalize_source_auth(self.source_auth)
         if self.default_source not in ("hcomic", "moeimg"):
             self.default_source = "hcomic"
+        # 验证输出格式
+        if self.output_format not in ("folder", "zip", "cbz"):
+            self.output_format = "cbz"
         hcomic_auth = self.get_source_auth("hcomic")
         if (
             not hcomic_auth.get("cookie")
@@ -127,6 +132,7 @@ class Config:
                 'timeout': self.timeout,
                 'retry_times': self.retry_times,
                 'cbz_filename_template': self.cbz_filename_template,
+                'output_format': self.output_format,
                 'font_name': self.font_name,
                 'font_size': self.font_size,
                 'show_preview': self.show_preview,

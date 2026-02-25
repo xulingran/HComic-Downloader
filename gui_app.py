@@ -540,6 +540,7 @@ class HComicDownloaderGUI(tk.Tk):
         self.font_var = self.settings_panel.font_var
         self.font_size_var = self.settings_panel.font_size_var
         self.theme_mode_var = self.settings_panel.theme_mode_var
+        self.output_format_var = self.settings_panel.output_format_var
         self.show_preview_var = self.settings_panel.show_preview_var
         self.login_curl_text = self.settings_panel.login_curl_text
         self.apply_login_btn = self.settings_panel.apply_login_btn
@@ -1739,9 +1740,10 @@ class HComicDownloaderGUI(tk.Tk):
 
         # 使用 GUI 当前显示的目录，而非配置文件中的目录
         current_dir = self.download_dir_var.get()
+        output_format = self.config.output_format
 
         for i, comic in enumerate(comics):
-            output_path = self.cbz_builder.get_output_path(comic, current_dir)
+            output_path = self.cbz_builder.get_output_path_for_format(comic, output_format, current_dir)
             filename = os.path.basename(output_path)
 
             if os.path.exists(output_path):
@@ -1814,8 +1816,9 @@ class HComicDownloaderGUI(tk.Tk):
             if skip_count > 0:
                 self.update_status(f"已跳过 {skip_count} 个同名文件")
 
-        # 更新输出目录和批量下载间隔
+        # 更新输出目录、输出格式和批量下载间隔
         self.download_manager.set_output_dir(self.download_dir_var.get())
+        self.download_manager.set_output_format(self.config.output_format)
         self.download_manager.set_delay_after(self._get_batch_delay_seconds())
 
         # 添加任务到队列
@@ -2653,7 +2656,8 @@ class HComicDownloaderGUI(tk.Tk):
 
         # 检测文件冲突
         current_dir = self.download_dir_var.get()
-        target_output_path = self.cbz_builder.get_output_path(comic_to_download, current_dir)
+        output_format = self.config.output_format
+        target_output_path = self.cbz_builder.get_output_path_for_format(comic_to_download, output_format, current_dir)
 
         if os.path.exists(target_output_path):
             filename = os.path.basename(target_output_path)
@@ -2665,9 +2669,10 @@ class HComicDownloaderGUI(tk.Tk):
                 return
 
         # 确认下载
+        format_display = {"folder": "文件夹", "zip": "ZIP格式", "cbz": "CBZ格式"}.get(output_format, "CBZ格式")
         if not messagebox.askyesno(
             "确认下载",
-            f"是否下载:\n{comic_to_download.title}\n\n作者: {comic_to_download.author or '未知'}\n页数: {comic_to_download.pages}",
+            f"是否下载:\n{comic_to_download.title}\n\n作者: {comic_to_download.author or '未知'}\n页数: {comic_to_download.pages}\n\n输出格式: {format_display}",
         ):
             self.update_status("已取消下载")
             return
@@ -2689,17 +2694,21 @@ class HComicDownloaderGUI(tk.Tk):
                     progress_callback=self._progress_callback,
                 )
 
-                self.after(0, lambda: self.update_status("正在打包 CBZ..."))
-
-                # 打包为 CBZ，传递明确的输出路径
-                output_path = self.cbz_builder.build_cbz(
-                    temp_dir,
-                    comic_to_download,
-                    target_output_path,
-                )
-
-                # 清理临时目录
-                self.downloader.cleanup_temp_dir(temp_dir)
+                # 根据输出格式处理
+                if output_format == "folder":
+                    self.after(0, lambda: self.update_status("正在保存文件夹..."))
+                    output_path = self.cbz_builder.save_as_folder(temp_dir, comic_to_download, current_dir)
+                    # 文件夹模式已移动临时目录，无需清理
+                elif output_format == "zip":
+                    self.after(0, lambda: self.update_status("正在打包 ZIP..."))
+                    output_path = self.cbz_builder.build_zip(temp_dir, comic_to_download, current_dir)
+                    # 清理临时目录
+                    self.downloader.cleanup_temp_dir(temp_dir)
+                else:  # cbz (默认)
+                    self.after(0, lambda: self.update_status("正在打包 CBZ..."))
+                    output_path = self.cbz_builder.build_cbz(temp_dir, comic_to_download, current_dir)
+                    # 清理临时目录
+                    self.downloader.cleanup_temp_dir(temp_dir)
 
                 self.after(0, lambda: self.download_complete(output_path))
 
