@@ -86,20 +86,45 @@ class TestCBZBuilder:
         assert Path(result).exists()
 
     def test_collect_image_files(self, tmp_path):
-        minimal_jpeg = b'\xff\xd8\xff\xe0\x00\x10JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00\xff\xd9'
         img_dir = tmp_path / "images"
         img_dir.mkdir()
-        (img_dir / "001.jpg").write_bytes(minimal_jpeg)
-        (img_dir / "002.png").write_bytes(minimal_jpeg)
-        (img_dir / "003.gif").write_bytes(minimal_jpeg)
+        sample_bytes = b"image-data"
+        (img_dir / "001.jpg").write_bytes(sample_bytes)
+        (img_dir / "002.png").write_bytes(sample_bytes)
+        (img_dir / "003.webp").write_bytes(b"webp")
+        (img_dir / "004.ico").write_bytes(b"ico")
+        (img_dir / "005.jpeg").write_bytes(sample_bytes)
         (img_dir / "readme.txt").write_text("not an image")
         (img_dir / ".hidden").write_text("hidden file")
         builder = CBZBuilder()
         files = builder._collect_image_files(str(img_dir))
-        assert len(files) == 3
+        assert len(files) == 5
         assert files[0].endswith("001.jpg")
         assert files[1].endswith("002.png")
-        assert files[2].endswith("003.gif")
+        assert files[2].endswith("003.webp")
+        assert files[3].endswith("004.ico")
+        assert files[4].endswith("005.jpeg")
+
+    def test_build_cbz_with_mixed_supported_extensions(self, sample_comic, tmp_path):
+        builder = CBZBuilder()
+        img_dir = tmp_path / "mixed_images"
+        img_dir.mkdir()
+        (img_dir / "001.jpg").write_bytes(b"jpg")
+        (img_dir / "002.png").write_bytes(b"png")
+        (img_dir / "003.webp").write_bytes(b"webp")
+        (img_dir / "004.ico").write_bytes(b"ico")
+        output_path = tmp_path / "mixed.cbz"
+
+        result = builder.build_cbz(str(img_dir), sample_comic, str(output_path))
+
+        assert Path(result).exists()
+        with zipfile.ZipFile(result, 'r') as zf:
+            namelist = zf.namelist()
+            assert "ComicInfo.xml" in namelist
+            assert "001.jpg" in namelist
+            assert "002.png" in namelist
+            assert "003.webp" in namelist
+            assert "004.ico" in namelist
 
     def test_parse_date(self):
         builder = CBZBuilder()

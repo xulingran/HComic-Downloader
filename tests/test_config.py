@@ -316,5 +316,17 @@ class TestMultiSourceConfig(unittest.TestCase):
             os.unlink(config_path)
 
 
+class TestConfigConstructorNoSideEffects(unittest.TestCase):
+    """测试 Config 构造函数不产生 I/O 副作用"""
+
+    def test_config_constructor_does_not_create_directory(self):
+        """Config() 不应自动创建 download_dir 目录"""
+        with tempfile.TemporaryDirectory() as tmp:
+            nonexistent = os.path.join(tmp, "should_not_exist")
+            self.assertFalse(os.path.exists(nonexistent))
+            Config(download_dir=nonexistent)
+            self.assertFalse(os.path.exists(nonexistent))
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -6,6 +6,7 @@ import time
 from typing import Dict, List, Optional, Callable
 
 from downloader import DownloadResult
+from image_formats import SUPPORTED_IMAGE_EXTENSIONS
 from models import ComicInfo, DownloadTask, DownloadStatus
 
 logger = logging.getLogger(__name__)
@@ -379,6 +380,32 @@ class ComicDownloadManager(DownloadManager):
             self.output_format = output_format
             logger.info(f"Output format set to: {output_format}")
 
+    def _scan_temp_dir_progress(self, temp_dir: str, task):
+        """扫描临时目录，恢复已完成页码进度。
+
+        Args:
+            temp_dir: 临时图片目录路径
+            task: 下载任务对象（会直接修改其 completed_pages / failed_pages）
+        """
+        downloaded_files = [
+            name
+            for name in os.listdir(temp_dir)
+            if os.path.isfile(os.path.join(temp_dir, name))
+            and os.path.splitext(name)[1].lower() in SUPPORTED_IMAGE_EXTENSIONS
+        ]
+        completed_from_files = []
+        for f in downloaded_files:
+            try:
+                page_num = int(os.path.splitext(os.path.basename(f))[0])
+                completed_from_files.append(page_num)
+            except (ValueError, IndexError):
+                continue
+        if completed_from_files:
+            task.completed_pages = sorted(completed_from_files)
+            task.progress_current = len(task.completed_pages)
+            all_pages = set(range(1, task.comic.pages + 1))
+            task.failed_pages = sorted(all_pages - set(task.completed_pages))
+
     def _process_output_by_format(self, temp_dir: str, comic) -> str:
         """根据输出格式处理下载内容
 
@@ -392,13 +419,12 @@ class ComicDownloadManager(DownloadManager):
         if self.output_format == "folder":
             # 保存为普通文件夹（移动临时目录）
             return self.cbz_builder.save_as_folder(temp_dir, comic, self.output_dir)
-        elif self.output_format == "zip":
+        output_path = self.cbz_builder.get_output_path_for_format(comic, self.output_format, self.output_dir)
+        if self.output_format == "zip":
             # 打包为 ZIP
-            return self.cbz_builder.build_zip(temp_dir, comic, self.output_dir)
-        else:  # cbz (默认)
-            # 打包为 CBZ
-            output_path = self.cbz_builder.get_output_path_for_format(comic, "cbz", self.output_dir)
-            return self.cbz_builder.build_cbz(temp_dir, comic)
+            return self.cbz_builder.build_zip(temp_dir, comic, output_path)
+        # 打包为 CBZ
+        return self.cbz_builder.build_cbz(temp_dir, comic, output_path)
 
     def _process_task(self, task_id: str):
         """处理单个下载任务"""
@@ -444,7 +470,10 @@ class ComicDownloadManager(DownloadManager):
             # 下载过程收到了暂停请求：保留已下载内容，维持 PAUSED 状态
             if task._pause_requested:
                 task.temp_dir = temp_dir
+                task.completed_pages = result.completed_pages
+                task.failed_pages = result.failed_pages
                 task.status = DownloadStatus.PAUSED
+                self._notify_task_update(task)
                 logger.info(f"Task {task_id} paused after current checkpoint")
                 return
             task.temp_dir = temp_dir
@@ -495,24 +524,9 @@ class ComicDownloadManager(DownloadManager):
                 # 对于非下载相关的异常（如 CBZ 打包失败），
                 # 如果已经有下载进度，保留它以便可能的重试
                 if temp_dir and os.path.exists(temp_dir):
-                    # 尝试从临时目录扫描已下载的文件来更新进度
+                    task.temp_dir = temp_dir
                     try:
-                        import glob
-                        downloaded_files = glob.glob(os.path.join(temp_dir, "*.jpg"))
-                        # 从文件名提取页码（格式: 001.jpg, 002.jpg 等）
-                        completed_from_files = []
-                        for f in downloaded_files:
-                            try:
-                                page_num = int(os.path.basename(f).split('.')[0])
-                                completed_from_files.append(page_num)
-                            except (ValueError, IndexError):
-                                continue
-                        if completed_from_files:
-                            task.completed_pages = sorted(completed_from_files)
-                            task.progress_current = len(task.completed_pages)
-                            # 假设未下载的页面都是失败的
-                            all_pages = set(range(1, task.comic.pages + 1))
-                            task.failed_pages = sorted(all_pages - set(task.completed_pages))
+                        self._scan_temp_dir_progress(temp_dir, task)
                     except Exception as scan_error:
                         logger.warning(f"Failed to scan temp dir for progress: {scan_error}")
 

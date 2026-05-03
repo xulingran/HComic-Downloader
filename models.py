@@ -1,5 +1,7 @@
 """数据模型"""
 from dataclasses import dataclass, field
+from enum import Enum
+import time
 from typing import List, Optional
 
 
@@ -109,10 +111,6 @@ class PaginationInfo:
     def has_next(self) -> bool:
         """是否有下一页"""
         return self.current_page < self.total_pages
-
-
-from enum import Enum
-import time
 
 
 class DownloadStatus(Enum):

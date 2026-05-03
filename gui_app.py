@@ -156,6 +156,7 @@ class HComicDownloaderGUI(tk.Tk):
         self._content_height = 1
         self._pending_image_updates = {}
         self._pending_image_flush_after_id = None
+        self._resize_after_id = None
 
         # 下载状态
         self.is_downloading = False
@@ -851,7 +852,7 @@ class HComicDownloaderGUI(tk.Tk):
             return
 
         # 延迟处理，避免频繁调用
-        if hasattr(self, '_resize_after_id'):
+        if self._resize_after_id:
             self.after_cancel(self._resize_after_id)
         self._resize_after_id = self.after(100, self._update_layout)
 
@@ -1894,11 +1895,11 @@ class HComicDownloaderGUI(tk.Tk):
                 # Linux: 使用 xdg-open
                 try:
                     subprocess.run(["xdg-open", download_dir], check=True)
-                except:
+                except (subprocess.CalledProcessError, FileNotFoundError, OSError):
                     # fallback: 使用 nautilus
                     try:
                         subprocess.run(["nautilus", download_dir], check=True)
-                    except:
+                    except (subprocess.CalledProcessError, FileNotFoundError, OSError):
                         # 最后尝试: 使用 xdg-open 备用命令
                         subprocess.run(["xdg-open", "--", download_dir], check=True)
 
@@ -2038,7 +2039,7 @@ class HComicDownloaderGUI(tk.Tk):
                 for child in frame.winfo_children():
                     if isinstance(child, tk.Frame):
                         child.config(bg=selected_bg)
-            except:
+            except (tk.TclError, AttributeError):
                 pass
 
             # 添加或更新右上角勾选标记
@@ -2062,7 +2063,7 @@ class HComicDownloaderGUI(tk.Tk):
                 for child in frame.winfo_children():
                     if isinstance(child, tk.Frame):
                         child.config(bg="")
-            except:
+            except (tk.TclError, AttributeError):
                 pass
 
             # 移除勾选标记
@@ -2697,16 +2698,17 @@ class HComicDownloaderGUI(tk.Tk):
                 # 根据输出格式处理
                 if output_format == "folder":
                     self.after(0, lambda: self.update_status("正在保存文件夹..."))
+                    # save_as_folder 需要目录路径（不是文件路径），所以用 current_dir
                     output_path = self.cbz_builder.save_as_folder(temp_dir, comic_to_download, current_dir)
                     # 文件夹模式已移动临时目录，无需清理
                 elif output_format == "zip":
                     self.after(0, lambda: self.update_status("正在打包 ZIP..."))
-                    output_path = self.cbz_builder.build_zip(temp_dir, comic_to_download, current_dir)
+                    output_path = self.cbz_builder.build_zip(temp_dir, comic_to_download, target_output_path)
                     # 清理临时目录
                     self.downloader.cleanup_temp_dir(temp_dir)
                 else:  # cbz (默认)
                     self.after(0, lambda: self.update_status("正在打包 CBZ..."))
-                    output_path = self.cbz_builder.build_cbz(temp_dir, comic_to_download, current_dir)
+                    output_path = self.cbz_builder.build_cbz(temp_dir, comic_to_download, target_output_path)
                     # 清理临时目录
                     self.downloader.cleanup_temp_dir(temp_dir)
 

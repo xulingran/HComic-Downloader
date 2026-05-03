@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
 import tkinter as tk
 from tkinter import font as tkfont
 from tkinter import ttk
@@ -314,67 +313,3 @@ def build_comic_card_frame(
     return frame
 
 
-class ComicCard(tk.Frame):
-    """搜索结果中的单个漫画卡片。"""
-
-    def __init__(
-        self,
-        parent: tk.Widget,
-        comic: ComicInfo,
-        card_width: int,
-        show_preview: bool,
-        cover_executor: ThreadPoolExecutor,
-        image_cache: dict,
-        on_click: Callable[[ComicInfo], None],
-        on_select_toggle: Optional[Callable[[ComicInfo], None]] = None,
-        batch_mode: bool = False,
-        selected: bool = False,
-    ):
-        super().__init__(parent, relief="solid", borderwidth=1)
-        self.comic = comic
-        self.card_width = card_width
-        self.show_preview = show_preview
-        self.cover_executor = cover_executor
-        self.image_cache = image_cache
-        self.on_click = on_click
-        self.on_select_toggle = on_select_toggle
-        self.batch_mode = batch_mode
-        self.selected = selected
-
-        self._title_expanded = False
-        self._build_ui()
-
-    def _build_ui(self):
-        title = tk.Label(
-            self,
-            text=self.comic.title or "未知标题",
-            justify=tk.LEFT,
-            wraplength=max(120, self.card_width - 10),
-        )
-        title.pack(fill="x", padx=5, pady=(5, 2))
-        meta = tk.Label(
-            self,
-            text=f"作者: {self.comic.author or '未知'} | 页数: {self.comic.pages}",
-            justify=tk.LEFT,
-        )
-        meta.pack(fill="x", padx=5, pady=(0, 5))
-        btn = tk.Button(self, text="下载", command=lambda: self.on_click(self.comic))
-        btn.pack(pady=(0, 5))
-
-    def load_cover(self):
-        """预留：异步封面加载。"""
-
-    def _schedule_cover_load(self):
-        """预留：调度封面加载。"""
-
-    def _show_cover_retry_icon(self):
-        """预留：封面失败重试图标。"""
-
-    def _retry_cover_load(self):
-        """预留：重试封面。"""
-
-    def _restore_cover_click_binding(self):
-        """预留：恢复点击事件。"""
-
-    def _safe_update_image(self):
-        """预留：安全刷新图片。"""

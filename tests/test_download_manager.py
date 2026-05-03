@@ -217,15 +217,64 @@ class _FakeDownloader:
 
 
 class _FakeCBZBuilder:
+    def __init__(self):
+        self.calls = []
+
+    def _record_call(self, kind, output_path):
+        self.calls.append((kind, output_path))
+
     def build_cbz(self, temp_dir, comic, output_path=None):
+        self._record_call("cbz", output_path)
         os.makedirs(temp_dir, exist_ok=True)
         output_path = output_path or os.path.join(temp_dir, f"{comic.id}.cbz")
         with open(output_path, "wb") as f:
             f.write(b"")
         return output_path
 
+    def build_zip(self, temp_dir, comic, output_path=None):
+        self._record_call("zip", output_path)
+        os.makedirs(temp_dir, exist_ok=True)
+        output_path = output_path or os.path.join(temp_dir, f"{comic.id}.zip")
+        with open(output_path, "wb") as f:
+            f.write(b"")
+        return output_path
+
+    def save_as_folder(self, temp_dir, comic, output_dir=None):
+        self._record_call("folder", output_dir)
+        output_dir = output_dir or temp_dir
+        target_dir = os.path.join(output_dir, f"{comic.id}")
+        os.makedirs(target_dir, exist_ok=True)
+        return target_dir
+
+    def get_output_path_for_format(self, comic, output_format, output_dir):
+        ext = ".zip" if output_format == "zip" else ".cbz"
+        return os.path.join(output_dir, f"{comic.id}{ext}")
+
     def get_output_path(self, comic, output_dir):
-        return os.path.join(output_dir, f"{comic.id}.cbz")
+        return self.get_output_path_for_format(comic, "cbz", output_dir)
+
+
+def test_process_output_by_format_uses_final_file_path(tmp_path):
+    comic = ComicInfo(id="out_1", title="Output Path", pages=1)
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+
+    builder = _FakeCBZBuilder()
+    dm = ComicDownloadManager(
+        downloader=_FakeDownloader(),
+        cbz_builder=builder,
+        output_dir=str(tmp_path),
+    )
+
+    for output_format, suffix, kind in (("zip", ".zip", "zip"), ("cbz", ".cbz", "cbz")):
+        dm.set_output_format(output_format)
+        builder.calls.clear()
+
+        result = dm._process_output_by_format(str(temp_dir), comic)
+
+        expected_path = os.path.join(str(tmp_path), f"{comic.id}{suffix}")
+        assert result == expected_path
+        assert builder.calls == [(kind, expected_path)]
 
 
 def test_pause_downloading_task_keeps_paused_state(tmp_path):
@@ -248,12 +297,58 @@ def test_pause_downloading_task_keeps_paused_state(tmp_path):
 
     time.sleep(0.4)
     assert dm.tasks[task_id].status == DownloadStatus.PAUSED
+    assert dm.tasks[task_id].completed_pages == [1, 2, 3]
+    assert dm.tasks[task_id].failed_pages == []
+    assert dm.tasks[task_id].temp_dir is not None
 
     dm.stop()
     deadline = time.time() + 1
     while dm.is_running and time.time() < deadline:
         time.sleep(0.01)
     assert dm.is_running is False
+
+
+class _MixedExtensionFailureDownloader:
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+        temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
+        os.makedirs(temp_dir, exist_ok=True)
+        for index, ext in enumerate((".jpg", ".png", ".webp", ".ico"), start=1):
+            with open(os.path.join(temp_dir, f"{index:03d}{ext}"), "wb") as f:
+                f.write(b"data")
+        return DownloadResult(
+            success=True,
+            completed_pages=[1, 2, 3, 4],
+            failed_pages=[],
+            temp_dir=temp_dir,
+        )
+
+    def cleanup_temp_dir(self, temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+class _RaisingCBZBuilder:
+    def build_cbz(self, temp_dir, comic, output_path=None):
+        raise RuntimeError("pack failed")
+
+    def get_output_path_for_format(self, comic, output_format, output_dir):
+        return os.path.join(output_dir, f"{comic.id}.cbz")
+
+
+def test_failed_output_scans_all_supported_image_extensions(tmp_path):
+    dm = ComicDownloadManager(
+        downloader=_MixedExtensionFailureDownloader(),
+        cbz_builder=_RaisingCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    dm.set_auto_retry_max_attempts(0)
+    task_id = dm.add_task(ComicInfo(id="scan_1", title="Scan", pages=3))
+
+    dm._process_task(task_id)
+
+    task = dm.tasks[task_id]
+    assert task.status == DownloadStatus.FAILED
+    assert task.completed_pages == [1, 2, 3, 4]
+    assert task.failed_pages == []
 
 
 def test_prepare_comic_hook_called_before_download(tmp_path):

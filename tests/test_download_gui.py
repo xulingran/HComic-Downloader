@@ -1,7 +1,9 @@
 """下载流程 GUI 回归测试"""
 import time
+import os
 import tkinter as tk
 import unittest
+import tempfile
 from unittest.mock import MagicMock, patch
 
 from gui import HComicDownloaderGUI
@@ -70,7 +72,7 @@ class TestDownloadGUI(unittest.TestCase):
         downloaded_comics = []
 
         self.app.parser.prepare_for_download = lambda comic: prepared_comic
-        self.app.cbz_builder.get_output_path = lambda comic, output_dir: "/tmp/test.cbz"
+        self.app.cbz_builder.get_output_path_for_format = lambda comic, output_format, output_dir: "/tmp/test.cbz"
         self.app.cbz_builder.build_cbz = lambda temp_dir, comic, output_path: "/tmp/test.cbz"
         self.app.downloader.cleanup_temp_dir = lambda temp_dir: None
         self.app.downloader.download_comic = (
@@ -91,6 +93,54 @@ class TestDownloadGUI(unittest.TestCase):
         self.assertIn("作者: 作者X", confirm_text)
         self.assertIn("页数: 12", confirm_text)
 
+    @patch("tkinter.messagebox.showinfo")
+    @patch("tkinter.messagebox.askyesno", return_value=True)
+    def test_single_download_uses_final_output_path_for_zip_and_cbz(self, mock_askyesno, _mock_showinfo):
+        source_comic = ComicInfo(
+            id="456",
+            title="输出路径测试",
+            source_site="moeimg",
+            pages=0,
+            author=None,
+            image_urls=[],
+        )
+        prepared_comic = ComicInfo(
+            id="456",
+            title="输出路径测试",
+            source_site="moeimg",
+            pages=2,
+            author="作者B",
+            image_urls=["https://cdn.example/001.webp", "https://cdn.example/002.webp"],
+        )
+
+        for output_format, builder_method, suffix in (("zip", "build_zip", ".zip"), ("cbz", "build_cbz", ".cbz")):
+            with self.subTest(output_format=output_format):
+                mock_askyesno.reset_mock()
+                downloaded_comics = []
+                expected_output_path = os.path.join(tempfile.gettempdir(), f"hcomic_{output_format}{suffix}")
+
+                self.app.config.output_format = output_format
+                self.app.download_dir_var.set(tempfile.gettempdir())
+                self.app._ensure_comics_detail_ready = lambda comics, progress_callback=None: [prepared_comic]
+                self.app.cbz_builder.get_output_path_for_format = MagicMock(return_value=expected_output_path)
+                build_mock = MagicMock(return_value=expected_output_path)
+                setattr(self.app.cbz_builder, builder_method, build_mock)
+                self.app.downloader.cleanup_temp_dir = lambda temp_dir: None
+                self.app.downloader.download_comic = (
+                    lambda comic, output_dir, progress_callback=None: downloaded_comics.append(comic) or "/tmp/temp_moeimg_456"
+                )
+
+                with patch("gui.threading.Thread", ImmediateThread), patch("gui.os.path.exists", return_value=False):
+                    self.app.download_comic(source_comic)
+
+                ok = self._wait_until(lambda: (not self.app.is_downloading) and build_mock.called)
+                self.assertTrue(ok)
+                self.assertTrue(mock_askyesno.called)
+                build_mock.assert_called_once()
+                self.assertEqual(build_mock.call_args.args[2], expected_output_path)
+                self.assertEqual(downloaded_comics[0].pages, 2)
+                self.assertEqual(downloaded_comics[0].author, "作者B")
+
     @patch("tkinter.messagebox.showerror")
     @patch("tkinter.messagebox.showinfo")
     @patch("tkinter.messagebox.askyesno")
@@ -109,7 +159,7 @@ class TestDownloadGUI(unittest.TestCase):
             raise RuntimeError("detail failed")
 
         self.app._ensure_comics_detail_ready = raise_prepare_error
-        self.app.cbz_builder.get_output_path = lambda comic, output_dir: "/tmp/test.cbz"
+        self.app.cbz_builder.get_output_path_for_format = lambda comic, output_format, output_dir: "/tmp/test.cbz"
         self.app.downloader.download_comic = (
             lambda comic, output_dir, progress_callback=None: downloaded_comics.append(comic) or "/tmp/temp_moeimg_321"
         )

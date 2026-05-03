@@ -10,6 +10,7 @@ from typing import List, Optional, TYPE_CHECKING
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
 
+from image_formats import PAGE_FILENAME_FORMAT, SUPPORTED_IMAGE_EXTENSIONS
 from models import ComicInfo
 from utils import sanitize_filename
 
@@ -25,6 +26,15 @@ class CBZBuilder:
     def __init__(self, filename_template: str = "{author}-{title}.cbz", config: Optional["Config"] = None):
         self.filename_template = filename_template
         self._config = config
+
+    def _get_download_dir(self, download_dir: Optional[str] = None) -> str:
+        """获取下载目录，优先使用传入值，否则回退到配置。"""
+        if download_dir is not None:
+            return download_dir
+        if self._config:
+            return self._config.download_dir
+        from config import Config
+        return Config.load().download_dir
 
     def build_cbz(
         self,
@@ -66,7 +76,7 @@ class CBZBuilder:
 
             # 添加图片
             for i, img_path in enumerate(image_files, 1):
-                arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
+                arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
                 zf.write(img_path, arcname)
                 logger.debug(f"Added: {arcname}")
 
@@ -179,13 +189,7 @@ class CBZBuilder:
         if not filename.endswith('.cbz'):
             filename += '.cbz'
 
-        # 优先使用传入的目录，否则使用配置中的目录
-        if download_dir is None:
-            if self._config:
-                download_dir = self._config.download_dir
-            else:
-                from config import Config
-                download_dir = Config.load().download_dir
+        download_dir = self._get_download_dir(download_dir)
         return os.path.join(download_dir, filename)
 
     def get_output_path(self, comic: ComicInfo, download_dir: str = None) -> str:
@@ -209,12 +213,11 @@ class CBZBuilder:
         Returns:
             排序后的图片路径列表
         """
-        image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'}
         image_files = []
 
         for filename in os.listdir(image_dir):
             ext = os.path.splitext(filename)[1].lower()
-            if ext in image_extensions:
+            if ext in SUPPORTED_IMAGE_EXTENSIONS:
                 image_files.append(os.path.join(image_dir, filename))
 
         # 按文件名排序
@@ -254,7 +257,7 @@ class CBZBuilder:
         # 创建 ZIP 文件
         with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
             for i, img_path in enumerate(image_files, 1):
-                arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
+                arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
                 zf.write(img_path, arcname)
                 logger.debug(f"Added: {arcname}")
 
@@ -280,14 +283,7 @@ class CBZBuilder:
         # 确定输出路径
         folder_name = self._generate_folder_name(comic)
 
-        # 优先使用传入的目录，否则使用配置中的目录
-        if output_dir is None:
-            if self._config:
-                output_dir = self._config.download_dir
-            else:
-                from config import Config
-                output_dir = Config.load().download_dir
-
+        output_dir = self._get_download_dir(output_dir)
         output_path = os.path.join(output_dir, folder_name)
 
         # 确保输出目录存在
@@ -324,14 +320,7 @@ class CBZBuilder:
         ext = ".cbz" if format_type == "cbz" else ".zip"
         filename = self._generate_folder_name(comic) + ext
 
-        # 优先使用传入的目录，否则使用配置中的目录
-        if download_dir is None:
-            if self._config:
-                download_dir = self._config.download_dir
-            else:
-                from config import Config
-                download_dir = Config.load().download_dir
-
+        download_dir = self._get_download_dir(download_dir)
         return os.path.join(download_dir, filename)
 
     def _generate_folder_name(self, comic: ComicInfo) -> str:

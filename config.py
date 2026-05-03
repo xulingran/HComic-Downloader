@@ -34,8 +34,6 @@ class Config:
     auto_retry_max_attempts: int = 2  # 下载失败时自动重试次数（0-5，0表示禁用）
 
     def __post_init__(self):
-        """确保下载目录存在"""
-        os.makedirs(self.download_dir, exist_ok=True)
         self.source_auth = self._normalize_source_auth(self.source_auth)
         if self.default_source not in ("hcomic", "moeimg"):
             self.default_source = "hcomic"

@@ -14,28 +14,9 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from PIL import Image
 
+from image_formats import MIME_TO_EXT, PAGE_FILENAME_FORMAT, PIL_FORMAT_TO_EXT
 from models import ComicInfo
 from utils import apply_system_proxy_to_session, ensure_dir, format_file_size
-
-# 图片扩展名映射
-MIME_TO_EXT = {
-    'image/jpeg': '.jpg',
-    'image/jpg': '.jpg',
-    'image/png': '.png',
-    'image/gif': '.gif',
-    'image/webp': '.webp',
-    'image/bmp': '.bmp',
-}
-
-# Pillow 格式到扩展名映射
-PIL_FORMAT_TO_EXT = {
-    'JPEG': '.jpg',
-    'PNG': '.png',
-    'GIF': '.gif',
-    'WEBP': '.webp',
-    'BMP': '.bmp',
-    'ICO': '.ico',
-}
 
 logger = logging.getLogger(__name__)
 
@@ -262,8 +243,8 @@ class ComicDownloader:
                 executor.submit(
                     self._download_image_task,
                     url,
-                    Path(output_dir) / f"{i+1:03d}.jpg",
-                ): (i, url, Path(output_dir) / f"{i+1:03d}.jpg")
+                    Path(output_dir) / PAGE_FILENAME_FORMAT.format(page=i+1, ext=".jpg"),
+                ): (i, url, Path(output_dir) / PAGE_FILENAME_FORMAT.format(page=i+1, ext=".jpg"))
                 for i, url in enumerate(urls)
             }
 
