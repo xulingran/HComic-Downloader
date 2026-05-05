@@ -1,4 +1,8 @@
+import { useTheme } from './hooks/useTheme'
+
 function App() {
+  useTheme()
+
   return (
     <div className="flex h-screen bg-[var(--bg-secondary)]">
       <div className="flex-1 flex items-center justify-center">
