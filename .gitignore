@@ -23,3 +23,16 @@ htmlcov/
 *.swp
 *.swo
 *~
+
+# Node.js
+node_modules/
+out/
+dist-electron/
+dist-renderer/
+
+# Electron
+*.dmg
+*.AppImage
+*.deb
+*.rpm
+*.snap
