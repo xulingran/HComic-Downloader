@@ -27,7 +27,8 @@ export class PythonBridge {
   private getScriptPath(): string {
     const isDev = !app.isPackaged
     if (isDev) {
-      return path.join(__dirname, '..', 'python', 'ipc_server.py')
+      // In dev mode, __dirname is out/main/, so we need to go up to project root
+      return path.join(__dirname, '..', '..', 'python', 'ipc_server.py')
     }
     return path.join(process.resourcesPath, 'python', 'ipc_server.py')
   }

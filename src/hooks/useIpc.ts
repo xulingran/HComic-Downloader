@@ -14,6 +14,9 @@ declare global {
 export function useIpc() {
   const invoke = useCallback(async (channel: string, ...args: any[]) => {
     try {
+      if (!window.electron?.ipcRenderer) {
+        throw new Error('Electron IPC not available. Make sure the app is running in Electron.')
+      }
       return await window.electron.ipcRenderer.invoke(channel, ...args)
     } catch (error) {
       console.error(`IPC error on ${channel}:`, error)
