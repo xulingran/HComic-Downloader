@@ -1,0 +1,35 @@
+{
+  appId: 'com.hcomic.downloader',
+  productName: 'HComic Downloader',
+  directories: {
+    output: 'dist'
+  },
+  files: [
+    'dist-electron/**/*',
+    'dist-renderer/**/*'
+  ],
+  extraResources: [
+    {
+      from: 'python/',
+      to: 'python/',
+      filter: ['**/*.py', '!**/__pycache__/**', '!**/tests/**']
+    }
+  ],
+  win: {
+    target: ['nsis'],
+    icon: 'assets/icon.svg'
+  },
+  mac: {
+    target: ['dmg'],
+    icon: 'assets/icon.svg'
+  },
+  linux: {
+    target: ['AppImage'],
+    icon: 'assets/icon.svg'
+  },
+  nsis: {
+    oneClick: false,
+    allowToChangeInstallationDirectory: true,
+    createDesktopShortcut: true
+  }
+}
