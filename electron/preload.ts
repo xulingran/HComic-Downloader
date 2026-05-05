@@ -1,5 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
+console.log('Preload script loaded')
+
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
     invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
@@ -9,3 +11,5 @@ contextBridge.exposeInMainWorld('electron', {
     }
   }
 })
+
+console.log('Electron API exposed to renderer')

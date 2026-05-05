@@ -5,13 +5,23 @@ import { getPythonBridge } from './python-bridge'
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
+  const preloadPath = path.join(__dirname, '../preload/preload.mjs')
+  console.log('Preload path:', preloadPath)
+  console.log('__dirname:', __dirname)
+  
+  // Check if preload file exists
+  const fs = require('fs')
+  if (!fs.existsSync(preloadPath)) {
+    console.error('Preload script not found at:', preloadPath)
+  }
+  
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 900,
     minHeight: 600,
     webPreferences: {
-      preload: path.join(__dirname, '../preload/preload.mjs'),
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false
     },
