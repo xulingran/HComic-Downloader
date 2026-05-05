@@ -1,5 +1,6 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
+import { getPythonBridge } from './python-bridge'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -32,7 +33,46 @@ function createWindow() {
   })
 }
 
-app.whenReady().then(createWindow)
+function registerIPCHandlers() {
+  const bridge = getPythonBridge()
+
+  ipcMain.handle('python:search', async (_, query, mode, page) => {
+    return bridge.call('search', { query, mode, page })
+  })
+
+  ipcMain.handle('python:download', async (_, comicId) => {
+    return bridge.call('download', { comic_id: comicId })
+  })
+
+  ipcMain.handle('python:get-favourites', async () => {
+    return bridge.call('get_favourites')
+  })
+
+  ipcMain.handle('python:get-config', async () => {
+    return bridge.call('get_config')
+  })
+
+  ipcMain.handle('python:set-config', async (_, key, value) => {
+    return bridge.call('set_config', { key, value })
+  })
+
+  ipcMain.handle('python:get-downloads', async () => {
+    return bridge.call('get_downloads')
+  })
+
+  ipcMain.handle('python:cancel-download', async (_, taskId) => {
+    return bridge.call('cancel_download', { task_id: taskId })
+  })
+
+  ipcMain.handle('python:get-statistics', async () => {
+    return bridge.call('get_statistics')
+  })
+}
+
+app.whenReady().then(() => {
+  registerIPCHandlers()
+  createWindow()
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
@@ -44,4 +84,9 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow()
   }
+})
+
+app.on('before-quit', () => {
+  const bridge = getPythonBridge()
+  bridge.kill()
 })
