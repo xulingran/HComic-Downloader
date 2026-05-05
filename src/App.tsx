@@ -4,6 +4,7 @@ import { Sidebar } from './components/Sidebar'
 import { Header } from './components/Header'
 import { SearchPage } from './pages/SearchPage'
 import { DownloadPage } from './pages/DownloadPage'
+import { FavouritesPage } from './pages/FavouritesPage'
 
 function App() {
   useTheme()
@@ -15,6 +16,8 @@ function App() {
         return <SearchPage />
       case 'downloads':
         return <DownloadPage />
+      case 'favourites':
+        return <FavouritesPage />
       default:
         return <div className="text-[var(--text-primary)]">Coming soon: {activePage}</div>
     }
