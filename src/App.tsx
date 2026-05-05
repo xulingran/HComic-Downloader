@@ -5,6 +5,7 @@ import { Header } from './components/Header'
 import { SearchPage } from './pages/SearchPage'
 import { DownloadPage } from './pages/DownloadPage'
 import { FavouritesPage } from './pages/FavouritesPage'
+import { SettingsPage } from './pages/SettingsPage'
 
 function App() {
   useTheme()
@@ -18,6 +19,8 @@ function App() {
         return <DownloadPage />
       case 'favourites':
         return <FavouritesPage />
+      case 'settings':
+        return <SettingsPage />
       default:
         return <div className="text-[var(--text-primary)]">Coming soon: {activePage}</div>
     }
