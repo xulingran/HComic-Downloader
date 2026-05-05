@@ -6,6 +6,7 @@ import { SearchPage } from './pages/SearchPage'
 import { DownloadPage } from './pages/DownloadPage'
 import { FavouritesPage } from './pages/FavouritesPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { StatisticsPage } from './pages/StatisticsPage'
 
 function App() {
   useTheme()
@@ -21,8 +22,10 @@ function App() {
         return <FavouritesPage />
       case 'settings':
         return <SettingsPage />
+      case 'statistics':
+        return <StatisticsPage />
       default:
-        return <div className="text-[var(--text-primary)]">Coming soon: {activePage}</div>
+        return <div className="text-[var(--text-primary)]">Unknown page</div>
     }
   }
 
