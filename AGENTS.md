@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
 ## Project Overview
 
@@ -41,13 +41,18 @@ pip install -r requirements.txt
 | Module | Responsibility |
 |--------|---------------|
 | `main.py` | 应用入口，初始化日志和 GUI |
-| `gui.py` | tkinter GUI 主界面（约 1800 行） |
-| `parser.py` | h-comic.com 页面解析，搜索/收藏/详情 |
-| `downloader.py` | 多线程图片下载，支持重试 |
+| `gui_app.py` | tkinter GUI 主窗口和组件组装 |
+| `gui.py` | GUI 模块导出（向后兼容入口） |
+| `search_controller.py` | 搜索/翻页/收藏夹逻辑控制器 |
+| `download_controller.py` | 下载/批量下载逻辑控制器 |
+| `parser.py` | h-comic.com / moeimg.fan 页面解析，搜索/收藏/详情 |
+| `downloader.py` | 多线程图片下载，支持断点续传和重试 |
+| `download_manager.py` | 下载队列管理、任务状态机、自动重试 |
 | `cbz_builder.py` | CBZ 打包和 ComicInfo.xml 生成 |
-| `models.py` | 数据模型（ComicInfo, PaginationInfo） |
+| `models.py` | 数据模型（ComicInfo, PaginationInfo, DownloadTask） |
 | `config.py` | 配置管理（JSON 持久化） |
 | `auth_parser.py` | 从 curl 命令提取 Cookie/User-Agent |
+| `auth_manager.py` | 登录状态管理和认证同步 |
 | `utils.py` | 工具函数（代理、文件名清理等） |
 | `font_config.py` | 跨平台字体检测 |
 
@@ -56,7 +61,7 @@ pip install -r requirements.txt
 ```
 用户搜索 → parser.search() → ComicInfo 列表
     ↓
-用户选择下载 → downloader.download_comic() → 临时图片目录
+用户选择下载 → downloader.download_comic_resume() → 临时图片目录
     ↓
 cbz_builder.build_cbz() → CBZ 文件（含 ComicInfo.xml）
 ```
@@ -108,7 +113,7 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 
 ### Testing Notes
 
-项目目前没有自动化测试。手动测试关键流程：
+项目已包含自动化测试（pytest）。手动测试关键流程：
 1. 搜索/翻页
 2. 单个下载
 3. 批量下载

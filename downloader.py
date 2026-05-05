@@ -14,11 +14,14 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from PIL import Image
 
+from constants import DEFAULT_USER_AGENT
 from image_formats import MIME_TO_EXT, PAGE_FILENAME_FORMAT, PIL_FORMAT_TO_EXT
 from models import ComicInfo
-from utils import apply_system_proxy_to_session, ensure_dir, format_file_size
+from utils import apply_system_proxy_to_session, configure_session_auth, ensure_dir, format_file_size
 
 logger = logging.getLogger(__name__)
+
+PROGRESS_THROTTLE_SEC = 0.1
 
 
 class DownloadError(Exception):
@@ -58,7 +61,7 @@ class ComicDownloader:
         session = requests.Session()
         apply_system_proxy_to_session(session)
         session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:140.0) Gecko/20100101 Firefox/140.0",
+            "User-Agent": DEFAULT_USER_AGENT,
             "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
             "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
             "Referer": "https://h-comic.com/",
@@ -78,14 +81,17 @@ class ComicDownloader:
 
     def configure_auth(self, cookie: str = "", user_agent: str = ""):
         """配置登录相关请求头。"""
-        ua = (user_agent or "").strip()
-        ck = (cookie or "").strip()
+        configure_session_auth(self.session, {"User-Agent": self.default_user_agent}, cookie, user_agent)
 
-        self.session.headers["User-Agent"] = ua or self.default_user_agent
-        if ck:
-            self.session.headers["Cookie"] = ck
-        else:
-            self.session.headers.pop("Cookie", None)
+    def close(self):
+        """关闭底层会话连接。"""
+        self.session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
 
     @staticmethod
     def _safe_source_site(source_site: str) -> str:
@@ -105,44 +111,6 @@ class ComicDownloader:
         if site == "moeimg":
             return "https://moeimg.fan/"
         return "https://h-comic.com/"
-
-    def download_comic(
-        self,
-        comic: ComicInfo,
-        output_dir: str,
-        progress_callback: Optional[Callable[[int, int, str, Optional[dict]], None]] = None,
-        delay_after: int = 0,
-        comic_info: Optional[dict] = None,
-    ) -> str:
-        """下载完整漫画（向后兼容，内部调用 download_comic_resume）
-
-        Args:
-            comic: 漫画信息
-            output_dir: 输出目录
-            progress_callback: 进度回调函数(current, total, status, comic_info)
-            delay_after: 下载完成后延迟的秒数（用于批量下载）
-            comic_info: 漫画信息字典，用于批量下载时传递上下文
-
-        Returns:
-            临时图片目录路径
-
-        Raises:
-            DownloadError: 当下载不完整时抛出
-        """
-        result = self.download_comic_resume(
-            comic=comic,
-            output_dir=output_dir,
-            progress_callback=progress_callback,
-            delay_after=delay_after,
-            comic_info=comic_info,
-            completed_pages=None,
-            failed_pages=None,
-        )
-
-        if not result.success:
-            raise DownloadError(result.error_message or "下载失败")
-
-        return result.temp_dir
 
     def _download_image_task(self, url: str, output_path: Path) -> bool:
         """下载单张图片的任务
@@ -189,7 +157,8 @@ class ComicDownloader:
                 try:
                     with Image.open(BytesIO(content)) as img:
                         ext = PIL_FORMAT_TO_EXT.get(img.format, '.jpg')
-                except Exception:
+                except (IOError, SyntaxError, ValueError):
+                    logger.debug("Image format detection failed for %s, defaulting to .jpg", url)
                     ext = '.jpg'
 
             # 确保路径有正确的扩展名
@@ -232,7 +201,7 @@ class ComicDownloader:
             nonlocal last_progress_ts
             if progress_callback:
                 now = time.monotonic()
-                if not force and (now - last_progress_ts) < 0.1 and (completed + failed) < total:
+                if not force and (now - last_progress_ts) < PROGRESS_THROTTLE_SEC and (completed + failed) < total:
                     return
                 status = f"下载中... ({completed}/{total}, 失败: {failed})"
                 progress_callback(completed, total, status)
@@ -383,7 +352,7 @@ class ComicDownloader:
                     if new_failed:
                         status += f"，失败: {len(new_failed)}"
                     if (
-                        (now - last_progress_ts) >= 0.1
+                        (now - last_progress_ts) >= PROGRESS_THROTTLE_SEC
                         or downloaded_count >= total
                     ):
                         progress_callback(downloaded_count, total, status, comic_info)

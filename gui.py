@@ -5,4 +5,4 @@ import threading
 
 from gui_app import HComicDownloaderGUI
 
-__all__ = ["HComicDownloaderGUI", "os", "threading"]
+__all__ = ["HComicDownloaderGUI"]

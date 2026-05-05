@@ -38,7 +38,7 @@ class TestFavouritesGUI(unittest.TestCase):
         # 固定测试来源为 hcomic，避免受本机配置 default_source 污染
         self.app.source_var.set("h-comic")
         with patch.object(self.app.config, "save", lambda *args, **kwargs: None):
-            self.app._on_source_changed()
+            self.app.search_ctrl.on_source_changed()
 
     def tearDown(self):
         self.app.destroy()
@@ -54,7 +54,7 @@ class TestFavouritesGUI(unittest.TestCase):
 
     def test_favourites_controls_exist(self):
         self.assertTrue(hasattr(self.app, "favourites_btn"))
-        self.assertEqual(self.app.current_view_mode, "search")
+        self.assertEqual(self.app.search_ctrl.current_view_mode, "search")
 
     def test_view_favourites_calls_parser_and_switches_mode(self):
         comic = ComicInfo(id="c1", title="收藏漫画1", pages=8, media_id="m1", comic_source="NH")
@@ -66,13 +66,13 @@ class TestFavouritesGUI(unittest.TestCase):
 
         self.app.parser.favourites = fake_favourites
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app.view_favourites()
+            self.app.search_ctrl.view_favourites()
 
-        ok = self._wait_until(lambda: len(self.app.search_results) == 1 and called_pages)
+        ok = self._wait_until(lambda: len(self.app.app_state.search.results) == 1 and called_pages)
         self.assertTrue(ok)
         self.assertEqual(called_pages, [1])
-        self.assertEqual(self.app.current_view_mode, "favourites")
-        self.assertEqual(self.app.search_results[0].id, "c1")
+        self.assertEqual(self.app.search_ctrl.current_view_mode, "favourites")
+        self.assertEqual(self.app.app_state.search.results[0].id, "c1")
 
     def test_favourites_mode_pagination_uses_favourites_api(self):
         comic = ComicInfo(id="c2", title="收藏漫画2", pages=6, media_id="m2", comic_source="NH")
@@ -89,12 +89,12 @@ class TestFavouritesGUI(unittest.TestCase):
 
         self.app.parser.favourites = fake_favourites
         self.app.parser.search = fake_search
-        self.app.current_view_mode = "favourites"
-        self.app.current_page = 2
-        self.app.total_pages = 3
+        self.app.search_ctrl.current_view_mode = "favourites"
+        self.app.search_ctrl.current_page = 2
+        self.app.search_ctrl.total_pages = 3
 
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app._load_page()
+            self.app.search_ctrl._load_page()
 
         ok = self._wait_until(lambda: bool(called_pages))
         self.assertTrue(ok)
@@ -114,14 +114,14 @@ class TestFavouritesGUI(unittest.TestCase):
         self.app.search_var.set("")
 
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app.search()
+            self.app.search_ctrl.search()
 
         ok = self._wait_until(lambda: bool(called_search))
         self.assertTrue(ok)
         self.assertEqual(called_search, [("", 1)])
         self.assertFalse(mock_warning.called)
-        self.assertTrue(self.app.has_search_started)
-        self.assertEqual(self.app.current_view_mode, "search")
+        self.assertTrue(self.app.search_ctrl.has_search_started)
+        self.assertEqual(self.app.search_ctrl.current_view_mode, "search")
 
     @patch("tkinter.messagebox.showinfo")
     def test_search_mode_pagination_allows_empty_keyword_after_search(self, mock_info):
@@ -133,14 +133,14 @@ class TestFavouritesGUI(unittest.TestCase):
             return [comic], PaginationInfo(current_page=page, total_pages=3, total_items=3, limit=10)
 
         self.app.parser.search = fake_search
-        self.app.current_view_mode = "search"
-        self.app.current_search_keyword = ""
-        self.app.has_search_started = True
-        self.app.current_page = 2
-        self.app.total_pages = 3
+        self.app.search_ctrl.current_view_mode = "search"
+        self.app.search_ctrl.current_search_keyword = ""
+        self.app.search_ctrl.has_search_started = True
+        self.app.search_ctrl.current_page = 2
+        self.app.search_ctrl.total_pages = 3
 
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app._load_page()
+            self.app.search_ctrl._load_page()
 
         ok = self._wait_until(lambda: bool(called_search))
         self.assertTrue(ok)
@@ -156,45 +156,44 @@ class TestFavouritesGUI(unittest.TestCase):
             return [comic], PaginationInfo(current_page=page, total_pages=3, total_items=3, limit=10)
 
         self.app.parser.search = fake_search
-        self.app.current_view_mode = "search"
-        self.app.current_search_keyword = "abc"
-        self.app.has_search_started = True
-        self.app.current_page = 2
-        self.app.total_pages = 3
+        self.app.search_ctrl.current_view_mode = "search"
+        self.app.search_ctrl.current_search_keyword = "abc"
+        self.app.search_ctrl.has_search_started = True
+        self.app.search_ctrl.current_page = 2
+        self.app.search_ctrl.total_pages = 3
         self.app.canvas.yview_moveto = unittest.mock.MagicMock()
 
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app._load_page()
+            self.app.search_ctrl._load_page()
 
         ok = self._wait_until(lambda: bool(called_search))
         self.assertTrue(ok)
         self.app.canvas.yview_moveto.assert_any_call(0.0)
 
-    @patch("tkinter.messagebox.showwarning")
-    def test_view_favourites_login_required_keeps_existing_results(self, mock_warning):
+    def test_view_favourites_login_required_keeps_existing_results(self):
         old_comic = ComicInfo(id="old", title="旧结果", pages=5, media_id="oldm", comic_source="NH")
-        self.app.search_results = [old_comic]
+        self.app.app_state.search.results = [old_comic]
 
         self.app.parser.favourites = lambda page=1: ([], None, True)
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app.view_favourites()
+            self.app.search_ctrl.view_favourites()
 
-        ok = self._wait_until(lambda: mock_warning.called)
+        ok = self._wait_until(lambda: self.app.search_ctrl.current_view_mode == "search")
         self.assertTrue(ok)
-        self.assertEqual(len(self.app.search_results), 1)
-        self.assertEqual(self.app.search_results[0].id, "old")
-        self.assertEqual(self.app.current_view_mode, "search")
+        self.assertEqual(len(self.app.app_state.search.results), 1)
+        self.assertEqual(self.app.app_state.search.results[0].id, "old")
+        self.assertEqual(self.app.search_ctrl.current_view_mode, "search")
 
     @patch("tkinter.messagebox.showwarning")
     def test_view_favourites_unsupported_source_shows_warning(self, mock_warning):
         self.app.source_var.set("moeimg.fan")
         with patch.object(self.app.config, "save", lambda *args, **kwargs: None):
-            self.app._on_source_changed()
+            self.app.search_ctrl.on_source_changed()
         self.assertEqual(self.app.parser.current_source, "moeimg")
 
-        self.app.view_favourites()
+        self.app.search_ctrl.view_favourites()
         self.assertTrue(mock_warning.called)
-        self.assertEqual(self.app.current_view_mode, "search")
+        self.assertEqual(self.app.search_ctrl.current_view_mode, "search")
 
     def test_moeimg_query_mode_author_transforms_search_keyword(self):
         called_search = []
@@ -206,14 +205,14 @@ class TestFavouritesGUI(unittest.TestCase):
 
         self.app.source_var.set("moeimg.fan")
         with patch.object(self.app.config, "save", lambda *args, **kwargs: None):
-            self.app._on_source_changed()
+            self.app.search_ctrl.on_source_changed()
 
         self.app.parser.search = fake_search
         self.app.query_mode_var.set("作者")
         self.app.search_var.set("horn-wood")
 
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app.search()
+            self.app.search_ctrl.search()
 
         ok = self._wait_until(lambda: bool(called_search))
         self.assertTrue(ok)

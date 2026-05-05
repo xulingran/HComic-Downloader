@@ -8,6 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from gui import HComicDownloaderGUI
 from models import ComicInfo, DownloadTask, DownloadStatus
+from downloader import DownloadResult
 
 
 class ImmediateThread:
@@ -75,14 +76,19 @@ class TestDownloadGUI(unittest.TestCase):
         self.app.cbz_builder.get_output_path_for_format = lambda comic, output_format, output_dir: "/tmp/test.cbz"
         self.app.cbz_builder.build_cbz = lambda temp_dir, comic, output_path: "/tmp/test.cbz"
         self.app.downloader.cleanup_temp_dir = lambda temp_dir: None
-        self.app.downloader.download_comic = (
-            lambda comic, output_dir, progress_callback=None: downloaded_comics.append(comic) or "/tmp/temp_moeimg_123"
+        self.app.downloader.download_comic_resume = (
+            lambda comic, output_dir, progress_callback=None, **kwargs: downloaded_comics.append(comic) or DownloadResult(success=True, completed_pages=[1], failed_pages=[], temp_dir="/tmp/temp_moeimg_123")
         )
 
         with patch("gui.threading.Thread", ImmediateThread), patch("gui.os.path.exists", return_value=False):
-            self.app.download_comic(source_comic)
+            self.app.dl_ctrl.download_comic(
+                source_comic,
+                self.app.search_ctrl.ensure_comics_detail_ready,
+                self.app.search_btn,
+                self.app.favourites_btn,
+            )
 
-        ok = self._wait_until(lambda: (not self.app.is_downloading) and bool(downloaded_comics))
+        ok = self._wait_until(lambda: (not self.app.dl_ctrl.is_downloading) and bool(downloaded_comics))
         self.assertTrue(ok)
         self.assertIs(downloaded_comics[0], source_comic)
         self.assertEqual(downloaded_comics[0].author, "作者X")
@@ -121,19 +127,24 @@ class TestDownloadGUI(unittest.TestCase):
 
                 self.app.config.output_format = output_format
                 self.app.download_dir_var.set(tempfile.gettempdir())
-                self.app._ensure_comics_detail_ready = lambda comics, progress_callback=None: [prepared_comic]
+                self.app.search_ctrl.ensure_comics_detail_ready = lambda comics, progress_callback=None: [prepared_comic]
                 self.app.cbz_builder.get_output_path_for_format = MagicMock(return_value=expected_output_path)
                 build_mock = MagicMock(return_value=expected_output_path)
                 setattr(self.app.cbz_builder, builder_method, build_mock)
                 self.app.downloader.cleanup_temp_dir = lambda temp_dir: None
-                self.app.downloader.download_comic = (
-                    lambda comic, output_dir, progress_callback=None: downloaded_comics.append(comic) or "/tmp/temp_moeimg_456"
+                self.app.downloader.download_comic_resume = (
+                    lambda comic, output_dir, progress_callback=None, **kwargs: downloaded_comics.append(comic) or DownloadResult(success=True, completed_pages=[1, 2], failed_pages=[], temp_dir="/tmp/temp_moeimg_456")
                 )
 
                 with patch("gui.threading.Thread", ImmediateThread), patch("gui.os.path.exists", return_value=False):
-                    self.app.download_comic(source_comic)
+                    self.app.dl_ctrl.download_comic(
+                        source_comic,
+                        self.app.search_ctrl.ensure_comics_detail_ready,
+                        self.app.search_btn,
+                        self.app.favourites_btn,
+                    )
 
-                ok = self._wait_until(lambda: (not self.app.is_downloading) and build_mock.called)
+                ok = self._wait_until(lambda: (not self.app.dl_ctrl.is_downloading) and build_mock.called)
                 self.assertTrue(ok)
                 self.assertTrue(mock_askyesno.called)
                 build_mock.assert_called_once()
@@ -158,14 +169,19 @@ class TestDownloadGUI(unittest.TestCase):
         def raise_prepare_error(_):
             raise RuntimeError("detail failed")
 
-        self.app._ensure_comics_detail_ready = raise_prepare_error
+        self.app.search_ctrl.ensure_comics_detail_ready = raise_prepare_error
         self.app.cbz_builder.get_output_path_for_format = lambda comic, output_format, output_dir: "/tmp/test.cbz"
-        self.app.downloader.download_comic = (
-            lambda comic, output_dir, progress_callback=None: downloaded_comics.append(comic) or "/tmp/temp_moeimg_321"
+        self.app.downloader.download_comic_resume = (
+            lambda comic, output_dir, progress_callback=None, **kwargs: downloaded_comics.append(comic) or DownloadResult(success=True, completed_pages=[1], failed_pages=[], temp_dir="/tmp/temp_moeimg_321")
         )
 
         with patch("gui.threading.Thread", ImmediateThread), patch("gui.os.path.exists", return_value=False):
-            self.app.download_comic(source_comic)
+            self.app.dl_ctrl.download_comic(
+                source_comic,
+                self.app.search_ctrl.ensure_comics_detail_ready,
+                self.app.search_btn,
+                self.app.favourites_btn,
+            )
 
         self.assertFalse(downloaded_comics)
         self.assertFalse(mock_askyesno.called)
@@ -191,8 +207,8 @@ class TestDownloadGUI(unittest.TestCase):
             image_urls=[f"https://cdn.example/{i:03d}.webp" for i in range(1, 9)],
         )
 
-        self.app.batch_select_mode_var.set(True)
-        self.app.selected_comics = {source_comic}
+        self.app.dl_ctrl.batch_select_mode_var.set(True)
+        self.app.app_state.download.selected_comics = {source_comic}
 
         ensure_called = []
         executed_comics = []
@@ -201,11 +217,15 @@ class TestDownloadGUI(unittest.TestCase):
             ensure_called.append([c.id for c in comics])
             return [prepared_comic]
 
-        self.app._ensure_comics_detail_ready = fake_ensure
-        self.app.execute_batch_download = lambda comics: executed_comics.extend(comics)
+        self.app.search_ctrl.ensure_comics_detail_ready = fake_ensure
+        self.app.dl_ctrl.execute_batch_download = lambda comics: executed_comics.extend(comics)
 
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app.batch_download_selected()
+            self.app.dl_ctrl.batch_download_selected(
+                self.app.search_ctrl.ensure_comics_detail_ready,
+                self.app.search_btn,
+                self.app.favourites_btn,
+            )
 
         ok = self._wait_until(lambda: bool(executed_comics))
         self.assertTrue(ok)
@@ -224,12 +244,12 @@ class TestDownloadGUI(unittest.TestCase):
             image_urls=[],
         )
 
-        self.app.batch_select_mode_var.set(True)
-        self.app.selected_comics = {source_comic}
-        self.app._ensure_comics_detail_ready = lambda comics, progress_callback=None: (_ for _ in ()).throw(
+        self.app.dl_ctrl.batch_select_mode_var.set(True)
+        self.app.app_state.download.selected_comics = {source_comic}
+        self.app.search_ctrl.ensure_comics_detail_ready = lambda comics, progress_callback=None: (_ for _ in ()).throw(
             RuntimeError("detail failed")
         )
-        self.app._on_batch_prepare_failed = MagicMock()
+        self.app.dl_ctrl._on_batch_prepare_failed = MagicMock()
 
         scheduled_callbacks = []
 
@@ -241,13 +261,19 @@ class TestDownloadGUI(unittest.TestCase):
         self.app.after = fake_after
 
         with patch("gui.threading.Thread", ImmediateThread):
-            self.app.batch_download_selected()
+            self.app.dl_ctrl.batch_download_selected(
+                self.app.search_ctrl.ensure_comics_detail_ready,
+                self.app.search_btn,
+                self.app.favourites_btn,
+            )
 
         self.assertTrue(scheduled_callbacks)
         for callback, args in scheduled_callbacks:
             callback(*args)
 
-        self.app._on_batch_prepare_failed.assert_called_once_with("detail failed")
+        self.app.dl_ctrl._on_batch_prepare_failed.assert_called_once_with(
+            "detail failed", self.app.search_btn, self.app.favourites_btn
+        )
 
     def test_detail_ready_requires_current_comic_fields_even_if_key_cached(self):
         source_comic = ComicInfo(
@@ -269,12 +295,12 @@ class TestDownloadGUI(unittest.TestCase):
             ],
         )
 
-        # 旧逻辑会把 key 命中视为“已补齐”，从而跳过 prepare_for_download。
-        self.app.moeimg_detail_ready_keys.add(self.app._detail_ready_key(source_comic))
+        # 旧逻辑会把 key 命中视为"已补齐"，从而跳过 prepare_for_download。
+        self.app.app_state.search.moeimg_detail_ready_keys.add(self.app.search_ctrl._detail_ready_key(source_comic))
         called = []
         self.app.parser.prepare_for_download = lambda comic: called.append(comic.id) or prepared_comic
 
-        output = self.app._ensure_comics_detail_ready([source_comic])
+        output = self.app.search_ctrl.ensure_comics_detail_ready([source_comic])
         self.assertEqual(called, ["777"])
         self.assertEqual(output[0].pages, 2)
         self.assertEqual(len(output[0].image_urls), 2)
@@ -285,10 +311,10 @@ class TestDownloadGUI(unittest.TestCase):
             status=DownloadStatus.QUEUED,
         )
         self.app.after = MagicMock()
-        self.app._is_destroying = True
+        self.app.dl_ctrl._is_destroying = True
 
-        self.app._on_download_task_update(task)
-        self.app._on_download_queue_complete()
+        self.app.dl_ctrl.on_download_task_update(task)
+        self.app.dl_ctrl.on_download_queue_complete()
 
         self.app.after.assert_not_called()
 

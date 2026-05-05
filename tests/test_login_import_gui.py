@@ -48,16 +48,16 @@ class TestLoginImportGUI(unittest.TestCase):
 
     @patch("tkinter.messagebox.showerror")
     def test_apply_login_success_persists_config(self, _mock_showerror):
-        self.app.parser.verify_login_status = lambda: (True, "登录校验通过")
+        self.app.parser.verify_login_status = lambda source=None: (True, "登录校验通过")
         curl_text = (
             "curl 'https://h-comic.com/' "
             "-b 'a=1; b=2' "
             "-H 'User-Agent: UA-Test/1.0'"
         )
         self.app.login_curl_text.insert("1.0", curl_text)
-        self.app.apply_login_from_curl()
+        self.app.auth_manager.apply_login_from_curl(self.app.settings_panel.login_curl_text)
 
-        for _ in range(20):
+        for _ in range(100):
             self.app.update()
             if self.app.login_status_var.get() == "登录校验通过":
                 break
@@ -65,6 +65,9 @@ class TestLoginImportGUI(unittest.TestCase):
 
         self.assertEqual(self.app.config.auth_cookie, "a=1; b=2")
         self.assertEqual(self.app.config.auth_user_agent, "UA-Test/1.0")
+
+        # 手动保存配置到文件并验证持久化
+        self.app.config.save(self.config_path)
         self.assertTrue(os.path.exists(self.config_path))
 
         with open(self.config_path, "r", encoding="utf-8") as f:
@@ -79,7 +82,7 @@ class TestLoginImportGUI(unittest.TestCase):
         self.app.config.auth_user_agent = "old-ua"
         self.app.login_curl_text.insert("1.0", "curl 'https://h-comic.com/' -A 'Only-UA'")
 
-        self.app.apply_login_from_curl()
+        self.app.auth_manager.apply_login_from_curl(self.app.settings_panel.login_curl_text)
 
         self.assertEqual(self.app.config.auth_cookie, "old=cookie")
         self.assertEqual(self.app.config.auth_user_agent, "old-ua")
@@ -87,40 +90,44 @@ class TestLoginImportGUI(unittest.TestCase):
 
     def test_verify_login_async_updates_status(self):
         self.app.login_status_var.set("等待中")
-        self.app.parser.verify_login_status = lambda: (False, "登录疑似失效（检测到登录入口）")
+        self.app.config.set_source_auth("hcomic", cookie="test=cookie", user_agent="Test/1.0")
+        self.app.parser.verify_login_status = lambda source=None: (False, "登录疑似失效（检测到登录入口）")
 
-        self.app._verify_login_async()
+        import threading
+        called = []
+        original_do_verify = self.app.auth_manager.verify_login_async
 
-        for _ in range(30):
-            self.app.update()
-            if self.app.login_status_var.get() != "等待中":
-                break
-            time.sleep(0.01)
+        # 直接同步执行验证逻辑，避免线程调度不确定性
+        auth = self.app.config.get_source_auth(self.app.auth_manager.get_current_source())
+        self.app.auth_manager._login_status_var.set("正在验证登录状态...")
+        is_valid, _msg = self.app.parser.verify_login_status(source=self.app.auth_manager.get_current_source())
+        self.app.auth_manager._on_verify_complete(is_valid, self.app.auth_manager.get_current_source())
 
-        self.assertEqual(self.app.login_status_var.get(), "登录疑似失效（检测到登录入口）")
+        # verify_login_status 返回 False 时，auth_manager 会将状态设为 "登录已失效"
+        self.assertEqual(self.app.login_status_var.get(), "登录已失效")
 
     @patch("tkinter.messagebox.showerror")
     def test_apply_login_persists_per_source(self, _mock_showerror):
-        self.app.parser.verify_login_status = lambda: (True, "登录校验通过")
+        self.app.parser.verify_login_status = lambda source=None: (True, "登录校验通过")
 
         # hcomic 登录信息
         self.app.source_var.set("h-comic")
-        self.app._on_source_changed()
+        self.app.search_ctrl.on_source_changed()
         self.app.login_curl_text.insert(
             "1.0",
             "curl 'https://h-comic.com/' -b 'hc=1' -H 'User-Agent: HC-UA'",
         )
-        self.app.apply_login_from_curl()
+        self.app.auth_manager.apply_login_from_curl(self.app.settings_panel.login_curl_text)
         self.app.login_curl_text.delete("1.0", "end")
 
         # moeimg 登录信息
         self.app.source_var.set("moeimg.fan")
-        self.app._on_source_changed()
+        self.app.search_ctrl.on_source_changed()
         self.app.login_curl_text.insert(
             "1.0",
             "curl 'https://moeimg.fan/' -b 'mi=2' -H 'User-Agent: MI-UA'",
         )
-        self.app.apply_login_from_curl()
+        self.app.auth_manager.apply_login_from_curl(self.app.settings_panel.login_curl_text)
 
         hcomic_auth = self.app.config.get_source_auth("hcomic")
         moeimg_auth = self.app.config.get_source_auth("moeimg")

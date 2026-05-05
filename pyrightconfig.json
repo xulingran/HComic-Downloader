@@ -1,0 +1,18 @@
+{
+  "include": [
+    "*.py",
+    "panels/*.py"
+  ],
+  "exclude": [
+    "**/node_modules",
+    "**/__pycache__",
+    "tests/",
+    "venv/",
+    ".worktrees/"
+  ],
+  "typeCheckingMode": "basic",
+  "reportMissingImports": true,
+  "reportMissingTypeStubs": false,
+  "reportUnusedImport": "warning",
+  "pythonVersion": "3.10"
+}

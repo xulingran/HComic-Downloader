@@ -1,0 +1,122 @@
+<h2>选择漫画卡片样式</h2>
+<p class="subtitle">搜索结果中每张漫画的展示方式</p>
+
+<div class="cards">
+  <div class="card" data-choice="cover-title" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: #f5f7fa; padding: 16px; min-height: 180px;">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px;">
+        <!-- Card 1 -->
+        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #a8edea, #fed6e3); height: 100px;"></div>
+          <div style="padding: 10px;">
+            <div style="background: #2c3e50; width: 85%; height: 8px; border-radius: 4px; margin-bottom: 6px;"></div>
+            <div style="background: #bdc3c7; width: 60%; height: 6px; border-radius: 3px;"></div>
+          </div>
+        </div>
+        <!-- Card 2 -->
+        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #ffecd2, #fcb69f); height: 100px;"></div>
+          <div style="padding: 10px;">
+            <div style="background: #2c3e50; width: 75%; height: 8px; border-radius: 4px; margin-bottom: 6px;"></div>
+            <div style="background: #bdc3c7; width: 50%; height: 6px; border-radius: 3px;"></div>
+          </div>
+        </div>
+        <!-- Card 3 -->
+        <div style="background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #a1c4fd, #c2e9fb); height: 100px;"></div>
+          <div style="padding: 10px;">
+            <div style="background: #2c3e50; width: 90%; height: 8px; border-radius: 4px; margin-bottom: 6px;"></div>
+            <div style="background: #bdc3c7; width: 55%; height: 6px; border-radius: 3px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>封面 + 标题</h3>
+      <p>简洁卡片，只显示封面图和标题，悬停显示更多信息</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="detailed" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: #f5f7fa; padding: 16px; min-height: 180px;">
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <!-- Detailed Card 1 -->
+        <div style="background: white; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #a8edea, #fed6e3); width: 80px; min-height: 80px;"></div>
+          <div style="flex: 1; padding: 12px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="background: #2c3e50; width: 70%; height: 8px; border-radius: 4px; margin-bottom: 8px;"></div>
+            <div style="background: #bdc3c7; width: 50%; height: 6px; border-radius: 3px; margin-bottom: 8px;"></div>
+            <div style="display: flex; gap: 6px;">
+              <div style="background: #e8f4f8; padding: 2px 8px; border-radius: 10px;"><div style="background: #4A90D9; width: 20px; height: 5px; border-radius: 2px;"></div></div>
+              <div style="background: #fef3e8; padding: 2px 8px; border-radius: 10px;"><div style="background: #f39c12; width: 16px; height: 5px; border-radius: 2px;"></div></div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 0 12px;">
+            <div style="background: #4A90D9; width: 24px; height: 24px; border-radius: 12px;"></div>
+          </div>
+        </div>
+        <!-- Detailed Card 2 -->
+        <div style="background: white; border-radius: 12px; display: flex; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #ffecd2, #fcb69f); width: 80px; min-height: 80px;"></div>
+          <div style="flex: 1; padding: 12px; display: flex; flex-direction: column; justify-content: center;">
+            <div style="background: #2c3e50; width: 80%; height: 8px; border-radius: 4px; margin-bottom: 8px;"></div>
+            <div style="background: #bdc3c7; width: 40%; height: 6px; border-radius: 3px; margin-bottom: 8px;"></div>
+            <div style="display: flex; gap: 6px;">
+              <div style="background: #e8f4f8; padding: 2px 8px; border-radius: 10px;"><div style="background: #4A90D9; width: 24px; height: 5px; border-radius: 2px;"></div></div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; padding: 0 12px;">
+            <div style="background: #4A90D9; width: 24px; height: 24px; border-radius: 12px;"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>详细列表</h3>
+      <p>横向卡片，左侧封面 + 右侧标题/标签/操作按钮，信息密度高</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="grid-compact" onclick="toggleSelect(this)">
+    <div class="card-image" style="background: #f5f7fa; padding: 16px; min-height: 180px;">
+      <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px;">
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #a8edea, #fed6e3); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 80%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #ffecd2, #fcb69f); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 70%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #a1c4fd, #c2e9fb); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 90%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #d4fc79, #96e6a1); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 65%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #f093fb, #f5576c); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 75%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #4facfe, #00f2fe); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 85%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #fa709a, #fee140); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 60%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+          <div style="background: linear-gradient(135deg, #a18cd1, #fbc2eb); height: 80px;"></div>
+          <div style="padding: 6px;"><div style="background: #2c3e50; width: 70%; height: 6px; border-radius: 3px;"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>紧凑网格</h3>
+      <p>4列密集排列，封面为主，标题精简，适合快速浏览大量内容</p>
+    </div>
+  </div>
+</div>

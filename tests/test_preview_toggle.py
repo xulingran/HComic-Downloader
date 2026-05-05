@@ -169,11 +169,11 @@ class TestPreviewToggleGUI(unittest.TestCase):
         app = self._create_test_gui()
         try:
             self.assertTrue(
-                hasattr(app, '_safe_update_image'),
-                "GUI 应有 _safe_update_image 方法"
+                hasattr(app.cover_loader, '_safe_update_image'),
+                "CoverLoader 应有 _safe_update_image 方法"
             )
             self.assertTrue(
-                callable(app._safe_update_image),
+                callable(app.cover_loader._safe_update_image),
                 "_safe_update_image 应该是可调用的"
             )
         finally:
@@ -186,12 +186,12 @@ class TestPreviewToggleGUI(unittest.TestCase):
             label = MagicMock()
             label.winfo_exists.return_value = True
             photo = object()
-            app._is_scrolling = True
+            app.cover_loader._is_scrolling = lambda: True
 
-            app._safe_update_image(label, photo)
+            app.cover_loader._safe_update_image(label, photo)
 
-            self.assertIn(label, app._pending_image_updates)
-            self.assertIs(app._pending_image_updates[label], photo)
+            self.assertIn(label, app.cover_loader._pending_image_updates)
+            self.assertIs(app.cover_loader._pending_image_updates[label], photo)
             label.config.assert_not_called()
         finally:
             app.destroy()
@@ -203,14 +203,15 @@ class TestPreviewToggleGUI(unittest.TestCase):
             label = MagicMock()
             label.winfo_exists.return_value = True
             photo = object()
-            app._is_scrolling = True
-            app._safe_update_image(label, photo)
+            app.cover_loader._is_scrolling = lambda: True
+            app.cover_loader._safe_update_image(label, photo)
 
-            app._mark_scroll_idle()
+            app.cover_loader._is_scrolling = lambda: False
+            app.cover_loader.flush_pending_on_idle()
 
             label.config.assert_called_once_with(image=photo, text="", cursor="")
             self.assertIs(label.image, photo)
-            self.assertFalse(app._pending_image_updates)
+            self.assertFalse(app.cover_loader._pending_image_updates)
         finally:
             app.destroy()
 
@@ -218,12 +219,12 @@ class TestPreviewToggleGUI(unittest.TestCase):
         """封面加载失败时应显示重试图标"""
         app = self._create_test_gui()
         try:
-            app.cover_load_generation = 5
+            app.cover_loader.cover_load_generation = 5
             label = tk.Label(app.scrollable_frame)
             label.grid(row=999, column=0)
             app.parser.session.get = MagicMock(side_effect=RuntimeError("cover failed"))
 
-            app.load_cover("https://example.com/cover.jpg", label, card_width=180, generation=5)
+            app.cover_loader._load_cover("https://example.com/cover.jpg", label, 180, 5)
             app.update()
 
             self.assertIn("重试", label.cget("text"))
@@ -235,15 +236,16 @@ class TestPreviewToggleGUI(unittest.TestCase):
         """点击失败图标后应重新调度封面下载"""
         app = self._create_test_gui()
         try:
-            label = tk.Label(app.scrollable_frame)
+            from tkinter import ttk
+            label = ttk.Label(app.scrollable_frame)
             label.grid(row=999, column=0)
             label._cover_url = "https://example.com/cover.jpg"
             label._cover_card_width = 170
-            app._schedule_cover_load = MagicMock()
+            app.cover_loader.schedule_cover_load = MagicMock()
 
-            result = app._retry_cover_load(None, label)
+            result = app.cover_loader._retry_cover_load(label)
 
-            app._schedule_cover_load.assert_called_once_with("https://example.com/cover.jpg", label, 170)
+            app.cover_loader.schedule_cover_load.assert_called_once_with("https://example.com/cover.jpg", label, 170)
             self.assertEqual(result, "break")
             self.assertEqual(label.cget("text"), "加载中...")
         finally:
@@ -321,7 +323,7 @@ class TestPreviewCardRendering(unittest.TestCase):
 
             # 创建卡片
             comic = self._create_test_comic()
-            frame = app.create_comic_card(comic, 0, 0)
+            frame = app.search_ctrl.create_comic_card(comic, 0, 0, app._get_download_callbacks())
 
             # 验证卡片已创建
             self.assertIsNotNone(frame)
@@ -346,7 +348,7 @@ class TestPreviewCardRendering(unittest.TestCase):
 
             # 创建卡片
             comic = self._create_test_comic()
-            frame = app.create_comic_card(comic, 0, 0)
+            frame = app.search_ctrl.create_comic_card(comic, 0, 0, app._get_download_callbacks())
 
             # 验证卡片已创建
             self.assertIsNotNone(frame)

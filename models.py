@@ -4,6 +4,8 @@ from enum import Enum
 import time
 from typing import List, Optional
 
+from constants import IMAGE_API_BASE
+
 
 @dataclass
 class ComicInfo:
@@ -64,7 +66,7 @@ class ComicInfo:
             "MMCG_LONG": "mml",
         }
         suffix = source_map.get(self.comic_source.upper(), "nh")
-        return f"https://h-comic.link/api/{suffix}/{self.media_id}/pages/{page}"
+        return f"{IMAGE_API_BASE}/{suffix}/{self.media_id}/pages/{page}"
 
     def get_all_image_urls(self) -> List[str]:
         """获取所有页面的图片 URL"""
@@ -111,6 +113,10 @@ class PaginationInfo:
     def has_next(self) -> bool:
         """是否有下一页"""
         return self.current_page < self.total_pages
+
+
+class DownloadCancelledError(Exception):
+    """下载被用户取消。"""
 
 
 class DownloadStatus(Enum):

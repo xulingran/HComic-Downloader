@@ -32,6 +32,9 @@ class Config:
     theme_mode: str = "auto"  # "auto" | "light" | "dark"
     # 自动重试配置
     auto_retry_max_attempts: int = 2  # 下载失败时自动重试次数（0-5，0表示禁用）
+    # 通知配置
+    notify_on_complete: bool = True  # 是否发送系统通知
+    notify_when_foreground: str = "inactive"  # "inactive" | "always"
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
@@ -112,33 +115,20 @@ class Config:
                 }
             if "default_source" not in data:
                 data["default_source"] = "hcomic"
+            # 兼容旧配置：通知配置
+            if "notify_when_foreground" not in data:
+                data["notify_when_foreground"] = "inactive"
             return cls(**data)
         return cls()
 
     def save(self, config_path: str):
         """保存配置到文件"""
         import json
+        from dataclasses import asdict
         # 兼容旧字段，保持为 hcomic 认证
         hcomic_auth = self.get_source_auth("hcomic")
         self.auth_cookie = hcomic_auth.get("cookie", "")
         self.auth_user_agent = hcomic_auth.get("user_agent", "")
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump({
-                'download_dir': self.download_dir,
-                'concurrent_downloads': self.concurrent_downloads,
-                'timeout': self.timeout,
-                'retry_times': self.retry_times,
-                'cbz_filename_template': self.cbz_filename_template,
-                'output_format': self.output_format,
-                'font_name': self.font_name,
-                'font_size': self.font_size,
-                'show_preview': self.show_preview,
-                'auth_cookie': self.auth_cookie,
-                'auth_user_agent': self.auth_user_agent,
-                'default_source': self.default_source,
-                'source_auth': self.source_auth,
-                'batch_download_delay': self.batch_download_delay,
-                'theme_mode': self.theme_mode,
-                'auto_retry_max_attempts': self.auto_retry_max_attempts,
-            }, f, ensure_ascii=False, indent=2)
+            json.dump(asdict(self), f, ensure_ascii=False, indent=2)

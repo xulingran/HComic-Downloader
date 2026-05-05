@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import platform
 import tkinter as tk
+import webbrowser
 from tkinter import scrolledtext, ttk
 from typing import Any, Callable
+
+_IS_WINDOWS = platform.system() == "Windows"
 
 
 class SettingsPanel(tk.Frame):
@@ -19,6 +23,8 @@ class SettingsPanel(tk.Frame):
         on_font_change: Callable[[str, int], None],
         on_preview_change: Callable[[bool], None],
         on_theme_change: Callable[[str], None],
+        on_notify_change: Callable[[bool], None] = None,
+        on_register_protocol: Callable[[], None] = None,
     ):
         super().__init__(parent)
         self.config_obj = config
@@ -27,6 +33,8 @@ class SettingsPanel(tk.Frame):
         self.on_font_change = on_font_change
         self.on_preview_change = on_preview_change
         self.on_theme_change = on_theme_change
+        self.on_notify_change = on_notify_change
+        self.on_register_protocol = on_register_protocol
 
         self.download_dir_var = tk.StringVar(value=config.download_dir)
         self.concurrent_var = tk.IntVar(value=config.concurrent_downloads)
@@ -39,6 +47,12 @@ class SettingsPanel(tk.Frame):
         self.show_preview_var = tk.BooleanVar(value=bool(config.show_preview))
         self.login_status_var = tk.StringVar(value="未配置登录信息")
         self.proxy_status_var = tk.StringVar(value="未检测")
+        # 通知配置
+        self.notify_on_complete_var = tk.BooleanVar(value=bool(config.notify_on_complete))
+        self.notify_when_foreground_var = tk.StringVar(
+            value={"inactive": "仅窗口非活动时", "always": "始终通知"}.get(config.notify_when_foreground, "仅窗口非活动时")
+        )
+        self.protocol_status_var = tk.StringVar(value="检测中...")
 
         self._build_ui()
 
@@ -99,12 +113,49 @@ class SettingsPanel(tk.Frame):
         self.apply_login_btn.grid(row=3, column=5, sticky=tk.NW, pady=(8, 0))
 
         ttk.Label(self.settings_frame, text="登录状态:").grid(row=4, column=0, sticky=tk.W, pady=(5, 0))
-        ttk.Label(self.settings_frame, textvariable=self.login_status_var).grid(row=4, column=1, columnspan=5, sticky=tk.W, padx=5, pady=(5, 0))
+        ttk.Label(self.settings_frame, textvariable=self.login_status_var).grid(row=4, column=1, columnspan=4, sticky=tk.W, padx=5, pady=(5, 0))
+        self.go_login_btn = ttk.Button(self.settings_frame, text="去登录", command=self._open_login_page, state=tk.DISABLED)
+        self.go_login_btn.grid(row=4, column=5, sticky=tk.W, pady=(5, 0))
 
         ttk.Label(self.settings_frame, text="系统代理:").grid(row=5, column=0, sticky=tk.W, pady=(5, 0))
         ttk.Label(self.settings_frame, textvariable=self.proxy_status_var).grid(row=5, column=1, columnspan=4, sticky=tk.W, padx=5, pady=(5, 0))
         self.refresh_proxy_btn = ttk.Button(self.settings_frame, text="刷新代理")
         self.refresh_proxy_btn.grid(row=5, column=5, sticky=tk.W, pady=(5, 0))
+
+        # ===== Row 6: 通知设置 =====
+        notify_frame = ttk.LabelFrame(self.settings_frame, text="通知设置", padding="5")
+        notify_frame.grid(row=6, column=0, columnspan=10, sticky=(tk.W, tk.E), pady=(10, 0))
+
+        self.notify_check = ttk.Checkbutton(
+            notify_frame, text="下载完成时发送系统通知",
+            variable=self.notify_on_complete_var,
+            command=self._on_notify_changed
+        )
+        self.notify_check.grid(row=0, column=0, columnspan=2, sticky=tk.W)
+
+        ttk.Label(notify_frame, text="通知时机:").grid(row=1, column=0, sticky=tk.W, pady=(5, 0))
+        self.notify_inactive_radio = ttk.Radiobutton(
+            notify_frame, text="仅窗口非活动时",
+            variable=self.notify_when_foreground_var, value="仅窗口非活动时",
+            command=self._on_notify_timing_changed
+        )
+        self.notify_inactive_radio.grid(row=1, column=1, sticky=tk.W, padx=5, pady=(5, 0))
+        self.notify_always_radio = ttk.Radiobutton(
+            notify_frame, text="始终通知",
+            variable=self.notify_when_foreground_var, value="始终通知",
+            command=self._on_notify_timing_changed
+        )
+        self.notify_always_radio.grid(row=1, column=2, sticky=tk.W, padx=5, pady=(5, 0))
+
+        # Windows 专属：注册协议
+        if _IS_WINDOWS:
+            self.register_protocol_btn = ttk.Button(
+                notify_frame, text="注册通知协议",
+                command=self._on_register_protocol
+            )
+            self.register_protocol_btn.grid(row=2, column=0, sticky=tk.W, pady=(5, 0))
+            ttk.Label(notify_frame, textvariable=self.protocol_status_var).grid(row=2, column=1, columnspan=2, sticky=tk.W, padx=5, pady=(5, 0))
+            ttk.Label(notify_frame, text="点击通知后打开应用窗口，仅需注册一次").grid(row=3, column=0, columnspan=3, sticky=tk.W, pady=(2, 0))
 
         self.settings_frame.columnconfigure(1, weight=1)
 
@@ -129,6 +180,25 @@ class SettingsPanel(tk.Frame):
     def _on_output_format_changed(self, event=None):
         self._save_all_settings()
 
+    def _on_notify_changed(self):
+        """通知开关变化"""
+        self._save_all_settings()
+        if self.on_notify_change:
+            self.on_notify_change(bool(self.notify_on_complete_var.get()))
+
+    def _on_notify_timing_changed(self):
+        """通知时机变化"""
+        self._save_all_settings()
+
+    def _on_register_protocol(self):
+        """注册协议按钮点击"""
+        if self.on_register_protocol:
+            self.on_register_protocol()
+
+    def _open_login_page(self):
+        """打开 h-comic.com 登录页面。"""
+        webbrowser.open("https://h-comic.com")
+
     def _save_all_settings(self):
         self.config_obj.download_dir = self.download_dir_var.get()
         self.config_obj.concurrent_downloads = int(self.concurrent_var.get())
@@ -139,6 +209,9 @@ class SettingsPanel(tk.Frame):
         self.config_obj.show_preview = bool(self.show_preview_var.get())
         self.config_obj.theme_mode = {"自动": "auto", "浅色": "light", "深色": "dark"}.get(self.theme_mode_var.get(), "auto")
         self.config_obj.output_format = {"CBZ格式": "cbz", "ZIP格式": "zip", "文件夹": "folder"}.get(self.output_format_var.get(), "cbz")
+        # 通知配置
+        self.config_obj.notify_on_complete = bool(self.notify_on_complete_var.get())
+        self.config_obj.notify_when_foreground = {"仅窗口非活动时": "inactive", "始终通知": "always"}.get(self.notify_when_foreground_var.get(), "inactive")
         self.on_config_change(self.config_obj)
 
     def _get_font_list(self):

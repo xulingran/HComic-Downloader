@@ -3,11 +3,61 @@
 from __future__ import annotations
 
 import tkinter as tk
+from dataclasses import dataclass
 from tkinter import font as tkfont
 from tkinter import ttk
-from typing import Any, Callable, List, Optional, cast
+from typing import Any, Callable, List, Optional, Protocol, cast
 
 from models import ComicInfo
+
+
+class CardEventHandler(Protocol):
+    """卡片事件处理器协议。"""
+
+    def on_card_click(self, event: tk.Event, comic: ComicInfo, frame: tk.Frame) -> None:
+        """卡片点击事件。"""
+        ...
+
+    def on_download_click(self, comic: ComicInfo) -> None:
+        """下载按钮点击事件。"""
+        ...
+
+    def on_schedule_cover_load(self, url: str, label: ttk.Label, card_width: int) -> None:
+        """调度封面加载。"""
+        ...
+
+    def on_render_title(self, title_widget: tk.Text, comic: ComicInfo, card_width: int) -> None:
+        """渲染标题。"""
+        ...
+
+    def on_copy_selected_text(self, event: tk.Event) -> None:
+        """复制选中文本。"""
+        ...
+
+    def on_title_click_press(self, event: tk.Event) -> None:
+        """标题点击按下事件。"""
+        ...
+
+    def on_title_drag(self, event: tk.Event) -> None:
+        """标题拖拽事件。"""
+        ...
+
+    def on_title_click_release(self, event: tk.Event, comic: ComicInfo, title_widget: tk.Text, card_width: int) -> str:
+        """标题点击释放事件。"""
+        ...
+
+    def on_set_text_widget_content(self, widget: tk.Text, text: str, height: int) -> None:
+        """设置文本组件内容。"""
+        ...
+
+
+@dataclass
+class CardContext:
+    """卡片上下文配置。"""
+    theme_manager: Any
+    get_font_fn: Callable[..., Any]
+    card_padding: int = 10
+    show_preview: bool = False
 
 
 def get_card_key(comic: ComicInfo) -> str:
@@ -162,22 +212,23 @@ def build_comic_card_frame(
     col: int,
     columns: int,
     canvas_width: int,
-    card_padding: int,
-    show_preview: bool,
-    theme_manager,
     card_key: str,
-    on_card_click,
-    on_download_click,
-    on_schedule_cover_load,
-    on_render_title,
-    on_copy_selected_text,
-    on_title_click_press_cb,
-    on_title_drag_cb,
-    on_title_click_release_cb,
-    on_set_text_widget_content_cb,
-    get_font_fn,
+    ctx: CardContext,
+    handler: CardEventHandler,
 ) -> tk.Widget:
-    """构建单个漫画卡片 UI。"""
+    """构建单个漫画卡片 UI。
+
+    Args:
+        parent: 父容器
+        comic: 漫画信息
+        row: 行号
+        col: 列号
+        columns: 总列数
+        canvas_width: 画布宽度
+        card_key: 卡片唯一键
+        ctx: 卡片上下文配置
+        handler: 事件处理器
+    """
     frame = cast(Any, ttk.Frame(parent, relief="solid", borderwidth=1, padding="5", style="Card.TFrame"))
     frame.comic_ref = comic
     frame.comic_key = card_key
@@ -189,29 +240,29 @@ def build_comic_card_frame(
     frame.grid(row=row, column=col, padx=5, pady=5, sticky="wens")
 
     if canvas_width > 1:
-        card_width = (canvas_width - 20) // columns - card_padding * 2
+        card_width = (canvas_width - 20) // columns - ctx.card_padding * 2
     else:
         card_width = 200
     card_inner_width = max(140, card_width - 10)
-    card_bg = get_frame_background(theme_manager)
+    card_bg = get_frame_background(ctx.theme_manager)
 
-    if show_preview:
+    if ctx.show_preview:
         img_label = cast(Any, ttk.Label(frame))
         img_label.grid(row=0, column=0, pady=(0, 5))
         img_label._cover_url = comic.cover_url or ""
         img_label._cover_card_width = card_width
-        img_label._card_click_handler = lambda e, c=comic, f=frame: on_card_click(e, c, f)
+        img_label._card_click_handler = lambda e, c=comic, f=frame: handler.on_card_click(e, c, f)
         if comic.cover_url:
             img_label.config(text="加载中...")
-            on_schedule_cover_load(comic.cover_url, img_label, card_width)
+            handler.on_schedule_cover_load(comic.cover_url, img_label, card_width)
     else:
         placeholder_width = max(12, min(28, int(card_width // 10)))
         placeholder = cast(Any, tk.Label(
             frame,
             text="NSFW",
-            bg=theme_manager.get_color("border"),
-            fg=theme_manager.get_color("text_secondary"),
-            font=get_font_fn("small", bold=True),
+            bg=ctx.theme_manager.get_color("border"),
+            fg=ctx.theme_manager.get_color("text_secondary"),
+            font=ctx.get_font_fn("small", bold=True),
             width=placeholder_width,
             height=2,
             relief="flat",
@@ -228,19 +279,19 @@ def build_comic_card_frame(
         height=3,
         bd=0,
         relief="flat",
-        font=get_font_fn("normal", bold=True),
+        font=ctx.get_font_fn("normal", bold=True),
         cursor="xterm",
         padx=0,
         pady=0,
         highlightthickness=0,
         bg=card_bg,
-        fg=theme_manager.get_color("text"),
-        insertbackground=theme_manager.get_color("insert"),
-        width=max(12, int(card_inner_width / max(7, tkfont.Font(font=get_font_fn("normal", bold=True)).measure("测")))),
+        fg=ctx.theme_manager.get_color("text"),
+        insertbackground=ctx.theme_manager.get_color("insert"),
+        width=max(12, int(card_inner_width / max(7, tkfont.Font(font=ctx.get_font_fn("normal", bold=True)).measure("测")))),
     ))
     title_widget.is_secondary_text = False
     title_widget.grid(row=1, column=0, sticky="we")
-    on_render_title(title_widget, comic, card_width)
+    handler.on_render_title(title_widget, comic, card_width)
 
     author_text = f"作者: {comic.author or '未知'}"
     author_widget = cast(Any, tk.Text(
@@ -249,35 +300,35 @@ def build_comic_card_frame(
         height=1,
         bd=0,
         relief="flat",
-        font=get_font_fn("small"),
-        fg=theme_manager.get_color("text_secondary"),
+        font=ctx.get_font_fn("small"),
+        fg=ctx.theme_manager.get_color("text_secondary"),
         cursor="xterm",
         padx=0,
         pady=0,
         highlightthickness=0,
         bg=card_bg,
-        insertbackground=theme_manager.get_color("insert"),
-        width=max(12, int(card_inner_width / max(7, tkfont.Font(font=get_font_fn("small")).measure("测")))),
+        insertbackground=ctx.theme_manager.get_color("insert"),
+        width=max(12, int(card_inner_width / max(7, tkfont.Font(font=ctx.get_font_fn("small")).measure("测")))),
     ))
     author_widget.is_secondary_text = True
     author_widget.grid(row=2, column=0, sticky="we")
-    on_set_text_widget_content_cb(author_widget, author_text, 1)
+    handler.on_set_text_widget_content(author_widget, author_text, 1)
     frame.author_widget = author_widget
 
     pages_text = f"页数: {comic.pages}"
     pages_label = cast(Any, tk.Label(
         frame,
         text=pages_text,
-        foreground=theme_manager.get_color("text_secondary"),
+        foreground=ctx.theme_manager.get_color("text_secondary"),
         bg=card_bg,
-        font=get_font_fn("small"),
+        font=ctx.get_font_fn("small"),
     ))
     pages_label.is_secondary_text = True
     pages_label.grid(row=3, column=0, sticky=tk.W)
     frame.pages_label = pages_label
 
     def _on_download() -> None:
-        on_download_click(comic)
+        handler.on_download_click(comic)
 
     download_btn = ttk.Button(
         frame, text="下载",
@@ -285,25 +336,25 @@ def build_comic_card_frame(
     )
     download_btn.grid(row=4, column=0, pady=(5, 0))
 
-    title_widget.bind("<ButtonPress-1>", on_title_click_press_cb)
-    title_widget.bind("<B1-Motion>", on_title_drag_cb)
+    title_widget.bind("<ButtonPress-1>", handler.on_title_click_press)
+    title_widget.bind("<B1-Motion>", handler.on_title_drag)
     def _on_title_release(event) -> str:
-        return on_title_click_release_cb(event, comic, title_widget, card_width)
+        return handler.on_title_click_release(event, comic, title_widget, card_width)
 
     title_widget.bind("<ButtonRelease-1>", _on_title_release)
 
     for text_widget in (title_widget, author_widget):
-        text_widget.bind("<Command-c>", on_copy_selected_text)
-        text_widget.bind("<Control-c>", on_copy_selected_text)
+        text_widget.bind("<Command-c>", handler.on_copy_selected_text)
+        text_widget.bind("<Control-c>", handler.on_copy_selected_text)
 
     clickable_widgets = [frame, pages_label]
-    if not show_preview:
+    if not ctx.show_preview:
         clickable_widgets.append(placeholder)
     for widget in clickable_widgets:
         def _on_card_widget_click(event, c=comic, f=frame):
-            return on_card_click(event, c, f)
+            return handler.on_card_click(event, c, f)
         widget.bind('<Button-1>', _on_card_widget_click)
-    if show_preview and comic.cover_url:
+    if ctx.show_preview and comic.cover_url:
         img_label.bind("<Button-1>", img_label._card_click_handler)
 
     def _focus_download_btn(_event) -> None:

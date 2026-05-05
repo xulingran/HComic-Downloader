@@ -10,9 +10,15 @@ const searchModes = [
   { value: 'tag', label: 'Tag' }
 ]
 
+const sources = [
+  { value: 'hcomic', label: 'HComic' },
+  { value: 'moeimg', label: 'Moeimg' }
+]
+
 export function SearchPage() {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState('keyword')
+  const [source, setSource] = useState('hcomic')
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
 
@@ -39,39 +45,56 @@ export function SearchPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex gap-4">
-        <select
-          value={mode}
-          onChange={(e) => setMode(e.target.value)}
-          className="px-3 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] 
-                     text-[var(--text-primary)]"
-        >
-          {searchModes.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+      <div className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm">
+        <div className="flex gap-3 mb-3">
+          <select
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+                       text-[var(--text-primary)] text-sm"
+          >
+            {sources.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
 
-        <input
-          type="text"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-          placeholder="输入搜索内容..."
-          className="flex-1 px-4 py-2 rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] 
-                     text-[var(--text-primary)] placeholder-[var(--text-secondary)]
-                     focus:outline-none focus:border-[var(--accent)]"
-        />
+          <select
+            value={mode}
+            onChange={(e) => setMode(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+                       text-[var(--text-primary)] text-sm"
+          >
+            {searchModes.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <button
-          onClick={() => handleSearch()}
-          disabled={isLoading}
-          className="px-6 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] 
-                     disabled:opacity-50 transition-colors"
-        >
-          {isLoading ? '搜索中...' : '搜索'}
-        </button>
+        <div className="flex gap-3">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            placeholder="输入搜索内容..."
+            className="flex-1 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+                       text-[var(--text-primary)] placeholder-[var(--text-secondary)]
+                       focus:outline-none focus:border-[var(--accent)]"
+          />
+
+          <button
+            onClick={() => handleSearch()}
+            disabled={isLoading}
+            className="px-6 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] 
+                       disabled:opacity-50 transition-colors"
+          >
+            {isLoading ? '搜索中...' : '搜索'}
+          </button>
+        </div>
       </div>
 
       {error && (

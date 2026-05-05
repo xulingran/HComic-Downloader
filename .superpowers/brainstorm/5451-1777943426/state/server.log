@@ -1,0 +1,2 @@
+{"type":"owner-pid-invalid","pid":1,"reason":"dead at startup"}
+{"type":"server-started","port":64291,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:64291","screen_dir":"E:\\Developing\\hcomic_downloader\\.superpowers\\brainstorm\\5451-1777943426\\content","state_dir":"E:\\Developing\\hcomic_downloader\\.superpowers\\brainstorm\\5451-1777943426\\state"}

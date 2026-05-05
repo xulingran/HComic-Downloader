@@ -128,3 +128,27 @@ def export_system_proxies_to_env() -> Dict[str, str]:
         os.environ.setdefault(env_name, value)
         os.environ.setdefault(env_name.upper(), value)
     return proxies
+
+
+def configure_session_auth(
+    session: Any,
+    default_headers: dict,
+    cookie: str = "",
+    user_agent: str = "",
+):
+    """配置 requests.Session 的认证请求头。
+
+    Args:
+        session: requests.Session 实例
+        default_headers: 默认请求头字典（含默认 User-Agent）
+        cookie: Cookie 字符串
+        user_agent: User-Agent 字符串
+    """
+    ua = (user_agent or "").strip()
+    ck = (cookie or "").strip()
+
+    session.headers["User-Agent"] = ua or default_headers.get("User-Agent", "")
+    if ck:
+        session.headers["Cookie"] = ck
+    else:
+        session.headers.pop("Cookie", None)

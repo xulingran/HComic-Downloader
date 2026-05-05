@@ -5,8 +5,7 @@
     output: 'dist'
   },
   files: [
-    'dist-electron/**/*',
-    'dist-renderer/**/*'
+    'out/**/*'
   ],
   extraResources: [
     {
@@ -16,8 +15,7 @@
     }
   ],
   win: {
-    target: ['nsis'],
-    icon: 'assets/icon.svg'
+    target: ['nsis']
   },
   mac: {
     target: ['dmg'],

@@ -36,6 +36,16 @@ export interface AppConfig {
   themeMode: 'light' | 'dark' | 'auto'
   cardStyle: 'cover' | 'detailed'
   outputFormat: 'folder' | 'zip' | 'cbz'
+  downloadDir: string
+  concurrentDownloads: number
+  timeout: number
+  retryTimes: number
+  cbzFilenameTemplate: string
+  batchDownloadDelay: number
+  autoRetryMaxAttempts: number
+  notifyOnComplete: boolean
+  notifyWhenForeground: 'inactive' | 'always'
+  defaultSource: string
   proxy?: string
   cookie?: string
   userAgent?: string
