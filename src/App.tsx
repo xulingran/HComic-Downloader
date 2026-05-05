@@ -3,6 +3,7 @@ import { useTheme } from './hooks/useTheme'
 import { Sidebar } from './components/Sidebar'
 import { Header } from './components/Header'
 import { SearchPage } from './pages/SearchPage'
+import { DownloadPage } from './pages/DownloadPage'
 
 function App() {
   useTheme()
@@ -12,6 +13,8 @@ function App() {
     switch (activePage) {
       case 'search':
         return <SearchPage />
+      case 'downloads':
+        return <DownloadPage />
       default:
         return <div className="text-[var(--text-primary)]">Coming soon: {activePage}</div>
     }
