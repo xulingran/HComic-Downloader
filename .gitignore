@@ -37,3 +37,6 @@ dist-renderer/
 *.deb
 *.rpm
 *.snap
+
+python/build/
+python/dist/

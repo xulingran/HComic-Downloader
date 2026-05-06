@@ -18,11 +18,29 @@ def _get_config_path() -> str:
     return os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "config.json")
 
 
+CONFIG_KEY_MAP = {
+    'themeMode': 'theme_mode',
+    'outputFormat': 'output_format',
+    'downloadDir': 'download_dir',
+    'concurrentDownloads': 'concurrent_downloads',
+    'timeout': 'timeout',
+    'retryTimes': 'retry_times',
+    'cbzFilenameTemplate': 'cbz_filename_template',
+    'batchDownloadDelay': 'batch_download_delay',
+    'autoRetryMaxAttempts': 'auto_retry_max_attempts',
+    'notifyOnComplete': 'notify_on_complete',
+    'notifyWhenForeground': 'notify_when_foreground',
+    'defaultSource': 'default_source',
+}
+
+
 class IPCServer:
     def __init__(self):
         from parser import MultiSourceParser
         from downloader import ComicDownloader
         from config import Config
+        from download_manager import ComicDownloadManager
+        from cbz_builder import CBZBuilder
 
         self.config = Config.load(_get_config_path())
         self.parser = MultiSourceParser(
@@ -34,7 +52,34 @@ class IPCServer:
             timeout=self.config.timeout,
             retry_times=self.config.retry_times,
         )
-        self.download_tasks: Dict[str, Dict] = {}
+        self.cbz_builder = CBZBuilder()
+        self._download_manager = ComicDownloadManager(
+            downloader=self.downloader,
+            cbz_builder=self.cbz_builder,
+            output_dir=self.config.download_dir,
+            prepare_comic=self.parser.prepare_for_download,
+            output_format=self.config.output_format,
+        )
+        self._download_manager.set_auto_retry_max_attempts(self.config.auto_retry_max_attempts)
+        self._download_manager.set_delay_after(self.config.batch_download_delay)
+        self._download_manager.set_callbacks(on_task_update=self._on_download_update)
+        self._download_manager.start()
+
+    def _on_download_update(self, task):
+        """Send download progress as JSON-RPC notification to stdout."""
+        notification = {
+            "jsonrpc": "2.0",
+            "method": "download_progress",
+            "params": {
+                "taskId": task.task_id,
+                "status": task.status.value,
+                "progress": task.progress_percentage,
+                "current": task.progress_current,
+                "total": task.progress_total,
+                "title": task.comic.title,
+            },
+        }
+        print(json.dumps(notification), flush=True)
 
     def _comic_to_dict(self, comic) -> Dict:
         cover_url = ""
@@ -54,7 +99,9 @@ class IPCServer:
             "pages": comic.pages if hasattr(comic, 'pages') else None,
         }
 
-    def handle_search(self, query: str, mode: str = "keyword", page: int = 1) -> Dict:
+    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str = None) -> Dict:
+        if source and source in ("hcomic", "moeimg"):
+            self.parser.set_source(source)
         comics, pagination = self.parser.search(query, page=page)
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
@@ -66,22 +113,36 @@ class IPCServer:
         }
 
     def handle_download(self, comic_id: str, comic_data: dict = None) -> Dict:
-        task_id = str(uuid.uuid4())[:8]
-        self.download_tasks[task_id] = {
-            "status": "pending",
-            "progress": 0,
-            "comic": comic_data or {"id": comic_id, "title": "Unknown", "url": "", "coverUrl": "", "source": ""},
+        from models import ComicInfo
+        comic = ComicInfo(
+            id=comic_id,
+            title=(comic_data or {}).get("title", "Unknown"),
+            preview_url=(comic_data or {}).get("url", ""),
+            cover_url=(comic_data or {}).get("coverUrl", ""),
+            source_site=(comic_data or {}).get("source", "hcomic"),
+        )
+        task_id = self._download_manager.add_task(comic)
+        task = self._download_manager.tasks.get(task_id)
+        return {
+            "taskId": task_id,
+            "status": task.status.value if task else "queued",
         }
-        logger.info(f"Created download task {task_id} for comic {comic_id}")
-        return {"taskId": task_id}
 
-    def handle_get_favourites(self) -> Dict:
+    def handle_get_favourites(self, page: int = 1) -> Dict:
         try:
-            comics, _pagination, _has_more = self.parser.favourites()
-            return {"comics": [self._comic_to_dict(c) for c in comics]}
+            comics, pagination, needs_login = self.parser.favourites(page=page)
+            return {
+                "comics": [self._comic_to_dict(c) for c in comics],
+                "pagination": {
+                    "currentPage": pagination.current_page if pagination else page,
+                    "totalPages": pagination.total_pages if pagination else 1,
+                    "totalItems": pagination.total_items if pagination else 0,
+                },
+                "needsLogin": needs_login,
+            }
         except Exception as e:
             logger.error(f"Get favourites error: {e}")
-            return {"comics": []}
+            return {"comics": [], "pagination": None, "needsLogin": False}
 
     def handle_apply_auth(self, curl_text: str) -> Dict:
         if not curl_text or not curl_text.strip():
@@ -95,70 +156,75 @@ class IPCServer:
 
         self.parser.configure_auth(cookie=cookie, user_agent=user_agent, source="hcomic")
 
-        return {"cookie": cookie, "user_agent": user_agent}
+        logger.info(f"Auth applied: cookie length={len(cookie)}, ua length={len(user_agent)}")
+        return {"success": True}
 
     def handle_verify_auth(self) -> Dict:
         is_valid, message = self.parser.verify_login_status()
         return {"valid": is_valid, "message": message}
 
     def handle_get_config(self) -> Dict:
-        return {
-            "config": {
-                "themeMode": self.config.theme_mode,
-                "cardStyle": "cover",
-                "outputFormat": self.config.output_format,
-                "downloadDir": self.config.download_dir,
-                "concurrentDownloads": self.config.concurrent_downloads,
-                "timeout": self.config.timeout,
-                "retryTimes": self.config.retry_times,
-                "cbzFilenameTemplate": self.config.cbz_filename_template,
-                "batchDownloadDelay": self.config.batch_download_delay,
-                "autoRetryMaxAttempts": self.config.auto_retry_max_attempts,
-                "notifyOnComplete": self.config.notify_on_complete,
-                "notifyWhenForeground": self.config.notify_when_foreground,
-                "defaultSource": self.config.default_source,
-                "proxy": None,
-                "cookie": self.config.auth_cookie or None,
-                "userAgent": self.config.auth_user_agent or None,
-            }
+        reverse_map = {v: k for k, v in CONFIG_KEY_MAP.items()}
+        raw = {
+            'theme_mode': self.config.theme_mode,
+            'output_format': self.config.output_format,
+            'download_dir': self.config.download_dir,
+            'concurrent_downloads': self.config.concurrent_downloads,
+            'timeout': self.config.timeout,
+            'retry_times': self.config.retry_times,
+            'cbz_filename_template': self.config.cbz_filename_template,
+            'batch_download_delay': self.config.batch_download_delay,
+            'auto_retry_max_attempts': self.config.auto_retry_max_attempts,
+            'notify_on_complete': self.config.notify_on_complete,
+            'notify_when_foreground': self.config.notify_when_foreground,
+            'default_source': self.config.default_source,
         }
+        config = {}
+        for snake_key, value in raw.items():
+            camel_key = reverse_map.get(snake_key, snake_key)
+            config[camel_key] = value
+        config['cookie'] = None
+        config['userAgent'] = None
+        return {"config": config}
 
     def handle_set_config(self, key: str, value: Any) -> Dict:
+        python_key = CONFIG_KEY_MAP.get(key)
+        if not python_key:
+            return {"success": False, "error": f"Unknown config key: {key}"}
+        if not hasattr(self.config, python_key):
+            return {"success": False, "error": f"Unknown config key: {key}"}
         try:
-            if hasattr(self.config, key):
-                setattr(self.config, key, value)
-                self.config.save(_get_config_path())
+            setattr(self.config, python_key, value)
+            self.config.save(_get_config_path())
             return {"success": True}
         except Exception as e:
-            logger.error(f"Set config error: {e}")
-            return {"success": False}
+            logger.error(f"Set config error for {key}: {e}")
+            return {"success": False, "error": str(e)}
 
     def handle_get_downloads(self) -> Dict:
-        return {
-            "tasks": [
-                {
-                    "id": task_id,
-                    "comic": task.get("comic", {"id": "", "title": "Download Task", "url": "", "coverUrl": "", "source": ""}),
-                    "status": task["status"],
-                    "progress": task["progress"],
-                    "totalPages": 0,
-                    "downloadedPages": 0,
-                }
-                for task_id, task in self.download_tasks.items()
-            ]
-        }
+        tasks = []
+        for task_id, task in self._download_manager.tasks.items():
+            tasks.append({
+                "id": task_id,
+                "comic": self._comic_to_dict(task.comic),
+                "status": task.status.value,
+                "progress": task.progress_percentage,
+                "totalPages": task.progress_total,
+                "downloadedPages": task.progress_current,
+                "error": task.error_message,
+            })
+        return {"tasks": tasks}
 
     def handle_cancel_download(self, task_id: str) -> Dict:
-        if task_id in self.download_tasks:
-            self.download_tasks[task_id]["status"] = "cancelled"
-            return {"success": True}
-        return {"success": False}
+        success = self._download_manager.cancel_task(task_id)
+        return {"success": success}
 
     def handle_get_statistics(self) -> Dict:
+        stats = self._download_manager.get_stats()
         return {
-            "totalDownloads": len(self.download_tasks),
-            "completedDownloads": sum(1 for t in self.download_tasks.values() if t["status"] == "completed"),
-            "failedDownloads": sum(1 for t in self.download_tasks.values() if t["status"] == "error"),
+            "totalDownloads": stats.get("total", 0),
+            "completedDownloads": stats.get("completed", 0),
+            "failedDownloads": stats.get("failed", 0),
             "totalSize": 0,
             "downloadsByDay": [],
         }

@@ -1,8 +1,14 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 
 let mainWindow: BrowserWindow | null = null
+
+const ALLOWED_EXTERNAL_DOMAINS = [
+  'h-comic.com',
+  'moeimg.net',
+  'moeimg.fan',
+]
 
 function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/preload.js')
@@ -38,11 +44,19 @@ function createWindow() {
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
-  ipcMain.handle('python:search', async (_, query, mode, page) => {
+  bridge.setNotificationHandler('download_progress', (params) => {
+    mainWindow?.webContents.send('download:progress', params)
+  })
+
+  ipcMain.handle('python:search', async (_, query, mode, page, source) => {
     if (typeof query !== 'string' || typeof mode !== 'string' || typeof page !== 'number') {
       throw new Error('Invalid search parameters')
     }
-    return bridge.call('search', { query, mode, page })
+    const params: Record<string, unknown> = { query, mode, page }
+    if (typeof source === 'string' && source) {
+      params.source = source
+    }
+    return bridge.call('search', params)
   })
 
   ipcMain.handle('python:download', async (_, comicId, comicData) => {
@@ -52,8 +66,8 @@ function registerIPCHandlers() {
     return bridge.call('download', { comic_id: comicId, comic_data: comicData })
   })
 
-  ipcMain.handle('python:get-favourites', async () => {
-    return bridge.call('get_favourites')
+  ipcMain.handle('python:get-favourites', async (_, page?: number) => {
+    return bridge.call('get_favourites', { page: page ?? 1 })
   })
 
   ipcMain.handle('python:get-config', async () => {
@@ -91,6 +105,22 @@ function registerIPCHandlers() {
 
   ipcMain.handle('python:verify-auth', async () => {
     return bridge.call('verify_auth')
+  })
+
+  ipcMain.handle('open-external', async (_, url: string) => {
+    if (typeof url !== 'string') throw new Error('Invalid URL')
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new Error('Invalid URL format')
+    }
+    if (parsed.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed')
+    const allowed = ALLOWED_EXTERNAL_DOMAINS.some(
+      d => parsed.hostname === d || parsed.hostname.endsWith('.' + d)
+    )
+    if (!allowed) throw new Error('Domain not allowed')
+    await shell.openExternal(url)
   })
 }
 

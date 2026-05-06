@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useState, useEffect } from 'react'
 import { ComicInfo } from '@shared/types'
 
 declare global {
@@ -6,8 +6,9 @@ declare global {
     electron: {
       ipcRenderer: {
         invoke: (channel: string, ...args: any[]) => Promise<any>
-        on: (channel: string, callback: (...args: any[]) => void) => () => void
       }
+      openUrl: (url: string) => Promise<void>
+      onDownloadProgress?: (callback: (data: any) => void) => () => void
     }
   }
 }
@@ -31,8 +32,8 @@ export function useIpc() {
 export function useSearch() {
   const { invoke } = useIpc()
 
-  const search = useCallback(async (query: string, mode: string, page: number) => {
-    return invoke('python:search', query, mode, page)
+  const search = useCallback(async (query: string, mode: string, page: number, source?: string) => {
+    return invoke('python:search', query, mode, page, source)
   }, [invoke])
 
   return { search }
@@ -40,6 +41,15 @@ export function useSearch() {
 
 export function useDownload() {
   const { invoke } = useIpc()
+  const [progress, setProgress] = useState<Record<string, any>>({})
+
+  useEffect(() => {
+    if (!window.electron?.onDownloadProgress) return
+    const unsubscribe = window.electron.onDownloadProgress((data) => {
+      setProgress(prev => ({ ...prev, [data.taskId]: data }))
+    })
+    return unsubscribe
+  }, [])
 
   const startDownload = useCallback(async (comicId: string, comicData: ComicInfo) => {
     return invoke('python:download', comicId, comicData)
@@ -53,14 +63,14 @@ export function useDownload() {
     return invoke('python:get-downloads')
   }, [invoke])
 
-  return { startDownload, cancelDownload, getDownloads }
+  return { startDownload, cancelDownload, getDownloads, progress }
 }
 
 export function useFavourites() {
   const { invoke } = useIpc()
 
-  const getFavourites = useCallback(async () => {
-    return invoke('python:get-favourites')
+  const getFavourites = useCallback(async (page: number = 1) => {
+    return invoke('python:get-favourites', page)
   }, [invoke])
 
   return { getFavourites }

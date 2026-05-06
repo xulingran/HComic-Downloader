@@ -121,7 +121,7 @@ describe('SearchPage', () => {
     await userEvent.type(input, 'test query')
     await userEvent.click(screen.getByText('搜索'))
 
-    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1)
+    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic')
   })
 
   it('shows pagination when totalPages > 1', () => {

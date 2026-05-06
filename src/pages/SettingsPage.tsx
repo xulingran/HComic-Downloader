@@ -390,6 +390,13 @@ export function SettingsPage() {
             >
               {loginStatus === 'verifying' ? '测试中...' : '测试登录'}
             </button>
+            <button
+              onClick={() => window.electron?.openUrl?.('https://h-comic.com')}
+              className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                         bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]"
+            >
+              打开网站登录
+            </button>
           </div>
 
           {loginMessage && (

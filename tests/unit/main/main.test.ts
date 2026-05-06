@@ -34,13 +34,20 @@ vi.mock('electron', () => {
     BrowserWindow: MockBrowserWindow,
     ipcMain: {
       handle: mockHandle
+    },
+    shell: {
+      openExternal: vi.fn().mockResolvedValue(undefined)
     }
   }
 })
 
 // Mock python-bridge
 vi.mock('../../../electron/python-bridge', () => ({
-  getPythonBridge: () => ({ call: mockBridgeCall, kill: mockBridgeKill })
+  getPythonBridge: () => ({
+    call: mockBridgeCall,
+    kill: mockBridgeKill,
+    setNotificationHandler: vi.fn()
+  })
 }))
 
 // Import after mocks - this triggers side effects
@@ -65,8 +72,8 @@ describe('main.ts', () => {
   })
 
   describe('IPC handler registration', () => {
-    it('should register all 10 IPC handlers', () => {
-      expect(handleCalls.length).toBe(10)
+    it('should register all 11 IPC handlers', () => {
+      expect(handleCalls.length).toBe(11)
     })
 
     const expectedChannels = [
@@ -79,7 +86,8 @@ describe('main.ts', () => {
       'python:cancel-download',
       'python:get-statistics',
       'python:apply-auth',
-      'python:verify-auth'
+      'python:verify-auth',
+      'open-external'
     ]
 
     expectedChannels.forEach(channel => {
@@ -117,7 +125,7 @@ describe('main.ts', () => {
       const handler = handleCalls.find(h => h.channel === 'python:get-favourites')!
       await handler.handler({})
 
-      expect(mockBridgeCall).toHaveBeenCalledWith('get_favourites')
+      expect(mockBridgeCall).toHaveBeenCalledWith('get_favourites', { page: 1 })
     })
 
     it('python:get-config delegates with no params', async () => {
