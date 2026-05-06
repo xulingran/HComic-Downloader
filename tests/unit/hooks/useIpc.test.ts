@@ -16,14 +16,14 @@ describe('useIpc', () => {
   })
 
   it('应调用 ipcRenderer.invoke 并传递参数', async () => {
-    const mockInvoke = createMockIpcInvoke({ 'test:channel': 'result' })
+    const mockInvoke = createMockIpcInvoke({ 'python:get-config': { config: {} } })
     mockWindowElectron(mockInvoke)
 
     const { result } = renderHook(() => useIpc())
-    const response = await result.current.invoke('test:channel', 'arg1', 'arg2')
+    const response = await result.current.invoke('python:get-config')
 
-    expect(mockInvoke).toHaveBeenCalledWith('test:channel', 'arg1', 'arg2')
-    expect(response).toBe('result')
+    expect(mockInvoke).toHaveBeenCalledWith('python:get-config')
+    expect(response).toEqual({ config: {} })
   })
 
   it('当 electron API 不存在时应抛出错误', async () => {
@@ -31,7 +31,7 @@ describe('useIpc', () => {
 
     const { result } = renderHook(() => useIpc())
 
-    await expect(result.current.invoke('test:channel')).rejects.toThrow(
+    await expect(result.current.invoke('python:get-config' as any)).rejects.toThrow(
       'Electron IPC not available'
     )
   })
@@ -45,7 +45,7 @@ describe('useIpc', () => {
 
     const { result } = renderHook(() => useIpc())
 
-    await expect(result.current.invoke('test:channel')).rejects.toThrow(
+    await expect(result.current.invoke('python:get-config' as any)).rejects.toThrow(
       'Electron IPC not available'
     )
   })
@@ -56,16 +56,16 @@ describe('useIpc', () => {
 
     const { result } = renderHook(() => useIpc())
 
-    await expect(result.current.invoke('test:channel')).rejects.toThrow('IPC failed')
+    await expect(result.current.invoke('python:get-config' as any)).rejects.toThrow('IPC failed')
   })
 
   it('应支持返回复杂对象', async () => {
     const complexResult = { data: [1, 2, 3], nested: { key: 'value' } }
-    const mockInvoke = createMockIpcInvoke({ 'complex:channel': complexResult })
+    const mockInvoke = createMockIpcInvoke({ 'python:get-statistics': complexResult })
     mockWindowElectron(mockInvoke)
 
     const { result } = renderHook(() => useIpc())
-    const response = await result.current.invoke('complex:channel')
+    const response = await result.current.invoke('python:get-statistics')
 
     expect(response).toEqual(complexResult)
   })

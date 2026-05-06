@@ -1,11 +1,15 @@
 import { useCallback, useState, useEffect } from 'react'
+import type { IPCChannel, IPCChannelParamsMap, IPCChannelResult, ConfigKey, ConfigValueMap, SetConfigArgs } from '@shared/types'
 import { ComicInfo } from '@shared/types'
 
 declare global {
   interface Window {
     electron: {
       ipcRenderer: {
-        invoke: (channel: string, ...args: any[]) => Promise<any>
+        invoke: <C extends IPCChannel>(
+          channel: C,
+          ...args: IPCChannelParamsMap[C]
+        ) => Promise<IPCChannelResult<C>>
       }
       openUrl: (url: string) => Promise<void>
       onDownloadProgress?: (callback: (data: any) => void) => () => void
@@ -14,7 +18,10 @@ declare global {
 }
 
 export function useIpc() {
-  const invoke = useCallback(async (channel: string, ...args: any[]) => {
+  const invoke = useCallback(async <C extends IPCChannel>(
+    channel: C,
+    ...args: IPCChannelParamsMap[C]
+  ): Promise<IPCChannelResult<C>> => {
     try {
       if (!window.electron?.ipcRenderer) {
         throw new Error('Electron IPC not available. Make sure the app is running in Electron.')
@@ -83,8 +90,9 @@ export function useConfig() {
     return invoke('python:get-config')
   }, [invoke])
 
-  const setConfig = useCallback(async (key: string, value: any) => {
-    return invoke('python:set-config', key, value)
+  const setConfig = useCallback(async <K extends ConfigKey>(key: K, value: ConfigValueMap[K]) => {
+    const args = [key, value] as SetConfigArgs
+    return invoke('python:set-config', ...args)
   }, [invoke])
 
   return { getConfig, setConfig }

@@ -46,7 +46,8 @@ describe('PythonBridge', () => {
       stdin: {
         write: vi.fn((data: string) => {
           stdinWriteData.push(data)
-        })
+        }),
+        writable: true
       },
       stdout: {
         on: vi.fn((event: string, cb: Function) => {
@@ -62,7 +63,8 @@ describe('PythonBridge', () => {
         if (event === 'exit') exitCallbacks.push(cb)
         if (event === 'error') errorCallbacks.push(cb)
       }),
-      kill: vi.fn()
+      kill: vi.fn(),
+      removeAllListeners: vi.fn()
     }
 
     mockSpawn.mockReturnValue(mockProcess)
@@ -304,6 +306,105 @@ describe('PythonBridge', () => {
 
       expect(mockSpawn).toHaveBeenCalledTimes(2)
       vi.useRealTimers()
+    })
+  })
+
+  describe('error handler', () => {
+    it('should reject pending requests on process error', async () => {
+      const bridge = new PythonBridge()
+      const callPromise = bridge.call('search', { query: 'test' })
+
+      errorCallbacks[errorCallbacks.length - 1](new Error('spawn ENOENT'))
+
+      await expect(callPromise).rejects.toThrow('Python process error')
+    })
+
+    it('should null out process reference on error and not restart immediately', async () => {
+      vi.useFakeTimers()
+      const bridge = new PythonBridge()
+      errorCallbacks[errorCallbacks.length - 1](new Error('spawn ENOENT'))
+
+      // Process should be null until restart timer fires
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+      vi.advanceTimersByTime(1000)
+      // Still not restarted (2s delay)
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+      vi.useRealTimers()
+    })
+
+    it('should schedule restart after error', () => {
+      vi.useFakeTimers()
+      new PythonBridge()
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+
+      errorCallbacks[errorCallbacks.length - 1](new Error('spawn ENOENT'))
+      vi.advanceTimersByTime(2000)
+
+      expect(mockSpawn).toHaveBeenCalledTimes(2)
+      vi.useRealTimers()
+    })
+  })
+
+  describe('bounded restarts', () => {
+    it('should stop restarting after max attempts', () => {
+      vi.useFakeTimers()
+      new PythonBridge()
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+
+      // Each restart creates a new process with new exit callbacks
+      // Simulate exit + restart 5 times (reaching MAX_RESTARTS)
+      for (let i = 0; i < 5; i++) {
+        // Only fire the latest exit callback (from the latest process)
+        const latestCb = exitCallbacks[exitCallbacks.length - 1]
+        latestCb(1)
+        vi.advanceTimersByTime(2000)
+      }
+
+      // 1 initial + 5 restarts = 6 total
+      expect(mockSpawn).toHaveBeenCalledTimes(6)
+
+      // One more exit should NOT trigger another restart
+      const latestCb = exitCallbacks[exitCallbacks.length - 1]
+      latestCb(1)
+      vi.advanceTimersByTime(2000)
+      expect(mockSpawn).toHaveBeenCalledTimes(6)
+      vi.useRealTimers()
+    })
+
+    it('should reset restart count on successful response', async () => {
+      vi.useFakeTimers()
+      new PythonBridge()
+
+      // First failure + restart
+      exitCallbacks[exitCallbacks.length - 1](1)
+      vi.advanceTimersByTime(2000)
+      expect(mockSpawn).toHaveBeenCalledTimes(2)
+
+      // Simulate successful response to reset counter
+      const bridge = getPythonBridge()
+      const callPromise = bridge.call('get_config')
+      const written = JSON.parse(stdinWriteData[stdinWriteData.length - 1].trim())
+      const response = { jsonrpc: '2.0', id: written.id, result: { ok: true } }
+      stdoutCallbacks[stdoutCallbacks.length - 1](Buffer.from(JSON.stringify(response) + '\n'))
+      await callPromise
+
+      // Simulate more failures - should restart since counter was reset
+      for (let i = 0; i < 3; i++) {
+        exitCallbacks[exitCallbacks.length - 1](1)
+        vi.advanceTimersByTime(2000)
+      }
+
+      expect(mockSpawn.mock.calls.length).toBeGreaterThan(2)
+      vi.useRealTimers()
+    })
+  })
+
+  describe('stdin writability check', () => {
+    it('should throw immediately if stdin is not writable', async () => {
+      const bridge = new PythonBridge()
+      mockProcess.stdin.writable = false
+
+      await expect(bridge.call('search')).rejects.toThrow('Python process stdin not writable')
     })
   })
 

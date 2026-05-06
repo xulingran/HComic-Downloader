@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useConfig } from '../hooks/useIpc'
 import { useAuth } from '../hooks/useIpc'
+import type { ConfigKey, ConfigValueMap } from '@shared/types'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
 type CardStyle = 'cover' | 'detailed'
@@ -88,9 +89,8 @@ export function SettingsPage() {
     await saveConfig('themeMode', mode)
   }
 
-  const handleCardStyleChange = async (style: CardStyle) => {
+  const handleCardStyleChange = (style: CardStyle) => {
     setCardStyle(style)
-    await saveConfig('cardStyle', style)
   }
 
   const handleOutputFormatChange = async (format: OutputFormat) => {
@@ -98,12 +98,12 @@ export function SettingsPage() {
     await saveConfig('outputFormat', format)
   }
 
-  const handleConfigChange = async (key: keyof ConfigState, value: any) => {
+  const handleConfigChange = async (key: ConfigKey, value: ConfigValueMap[ConfigKey]) => {
     setConfigState(prev => ({ ...prev, [key]: value }))
     await saveConfig(key, value)
   }
 
-  const saveConfig = async (key: string, value: any) => {
+  const saveConfig = async (key: ConfigKey, value: ConfigValueMap[ConfigKey]) => {
     setIsSaving(true)
     try {
       await setConfig(key, value)

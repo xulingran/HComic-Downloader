@@ -3,10 +3,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // Use vi.hoisted to create all shared state and mock functions
 // These are hoisted to the top of the file, before vi.mock factories run
-const { mockBridgeCall, mockBridgeKill, handleCalls } = vi.hoisted(() => ({
+const { mockBridgeCall, mockBridgeKill, handleCalls, capturedInstances } = vi.hoisted(() => ({
   mockBridgeCall: vi.fn().mockResolvedValue({ success: true }),
   mockBridgeKill: vi.fn(),
-  handleCalls: [] as Array<{ channel: string; handler: Function }>
+  handleCalls: [] as Array<{ channel: string; handler: Function }>,
+  capturedInstances: [] as any[]
 }))
 
 // Mock electron module
@@ -17,12 +18,19 @@ vi.mock('electron', () => {
 
   // BrowserWindow must be a class (constructable with `new`)
   class MockBrowserWindow {
+    webContents = {
+      on: vi.fn(),
+      setWindowOpenHandler: vi.fn()
+    }
     loadURL = vi.fn()
     loadFile = vi.fn()
     once = vi.fn()
     on = vi.fn()
     show = vi.fn()
     static getAllWindows = vi.fn().mockReturnValue([])
+    constructor(public options?: any) {
+      capturedInstances.push(this)
+    }
   }
 
   return {
@@ -137,10 +145,10 @@ describe('main.ts', () => {
 
     it('python:set-config delegates with key and value', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:set-config')!
-      await handler.handler({}, 'theme', 'dark')
+      await handler.handler({}, 'themeMode', 'dark')
 
       expect(mockBridgeCall).toHaveBeenCalledWith('set_config', {
-        key: 'theme',
+        key: 'themeMode',
         value: 'dark'
       })
     })
@@ -248,6 +256,82 @@ describe('main.ts', () => {
     it('python:apply-auth should reject non-string curlText', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
       await expect(handler.handler({}, 123)).rejects.toThrow('Invalid apply_auth parameters')
+    })
+  })
+
+  describe('Navigation security', () => {
+    it('should include sandbox: true in webPreferences', async () => {
+      await flushMicrotasks()
+      const instance = capturedInstances[0]
+      expect(instance).toBeDefined()
+      expect(instance.options.webPreferences.sandbox).toBe(true)
+    })
+
+    it('should register will-navigate handler on webContents', async () => {
+      await flushMicrotasks()
+      const instance = capturedInstances[0]
+      expect(instance).toBeDefined()
+      const wcOnCalls = instance.webContents.on.mock.calls
+      const willNavigateCall = wcOnCalls.find((c: any) => c[0] === 'will-navigate')
+      expect(willNavigateCall).toBeDefined()
+    })
+
+    it('should register did-fail-load handler on webContents', async () => {
+      await flushMicrotasks()
+      const instance = capturedInstances[0]
+      const wcOnCalls = instance.webContents.on.mock.calls
+      const didFailLoadCall = wcOnCalls.find((c: any) => c[0] === 'did-fail-load')
+      expect(didFailLoadCall).toBeDefined()
+    })
+
+    it('should set window open handler to deny all', async () => {
+      await flushMicrotasks()
+      const instance = capturedInstances[0]
+      expect(instance.webContents.setWindowOpenHandler).toHaveBeenCalledWith(expect.any(Function))
+      const handler = instance.webContents.setWindowOpenHandler.mock.calls[0][0]
+      expect(handler()).toEqual({ action: 'deny' })
+    })
+
+    it('will-navigate handler should prevent default', async () => {
+      await flushMicrotasks()
+      const instance = capturedInstances[0]
+      const wcOnCalls = instance.webContents.on.mock.calls
+      const willNavigateCall = wcOnCalls.find((c: any) => c[0] === 'will-navigate')
+      const event = { preventDefault: vi.fn() }
+      willNavigateCall[1](event, 'https://evil.com')
+      expect(event.preventDefault).toHaveBeenCalled()
+    })
+  })
+
+  describe('Config validation', () => {
+    it('should reject unknown config key', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'unknownKey', 'value'))
+        .rejects.toThrow('Unknown config key: unknownKey')
+    })
+
+    it('should reject wrong value type for config', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'concurrentDownloads', 'not-a-number'))
+        .rejects.toThrow('Invalid value type for concurrentDownloads')
+    })
+
+    it('should reject value outside valid range', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'concurrentDownloads', 99))
+        .rejects.toThrow('Invalid value for concurrentDownloads')
+    })
+
+    it('should accept valid config value', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await handler.handler({}, 'themeMode', 'dark')
+      expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'themeMode', value: 'dark' })
+    })
+
+    it('should reject invalid themeMode value', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'themeMode', 'invalid'))
+        .rejects.toThrow('Invalid value for themeMode')
     })
   })
 })

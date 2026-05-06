@@ -5,6 +5,7 @@ import { app } from 'electron'
 
 const REQUEST_TIMEOUT_MS = 30_000
 const MAX_BUFFER_SIZE = 1024 * 1024
+const MAX_RESTARTS = 5
 
 interface PendingRequest {
   resolve: (value: unknown) => void
@@ -18,6 +19,7 @@ export class PythonBridge {
   private buffer = ''
   private restartTimer: NodeJS.Timeout | null = null
   private isShuttingDown = false
+  private restartCount = 0
   private notificationHandlers = new Map<string, (params: any) => void>()
 
   constructor() {
@@ -74,6 +76,7 @@ export class PythonBridge {
                   pending.reject(new Error(response.error.message))
                 } else {
                   pending.resolve(response.result)
+                  this.restartCount = 0
                 }
               }
             } else if (response.method) {
@@ -91,23 +94,35 @@ export class PythonBridge {
     })
 
     this.process.on('exit', (code) => {
-      for (const [, pending] of this.pendingRequests) {
-        clearTimeout(pending.timer)
-        pending.reject(new Error(`Python process exited with code ${code}`))
-      }
-      this.pendingRequests.clear()
-      this.process = null
-
-      if (!this.isShuttingDown) {
-        this.restartTimer = setTimeout(() => {
-          this.start()
-        }, 2000)
-      }
+      this.handleProcessFailure(`Python process exited with code ${code}`)
     })
 
     this.process.on('error', (err) => {
       console.error('Failed to start Python process:', err)
+      this.handleProcessFailure(`Python process error: ${err.message}`)
     })
+  }
+
+  private handleProcessFailure(message: string) {
+    for (const [, pending] of this.pendingRequests) {
+      clearTimeout(pending.timer)
+      pending.reject(new Error(message))
+    }
+    this.pendingRequests.clear()
+
+    if (this.process) {
+      this.process.removeAllListeners()
+      this.process = null
+    }
+
+    if (!this.isShuttingDown && this.restartCount < MAX_RESTARTS) {
+      this.restartCount++
+      this.restartTimer = setTimeout(() => {
+        this.start()
+      }, 2000)
+    } else if (this.restartCount >= MAX_RESTARTS) {
+      console.error(`Python bridge exceeded max restart attempts (${MAX_RESTARTS})`)
+    }
   }
 
   onNotification(method: string, params: any) {
@@ -125,6 +140,10 @@ export class PythonBridge {
     const proc = this.process
     if (!proc) {
       throw new Error('Python process not running')
+    }
+
+    if (!proc.stdin?.writable) {
+      throw new Error('Python process stdin not writable')
     }
 
     const id = crypto.randomUUID()

@@ -10,6 +10,21 @@ const ALLOWED_EXTERNAL_DOMAINS = [
   'moeimg.fan',
 ]
 
+const CONFIG_VALIDATORS: Record<string, { type: string; validate?: (v: unknown) => boolean }> = {
+  themeMode: { type: 'string', validate: (v) => ['light', 'dark', 'auto'].includes(v as string) },
+  outputFormat: { type: 'string', validate: (v) => ['folder', 'zip', 'cbz'].includes(v as string) },
+  downloadDir: { type: 'string' },
+  concurrentDownloads: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 10 },
+  timeout: { type: 'number', validate: (v) => typeof v === 'number' && v >= 5 && v <= 300 },
+  retryTimes: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 10 },
+  cbzFilenameTemplate: { type: 'string' },
+  batchDownloadDelay: { type: 'number', validate: (v) => typeof v === 'number' && v >= 0 && v <= 60 },
+  autoRetryMaxAttempts: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 5 },
+  notifyOnComplete: { type: 'boolean' },
+  notifyWhenForeground: { type: 'string', validate: (v) => ['inactive', 'always'].includes(v as string) },
+  defaultSource: { type: 'string', validate: (v) => ['hcomic', 'moeimg'].includes(v as string) },
+}
+
 function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/preload.js')
 
@@ -21,18 +36,43 @@ function createWindow() {
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
-      nodeIntegration: false
+      nodeIntegration: false,
+      sandbox: true
     },
     show: false
   })
 
-  if (process.env.ELECTRON_RENDERER_URL) {
-    mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL)
+  const devServerUrl = process.env.ELECTRON_RENDERER_URL
+  if (devServerUrl) {
+    let parsed: URL
+    try {
+      parsed = new URL(devServerUrl)
+    } catch {
+      throw new Error(`Invalid ELECTRON_RENDERER_URL: ${devServerUrl}`)
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error(`ELECTRON_RENDERER_URL must be http or https: ${devServerUrl}`)
+    }
+    if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
+      throw new Error(`ELECTRON_RENDERER_URL must be localhost: ${devServerUrl}`)
+    }
+    mainWindow.loadURL(devServerUrl)
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
   mainWindow.once('ready-to-show', () => {
+    mainWindow?.show()
+  })
+
+  mainWindow.webContents.on('will-navigate', (event) => {
+    event.preventDefault()
+  })
+
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+
+  mainWindow.webContents.on('did-fail-load', (_event, _errorCode, errorDescription) => {
+    console.error('Failed to load:', errorDescription)
     mainWindow?.show()
   })
 
@@ -77,6 +117,16 @@ function registerIPCHandlers() {
   ipcMain.handle('python:set-config', async (_, key, value) => {
     if (typeof key !== 'string' || value === undefined) {
       throw new Error('Invalid set_config parameters')
+    }
+    const validator = CONFIG_VALIDATORS[key]
+    if (!validator) {
+      throw new Error(`Unknown config key: ${key}`)
+    }
+    if (typeof value !== validator.type) {
+      throw new Error(`Invalid value type for ${key}: expected ${validator.type}, got ${typeof value}`)
+    }
+    if (validator.validate && !validator.validate(value)) {
+      throw new Error(`Invalid value for ${key}: ${JSON.stringify(value)}`)
     }
     return bridge.call('set_config', { key, value })
   })

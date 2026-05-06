@@ -164,7 +164,7 @@ describe('SettingsPage', () => {
     expect(mockSetConfig).toHaveBeenCalledWith('themeMode', 'light')
   })
 
-  it('calls setCardStyle and setConfig when card style button clicked', async () => {
+  it('calls setCardStyle when card style button clicked', async () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
@@ -174,7 +174,6 @@ describe('SettingsPage', () => {
     await userEvent.click(screen.getByText('详细列表'))
 
     expect(mockSetCardStyle).toHaveBeenCalledWith('detailed')
-    expect(mockSetConfig).toHaveBeenCalledWith('cardStyle', 'detailed')
   })
 
   it('calls setConfig when output format button clicked', async () => {

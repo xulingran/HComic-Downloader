@@ -1,17 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import { IPC_CHANNEL_MAP } from '../shared/types'
 
-const ALLOWED_INVOKE_CHANNELS = new Set([
-  'python:search',
-  'python:download',
-  'python:get-favourites',
-  'python:get-config',
-  'python:set-config',
-  'python:get-downloads',
-  'python:cancel-download',
-  'python:get-statistics',
-  'python:apply-auth',
-  'python:verify-auth',
-])
+const ALLOWED_INVOKE_CHANNELS = new Set<string>(Object.keys(IPC_CHANNEL_MAP))
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {

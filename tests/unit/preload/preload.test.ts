@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { IPC_CHANNEL_MAP } from '../../../shared/types'
 
 // Use vi.hoisted to create mock functions that are available in vi.mock factories
 const {
@@ -49,5 +50,17 @@ describe('preload.ts', () => {
   it('should only expose invoke method on ipcRenderer', () => {
     expect(typeof exposedIpcRenderer.invoke).toBe('function')
     expect(Object.keys(exposedIpcRenderer)).toEqual(['invoke'])
+  })
+})
+
+describe('Channel parity', () => {
+  it('preload whitelist should match IPC_CHANNEL_MAP keys', () => {
+    const mapChannels = new Set(Object.keys(IPC_CHANNEL_MAP))
+
+    for (const channel of mapChannels) {
+      expect(() => exposedIpcRenderer.invoke(channel)).not.toThrow()
+    }
+
+    expect(() => exposedIpcRenderer.invoke('python:nonexistent')).toThrow('Invalid IPC channel')
   })
 })
