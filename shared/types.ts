@@ -59,37 +59,47 @@ export interface StatisticsData {
   downloadsByDay: { date: string; count: number }[]
 }
 
+export type ConfigValue = string | number | boolean
+
 export interface IPCMethods {
   search: {
     params: { query: string; mode: string; page: number }
     result: SearchResult
   }
   download: {
-    params: { comicId: string }
+    params: { comic_id: string; comic_data: ComicInfo }
     result: { taskId: string }
   }
   get_favourites: {
-    params: {}
+    params: Record<string, never>
     result: { comics: ComicInfo[] }
   }
   get_config: {
-    params: {}
+    params: Record<string, never>
     result: { config: AppConfig }
   }
   set_config: {
-    params: { key: string; value: any }
+    params: { key: string; value: ConfigValue }
     result: { success: boolean }
   }
   get_downloads: {
-    params: {}
+    params: Record<string, never>
     result: { tasks: DownloadTask[] }
   }
   cancel_download: {
-    params: { taskId: string }
+    params: { task_id: string }
     result: { success: boolean }
   }
   get_statistics: {
-    params: {}
+    params: Record<string, never>
     result: StatisticsData
+  }
+  apply_auth: {
+    params: { curl_text: string }
+    result: { cookie: string; user_agent: string }
+  }
+  verify_auth: {
+    params: Record<string, never>
+    result: { valid: boolean; message: string }
   }
 }

@@ -4,10 +4,11 @@ import crypto from 'crypto'
 import { app } from 'electron'
 
 const REQUEST_TIMEOUT_MS = 30_000
+const MAX_BUFFER_SIZE = 1024 * 1024
 
 interface PendingRequest {
-  resolve: (value: any) => void
-  reject: (reason: any) => void
+  resolve: (value: unknown) => void
+  reject: (reason: unknown) => void
   timer: NodeJS.Timeout
 }
 
@@ -15,6 +16,8 @@ export class PythonBridge {
   private process: ChildProcess | null = null
   private pendingRequests = new Map<string, PendingRequest>()
   private buffer = ''
+  private restartTimer: NodeJS.Timeout | null = null
+  private isShuttingDown = false
 
   constructor() {
     this.start()
@@ -48,6 +51,11 @@ export class PythonBridge {
 
     this.process.stdout?.on('data', (data: Buffer) => {
       this.buffer += data.toString()
+      if (this.buffer.length > MAX_BUFFER_SIZE) {
+        console.error('IPC buffer overflow, discarding')
+        this.buffer = ''
+        return
+      }
       const lines = this.buffer.split('\n')
       this.buffer = lines.pop() || ''
 
@@ -77,12 +85,18 @@ export class PythonBridge {
     })
 
     this.process.on('exit', (code) => {
-      for (const [id, pending] of this.pendingRequests) {
+      for (const [, pending] of this.pendingRequests) {
         clearTimeout(pending.timer)
         pending.reject(new Error(`Python process exited with code ${code}`))
       }
       this.pendingRequests.clear()
       this.process = null
+
+      if (!this.isShuttingDown) {
+        this.restartTimer = setTimeout(() => {
+          this.start()
+        }, 2000)
+      }
     })
 
     this.process.on('error', (err) => {
@@ -90,8 +104,9 @@ export class PythonBridge {
     })
   }
 
-  async call(method: string, params: any = {}): Promise<any> {
-    if (!this.process) {
+  async call(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+    const proc = this.process
+    if (!proc) {
       throw new Error('Python process not running')
     }
 
@@ -107,11 +122,16 @@ export class PythonBridge {
       }, REQUEST_TIMEOUT_MS)
 
       this.pendingRequests.set(id, { resolve, reject, timer })
-      this.process!.stdin?.write(JSON.stringify(request) + '\n')
+      proc.stdin?.write(JSON.stringify(request) + '\n')
     })
   }
 
   kill() {
+    this.isShuttingDown = true
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer)
+      this.restartTimer = null
+    }
     if (this.process) {
       this.process.kill()
       this.process = null

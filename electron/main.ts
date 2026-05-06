@@ -39,10 +39,16 @@ function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
   ipcMain.handle('python:search', async (_, query, mode, page) => {
+    if (typeof query !== 'string' || typeof mode !== 'string' || typeof page !== 'number') {
+      throw new Error('Invalid search parameters')
+    }
     return bridge.call('search', { query, mode, page })
   })
 
   ipcMain.handle('python:download', async (_, comicId, comicData) => {
+    if (typeof comicId !== 'string' || typeof comicData !== 'object' || comicData === null) {
+      throw new Error('Invalid download parameters')
+    }
     return bridge.call('download', { comic_id: comicId, comic_data: comicData })
   })
 
@@ -55,6 +61,9 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle('python:set-config', async (_, key, value) => {
+    if (typeof key !== 'string' || value === undefined) {
+      throw new Error('Invalid set_config parameters')
+    }
     return bridge.call('set_config', { key, value })
   })
 
@@ -63,6 +72,9 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle('python:cancel-download', async (_, taskId) => {
+    if (typeof taskId !== 'string') {
+      throw new Error('Invalid cancel_download parameters')
+    }
     return bridge.call('cancel_download', { task_id: taskId })
   })
 
@@ -71,6 +83,9 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle('python:apply-auth', async (_, curlText) => {
+    if (typeof curlText !== 'string') {
+      throw new Error('Invalid apply_auth parameters')
+    }
     return bridge.call('apply_auth', { curl_text: curlText })
   })
 

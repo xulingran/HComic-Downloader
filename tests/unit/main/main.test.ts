@@ -205,4 +205,41 @@ describe('main.ts', () => {
       expect(mockBridgeKill).toHaveBeenCalled()
     })
   })
+
+  describe('Input validation', () => {
+    it('python:search should reject invalid query', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(handler.handler({}, 123, 'title', 1)).rejects.toThrow('Invalid search parameters')
+    })
+
+    it('python:search should reject invalid page', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(handler.handler({}, 'test', 'title', 'not-a-number')).rejects.toThrow('Invalid search parameters')
+    })
+
+    it('python:download should reject non-string comicId', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 123, { title: 'test' })).rejects.toThrow('Invalid download parameters')
+    })
+
+    it('python:download should reject null comicData', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'id', null)).rejects.toThrow('Invalid download parameters')
+    })
+
+    it('python:set-config should reject non-string key', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 123, 'value')).rejects.toThrow('Invalid set_config parameters')
+    })
+
+    it('python:cancel-download should reject non-string taskId', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:cancel-download')!
+      await expect(handler.handler({}, 123)).rejects.toThrow('Invalid cancel_download parameters')
+    })
+
+    it('python:apply-auth should reject non-string curlText', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
+      await expect(handler.handler({}, 123)).rejects.toThrow('Invalid apply_auth parameters')
+    })
+  })
 })

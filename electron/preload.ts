@@ -13,8 +13,6 @@ const ALLOWED_INVOKE_CHANNELS = new Set([
   'python:verify-auth'
 ])
 
-const ALLOWED_ON_CHANNELS = new Set<string>()
-
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
     invoke: (channel: string, ...args: any[]) => {
@@ -22,14 +20,6 @@ contextBridge.exposeInMainWorld('electron', {
         throw new Error(`Invalid IPC channel: ${channel}`)
       }
       return ipcRenderer.invoke(channel, ...args)
-    },
-    on: (channel: string, callback: (...args: any[]) => void) => {
-      if (!ALLOWED_ON_CHANNELS.has(channel)) {
-        throw new Error(`Invalid IPC channel: ${channel}`)
-      }
-      const listener = (_: any, ...args: any[]) => callback(...args)
-      ipcRenderer.on(channel, listener)
-      return () => ipcRenderer.removeListener(channel, listener)
     }
   }
 })

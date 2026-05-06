@@ -277,6 +277,53 @@ describe('PythonBridge', () => {
 
       await expect(bridge.call('search')).rejects.toThrow('Python process not running')
     })
+
+    it('should not auto-restart after explicit kill', () => {
+      vi.useFakeTimers()
+      const bridge = new PythonBridge()
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+
+      bridge.kill()
+      vi.advanceTimersByTime(3000)
+
+      // Should NOT have respawned
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+      vi.useRealTimers()
+    })
+  })
+
+  describe('auto-restart', () => {
+    it('should attempt restart after unexpected process exit', () => {
+      vi.useFakeTimers()
+      new PythonBridge()
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+
+      // Simulate unexpected exit
+      exitCallbacks.forEach(cb => cb(1))
+      vi.advanceTimersByTime(2000)
+
+      expect(mockSpawn).toHaveBeenCalledTimes(2)
+      vi.useRealTimers()
+    })
+  })
+
+  describe('buffer overflow protection', () => {
+    it('should discard buffer when it exceeds max size and remain functional', async () => {
+      const bridge = new PythonBridge()
+
+      // Send >1MB of garbage without newline
+      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      stdoutCallbacks.forEach(cb => cb(bigData))
+
+      // Now send a valid request and response - should still work
+      const callPromise = bridge.call('get_config')
+      const written = JSON.parse(stdinWriteData[stdinWriteData.length - 1].trim())
+      const response = { jsonrpc: '2.0', id: written.id, result: { ok: true } }
+      stdoutCallbacks.forEach(cb => cb(Buffer.from(JSON.stringify(response) + '\n')))
+
+      const result = await callPromise
+      expect(result).toEqual({ ok: true })
+    })
   })
 
   describe('getPythonBridge()', () => {

@@ -4,22 +4,16 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 // Use vi.hoisted to create mock functions that are available in vi.mock factories
 const {
   mockExposeInMainWorld,
-  mockInvoke,
-  mockOn,
-  mockRemoveListener
+  mockInvoke
 } = vi.hoisted(() => ({
   mockExposeInMainWorld: vi.fn(),
-  mockInvoke: vi.fn().mockResolvedValue('result'),
-  mockOn: vi.fn(),
-  mockRemoveListener: vi.fn()
+  mockInvoke: vi.fn().mockResolvedValue('result')
 }))
 
 vi.mock('electron', () => ({
   contextBridge: { exposeInMainWorld: mockExposeInMainWorld },
   ipcRenderer: {
-    invoke: mockInvoke,
-    on: mockOn,
-    removeListener: mockRemoveListener
+    invoke: mockInvoke
   }
 }))
 
@@ -33,8 +27,6 @@ const exposedIpcRenderer = exposedObj?.ipcRenderer
 describe('preload.ts', () => {
   beforeEach(() => {
     mockInvoke.mockClear()
-    mockOn.mockClear()
-    mockRemoveListener.mockClear()
   })
 
   it('should call contextBridge.exposeInMainWorld with "electron" key', () => {
@@ -54,27 +46,8 @@ describe('preload.ts', () => {
     expect(mockInvoke).not.toHaveBeenCalled()
   })
 
-  it('should throw on invalid on channel', () => {
-    const callback = vi.fn()
-    expect(() => exposedIpcRenderer.on('evil:channel', callback)).toThrow(
-      'Invalid IPC channel: evil:channel'
-    )
-    expect(mockOn).not.toHaveBeenCalled()
-  })
-
-  it('should return cleanup function from ipcRenderer.on that calls removeListener', () => {
-    // 'python:download-progress' not in ALLOWED_ON_CHANNELS, so it will throw.
-    // We test the cleanup mechanism by checking the structure instead.
-    // Since ALLOWED_ON_CHANNELS is empty, we can't test a valid on channel.
-    // Instead verify the function signature exists.
-    expect(typeof exposedIpcRenderer.on).toBe('function')
-  })
-
-  it('should pass callback args through the on listener wrapper', () => {
-    // Test the on wrapper logic by calling the internal on directly
-    // Since no channels are in ALLOWED_ON_CHANNELS, we test by checking
-    // the exposed API structure
+  it('should only expose invoke method on ipcRenderer', () => {
     expect(typeof exposedIpcRenderer.invoke).toBe('function')
-    expect(typeof exposedIpcRenderer.on).toBe('function')
+    expect(Object.keys(exposedIpcRenderer)).toEqual(['invoke'])
   })
 })
