@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch } from '../hooks/useIpc'
+import { useSearch, useDownload } from '../hooks/useIpc'
 import { ComicCard } from '../components/common/ComicCard'
 import { ComicInfo } from '@shared/types'
 
@@ -19,11 +19,32 @@ export function SearchPage() {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState('keyword')
   const [source, setSource] = useState('hcomic')
+  const [batchMode, setBatchMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
+  const { startDownload } = useDownload()
+
+  const toggleSelect = (comic: ComicInfo) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(comic.id)) next.delete(comic.id)
+      else next.add(comic.id)
+      return next
+    })
+  }
+
+  const selectAll = () => {
+    setSelectedIds(new Set(comics.map(c => c.id)))
+  }
+
+  const clearSelection = () => {
+    setSelectedIds(new Set())
+  }
 
   const handleSearch = async (page: number = 1) => {
     if (!query.trim()) return
+    clearSelection()
 
     setLoading(true)
     setError(null)
@@ -43,6 +64,23 @@ export function SearchPage() {
     console.log('Comic clicked:', comic)
   }
 
+  const handleDownload = async (comic: ComicInfo) => {
+    try {
+      await startDownload(comic.id, comic)
+    } catch (err) {
+      console.error('Download failed:', err)
+    }
+  }
+
+  const handleBatchDownload = async () => {
+    for (const id of selectedIds) {
+      const comic = comics.find(c => c.id === id)
+      if (comic) await handleDownload(comic)
+    }
+    clearSelection()
+    setBatchMode(false)
+  }
+
   return (
     <div className="space-y-6">
       <div className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm">
@@ -50,7 +88,7 @@ export function SearchPage() {
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                        text-[var(--text-primary)] text-sm"
           >
             {sources.map((s) => (
@@ -63,7 +101,7 @@ export function SearchPage() {
           <select
             value={mode}
             onChange={(e) => setMode(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                        text-[var(--text-primary)] text-sm"
           >
             {searchModes.map((m) => (
@@ -81,7 +119,7 @@ export function SearchPage() {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="输入搜索内容..."
-            className="flex-1 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+            className="flex-1 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                        text-[var(--text-primary)] placeholder-[var(--text-secondary)]
                        focus:outline-none focus:border-[var(--accent)]"
           />
@@ -89,13 +127,47 @@ export function SearchPage() {
           <button
             onClick={() => handleSearch()}
             disabled={isLoading}
-            className="px-6 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)] 
+            className="px-6 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)]
                        disabled:opacity-50 transition-colors"
           >
             {isLoading ? '搜索中...' : '搜索'}
           </button>
         </div>
       </div>
+
+      {comics.length > 0 && (
+        <div className="flex items-center gap-3 bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
+          <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
+            <input
+              type="checkbox"
+              checked={batchMode}
+              onChange={(e) => {
+                setBatchMode(e.target.checked)
+                if (!e.target.checked) clearSelection()
+              }}
+              className="rounded"
+            />
+            批量选择模式
+          </label>
+          {batchMode && (
+            <>
+              <button onClick={selectAll} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+                全选
+              </button>
+              <button onClick={clearSelection} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+                取消
+              </button>
+              <button
+                onClick={handleBatchDownload}
+                disabled={selectedIds.size === 0}
+                className="px-3 py-1 text-sm rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+              >
+                批量下载({selectedIds.size})
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-[var(--error)]/10 text-[var(--error)] rounded-lg">
@@ -106,7 +178,15 @@ export function SearchPage() {
       {comics.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
           {comics.map((comic) => (
-            <ComicCard key={comic.id} comic={comic} onClick={handleComicClick} />
+            <ComicCard
+              key={comic.id}
+              comic={comic}
+              onClick={handleComicClick}
+              batchMode={batchMode}
+              selected={selectedIds.has(comic.id)}
+              onToggleSelect={toggleSelect}
+              onDownload={handleDownload}
+            />
           ))}
         </div>
       )}
@@ -116,7 +196,7 @@ export function SearchPage() {
           <button
             onClick={() => handleSearch(pagination.currentPage - 1)}
             disabled={pagination.currentPage <= 1}
-            className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)] 
+            className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
                        disabled:opacity-50"
           >
             上一页
@@ -127,7 +207,7 @@ export function SearchPage() {
           <button
             onClick={() => handleSearch(pagination.currentPage + 1)}
             disabled={pagination.currentPage >= pagination.totalPages}
-            className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)] 
+            className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
                        disabled:opacity-50"
           >
             下一页

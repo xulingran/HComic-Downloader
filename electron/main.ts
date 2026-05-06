@@ -50,8 +50,8 @@ function registerIPCHandlers() {
     return bridge.call('search', { query, mode, page })
   })
 
-  ipcMain.handle('python:download', async (_, comicId) => {
-    return bridge.call('download', { comic_id: comicId })
+  ipcMain.handle('python:download', async (_, comicId, comicData) => {
+    return bridge.call('download', { comic_id: comicId, comic_data: comicData })
   })
 
   ipcMain.handle('python:get-favourites', async () => {

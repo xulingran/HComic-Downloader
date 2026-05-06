@@ -1,4 +1,5 @@
 import { useCallback } from 'react'
+import { ComicInfo } from '@shared/types'
 
 declare global {
   interface Window {
@@ -40,8 +41,8 @@ export function useSearch() {
 export function useDownload() {
   const { invoke } = useIpc()
 
-  const startDownload = useCallback(async (comicId: string) => {
-    return invoke('python:download', comicId)
+  const startDownload = useCallback(async (comicId: string, comicData: ComicInfo) => {
+    return invoke('python:download', comicId, comicData)
   }, [invoke])
 
   const cancelDownload = useCallback(async (taskId: string) => {

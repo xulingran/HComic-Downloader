@@ -65,9 +65,14 @@ class IPCServer:
             },
         }
 
-    def handle_download(self, comic_id: str) -> Dict:
+    def handle_download(self, comic_id: str, comic_data: dict = None) -> Dict:
         task_id = str(uuid.uuid4())[:8]
-        self.download_tasks[task_id] = {"status": "pending", "progress": 0}
+        self.download_tasks[task_id] = {
+            "status": "pending",
+            "progress": 0,
+            "comic": comic_data or {"id": comic_id, "title": "Unknown", "url": "", "coverUrl": "", "source": ""},
+        }
+        logger.info(f"Created download task {task_id} for comic {comic_id}")
         return {"taskId": task_id}
 
     def handle_get_favourites(self) -> Dict:
@@ -133,7 +138,7 @@ class IPCServer:
             "tasks": [
                 {
                     "id": task_id,
-                    "comic": {"id": "", "title": "Download Task", "url": "", "coverUrl": "", "source": ""},
+                    "comic": task.get("comic", {"id": "", "title": "Download Task", "url": "", "coverUrl": "", "source": ""}),
                     "status": task["status"],
                     "progress": task["progress"],
                     "totalPages": 0,
