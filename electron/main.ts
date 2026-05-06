@@ -5,7 +5,7 @@ import { getPythonBridge } from './python-bridge'
 let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
-  const preloadPath = path.join(__dirname, '../preload/preload.mjs')
+  const preloadPath = path.join(__dirname, '../preload/preload.js')
   console.log('Preload path:', preloadPath)
   console.log('__dirname:', __dirname)
   
@@ -76,6 +76,14 @@ function registerIPCHandlers() {
 
   ipcMain.handle('python:get-statistics', async () => {
     return bridge.call('get_statistics')
+  })
+
+  ipcMain.handle('python:apply-auth', async (_, curlText) => {
+    return bridge.call('apply_auth', { curl_text: curlText })
+  })
+
+  ipcMain.handle('python:verify-auth', async () => {
+    return bridge.call('verify_auth')
   })
 }
 

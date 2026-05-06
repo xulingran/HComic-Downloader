@@ -88,3 +88,17 @@ export function useStatistics() {
 
   return { getStatistics }
 }
+
+export function useAuth() {
+  const { invoke } = useIpc()
+
+  const applyAuth = useCallback(async (curlText: string) => {
+    return invoke('python:apply-auth', curlText)
+  }, [invoke])
+
+  const verifyAuth = useCallback(async () => {
+    return invoke('python:verify-auth')
+  }, [invoke])
+
+  return { applyAuth, verifyAuth }
+}

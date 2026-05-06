@@ -78,6 +78,24 @@ class IPCServer:
             logger.error(f"Get favourites error: {e}")
             return {"comics": []}
 
+    def handle_apply_auth(self, curl_text: str) -> Dict:
+        if not curl_text or not curl_text.strip():
+            raise ValueError("请粘贴 curl 命令")
+
+        from auth_parser import extract_auth_from_curl
+
+        cookie, user_agent = extract_auth_from_curl(curl_text.strip())
+        self.config.set_source_auth("hcomic", cookie=cookie, user_agent=user_agent)
+        self.config.save(_get_config_path())
+
+        self.parser.configure_auth(cookie=cookie, user_agent=user_agent, source="hcomic")
+
+        return {"cookie": cookie, "user_agent": user_agent}
+
+    def handle_verify_auth(self) -> Dict:
+        is_valid, message = self.parser.verify_login_status()
+        return {"valid": is_valid, "message": message}
+
     def handle_get_config(self) -> Dict:
         return {
             "config": {
@@ -149,6 +167,8 @@ class IPCServer:
             "search": self.handle_search,
             "download": self.handle_download,
             "get_favourites": self.handle_get_favourites,
+            "apply_auth": self.handle_apply_auth,
+            "verify_auth": self.handle_verify_auth,
             "get_config": self.handle_get_config,
             "set_config": self.handle_set_config,
             "get_downloads": self.handle_get_downloads,
