@@ -9,14 +9,14 @@
   ],
   extraResources: [
     {
-      from: 'python/',
+      from: 'python/dist/',
       to: 'python/',
-      filter: ['**/*.py', '!**/__pycache__/**', '!**/tests/**']
+      filter: ['**/*']
     }
   ],
   win: {
     target: ['nsis'],
-    icon: 'assets/icon.ico'
+    icon: 'assets/icon_64.png'
   },
   mac: {
     target: ['dmg'],

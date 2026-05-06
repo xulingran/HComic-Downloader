@@ -34,13 +34,20 @@ vi.mock('electron', () => {
     BrowserWindow: MockBrowserWindow,
     ipcMain: {
       handle: mockHandle
+    },
+    shell: {
+      openExternal: vi.fn().mockResolvedValue(undefined)
     }
   }
 })
 
 // Mock python-bridge
 vi.mock('../../../electron/python-bridge', () => ({
-  getPythonBridge: () => ({ call: mockBridgeCall, kill: mockBridgeKill })
+  getPythonBridge: () => ({
+    call: mockBridgeCall,
+    kill: mockBridgeKill,
+    setNotificationHandler: vi.fn()
+  })
 }))
 
 // Import after mocks - this triggers side effects

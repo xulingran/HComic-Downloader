@@ -18,6 +18,7 @@ export class PythonBridge {
   private buffer = ''
   private restartTimer: NodeJS.Timeout | null = null
   private isShuttingDown = false
+  private notificationHandlers = new Map<string, (params: any) => void>()
 
   constructor() {
     this.start()
@@ -29,23 +30,24 @@ export class PythonBridge {
     if (isDev) {
       return isWin ? 'python' : 'python3'
     }
-    const exeName = isWin ? 'python.exe' : 'python3'
+    const exeName = isWin ? 'python.exe' : 'python'
     return path.join(process.resourcesPath, 'python', exeName)
   }
 
-  private getScriptPath(): string {
+  private getScriptPath(): string | null {
     const isDev = !app.isPackaged
     if (isDev) {
       return path.join(app.getAppPath(), 'python', 'ipc_server.py')
     }
-    return path.join(process.resourcesPath, 'python', 'ipc_server.py')
+    return null
   }
 
   private start() {
     const pythonPath = this.getPythonPath()
     const scriptPath = this.getScriptPath()
+    const args = scriptPath ? [scriptPath] : []
 
-    this.process = spawn(pythonPath, [scriptPath], {
+    this.process = spawn(pythonPath, args, {
       stdio: ['pipe', 'pipe', 'pipe']
     })
 
@@ -63,15 +65,19 @@ export class PythonBridge {
         if (line.trim()) {
           try {
             const response = JSON.parse(line)
-            const pending = this.pendingRequests.get(response.id)
-            if (pending) {
-              clearTimeout(pending.timer)
-              this.pendingRequests.delete(response.id)
-              if (response.error) {
-                pending.reject(new Error(response.error.message))
-              } else {
-                pending.resolve(response.result)
+            if (response.id) {
+              const pending = this.pendingRequests.get(response.id)
+              if (pending) {
+                clearTimeout(pending.timer)
+                this.pendingRequests.delete(response.id)
+                if (response.error) {
+                  pending.reject(new Error(response.error.message))
+                } else {
+                  pending.resolve(response.result)
+                }
               }
+            } else if (response.method) {
+              this.onNotification(response.method, response.params)
             }
           } catch (e) {
             console.error('Failed to parse IPC response:', e)
@@ -102,6 +108,17 @@ export class PythonBridge {
     this.process.on('error', (err) => {
       console.error('Failed to start Python process:', err)
     })
+  }
+
+  onNotification(method: string, params: any) {
+    const handler = this.notificationHandlers.get(method)
+    if (handler) {
+      handler(params)
+    }
+  }
+
+  setNotificationHandler(method: string, handler: (params: any) => void) {
+    this.notificationHandlers.set(method, handler)
   }
 
   async call(method: string, params: Record<string, unknown> = {}): Promise<unknown> {

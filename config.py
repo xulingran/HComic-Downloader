@@ -124,6 +124,7 @@ class Config:
     def save(self, config_path: str):
         """保存配置到文件"""
         import json
+        import sys
         from dataclasses import asdict
         # 兼容旧字段，保持为 hcomic 认证
         hcomic_auth = self.get_source_auth("hcomic")
@@ -132,3 +133,5 @@ class Config:
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(asdict(self), f, ensure_ascii=False, indent=2)
+        if sys.platform != 'win32':
+            os.chmod(config_path, 0o600)

@@ -50,7 +50,7 @@ export function SearchPage() {
     setError(null)
 
     try {
-      const result = await search(query, mode, page)
+      const result = await search(query, mode, page, source)
       setComics(result.comics)
       setPagination(result.pagination)
     } catch (err) {
