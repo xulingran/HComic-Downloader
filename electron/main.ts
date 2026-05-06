@@ -6,15 +6,7 @@ let mainWindow: BrowserWindow | null = null
 
 function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/preload.js')
-  console.log('Preload path:', preloadPath)
-  console.log('__dirname:', __dirname)
-  
-  // Check if preload file exists
-  const fs = require('fs')
-  if (!fs.existsSync(preloadPath)) {
-    console.error('Preload script not found at:', preloadPath)
-  }
-  
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -88,8 +80,12 @@ function registerIPCHandlers() {
 }
 
 app.whenReady().then(() => {
-  registerIPCHandlers()
-  createWindow()
+  try {
+    createWindow()
+    registerIPCHandlers()
+  } catch (err) {
+    console.error('Failed to initialize app:', err)
+  }
 })
 
 app.on('window-all-closed', () => {

@@ -43,11 +43,6 @@ vi.mock('../../../electron/python-bridge', () => ({
   getPythonBridge: () => ({ call: mockBridgeCall, kill: mockBridgeKill })
 }))
 
-// Mock fs.existsSync (used in createWindow)
-vi.mock('fs', () => ({
-  existsSync: vi.fn().mockReturnValue(true)
-}))
-
 // Import after mocks - this triggers side effects
 import { app } from 'electron'
 

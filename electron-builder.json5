@@ -15,7 +15,8 @@
     }
   ],
   win: {
-    target: ['nsis']
+    target: ['nsis'],
+    icon: 'assets/icon.ico'
   },
   mac: {
     target: ['dmg'],

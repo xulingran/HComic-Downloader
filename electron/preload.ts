@@ -1,19 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron'
 
-// Debug: Log when preload script loads
-console.log('[Preload] Script starting...')
+const ALLOWED_INVOKE_CHANNELS = new Set([
+  'python:search',
+  'python:download',
+  'python:get-favourites',
+  'python:get-config',
+  'python:set-config',
+  'python:get-downloads',
+  'python:cancel-download',
+  'python:get-statistics',
+  'python:apply-auth',
+  'python:verify-auth'
+])
 
-try {
-  contextBridge.exposeInMainWorld('electron', {
-    ipcRenderer: {
-      invoke: (channel: string, ...args: any[]) => ipcRenderer.invoke(channel, ...args),
-      on: (channel: string, callback: (...args: any[]) => void) => {
-        ipcRenderer.on(channel, (_, ...args) => callback(...args))
-        return () => ipcRenderer.removeAllListeners(channel)
+const ALLOWED_ON_CHANNELS = new Set<string>()
+
+contextBridge.exposeInMainWorld('electron', {
+  ipcRenderer: {
+    invoke: (channel: string, ...args: any[]) => {
+      if (!ALLOWED_INVOKE_CHANNELS.has(channel)) {
+        throw new Error(`Invalid IPC channel: ${channel}`)
       }
+      return ipcRenderer.invoke(channel, ...args)
+    },
+    on: (channel: string, callback: (...args: any[]) => void) => {
+      if (!ALLOWED_ON_CHANNELS.has(channel)) {
+        throw new Error(`Invalid IPC channel: ${channel}`)
+      }
+      const listener = (_: any, ...args: any[]) => callback(...args)
+      ipcRenderer.on(channel, listener)
+      return () => ipcRenderer.removeListener(channel, listener)
     }
-  })
-  console.log('[Preload] Electron API exposed successfully')
-} catch (error) {
-  console.error('[Preload] Failed to expose Electron API:', error)
-}
+  }
+})

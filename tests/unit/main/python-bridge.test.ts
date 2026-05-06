@@ -18,6 +18,7 @@ vi.mock('child_process', async (importOriginal) => {
 vi.mock('electron', () => ({
   app: {
     getPath: vi.fn().mockReturnValue('/mock/path'),
+    getAppPath: vi.fn().mockReturnValue('/mock/project'),
     isPackaged: false
   }
 }))
@@ -140,7 +141,16 @@ describe('PythonBridge', () => {
       await expect(callPromise).rejects.toThrow('Search failed')
     })
 
-    it('should reject with "Python process not running" after process exits', async () => {
+    it('should reject pending requests when process exits', async () => {
+      const callPromise = bridge.call('search', { query: 'test' })
+
+      // Simulate process exit while request is pending
+      exitCallbacks.forEach(cb => cb(1))
+
+      await expect(callPromise).rejects.toThrow('Python process exited with code 1')
+    })
+
+    it('should reject with "Python process not running" when calling after process exits', async () => {
       // Simulate process exit
       exitCallbacks.forEach(cb => cb(0))
 
