@@ -1,0 +1,103 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import type { ComicInfo } from '@shared/types'
+
+// Hoist mock functions so they are available inside vi.mock factories
+const { mockGetFavourites } = vi.hoisted(() => ({
+  mockGetFavourites: vi.fn()
+}))
+
+vi.mock('@/hooks/useIpc', () => ({
+  useFavourites: vi.fn().mockReturnValue({ getFavourites: mockGetFavourites })
+}))
+
+vi.mock('@/stores/useSettingsStore', () => ({
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' })
+}))
+
+vi.mock('@/components/common/ComicCard', () => ({
+  ComicCard: ({ comic }: { comic: ComicInfo }) => (
+    <div data-testid="comic-card">{comic.title}</div>
+  )
+}))
+
+// Import the component AFTER mocks
+import { FavouritesPage } from '@/pages/FavouritesPage'
+
+describe('FavouritesPage', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockGetFavourites.mockResolvedValue({ comics: [] })
+  })
+
+  it('renders page content with title', async () => {
+    render(<FavouritesPage />)
+
+    await screen.findByText('收藏夹')
+  })
+
+  it('renders refresh button', async () => {
+    render(<FavouritesPage />)
+
+    await screen.findByText('刷新')
+  })
+
+  it('shows empty state when no favorites', async () => {
+    mockGetFavourites.mockResolvedValue({ comics: [] })
+
+    render(<FavouritesPage />)
+
+    await screen.findByText('暂无收藏')
+  })
+
+  it('shows favorite comics when available', async () => {
+    const comics: ComicInfo[] = [
+      { id: '1', title: 'Fav Comic A', url: 'https://example.com/1', coverUrl: '', source: 'test' },
+      { id: '2', title: 'Fav Comic B', url: 'https://example.com/2', coverUrl: '', source: 'test' }
+    ]
+    mockGetFavourites.mockResolvedValue({ comics })
+
+    render(<FavouritesPage />)
+
+    await screen.findByText('Fav Comic A')
+    expect(screen.getByText('Fav Comic B')).toBeInTheDocument()
+  })
+
+  it('shows error state when loading fails', async () => {
+    mockGetFavourites.mockRejectedValue(new Error('Failed to load'))
+
+    render(<FavouritesPage />)
+
+    await screen.findByText('Failed to load')
+  })
+
+  it('calls getFavourites on mount', () => {
+    render(<FavouritesPage />)
+
+    expect(mockGetFavourites).toHaveBeenCalled()
+  })
+
+  it('can trigger refresh', async () => {
+    mockGetFavourites.mockResolvedValue({ comics: [] })
+
+    render(<FavouritesPage />)
+
+    // Wait for initial load to finish
+    await screen.findByText('暂无收藏')
+
+    const refreshButton = screen.getByText('刷新')
+    await userEvent.click(refreshButton)
+
+    expect(mockGetFavourites).toHaveBeenCalledTimes(2)
+  })
+
+  it('shows loading state initially', () => {
+    // Make getFavourites hang so isLoading stays true
+    mockGetFavourites.mockReturnValue(new Promise(() => {}))
+
+    render(<FavouritesPage />)
+
+    expect(screen.getByText('加载中...')).toBeInTheDocument()
+  })
+})
