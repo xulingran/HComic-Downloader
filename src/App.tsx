@@ -18,7 +18,7 @@ function App() {
       case 'downloads':
         return <DownloadPage />
       case 'favourites':
-        return <FavouritesPage />
+        return <FavouritesPage onNavigateToSettings={() => setActivePage('settings')} />
       case 'settings':
         return <SettingsPage />
       case 'statistics':

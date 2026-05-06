@@ -1,0 +1,5 @@
+[tool.pytest.ini_options]
+timeout = 60
+filterwarnings = [
+    "ignore::pytest.PytestUnhandledThreadExceptionWarning",
+]

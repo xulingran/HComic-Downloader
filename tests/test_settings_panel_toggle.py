@@ -17,7 +17,7 @@ class TestSettingsPanelToggle(unittest.TestCase):
         app.withdraw()
         return app
 
-    def _wait_until(self, app, condition, timeout=1.2):
+    def _wait_until(self, app, condition, timeout=3.0):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             app.update()

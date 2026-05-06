@@ -290,68 +290,41 @@ class TestHComicParserAdditionalCoverage:
     """补充测试以达到更高覆盖率"""
 
     def test_verify_login_status_success(self, parser, monkeypatch):
-        """测试登录验证成功"""
-        import requests
-        mock_response = requests.Response()
-        mock_response._content = b'<html>some logout button is.authenticated=true</html>'
-        mock_response.status_code = 200
-        mock_response.encoding = 'utf-8'
-
-        def mock_get(*args, **kwargs):
-            return mock_response
-
-        monkeypatch.setattr(parser.session, 'get', mock_get)
+        """测试登录验证成功 — 收藏夹接口返回完整数据"""
+        monkeypatch.setattr(parser, '_request_text', lambda url: 'data: [null, {"data": {"favourites": {"docs": [], "pages": 1, "total": 0}}}], form:')
 
         success, msg = parser.verify_login_status()
         assert success is True
         assert "登录校验通过" in msg
 
     def test_verify_login_status_need_login(self, parser, monkeypatch):
-        """测试登录验证需要登录"""
-        import requests
-        mock_response = requests.Response()
-        mock_response._content = b'<html>login sign in form</html>'
-        mock_response.status_code = 200
-        mock_response.encoding = 'utf-8'
-
-        def mock_get(*args, **kwargs):
-            return mock_response
-
-        monkeypatch.setattr(parser.session, 'get', mock_get)
+        """测试登录验证失败 — 收藏夹接口返回无效数据"""
+        monkeypatch.setattr(parser, '_request_text', lambda url: 'data: [null, {"data": {"other": "no favourites here"}}], form:')
 
         success, msg = parser.verify_login_status()
         assert success is False
-        assert "登录疑似失效" in msg
+        assert "登录已失效" in msg
 
-    def test_verify_login_status_weak(self, parser, monkeypatch):
-        """测试登录验证弱判定"""
-        import requests
-        mock_response = requests.Response()
-        mock_response._content = b'<html>hello world test page</html>'
-        mock_response.status_code = 200
-        mock_response.encoding = 'utf-8'
-
-        def mock_get(*args, **kwargs):
-            return mock_response
-
-        monkeypatch.setattr(parser.session, 'get', mock_get)
+    def test_verify_login_status_incomplete_favourites(self, parser, monkeypatch):
+        """测试登录验证 — favourites 字段不完整（缺少 key）"""
+        monkeypatch.setattr(parser, '_request_text', lambda url: 'data: [null, {"data": {"favourites": {"docs": []}}}], form:')
 
         success, msg = parser.verify_login_status()
-        assert success is True
-        assert "弱判定" in msg
+        assert success is False
+        assert "登录已失效" in msg
 
     def test_verify_login_status_network_error(self, parser, monkeypatch):
         """测试登录验证网络错误"""
-        import requests
+        from parser import ParserResponseError
 
-        def mock_get(*args, **kwargs):
-            raise requests.RequestException("Connection failed")
+        def mock_request_text(url):
+            raise ParserResponseError("Connection failed")
 
-        monkeypatch.setattr(parser.session, 'get', mock_get)
+        monkeypatch.setattr(parser, '_request_text', mock_request_text)
 
         success, msg = parser.verify_login_status()
         assert success is False
-        assert "登录校验失败" in msg
+        assert "登录已失效" in msg
 
     def test_get_response_text_with_iso_encoding(self, parser):
         """测试响应文本编码处理 - ISO 编码"""

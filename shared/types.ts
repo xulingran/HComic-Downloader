@@ -4,6 +4,8 @@ export interface ComicInfo {
   url: string
   coverUrl: string
   source: string
+  sourceSite?: string
+  mediaId?: string
   tags?: string[]
   author?: string
   pages?: number
@@ -63,7 +65,7 @@ export type ConfigValue = string | number | boolean
 
 export interface IPCMethods {
   search: {
-    params: { query: string; mode: string; page: number }
+    params: { query: string; mode: string; page: number; source?: string }
     result: SearchResult
   }
   download: {
@@ -71,8 +73,8 @@ export interface IPCMethods {
     result: { taskId: string }
   }
   get_favourites: {
-    params: Record<string, never>
-    result: { comics: ComicInfo[] }
+    params: { page?: number }
+    result: { comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }
   }
   get_config: {
     params: Record<string, never>
@@ -96,7 +98,7 @@ export interface IPCMethods {
   }
   apply_auth: {
     params: { curl_text: string }
-    result: { cookie: string; user_agent: string }
+    result: { success: boolean }
   }
   verify_auth: {
     params: Record<string, never>

@@ -9,7 +9,7 @@
   ],
   extraResources: [
     {
-      from: 'python/dist/',
+      from: 'python/dist/python/',
       to: 'python/',
       filter: ['**/*']
     }

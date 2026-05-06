@@ -1,13 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
 
-block_cipher = None
-
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(SPECPATH)))
+SPEC_DIR = os.path.abspath(SPECPATH)
+PROJECT_ROOT = os.path.dirname(SPEC_DIR)
 
 a = Analysis(
-    ['python/ipc_server.py'],
-    pathex=[PROJECT_ROOT],
+    [os.path.join(SPEC_DIR, 'ipc_server.py')],
+    pathex=[PROJECT_ROOT, SPEC_DIR],
     binaries=[],
     datas=[],
     hiddenimports=[
@@ -26,31 +25,34 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=[],
     excludes=['tests', 'pytest'],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
+    optimize=0,
 )
-pyz = PYZ(a.pure, a.zlib_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.zipfiles,
-    a.datas,
     [],
+    exclude_binaries=True,
     name='python',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+)
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='python',
 )

@@ -60,16 +60,17 @@ class HComicParser:
         self.close()
 
     def verify_login_status(self) -> Tuple[bool, str]:
-        """弱校验登录状态。"""
+        """通过访问收藏夹接口校验登录状态。"""
         try:
-            response = self.session.get(self.INDEX, timeout=self.timeout)
-            response.raise_for_status()
-            text = self._get_response_text(response).lower()
-            if "logout" in text or "is.authenticated=true" in text:
+            url = self._build_favourites_url(1)
+            response = self._request_text(url)
+            data = self._extract_payload_data(response)
+            favourites_data = data.get("favourites")
+            if isinstance(favourites_data, dict) and all(k in favourites_data for k in ("docs", "pages", "total")):
                 return True, "登录校验通过"
-            if "login" in text or "sign in" in text:
-                return False, "登录疑似失效（检测到登录入口）"
-            return True, "登录校验通过（弱判定）"
+            return False, "登录已失效，请重新登录"
+        except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError):
+            return False, "登录已失效，请重新登录"
         except requests.RequestException as e:
             return False, f"登录校验失败: {e}"
 

@@ -94,6 +94,8 @@ class IPCServer:
             "url": comic.preview_url or "",
             "coverUrl": cover_url,
             "source": comic.comic_source or "default",
+            "sourceSite": comic.source_site or "hcomic",
+            "mediaId": comic.media_id or "",
             "tags": comic.tags if hasattr(comic, 'tags') else [],
             "author": comic.author if hasattr(comic, 'author') else None,
             "pages": comic.pages if hasattr(comic, 'pages') else None,
@@ -102,7 +104,10 @@ class IPCServer:
     def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str = None) -> Dict:
         if source and source in ("hcomic", "moeimg"):
             self.parser.set_source(source)
-        comics, pagination = self.parser.search(query, page=page)
+        effective_query = query
+        if source == "moeimg" and mode in ("author", "tag"):
+            effective_query = f"{mode}:{query}"
+        comics, pagination = self.parser.search(effective_query, page=page)
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": {
@@ -114,12 +119,18 @@ class IPCServer:
 
     def handle_download(self, comic_id: str, comic_data: dict = None) -> Dict:
         from models import ComicInfo
+        data = comic_data or {}
         comic = ComicInfo(
             id=comic_id,
-            title=(comic_data or {}).get("title", "Unknown"),
-            preview_url=(comic_data or {}).get("url", ""),
-            cover_url=(comic_data or {}).get("coverUrl", ""),
-            source_site=(comic_data or {}).get("source", "hcomic"),
+            title=data.get("title", "Unknown"),
+            preview_url=data.get("url", ""),
+            cover_url=data.get("coverUrl", ""),
+            source_site=data.get("sourceSite") or data.get("source", "hcomic"),
+            comic_source=data.get("source", ""),
+            media_id=data.get("mediaId", ""),
+            pages=data.get("pages") or 0,
+            tags=data.get("tags") or [],
+            author=data.get("author"),
         )
         task_id = self._download_manager.add_task(comic)
         task = self._download_manager.tasks.get(task_id)

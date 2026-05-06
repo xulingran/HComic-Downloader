@@ -8,7 +8,7 @@
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "build:python": "pyinstaller python/hcomic_backend.spec --distpath python/dist --workpath python/build --clean",
+    "build:python": "pyinstaller --noconfirm python/hcomic_backend.spec --distpath python/dist --workpath python/build --clean && node -e \"const fs=require('fs'); const exe=process.platform==='win32'?'python/dist/python/python.exe':'python/dist/python/python'; fs.existsSync(exe) || (console.error('ERROR: Python backend executable not found: '+exe), process.exit(1))\"",
     "build:win": "npm run build:python && npm run build && electron-builder --win",
     "build:mac": "npm run build:python && npm run build && electron-builder --mac",
     "build:linux": "npm run build:python && npm run build && electron-builder --linux",

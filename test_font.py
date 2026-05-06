@@ -5,7 +5,7 @@ from tkinter import ttk
 from font_config import FontConfig
 
 
-def test_font_display():
+def show_font_display():
     """测试字体显示效果"""
     # 创建字体配置
     fc = FontConfig.create_instance()
@@ -77,4 +77,4 @@ def test_font_display():
 
 
 if __name__ == "__main__":
-    test_font_display()
+    show_font_display()

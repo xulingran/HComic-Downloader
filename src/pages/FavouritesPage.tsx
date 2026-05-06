@@ -1,25 +1,37 @@
 import { useState, useEffect } from 'react'
-import { useFavourites } from '../hooks/useIpc'
+import { useFavourites, useDownload } from '../hooks/useIpc'
 import { ComicCard } from '../components/common/ComicCard'
-import { ComicInfo } from '@shared/types'
+import { ComicInfo, PaginationInfo } from '@shared/types'
 
-export function FavouritesPage() {
+interface FavouritesPageProps {
+  onNavigateToSettings?: () => void
+}
+
+export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [comics, setComics] = useState<ComicInfo[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [pagination, setPagination] = useState<PaginationInfo | null>(null)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [needsLogin, setNeedsLogin] = useState(false)
   const { getFavourites } = useFavourites()
+  const { startDownload } = useDownload()
 
   useEffect(() => {
-    loadFavourites()
+    loadFavourites(1)
   }, [])
 
-  const loadFavourites = async () => {
+  const loadFavourites = async (page: number = 1) => {
     setIsLoading(true)
     setError(null)
+    setNeedsLogin(false)
 
     try {
-      const result = await getFavourites()
+      const result = await getFavourites(page)
       setComics(result.comics)
+      setPagination(result.pagination ?? null)
+      setNeedsLogin(result.needsLogin)
+      setCurrentPage(page)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load favourites')
     } finally {
@@ -27,8 +39,12 @@ export function FavouritesPage() {
     }
   }
 
-  const handleComicClick = (comic: ComicInfo) => {
-    console.log('Favourite clicked:', comic)
+  const handleDownload = async (comic: ComicInfo) => {
+    try {
+      await startDownload(comic.id, comic)
+    } catch (err) {
+      console.error('Download failed:', err)
+    }
   }
 
   if (isLoading) {
@@ -54,24 +70,62 @@ export function FavouritesPage() {
           收藏夹
         </h2>
         <button
-          onClick={loadFavourites}
-          className="px-3 py-1 text-sm bg-[var(--bg-primary)] border border-[var(--border)] 
+          onClick={() => loadFavourites(currentPage)}
+          className="px-3 py-1 text-sm bg-[var(--bg-primary)] border border-[var(--border)]
                      rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
         >
           刷新
         </button>
       </div>
 
-      {comics.length === 0 ? (
+      {needsLogin ? (
+        <div className="text-center py-12">
+          <div className="text-[var(--text-secondary)] mb-4">登录信息已过期或未配置</div>
+          {onNavigateToSettings && (
+            <button
+              onClick={onNavigateToSettings}
+              className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-colors"
+            >
+              前往设置登录
+            </button>
+          )}
+        </div>
+      ) : comics.length === 0 ? (
         <div className="text-center text-[var(--text-secondary)] py-12">
           暂无收藏
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {comics.map((comic) => (
-            <ComicCard key={comic.id} comic={comic} onClick={handleComicClick} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            {comics.map((comic) => (
+              <ComicCard key={comic.id} comic={comic} onClick={handleDownload} onDownload={handleDownload} />
+            ))}
+          </div>
+
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex justify-center gap-2">
+              <button
+                onClick={() => loadFavourites(currentPage - 1)}
+                disabled={currentPage <= 1}
+                className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
+                           disabled:opacity-50"
+              >
+                上一页
+              </button>
+              <span className="px-3 py-1 text-[var(--text-primary)]">
+                {currentPage} / {pagination.totalPages}
+              </span>
+              <button
+                onClick={() => loadFavourites(currentPage + 1)}
+                disabled={currentPage >= pagination.totalPages}
+                className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
+                           disabled:opacity-50"
+              >
+                下一页
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
