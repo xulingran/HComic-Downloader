@@ -16,6 +16,7 @@ htmlcov/
 .coverage
 *.cover
 .hypothesis/
+coverage/
 
 # IDE
 .vscode/
