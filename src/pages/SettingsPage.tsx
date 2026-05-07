@@ -68,7 +68,7 @@ export function SettingsPage() {
           setOutputFormat(result.config.outputFormat as OutputFormat)
         }
         // 检查已有登录状态
-        if (result.config.cookie) {
+        if (result.config.hasAuth) {
           setLoginStatus('verifying')
           try {
             const verifyResult = await verifyAuth()
@@ -391,7 +391,7 @@ export function SettingsPage() {
               {loginStatus === 'verifying' ? '测试中...' : '测试登录'}
             </button>
             <button
-              onClick={() => window.electron?.openUrl?.('https://h-comic.com')}
+              onClick={() => window.hcomic?.openUrl('https://h-comic.com')}
               className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                          bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]"
             >

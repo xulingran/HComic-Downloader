@@ -383,9 +383,9 @@ describe('SettingsPage', () => {
     })
   })
 
-  it('verifies existing cookie on load', async () => {
+  it('verifies existing auth on load', async () => {
     mockGetConfig.mockResolvedValue({
-      config: { ...defaultConfig, cookie: 'existing_cookie' }
+      config: { ...defaultConfig, hasAuth: true }
     })
     mockVerifyAuth.mockResolvedValue({ valid: true, message: 'Valid session' })
 
@@ -397,9 +397,9 @@ describe('SettingsPage', () => {
     })
   })
 
-  it('handles existing cookie verification failure gracefully', async () => {
+  it('handles existing auth verification failure gracefully', async () => {
     mockGetConfig.mockResolvedValue({
-      config: { ...defaultConfig, cookie: 'existing_cookie' }
+      config: { ...defaultConfig, hasAuth: true }
     })
     mockVerifyAuth.mockRejectedValue(new Error('Failed'))
 

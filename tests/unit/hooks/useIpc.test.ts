@@ -1,43 +1,45 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useIpc } from '@/hooks/useIpc'
-import { mockWindowElectron, createMockIpcInvoke } from '../../__mocks__/ipc'
+import { createMockHcomic } from '../../__mocks__/ipc'
 
 describe('useIpc', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    delete (window as any).hcomic
   })
 
   it('应返回 invoke 函数', () => {
-    mockWindowElectron()
+    createMockHcomic()
     const { result } = renderHook(() => useIpc())
     expect(result.current.invoke).toBeDefined()
     expect(typeof result.current.invoke).toBe('function')
   })
 
-  it('应调用 ipcRenderer.invoke 并传递参数', async () => {
-    const mockInvoke = createMockIpcInvoke({ 'python:get-config': { config: {} } })
-    mockWindowElectron(mockInvoke)
+  it('应通过 window.hcomic 调用并返回结果', async () => {
+    const hcomic = createMockHcomic({
+      getConfig: vi.fn().mockResolvedValue({ config: { themeMode: 'dark' } }),
+    })
 
     const { result } = renderHook(() => useIpc())
-    const response = await result.current.invoke('python:get-config')
+    const response = await result.current.invoke(() => window.hcomic!.getConfig())
 
-    expect(mockInvoke).toHaveBeenCalledWith('python:get-config')
-    expect(response).toEqual({ config: {} })
+    expect(hcomic.getConfig).toHaveBeenCalled()
+    expect(response).toEqual({ config: { themeMode: 'dark' } })
   })
 
-  it('当 electron API 不存在时应抛出错误', async () => {
-    delete (window as any).electron
+  it('当 hcomic API 不存在时应抛出错误', async () => {
+    delete (window as any).hcomic
 
     const { result } = renderHook(() => useIpc())
 
-    await expect(result.current.invoke('python:get-config' as any)).rejects.toThrow(
+    await expect(result.current.invoke(() => (window as any).hcomic?.getConfig?.())).rejects.toThrow(
       'Electron IPC not available'
     )
   })
 
-  it('当 ipcRenderer 不存在时应抛出错误', async () => {
-    Object.defineProperty(window, 'electron', {
+  it('当 hcomic 为空对象时应抛出错误', async () => {
+    Object.defineProperty(window, 'hcomic', {
       value: {},
       writable: true,
       configurable: true
@@ -45,27 +47,28 @@ describe('useIpc', () => {
 
     const { result } = renderHook(() => useIpc())
 
-    await expect(result.current.invoke('python:get-config' as any)).rejects.toThrow(
-      'Electron IPC not available'
-    )
+    // hcomic exists but has no methods - the fn should throw
+    await expect(result.current.invoke(() => (window.hcomic as any).getConfig())).rejects.toThrow()
   })
 
   it('IPC 调用失败时应重新抛出错误', async () => {
-    const mockInvoke = vi.fn().mockRejectedValue(new Error('IPC failed'))
-    mockWindowElectron(mockInvoke)
+    createMockHcomic({
+      getConfig: vi.fn().mockRejectedValue(new Error('IPC failed')),
+    })
 
     const { result } = renderHook(() => useIpc())
 
-    await expect(result.current.invoke('python:get-config' as any)).rejects.toThrow('IPC failed')
+    await expect(result.current.invoke(() => window.hcomic!.getConfig())).rejects.toThrow('IPC failed')
   })
 
   it('应支持返回复杂对象', async () => {
     const complexResult = { data: [1, 2, 3], nested: { key: 'value' } }
-    const mockInvoke = createMockIpcInvoke({ 'python:get-statistics': complexResult })
-    mockWindowElectron(mockInvoke)
+    createMockHcomic({
+      getStatistics: vi.fn().mockResolvedValue(complexResult),
+    })
 
     const { result } = renderHook(() => useIpc())
-    const response = await result.current.invoke('python:get-statistics')
+    const response = await result.current.invoke(() => window.hcomic!.getStatistics())
 
     expect(response).toEqual(complexResult)
   })

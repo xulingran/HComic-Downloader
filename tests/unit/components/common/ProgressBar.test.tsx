@@ -13,14 +13,14 @@ describe('ProgressBar', () => {
     expect(screen.getByText('完成')).toBeInTheDocument()
   })
 
-  it('shows 失败 for error status', () => {
-    render(<ProgressBar progress={30} status="error" />)
+  it('shows 失败 for failed status', () => {
+    render(<ProgressBar progress={30} status="failed" />)
     expect(screen.getByText('失败')).toBeInTheDocument()
   })
 
-  it('shows 等待中 for pending status', () => {
-    render(<ProgressBar progress={0} status="pending" />)
-    expect(screen.getByText('等待中')).toBeInTheDocument()
+  it('shows 排队中 for queued status', () => {
+    render(<ProgressBar progress={0} status="queued" />)
+    expect(screen.getByText('排队中')).toBeInTheDocument()
   })
 
   it('shows 已取消 for cancelled status', () => {

@@ -1,12 +1,7 @@
 // @vitest-environment node
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { IPC_CHANNEL_MAP } from '../../../shared/types'
+import { describe, it, expect, vi } from 'vitest'
 
-// Use vi.hoisted to create mock functions that are available in vi.mock factories
-const {
-  mockExposeInMainWorld,
-  mockInvoke
-} = vi.hoisted(() => ({
+const { mockExposeInMainWorld, mockInvoke } = vi.hoisted(() => ({
   mockExposeInMainWorld: vi.fn(),
   mockInvoke: vi.fn().mockResolvedValue('result')
 }))
@@ -14,53 +9,157 @@ const {
 vi.mock('electron', () => ({
   contextBridge: { exposeInMainWorld: mockExposeInMainWorld },
   ipcRenderer: {
-    invoke: mockInvoke
+    invoke: mockInvoke,
+    on: vi.fn(),
+    removeListener: vi.fn()
   }
 }))
 
-// Import after mocks - this triggers side effects (the preload script runs on import)
 import '../../../electron/preload'
 
-// Capture the exposed API from the initial import (module is cached, runs only once)
-const exposedObj = mockExposeInMainWorld.mock.calls[0]?.[1] as any
-const exposedIpcRenderer = exposedObj?.ipcRenderer
+const exposedApi = mockExposeInMainWorld.mock.calls[0]?.[1] as any
 
 describe('preload.ts', () => {
   beforeEach(() => {
     mockInvoke.mockClear()
   })
 
-  it('should call contextBridge.exposeInMainWorld with "electron" key', () => {
-    expect(mockExposeInMainWorld).toHaveBeenCalledWith('electron', expect.any(Object))
+  it('should expose window.hcomic via contextBridge', () => {
+    expect(mockExposeInMainWorld).toHaveBeenCalledWith('hcomic', expect.any(Object))
   })
 
-  it('should expose ipcRenderer.invoke that delegates to electron ipcRenderer.invoke', async () => {
-    await exposedIpcRenderer.invoke('python:search', 'arg1', 'arg2')
-
-    expect(mockInvoke).toHaveBeenCalledWith('python:search', 'arg1', 'arg2')
+  it('should NOT expose ipcRenderer.invoke directly', () => {
+    expect(exposedApi.ipcRenderer).toBeUndefined()
   })
 
-  it('should throw on invalid invoke channel', () => {
-    expect(() => exposedIpcRenderer.invoke('evil:channel', 'arg')).toThrow(
-      'Invalid IPC channel: evil:channel'
-    )
-    expect(mockInvoke).not.toHaveBeenCalled()
+  describe('search', () => {
+    it('should invoke python:search with correct args', async () => {
+      await exposedApi.search('test', 'keyword', 1)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1)
+    })
+
+    it('should reject invalid query', () => {
+      expect(() => exposedApi.search(123, 'keyword', 1)).toThrow('Invalid query')
+      expect(() => exposedApi.search('', 'keyword', 1)).toThrow('Invalid query')
+    })
+
+    it('should reject invalid mode', () => {
+      expect(() => exposedApi.search('test', 'invalid', 1)).toThrow('Invalid mode')
+    })
+
+    it('should reject invalid page', () => {
+      expect(() => exposedApi.search('test', 'keyword', 0)).toThrow('Invalid page')
+      expect(() => exposedApi.search('test', 'keyword', NaN)).toThrow('Invalid page')
+      expect(() => exposedApi.search('test', 'keyword', 1.5)).toThrow('Invalid page')
+      expect(() => exposedApi.search('test', 'keyword', 1001)).toThrow('Invalid page')
+    })
+
+    it('should reject invalid source', () => {
+      expect(() => exposedApi.search('test', 'keyword', 1, 'evil')).toThrow('Invalid source')
+    })
+
+    it('should pass source when valid', async () => {
+      await exposedApi.search('test', 'keyword', 1, 'moeimg')
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'moeimg')
+    })
   })
 
-  it('should only expose invoke method on ipcRenderer', () => {
-    expect(typeof exposedIpcRenderer.invoke).toBe('function')
-    expect(Object.keys(exposedIpcRenderer)).toEqual(['invoke'])
+  describe('download', () => {
+    it('should invoke python:download with correct args', async () => {
+      const comicData = { title: 'Test', url: 'http://x.com' }
+      await exposedApi.download('id-1', comicData)
+      expect(mockInvoke).toHaveBeenCalledWith('python:download', 'id-1', comicData)
+    })
+
+    it('should reject empty comicId', () => {
+      expect(() => exposedApi.download('', {})).toThrow('Invalid comicId')
+    })
+
+    it('should reject null comicData', () => {
+      expect(() => exposedApi.download('id', null)).toThrow('Invalid comicData')
+    })
   })
-})
 
-describe('Channel parity', () => {
-  it('preload whitelist should match IPC_CHANNEL_MAP keys', () => {
-    const mapChannels = new Set(Object.keys(IPC_CHANNEL_MAP))
+  describe('getFavourites', () => {
+    it('should invoke with default page 1', async () => {
+      await exposedApi.getFavourites()
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 1)
+    })
 
-    for (const channel of mapChannels) {
-      expect(() => exposedIpcRenderer.invoke(channel)).not.toThrow()
-    }
+    it('should invoke with specified page', async () => {
+      await exposedApi.getFavourites(3)
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 3)
+    })
 
-    expect(() => exposedIpcRenderer.invoke('python:nonexistent')).toThrow('Invalid IPC channel')
+    it('should reject invalid page', () => {
+      expect(() => exposedApi.getFavourites(0)).toThrow('Invalid page')
+    })
+  })
+
+  describe('setConfig', () => {
+    it('should invoke with key and value', async () => {
+      await exposedApi.setConfig('themeMode', 'dark')
+      expect(mockInvoke).toHaveBeenCalledWith('python:set-config', 'themeMode', 'dark')
+    })
+
+    it('should reject unknown config key', () => {
+      expect(() => exposedApi.setConfig('evilKey', 'value')).toThrow('Invalid config key')
+    })
+  })
+
+  describe('cancelDownload', () => {
+    it('should invoke with taskId', async () => {
+      await exposedApi.cancelDownload('task-1')
+      expect(mockInvoke).toHaveBeenCalledWith('python:cancel-download', 'task-1')
+    })
+
+    it('should reject empty taskId', () => {
+      expect(() => exposedApi.cancelDownload('')).toThrow('Invalid taskId')
+    })
+  })
+
+  describe('applyAuth', () => {
+    it('should invoke with curlText', async () => {
+      await exposedApi.applyAuth('curl example.com')
+      expect(mockInvoke).toHaveBeenCalledWith('python:apply-auth', 'curl example.com')
+    })
+
+    it('should reject empty curlText', () => {
+      expect(() => exposedApi.applyAuth('')).toThrow('Invalid curlText')
+      expect(() => exposedApi.applyAuth('   ')).toThrow('Invalid curlText')
+    })
+  })
+
+  describe('openUrl', () => {
+    it('should invoke open-external', async () => {
+      await exposedApi.openUrl('https://h-comic.com')
+      expect(mockInvoke).toHaveBeenCalledWith('open-external', 'https://h-comic.com')
+    })
+
+    it('should reject empty URL', () => {
+      expect(() => exposedApi.openUrl('')).toThrow('Invalid URL')
+    })
+  })
+
+  describe('stateless methods', () => {
+    it('getConfig should invoke python:get-config', async () => {
+      await exposedApi.getConfig()
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-config')
+    })
+
+    it('getDownloads should invoke python:get-downloads', async () => {
+      await exposedApi.getDownloads()
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-downloads')
+    })
+
+    it('getStatistics should invoke python:get-statistics', async () => {
+      await exposedApi.getStatistics()
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-statistics')
+    })
+
+    it('verifyAuth should invoke python:verify-auth', async () => {
+      await exposedApi.verifyAuth()
+      expect(mockInvoke).toHaveBeenCalledWith('python:verify-auth')
+    })
   })
 })

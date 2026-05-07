@@ -52,7 +52,10 @@ class IPCServer:
             timeout=self.config.timeout,
             retry_times=self.config.retry_times,
         )
-        self.cbz_builder = CBZBuilder()
+        self.cbz_builder = CBZBuilder(
+            filename_template=self.config.cbz_filename_template,
+            config=self.config,
+        )
         self._download_manager = ComicDownloadManager(
             downloader=self.downloader,
             cbz_builder=self.cbz_builder,
@@ -194,8 +197,9 @@ class IPCServer:
         for snake_key, value in raw.items():
             camel_key = reverse_map.get(snake_key, snake_key)
             config[camel_key] = value
-        config['cookie'] = None
-        config['userAgent'] = None
+        config['hasAuth'] = bool(
+            self.config.source_auth.get('hcomic', {}).get('cookie')
+        )
         return {"config": config}
 
     def handle_set_config(self, key: str, value: Any) -> Dict:
@@ -207,6 +211,26 @@ class IPCServer:
         try:
             setattr(self.config, python_key, value)
             self.config.save(_get_config_path())
+
+            if key == 'downloadDir':
+                self._download_manager.set_output_dir(value)
+            elif key == 'outputFormat':
+                self._download_manager.set_output_format(value)
+            elif key == 'batchDownloadDelay':
+                self._download_manager.set_delay_after(value)
+            elif key == 'autoRetryMaxAttempts':
+                self._download_manager.set_auto_retry_max_attempts(value)
+            elif key == 'concurrentDownloads':
+                self.downloader.concurrent_downloads = value
+            elif key == 'timeout':
+                self.downloader.timeout = value
+            elif key == 'retryTimes':
+                self.downloader.retry_times = value
+            elif key == 'cbzFilenameTemplate':
+                self.cbz_builder.filename_template = value
+            elif key == 'defaultSource':
+                self.parser.set_source(value)
+
             return {"success": True}
         except Exception as e:
             logger.error(f"Set config error for {key}: {e}")

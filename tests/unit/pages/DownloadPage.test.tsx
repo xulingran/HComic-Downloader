@@ -134,7 +134,7 @@ describe('DownloadPage', () => {
       {
         id: 'task-1',
         comic: mockComic,
-        status: 'error',
+        status: 'failed',
         progress: 30,
         totalPages: 20,
         downloadedPages: 6,

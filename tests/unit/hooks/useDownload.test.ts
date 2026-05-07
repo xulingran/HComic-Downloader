@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useDownload } from '@/hooks/useIpc'
-import { mockWindowElectron, createMockIpcInvoke } from '../../__mocks__/ipc'
+import { createMockHcomic } from '../../__mocks__/ipc'
 import type { ComicInfo } from '@shared/types'
 
 const mockComic: ComicInfo = {
@@ -15,10 +15,11 @@ const mockComic: ComicInfo = {
 describe('useDownload', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    delete (window as any).hcomic
   })
 
   it('应返回 startDownload, cancelDownload, getDownloads', () => {
-    mockWindowElectron()
+    createMockHcomic()
     const { result } = renderHook(() => useDownload())
     expect(result.current.startDownload).toBeDefined()
     expect(result.current.cancelDownload).toBeDefined()
@@ -28,31 +29,28 @@ describe('useDownload', () => {
     expect(typeof result.current.getDownloads).toBe('function')
   })
 
-  it('startDownload 应调用 python:download', async () => {
-    const mockInvoke = createMockIpcInvoke({ 'python:download': { taskId: 't1' } })
-    mockWindowElectron(mockInvoke)
+  it('startDownload 应调用 window.hcomic.download', async () => {
+    const hcomic = createMockHcomic({ download: vi.fn().mockResolvedValue({ taskId: 't1', status: 'queued' }) })
     const { result } = renderHook(() => useDownload())
     const response = await result.current.startDownload('comic-1', mockComic)
-    expect(mockInvoke).toHaveBeenCalledWith('python:download', 'comic-1', mockComic)
-    expect(response).toEqual({ taskId: 't1' })
+    expect(hcomic.download).toHaveBeenCalledWith('comic-1', mockComic)
+    expect(response).toEqual({ taskId: 't1', status: 'queued' })
   })
 
-  it('cancelDownload 应调用 python:cancel-download', async () => {
-    const mockInvoke = createMockIpcInvoke({ 'python:cancel-download': { success: true } })
-    mockWindowElectron(mockInvoke)
+  it('cancelDownload 应调用 window.hcomic.cancelDownload', async () => {
+    const hcomic = createMockHcomic({ cancelDownload: vi.fn().mockResolvedValue({ success: true }) })
     const { result } = renderHook(() => useDownload())
     const response = await result.current.cancelDownload('task-1')
-    expect(mockInvoke).toHaveBeenCalledWith('python:cancel-download', 'task-1')
+    expect(hcomic.cancelDownload).toHaveBeenCalledWith('task-1')
     expect(response).toEqual({ success: true })
   })
 
-  it('getDownloads 应调用 python:get-downloads', async () => {
+  it('getDownloads 应调用 window.hcomic.getDownloads', async () => {
     const tasks = [{ id: 't1', status: 'downloading' }]
-    const mockInvoke = createMockIpcInvoke({ 'python:get-downloads': { tasks } })
-    mockWindowElectron(mockInvoke)
+    const hcomic = createMockHcomic({ getDownloads: vi.fn().mockResolvedValue({ tasks }) })
     const { result } = renderHook(() => useDownload())
     const response = await result.current.getDownloads()
-    expect(mockInvoke).toHaveBeenCalledWith('python:get-downloads')
+    expect(hcomic.getDownloads).toHaveBeenCalled()
     expect(response).toEqual({ tasks })
   })
 
@@ -63,10 +61,9 @@ describe('useDownload', () => {
       author: 'TestAuthor',
       pages: 50
     }
-    const mockInvoke = createMockIpcInvoke({ 'python:download': { taskId: 't2' } })
-    mockWindowElectron(mockInvoke)
+    const hcomic = createMockHcomic({ download: vi.fn().mockResolvedValue({ taskId: 't2', status: 'queued' }) })
     const { result } = renderHook(() => useDownload())
     await result.current.startDownload('comic-2', comicWithExtras)
-    expect(mockInvoke).toHaveBeenCalledWith('python:download', 'comic-2', comicWithExtras)
+    expect(hcomic.download).toHaveBeenCalledWith('comic-2', comicWithExtras)
   })
 })

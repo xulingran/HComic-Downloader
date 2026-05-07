@@ -76,11 +76,11 @@ describe('useDownloadStore', () => {
     expect(useDownloadStore.getState().tasks[0].status).toBe('completed')
   })
 
-  it('应能更新任务状态为 error', () => {
+  it('应能更新任务状态为 failed', () => {
     useDownloadStore.getState().addTask(mockTask)
-    useDownloadStore.getState().updateTask('task-1', { status: 'error', error: 'Network timeout' })
+    useDownloadStore.getState().updateTask('task-1', { status: 'failed', error: 'Network timeout' })
     const task = useDownloadStore.getState().tasks[0]
-    expect(task.status).toBe('error')
+    expect(task.status).toBe('failed')
     expect(task.error).toBe('Network timeout')
   })
 })

@@ -61,9 +61,10 @@ vi.mock('../../../electron/python-bridge', () => ({
 // Import after mocks - this triggers side effects
 import { app } from 'electron'
 
-// Import main.ts to trigger all side effects
-// Note: app.whenReady() resolves immediately but .then() runs as microtask
 import '../../../electron/main'
+
+// Import IPC_CHANNEL_MAP for parity test
+import { IPC_CHANNEL_MAP } from '../../../shared/types'
 
 // Helper to flush microtasks so that app.whenReady().then() callback runs
 async function flushMicrotasks(): Promise<void> {
@@ -104,16 +105,47 @@ describe('main.ts', () => {
         expect(handler).toBeDefined()
       })
     })
+
+    it('every python:* channel must exist in IPC_CHANNEL_MAP', () => {
+      const registeredPythonChannels = handleCalls
+        .map(h => h.channel)
+        .filter(c => c.startsWith('python:'))
+
+      const mapKeys = new Set(Object.keys(IPC_CHANNEL_MAP))
+      const registeredSet = new Set(registeredPythonChannels)
+
+      // Every registered python:* channel must be in the map
+      for (const ch of registeredSet) {
+        expect(mapKeys.has(ch), `Channel "${ch}" registered but not in IPC_CHANNEL_MAP`).toBe(true)
+      }
+
+      // Every IPC_CHANNEL_MAP key must be registered
+      for (const ch of mapKeys) {
+        expect(registeredSet.has(ch), `Channel "${ch}" in IPC_CHANNEL_MAP but not registered`).toBe(true)
+      }
+    })
+
+    it('IPC_CHANNEL_MAP values must match Python handler method names', () => {
+      const validMethods = new Set([
+        'search', 'download', 'get_favourites', 'get_config', 'set_config',
+        'get_downloads', 'cancel_download', 'get_statistics', 'apply_auth', 'verify_auth',
+      ])
+      for (const [channel, method] of Object.entries(IPC_CHANNEL_MAP)) {
+        expect(validMethods.has(method),
+          `IPC_CHANNEL_MAP["${channel}"] = "${method}" is not a known Python handler`
+        ).toBe(true)
+      }
+    })
   })
 
   describe('IPC handler delegation', () => {
     it('python:search delegates to bridge.call with correct params', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:search')!
-      await handler.handler({}, 'test query', 'title', 1)
+      await handler.handler({}, 'test query', 'keyword', 1)
 
       expect(mockBridgeCall).toHaveBeenCalledWith('search', {
         query: 'test query',
-        mode: 'title',
+        mode: 'keyword',
         page: 1
       })
     })
@@ -225,22 +257,47 @@ describe('main.ts', () => {
   describe('Input validation', () => {
     it('python:search should reject invalid query', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:search')!
-      await expect(handler.handler({}, 123, 'title', 1)).rejects.toThrow('Invalid search parameters')
+      await expect(handler.handler({}, 123, 'keyword', 1)).rejects.toThrow('Invalid search query')
+    })
+
+    it('python:search should reject invalid mode', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(handler.handler({}, 'test', 'invalid', 1)).rejects.toThrow('Invalid search mode')
     })
 
     it('python:search should reject invalid page', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:search')!
-      await expect(handler.handler({}, 'test', 'title', 'not-a-number')).rejects.toThrow('Invalid search parameters')
+      await expect(handler.handler({}, 'test', 'keyword', 'not-a-number')).rejects.toThrow('Invalid search page')
+    })
+
+    it('python:search should reject page 0', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(handler.handler({}, 'test', 'keyword', 0)).rejects.toThrow('Invalid search page')
+    })
+
+    it('python:search should reject NaN page', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(handler.handler({}, 'test', 'keyword', NaN)).rejects.toThrow('Invalid search page')
+    })
+
+    it('python:search should reject invalid source', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(handler.handler({}, 'test', 'keyword', 1, 'evil')).rejects.toThrow('Invalid search source')
     })
 
     it('python:download should reject non-string comicId', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:download')!
-      await expect(handler.handler({}, 123, { title: 'test' })).rejects.toThrow('Invalid download parameters')
+      await expect(handler.handler({}, 123, { title: 'test' })).rejects.toThrow('Invalid download comicId')
     })
 
     it('python:download should reject null comicData', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:download')!
-      await expect(handler.handler({}, 'id', null)).rejects.toThrow('Invalid download parameters')
+      await expect(handler.handler({}, 'id', null)).rejects.toThrow('Invalid download comicData')
+    })
+
+    it('python:get-favourites should reject invalid page', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:get-favourites')!
+      await expect(handler.handler({}, 0)).rejects.toThrow('Invalid favourites page')
     })
 
     it('python:set-config should reject non-string key', async () => {
@@ -250,12 +307,22 @@ describe('main.ts', () => {
 
     it('python:cancel-download should reject non-string taskId', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:cancel-download')!
-      await expect(handler.handler({}, 123)).rejects.toThrow('Invalid cancel_download parameters')
+      await expect(handler.handler({}, 123)).rejects.toThrow('Invalid cancel_download taskId')
+    })
+
+    it('python:cancel-download should reject empty taskId', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:cancel-download')!
+      await expect(handler.handler({}, '')).rejects.toThrow('Invalid cancel_download taskId')
     })
 
     it('python:apply-auth should reject non-string curlText', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
-      await expect(handler.handler({}, 123)).rejects.toThrow('Invalid apply_auth parameters')
+      await expect(handler.handler({}, 123)).rejects.toThrow('Invalid apply_auth curlText')
+    })
+
+    it('python:apply-auth should reject empty curlText', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
+      await expect(handler.handler({}, '   ')).rejects.toThrow('Invalid apply_auth curlText')
     })
   })
 
@@ -332,6 +399,66 @@ describe('main.ts', () => {
       const handler = handleCalls.find(h => h.channel === 'python:set-config')!
       await expect(handler.handler({}, 'themeMode', 'invalid'))
         .rejects.toThrow('Invalid value for themeMode')
+    })
+
+    it('should reject downloadDir with path traversal', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'downloadDir', '/safe/../etc'))
+        .rejects.toThrow('Invalid value for downloadDir')
+    })
+
+    it('should reject downloadDir with relative path', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'downloadDir', 'relative/path'))
+        .rejects.toThrow('Invalid value for downloadDir')
+    })
+
+    it('should reject downloadDir with control characters', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'downloadDir', '/tmp\n/etc'))
+        .rejects.toThrow('Invalid value for downloadDir')
+    })
+
+    it('should accept valid downloadDir', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await handler.handler({}, 'downloadDir', '/home/user/Downloads')
+      expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'downloadDir', value: '/home/user/Downloads' })
+    })
+
+    it('should accept Windows downloadDir', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await handler.handler({}, 'downloadDir', 'C:\\Users\\test\\Downloads')
+      expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'downloadDir', value: 'C:\\Users\\test\\Downloads' })
+    })
+
+    it('should reject cbzFilenameTemplate with format specifier', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '{author}-{id:>10}.cbz'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should reject cbzFilenameTemplate with unclosed brace', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '{author}-{title'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should reject cbzFilenameTemplate with path separators', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '../{author}-{title}.cbz'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should reject cbzFilenameTemplate with invalid placeholders', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '{author}-{evil}.cbz'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should accept valid cbzFilenameTemplate', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await handler.handler({}, 'cbzFilenameTemplate', '{author}-{title}.cbz')
+      expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'cbzFilenameTemplate', value: '{author}-{title}.cbz' })
     })
   })
 })

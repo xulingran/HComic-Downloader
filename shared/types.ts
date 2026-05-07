@@ -32,7 +32,7 @@ export interface DownloadTask {
   error?: string
 }
 
-export type DownloadStatus = 'pending' | 'downloading' | 'completed' | 'error' | 'cancelled'
+export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled'
 
 export interface AppConfig {
   themeMode: 'light' | 'dark' | 'auto'
@@ -50,6 +50,7 @@ export interface AppConfig {
   proxy?: string
   cookie?: string
   userAgent?: string
+  hasAuth?: boolean
 }
 
 export interface StatisticsData {
@@ -160,3 +161,34 @@ export interface IPCChannelParamsMap {
 
 export type IPCChannelResult<C extends IPCChannel> =
   IPCMethods[typeof IPC_CHANNEL_MAP[C]]['result']
+
+/** Narrow API exposed by preload via window.hcomic */
+export interface HcomicAPI {
+  search(query: string, mode: string, page: number, source?: string): Promise<SearchResult>
+  download(comicId: string, comicData: ComicInfo): Promise<{ taskId: string; status: string }>
+  getFavourites(page?: number): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
+  getConfig(): Promise<{ config: AppConfig }>
+  setConfig(key: ConfigKey, value: ConfigValue): Promise<{ success: boolean }>
+  getDownloads(): Promise<{ tasks: DownloadTask[] }>
+  cancelDownload(taskId: string): Promise<{ success: boolean }>
+  getStatistics(): Promise<StatisticsData>
+  applyAuth(curlText: string): Promise<{ success: boolean }>
+  verifyAuth(): Promise<{ valid: boolean; message: string }>
+  openUrl(url: string): Promise<void>
+  onDownloadProgress(callback: (data: unknown) => void): () => void
+}
+
+/** Valid search modes — shared between preload and main */
+export const SEARCH_MODES = ['keyword', 'author', 'tag'] as const
+export type SearchMode = typeof SEARCH_MODES[number]
+
+/** Valid comic sources — shared between preload and main */
+export const COMIC_SOURCES = ['hcomic', 'moeimg'] as const
+export type ComicSource = typeof COMIC_SOURCES[number]
+
+/** Config keys accepted by set-config — shared between preload and main */
+export const CONFIG_KEYS = [
+  'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
+  'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
+  'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
+] as const

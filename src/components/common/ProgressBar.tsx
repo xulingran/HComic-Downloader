@@ -1,23 +1,27 @@
+import type { DownloadStatus } from '@shared/types'
+
 interface ProgressBarProps {
   progress: number
-  status: 'pending' | 'downloading' | 'completed' | 'error' | 'cancelled'
+  status: DownloadStatus
   className?: string
 }
 
-const statusColors = {
-  pending: 'var(--warning)',
+const statusColors: Record<DownloadStatus, string> = {
+  queued: 'var(--warning)',
   downloading: 'var(--accent)',
+  paused: 'var(--warning)',
   completed: 'var(--success)',
-  error: 'var(--error)',
-  cancelled: 'var(--text-secondary)'
+  failed: 'var(--error)',
+  cancelled: 'var(--text-secondary)',
 }
 
-const statusLabels = {
-  pending: '等待中',
+const statusLabels: Record<DownloadStatus, string> = {
+  queued: '排队中',
   downloading: '下载中',
+  paused: '已暂停',
   completed: '完成',
-  error: '失败',
-  cancelled: '已取消'
+  failed: '失败',
+  cancelled: '已取消',
 }
 
 export function ProgressBar({ progress, status, className = '' }: ProgressBarProps) {

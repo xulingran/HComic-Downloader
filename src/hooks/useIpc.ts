@@ -1,34 +1,22 @@
 import { useCallback, useState, useEffect } from 'react'
-import type { IPCChannel, IPCChannelParamsMap, IPCChannelResult, ConfigKey, ConfigValueMap, SetConfigArgs } from '@shared/types'
+import type { HcomicAPI, ConfigKey, ConfigValueMap } from '@shared/types'
 import { ComicInfo } from '@shared/types'
 
 declare global {
   interface Window {
-    electron: {
-      ipcRenderer: {
-        invoke: <C extends IPCChannel>(
-          channel: C,
-          ...args: IPCChannelParamsMap[C]
-        ) => Promise<IPCChannelResult<C>>
-      }
-      openUrl: (url: string) => Promise<void>
-      onDownloadProgress?: (callback: (data: any) => void) => () => void
-    }
+    hcomic?: HcomicAPI
   }
 }
 
 export function useIpc() {
-  const invoke = useCallback(async <C extends IPCChannel>(
-    channel: C,
-    ...args: IPCChannelParamsMap[C]
-  ): Promise<IPCChannelResult<C>> => {
+  const invoke = useCallback(async <T>(fn: () => Promise<T>): Promise<T> => {
     try {
-      if (!window.electron?.ipcRenderer) {
+      if (!window.hcomic) {
         throw new Error('Electron IPC not available. Make sure the app is running in Electron.')
       }
-      return await window.electron.ipcRenderer.invoke(channel, ...args)
+      return await fn()
     } catch (error) {
-      console.error(`IPC error on ${channel}:`, error)
+      console.error('IPC error:', error)
       throw error
     }
   }, [])
@@ -40,7 +28,7 @@ export function useSearch() {
   const { invoke } = useIpc()
 
   const search = useCallback(async (query: string, mode: string, page: number, source?: string) => {
-    return invoke('python:search', query, mode, page, source)
+    return invoke(() => window.hcomic!.search(query, mode, page, source))
   }, [invoke])
 
   return { search }
@@ -51,23 +39,23 @@ export function useDownload() {
   const [progress, setProgress] = useState<Record<string, any>>({})
 
   useEffect(() => {
-    if (!window.electron?.onDownloadProgress) return
-    const unsubscribe = window.electron.onDownloadProgress((data) => {
+    if (!window.hcomic?.onDownloadProgress) return
+    const unsubscribe = window.hcomic.onDownloadProgress((data: any) => {
       setProgress(prev => ({ ...prev, [data.taskId]: data }))
     })
     return unsubscribe
   }, [])
 
   const startDownload = useCallback(async (comicId: string, comicData: ComicInfo) => {
-    return invoke('python:download', comicId, comicData)
+    return invoke(() => window.hcomic!.download(comicId, comicData))
   }, [invoke])
 
   const cancelDownload = useCallback(async (taskId: string) => {
-    return invoke('python:cancel-download', taskId)
+    return invoke(() => window.hcomic!.cancelDownload(taskId))
   }, [invoke])
 
   const getDownloads = useCallback(async () => {
-    return invoke('python:get-downloads')
+    return invoke(() => window.hcomic!.getDownloads())
   }, [invoke])
 
   return { startDownload, cancelDownload, getDownloads, progress }
@@ -77,7 +65,7 @@ export function useFavourites() {
   const { invoke } = useIpc()
 
   const getFavourites = useCallback(async (page: number = 1) => {
-    return invoke('python:get-favourites', page)
+    return invoke(() => window.hcomic!.getFavourites(page))
   }, [invoke])
 
   return { getFavourites }
@@ -87,12 +75,11 @@ export function useConfig() {
   const { invoke } = useIpc()
 
   const getConfig = useCallback(async () => {
-    return invoke('python:get-config')
+    return invoke(() => window.hcomic!.getConfig())
   }, [invoke])
 
   const setConfig = useCallback(async <K extends ConfigKey>(key: K, value: ConfigValueMap[K]) => {
-    const args = [key, value] as SetConfigArgs
-    return invoke('python:set-config', ...args)
+    return invoke(() => window.hcomic!.setConfig(key, value as any))
   }, [invoke])
 
   return { getConfig, setConfig }
@@ -102,7 +89,7 @@ export function useStatistics() {
   const { invoke } = useIpc()
 
   const getStatistics = useCallback(async () => {
-    return invoke('python:get-statistics')
+    return invoke(() => window.hcomic!.getStatistics())
   }, [invoke])
 
   return { getStatistics }
@@ -112,11 +99,11 @@ export function useAuth() {
   const { invoke } = useIpc()
 
   const applyAuth = useCallback(async (curlText: string) => {
-    return invoke('python:apply-auth', curlText)
+    return invoke(() => window.hcomic!.applyAuth(curlText))
   }, [invoke])
 
   const verifyAuth = useCallback(async () => {
-    return invoke('python:verify-auth')
+    return invoke(() => window.hcomic!.verifyAuth())
   }, [invoke])
 
   return { applyAuth, verifyAuth }

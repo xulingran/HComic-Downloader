@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
+import { SEARCH_MODES, COMIC_SOURCES } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -10,19 +11,46 @@ const ALLOWED_EXTERNAL_DOMAINS = [
   'moeimg.fan',
 ]
 
+const CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS = ['{author}', '{title}', '{id}']
+
+function validateCbzTemplate(v: unknown): boolean {
+  if (typeof v !== 'string' || v.length === 0 || v.length > 256) return false
+  if (v.includes('/') || v.includes('\\') || v.includes('..')) return false
+  // Reject unclosed braces: { without a matching }
+  if (/\{[^}]*$/.test(v) || /^[^{]*\}/.test(v)) return false
+  // Match ALL {…} blocks and reject any not in the whitelist
+  // This catches format specifiers like {id:>10} that would bypass a name-only regex
+  const parts = v.match(/\{[^}]+\}/g) || []
+  return parts.every(p => CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS.includes(p.toLowerCase()))
+}
+
+function validateDownloadDir(v: unknown): boolean {
+  if (typeof v !== 'string' || v.length === 0 || v.length > 1024) return false
+  // reject path traversal
+  if (v.includes('..')) return false
+  // reject control characters
+  if (/[\x00-\x1f\x7f]/.test(v)) return false
+  // must be an absolute path
+  if (!/^[a-zA-Z]:\\|^\\\\|^\//.test(v)) return false
+  return true
+}
+
+const MODE_VALUES = new Set<string>(SEARCH_MODES)
+const SOURCE_VALUES = new Set<string>(COMIC_SOURCES)
+
 const CONFIG_VALIDATORS: Record<string, { type: string; validate?: (v: unknown) => boolean }> = {
   themeMode: { type: 'string', validate: (v) => ['light', 'dark', 'auto'].includes(v as string) },
   outputFormat: { type: 'string', validate: (v) => ['folder', 'zip', 'cbz'].includes(v as string) },
-  downloadDir: { type: 'string' },
+  downloadDir: { type: 'string', validate: validateDownloadDir },
   concurrentDownloads: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 10 },
   timeout: { type: 'number', validate: (v) => typeof v === 'number' && v >= 5 && v <= 300 },
   retryTimes: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 10 },
-  cbzFilenameTemplate: { type: 'string' },
+  cbzFilenameTemplate: { type: 'string', validate: validateCbzTemplate },
   batchDownloadDelay: { type: 'number', validate: (v) => typeof v === 'number' && v >= 0 && v <= 60 },
   autoRetryMaxAttempts: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 0 && (v as number) <= 5 },
   notifyOnComplete: { type: 'boolean' },
   notifyWhenForeground: { type: 'string', validate: (v) => ['inactive', 'always'].includes(v as string) },
-  defaultSource: { type: 'string', validate: (v) => ['hcomic', 'moeimg'].includes(v as string) },
+  defaultSource: { type: 'string', validate: (v) => SOURCE_VALUES.has(v as string) },
 }
 
 function createWindow() {
@@ -89,25 +117,48 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle('python:search', async (_, query, mode, page, source) => {
-    if (typeof query !== 'string' || typeof mode !== 'string' || typeof page !== 'number') {
-      throw new Error('Invalid search parameters')
+    if (typeof query !== 'string' || query.length === 0) {
+      throw new Error('Invalid search query')
+    }
+    if (typeof mode !== 'string' || !MODE_VALUES.has(mode)) {
+      throw new Error('Invalid search mode')
+    }
+    if (typeof page !== 'number' || !Number.isFinite(page) || !Number.isInteger(page) || page < 1 || page > 1000) {
+      throw new Error('Invalid search page')
     }
     const params: Record<string, unknown> = { query, mode, page }
-    if (typeof source === 'string' && source) {
+    if (source !== undefined && source !== null) {
+      if (typeof source !== 'string' || !SOURCE_VALUES.has(source)) {
+        throw new Error('Invalid search source')
+      }
       params.source = source
     }
     return bridge.call('search', params)
   })
 
   ipcMain.handle('python:download', async (_, comicId, comicData) => {
-    if (typeof comicId !== 'string' || typeof comicData !== 'object' || comicData === null) {
-      throw new Error('Invalid download parameters')
+    if (typeof comicId !== 'string' || comicId.length === 0) {
+      throw new Error('Invalid download comicId')
+    }
+    if (typeof comicData !== 'object' || comicData === null) {
+      throw new Error('Invalid download comicData')
+    }
+    const data = comicData as Record<string, unknown>
+    if (data.title !== undefined && typeof data.title !== 'string') {
+      throw new Error('Invalid comicData.title')
+    }
+    if (data.pages !== undefined && (typeof data.pages !== 'number' || !Number.isFinite(data.pages) || !Number.isInteger(data.pages) || data.pages < 0)) {
+      throw new Error('Invalid comicData.pages')
     }
     return bridge.call('download', { comic_id: comicId, comic_data: comicData })
   })
 
-  ipcMain.handle('python:get-favourites', async (_, page?: number) => {
-    return bridge.call('get_favourites', { page: page ?? 1 })
+  ipcMain.handle('python:get-favourites', async (_, page?: unknown) => {
+    const p = page ?? 1
+    if (typeof p !== 'number' || !Number.isFinite(p) || !Number.isInteger(p) || p < 1 || p > 1000) {
+      throw new Error('Invalid favourites page')
+    }
+    return bridge.call('get_favourites', { page: p })
   })
 
   ipcMain.handle('python:get-config', async () => {
@@ -136,8 +187,8 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle('python:cancel-download', async (_, taskId) => {
-    if (typeof taskId !== 'string') {
-      throw new Error('Invalid cancel_download parameters')
+    if (typeof taskId !== 'string' || taskId.length === 0) {
+      throw new Error('Invalid cancel_download taskId')
     }
     return bridge.call('cancel_download', { task_id: taskId })
   })
@@ -147,10 +198,10 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle('python:apply-auth', async (_, curlText) => {
-    if (typeof curlText !== 'string') {
-      throw new Error('Invalid apply_auth parameters')
+    if (typeof curlText !== 'string' || curlText.trim().length === 0) {
+      throw new Error('Invalid apply_auth curlText')
     }
-    return bridge.call('apply_auth', { curl_text: curlText })
+    return bridge.call('apply_auth', { curl_text: curlText.trim() })
   })
 
   ipcMain.handle('python:verify-auth', async () => {

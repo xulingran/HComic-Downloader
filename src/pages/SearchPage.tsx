@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch, useDownload } from '../hooks/useIpc'
+import { useSearch, useDownload, useConfig } from '../hooks/useIpc'
 import { ComicCard } from '../components/common/ComicCard'
 import { ComicInfo } from '@shared/types'
 
@@ -24,6 +24,15 @@ export function SearchPage() {
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { startDownload } = useDownload()
+  const { getConfig } = useConfig()
+
+  useEffect(() => {
+    getConfig().then(result => {
+      if (result.config.defaultSource) {
+        setSource(result.config.defaultSource)
+      }
+    }).catch(() => {})
+  }, [])
 
   const toggleSelect = (comic: ComicInfo) => {
     setSelectedIds(prev => {

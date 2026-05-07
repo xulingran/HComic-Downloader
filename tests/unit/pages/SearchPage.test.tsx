@@ -22,12 +22,20 @@ const { mockSearch, mockStartDownload, mockStoreState } = vi.hoisted(() => {
   }
 })
 
+const { mockGetConfig } = vi.hoisted(() => ({
+  mockGetConfig: vi.fn().mockResolvedValue({ config: { defaultSource: 'hcomic' } })
+}))
+
 vi.mock('@/hooks/useIpc', () => ({
   useSearch: vi.fn().mockReturnValue({ search: mockSearch }),
   useDownload: vi.fn().mockReturnValue({
     startDownload: mockStartDownload,
     cancelDownload: vi.fn(),
     getDownloads: vi.fn()
+  }),
+  useConfig: vi.fn().mockReturnValue({
+    getConfig: mockGetConfig,
+    setConfig: vi.fn()
   })
 }))
 
