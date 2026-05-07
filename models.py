@@ -52,6 +52,12 @@ class ComicInfo:
         from utils import sanitize_filename
         return sanitize_filename(self.author or "unknown")
 
+    @property
+    def safe_id(self) -> str:
+        """获取安全的 ID（用于文件名）"""
+        from utils import sanitize_filename
+        return sanitize_filename(str(self.id))
+
     def get_image_url(self, page: int) -> str:
         """获取指定页面的图片 URL
 
@@ -116,7 +122,15 @@ class PaginationInfo:
 
 
 class DownloadCancelledError(Exception):
-    """下载被用户取消。"""
+    """下载被用户取消。
+
+    Attributes:
+        temp_dir: 下载时使用的临时目录，用于取消后清理
+    """
+
+    def __init__(self, message: str = "Download cancelled", temp_dir: str = None):
+        super().__init__(message)
+        self.temp_dir = temp_dir
 
 
 class DownloadStatus(Enum):

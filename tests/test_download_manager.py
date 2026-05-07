@@ -108,7 +108,8 @@ def test_pause_resume_task():
     assert dm.tasks[task_id].status == DownloadStatus.PAUSED
     assert dm.tasks[task_id]._pause_requested is True
 
-    # 继续
+    # 继续（阻止处理器启动，仅测试状态转移）
+    dm.is_running = True
     assert dm.resume_task(task_id) is True
     assert dm.tasks[task_id].status == DownloadStatus.QUEUED
     assert dm.tasks[task_id]._pause_requested is False
@@ -183,6 +184,7 @@ class _FakeDownloader:
         comic_info=None,
         completed_pages=None,
         failed_pages=None,
+        cancel_event=None,
     ):
         total = 3
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")

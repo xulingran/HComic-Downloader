@@ -143,8 +143,11 @@ class IPCServer:
         }
 
     def handle_get_favourites(self, page: int = 1) -> Dict:
+        from parser import ParserResponseError
         try:
-            comics, pagination, needs_login = self.parser.favourites(page=page)
+            comics, pagination, needs_login = self.parser.favourites(
+                page=page, raise_errors=True
+            )
             return {
                 "comics": [self._comic_to_dict(c) for c in comics],
                 "pagination": {
@@ -154,9 +157,17 @@ class IPCServer:
                 },
                 "needsLogin": needs_login,
             }
+        except ParserResponseError as e:
+            msg = str(e)
+            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "login", "auth")):
+                return {"comics": [], "pagination": None, "needsLogin": True, "error": {"type": "auth", "message": msg}}
+            return {"comics": [], "pagination": None, "needsLogin": False, "error": {"type": "network", "message": msg}}
+        except (ValueError, json.JSONDecodeError, TypeError) as e:
+            logger.error(f"Get favourites parse error: {e}")
+            return {"comics": [], "pagination": None, "needsLogin": False, "error": {"type": "parse", "message": str(e)}}
         except Exception as e:
-            logger.error(f"Get favourites error: {e}")
-            return {"comics": [], "pagination": None, "needsLogin": False}
+            logger.error(f"Get favourites unexpected error: {e}")
+            return {"comics": [], "pagination": None, "needsLogin": False, "error": {"type": "unknown", "message": str(e)}}
 
     def handle_apply_auth(self, curl_text: str) -> Dict:
         if not curl_text or not curl_text.strip():

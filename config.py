@@ -1,7 +1,10 @@
 """配置管理模块"""
+import logging
 import os
 from pathlib import Path
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dc_fields
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -118,6 +121,12 @@ class Config:
             # 兼容旧配置：通知配置
             if "notify_when_foreground" not in data:
                 data["notify_when_foreground"] = "inactive"
+            # 只保留 Config 已知字段，忽略未知 key
+            known_fields = {f.name for f in dc_fields(cls)}
+            unknown = [k for k in data if k not in known_fields]
+            if unknown:
+                logger.warning("Ignoring unknown config keys in %s: %s", config_path, unknown)
+            data = {k: v for k, v in data.items() if k in known_fields}
             return cls(**data)
         return cls()
 
@@ -125,13 +134,55 @@ class Config:
         """保存配置到文件"""
         import json
         import sys
+        import tempfile
         from dataclasses import asdict
+
         # 兼容旧字段，保持为 hcomic 认证
         hcomic_auth = self.get_source_auth("hcomic")
         self.auth_cookie = hcomic_auth.get("cookie", "")
         self.auth_user_agent = hcomic_auth.get("user_agent", "")
+
         os.makedirs(os.path.dirname(config_path), exist_ok=True)
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(asdict(self), f, ensure_ascii=False, indent=2)
+
+        # 先写临时文件，再原子替换
+        tmp_fd, tmp_path = tempfile.mkstemp(
+            dir=os.path.dirname(config_path),
+            prefix=".config_tmp_",
+            suffix=".json",
+        )
+        try:
+            with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+                json.dump(asdict(self), f, ensure_ascii=False, indent=2)
+            os.replace(tmp_path, config_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
         if sys.platform != 'win32':
             os.chmod(config_path, 0o600)
+        else:
+            _restrict_file_permissions_win32(config_path)
+
+
+def _restrict_file_permissions_win32(filepath: str) -> None:
+    """Restrict file access to the current user on Windows.
+
+    Uses icacls to remove inherited permissions and grant only
+    the current user read+write access. Errors are non-fatal.
+    """
+    import subprocess
+    try:
+        username = os.environ.get('USERNAME', os.environ.get('USER', 'CURRENT'))
+        subprocess.run(
+            [
+                "icacls", filepath,
+                "/inheritance:r",
+                "/grant", f"{username}:(R,W)",
+            ],
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+    except Exception:
+        pass

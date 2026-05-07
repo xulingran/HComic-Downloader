@@ -36,11 +36,27 @@ class CBZBuilder:
         from config import Config
         return Config.load().download_dir
 
+    @staticmethod
+    def _validate_path_in_dir(path: str, parent_dir: str) -> str:
+        """Resolve and validate that *path* is inside *parent_dir*.
+
+        Returns the resolved absolute path on success.
+        Raises ValueError if the path escapes the parent directory.
+        """
+        real_path = os.path.realpath(path)
+        real_parent = os.path.realpath(parent_dir)
+        if real_path != real_parent and not real_path.startswith(real_parent + os.sep):
+            raise ValueError(
+                f"Path {path!r} escapes download directory {parent_dir!r}"
+            )
+        return real_path
+
     def build_cbz(
         self,
         image_dir: str,
         comic: ComicInfo,
         output_path: Optional[str] = None,
+        download_dir: Optional[str] = None,
     ) -> str:
         """创建 CBZ 文件
 
@@ -48,6 +64,7 @@ class CBZBuilder:
             image_dir: 图片目录
             comic: 漫画信息
             output_path: 输出路径（可选，默认使用模板生成）
+            download_dir: 下载目录，用于校验路径（可选，默认使用配置中的目录）
 
         Returns:
             CBZ 文件路径
@@ -55,6 +72,7 @@ class CBZBuilder:
         # 确定输出路径
         if output_path is None:
             output_path = self._generate_output_path(comic)
+        self._validate_path_in_dir(output_path, self._get_download_dir(download_dir))
 
         # 确保输出目录存在
         output_dir = os.path.dirname(output_path)
@@ -183,7 +201,7 @@ class CBZBuilder:
         filename = self.filename_template.format(
             author=comic.safe_author,
             title=comic.safe_title,
-            id=comic.id,
+            id=comic.safe_id,
         )
         # 确保以 .cbz 结尾
         if not filename.endswith('.cbz'):
@@ -229,6 +247,7 @@ class CBZBuilder:
         image_dir: str,
         comic: ComicInfo,
         output_path: Optional[str] = None,
+        download_dir: Optional[str] = None,
     ) -> str:
         """创建 ZIP 文件（不含 ComicInfo.xml）
 
@@ -236,6 +255,7 @@ class CBZBuilder:
             image_dir: 图片目录
             comic: 漫画信息
             output_path: 输出路径（可选，默认使用模板生成）
+            download_dir: 下载目录，用于校验路径（可选，默认使用配置中的目录）
 
         Returns:
             ZIP 文件路径
@@ -243,6 +263,7 @@ class CBZBuilder:
         # 确定输出路径
         if output_path is None:
             output_path = self._generate_output_path_for_format(comic, "zip")
+        self._validate_path_in_dir(output_path, self._get_download_dir(download_dir))
 
         # 确保输出目录存在
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -285,6 +306,7 @@ class CBZBuilder:
 
         output_dir = self._get_download_dir(output_dir)
         output_path = os.path.join(output_dir, folder_name)
+        self._validate_path_in_dir(output_path, output_dir)
 
         # 确保输出目录存在
         os.makedirs(output_dir, exist_ok=True)
@@ -338,7 +360,7 @@ class CBZBuilder:
         folder_name = re.sub(r'[<>"/\\|?*]', '_', folder_name)
         folder_name = folder_name.strip('. ')
         if not folder_name:
-            folder_name = f"comic_{comic.id}"
+            folder_name = f"comic_{comic.safe_id}"
         return folder_name
 
     def get_output_path_for_format(
@@ -366,11 +388,15 @@ class CBZBuilder:
                     from config import Config
                     download_dir = Config.load().download_dir
             folder_name = self._generate_folder_name(comic)
-            return os.path.join(download_dir, folder_name)
+            output_path = os.path.join(download_dir, folder_name)
         elif output_format == "zip":
-            return self._generate_output_path_for_format(comic, "zip", download_dir)
+            output_path = self._generate_output_path_for_format(comic, "zip", download_dir)
         else:  # cbz
-            return self._generate_output_path(comic, download_dir)
+            output_path = self._generate_output_path(comic, download_dir)
+        # 校验路径在下载目录内
+        actual_download_dir = self._get_download_dir(download_dir)
+        self._validate_path_in_dir(output_path, actual_download_dir)
+        return output_path
 
 
 def build_cbz_simple(

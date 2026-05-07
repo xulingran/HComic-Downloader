@@ -2,6 +2,7 @@
 import logging
 import os
 import re
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
@@ -17,7 +18,7 @@ from PIL import Image
 from constants import DEFAULT_USER_AGENT
 from image_formats import MIME_TO_EXT, PAGE_FILENAME_FORMAT, PIL_FORMAT_TO_EXT
 from models import ComicInfo
-from utils import apply_system_proxy_to_session, configure_session_auth, ensure_dir, format_file_size
+from utils import apply_system_proxy_to_session, configure_session_auth, ensure_dir, format_file_size, sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +103,8 @@ class ComicDownloader:
     @classmethod
     def _build_temp_dir_name(cls, comic: ComicInfo) -> str:
         site = cls._safe_source_site(getattr(comic, "source_site", "hcomic"))
-        comic_id = str(comic.id or "unknown")
+        raw_id = str(comic.id or "unknown")
+        comic_id = sanitize_filename(raw_id)
         return f"temp_{site}_{comic_id}"
 
     @classmethod
@@ -244,6 +246,7 @@ class ComicDownloader:
         comic_info: Optional[dict] = None,
         completed_pages: Optional[List[int]] = None,
         failed_pages: Optional[List[int]] = None,
+        cancel_event: Optional[threading.Event] = None,
     ) -> DownloadResult:
         """断点续传下载漫画
 
@@ -319,9 +322,11 @@ class ComicDownloader:
         last_progress_ts = 0.0
 
         with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
-            # 提交任务
+            # 提交任务（支持取消）
             future_to_page = {}
             for page_num in pages_to_download:
+                if cancel_event and cancel_event.is_set():
+                    break
                 url = image_urls[page_num - 1]  # 转换为 0-based 索引
                 output_path = temp_dir / f"{page_num:03d}.jpg"
                 future = executor.submit(
@@ -333,6 +338,10 @@ class ComicDownloader:
 
             # 处理完成的任务
             for future in as_completed(future_to_page):
+                if cancel_event and cancel_event.is_set():
+                    for f in future_to_page:
+                        f.cancel()
+                    break
                 page_num = future_to_page[future]
                 try:
                     success = future.result()

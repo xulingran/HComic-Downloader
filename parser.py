@@ -126,8 +126,12 @@ class HComicParser:
             logger.error(f"Search failed: {e}")
             return [], None
 
-    def favourites(self, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
         """获取收藏夹漫画。
+
+        Args:
+            page: 页码
+            raise_errors: 如果为 True，异常会向上传播而不是静默返回空列表
 
         Returns:
             (漫画信息列表, 分页信息, 是否需要登录)
@@ -137,6 +141,8 @@ class HComicParser:
             return self.parse_favourites_page(self._request_text(url), requested_page=page)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error(f"Load favourites failed: {e}")
+            if raise_errors:
+                raise
             return [], None, False
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
@@ -598,7 +604,7 @@ class MoeImgParser:
         )
         return comics, pagination
 
-    def favourites(self, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
         """moeimg 当前版本不支持收藏夹。"""
         return [], None, False
 
@@ -1093,10 +1099,10 @@ class MultiSourceParser:
     def search(self, keyword: str, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
         return self.parsers[self.current_source].search(keyword, page=page)
 
-    def favourites(self, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
         if not self.source_supports_favourites():
             return [], None, False
-        return self.parsers[self.current_source].favourites(page=page)
+        return self.parsers[self.current_source].favourites(page=page, raise_errors=raise_errors)
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
         return self.parsers[self.current_source].get_comic_detail(comic_id, slug=slug)

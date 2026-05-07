@@ -66,11 +66,11 @@ class DownloadManager:
 
     def start(self):
         """启动队列处理器（如果未运行）"""
-        if self.is_running:
-            return
-
-        self._stop_event.clear()
-        self.is_running = True
+        with self._lock:
+            if self.is_running:
+                return
+            self._stop_event.clear()
+            self.is_running = True
 
         threading.Thread(target=self._process_queue, daemon=True).start()
         logger.info("Download manager started")
@@ -115,7 +115,8 @@ class DownloadManager:
 
             self._process_task(task_id)
 
-        self.is_running = False
+        with self._lock:
+            self.is_running = False
         logger.info("Queue processor stopped")
 
         if self._on_queue_complete:
@@ -218,6 +219,7 @@ class DownloadManager:
 
     def resume_task(self, task_id: str) -> bool:
         """继续指定任务"""
+        should_start = False
         with self._lock:
             task = self.tasks.get(task_id)
             if not task or task.status != DownloadStatus.PAUSED:
@@ -228,9 +230,11 @@ class DownloadManager:
             self._notify_task_update(task)
             logger.info(f"Task {task_id} resumed")
 
-            # 如果处理器未运行，启动它
             if not self.is_running:
-                self.start()
+                should_start = True
+
+        if should_start:
+            self.start()
         self._notify_queue_changed()
         return True
 
@@ -434,12 +438,19 @@ class ComicDownloadManager(DownloadManager):
             if prepared is not None:
                 task.comic = prepared
 
+        cancel_event = threading.Event()
+        if task._cancel_requested:
+            cancel_event.set()
+
         def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
-            task.progress_current = current
-            task.progress_total = total
-            elapsed = time.time() - task.started_at if task.started_at else 0.0
-            task.download_speed = (current / elapsed) if elapsed > 0 else 0.0
-            task.current_downloading_page = min(total, current + 1) if total > 0 else 0
+            if task._cancel_requested:
+                cancel_event.set()
+            with self._lock:
+                task.progress_current = current
+                task.progress_total = total
+                elapsed = time.time() - task.started_at if task.started_at else 0.0
+                task.download_speed = (current / elapsed) if elapsed > 0 else 0.0
+                task.current_downloading_page = min(total, current + 1) if total > 0 else 0
             self._notify_task_update(task)
 
         result: DownloadResult = self.downloader.download_comic_resume(
@@ -448,10 +459,11 @@ class ComicDownloadManager(DownloadManager):
             completed_pages=task.completed_pages,
             failed_pages=task.failed_pages,
             progress_callback=progress_callback,
+            cancel_event=cancel_event,
         )
 
-        if task._cancel_requested:
-            raise DownloadCancelledError("Download cancelled")
+        if cancel_event.is_set():
+            raise DownloadCancelledError("Download cancelled", temp_dir=result.temp_dir)
 
         return result
 
@@ -558,9 +570,9 @@ class ComicDownloadManager(DownloadManager):
                 self._handle_download_success(task, result)
             else:
                 self._handle_download_failure(task, result)
-        except DownloadCancelledError:
-            # 用户取消 — 不当作错误处理，直接放行
-            pass
+        except DownloadCancelledError as e:
+            if e.temp_dir and os.path.exists(e.temp_dir):
+                self.downloader.cleanup_temp_dir(e.temp_dir)
         except Exception as e:
             self._handle_download_exception(task, e, temp_dir)
         finally:
