@@ -41,6 +41,7 @@ describe('preload.ts', () => {
     it('should reject invalid query', () => {
       expect(() => exposedApi.search(123, 'keyword', 1)).toThrow('Invalid query')
       expect(() => exposedApi.search('', 'keyword', 1)).toThrow('Invalid query')
+      expect(() => exposedApi.search('a'.repeat(513), 'keyword', 1)).toThrow('Invalid query')
     })
 
     it('should reject invalid mode', () => {
@@ -66,9 +67,9 @@ describe('preload.ts', () => {
 
   describe('download', () => {
     it('should invoke python:download with correct args', async () => {
-      const comicData = { title: 'Test', url: 'http://x.com' }
+      const comicData = { title: 'Test', url: 'http://x.com', source: 'hcomic' }
       await exposedApi.download('id-1', comicData)
-      expect(mockInvoke).toHaveBeenCalledWith('python:download', 'id-1', comicData)
+      expect(mockInvoke).toHaveBeenCalledWith('python:download', 'id-1', comicData, undefined)
     })
 
     it('should reject empty comicId', () => {
@@ -116,6 +117,10 @@ describe('preload.ts', () => {
     it('should reject empty taskId', () => {
       expect(() => exposedApi.cancelDownload('')).toThrow('Invalid taskId')
     })
+
+    it('should reject overlong taskId', () => {
+      expect(() => exposedApi.cancelDownload('a'.repeat(257))).toThrow('Invalid taskId')
+    })
   })
 
   describe('applyAuth', () => {
@@ -127,6 +132,7 @@ describe('preload.ts', () => {
     it('should reject empty curlText', () => {
       expect(() => exposedApi.applyAuth('')).toThrow('Invalid curlText')
       expect(() => exposedApi.applyAuth('   ')).toThrow('Invalid curlText')
+      expect(() => exposedApi.applyAuth('c'.repeat(65537))).toThrow('Invalid curlText')
     })
   })
 
@@ -138,6 +144,10 @@ describe('preload.ts', () => {
 
     it('should reject empty URL', () => {
       expect(() => exposedApi.openUrl('')).toThrow('Invalid URL')
+    })
+
+    it('should reject overlong URL', () => {
+      expect(() => exposedApi.openUrl('https://x.com/' + 'a'.repeat(2048))).toThrow('Invalid URL')
     })
   })
 
@@ -160,6 +170,20 @@ describe('preload.ts', () => {
     it('verifyAuth should invoke python:verify-auth', async () => {
       await exposedApi.verifyAuth()
       expect(mockInvoke).toHaveBeenCalledWith('python:verify-auth')
+    })
+  })
+
+  describe('onDownloadProgress', () => {
+    it('should reject non-function callback', () => {
+      expect(() => exposedApi.onDownloadProgress('not-a-function')).toThrow('Invalid callback')
+      expect(() => exposedApi.onDownloadProgress(123)).toThrow('Invalid callback')
+      expect(() => exposedApi.onDownloadProgress(null)).toThrow('Invalid callback')
+      expect(() => exposedApi.onDownloadProgress(undefined)).toThrow('Invalid callback')
+    })
+
+    it('should accept a function callback', () => {
+      const callback = vi.fn()
+      expect(() => exposedApi.onDownloadProgress(callback)).not.toThrow()
     })
   })
 })

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch, useDownload, useConfig } from '../hooks/useIpc'
+import { useSearch, useConfig } from '../hooks/useIpc'
+import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ComicCard } from '../components/common/ComicCard'
 import { ComicInfo } from '@shared/types'
 
@@ -23,7 +24,7 @@ export function SearchPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
-  const { startDownload } = useDownload()
+  const { downloadWithConflictCheck } = useDownloadHelper()
   const { getConfig } = useConfig()
 
   useEffect(() => {
@@ -74,11 +75,7 @@ export function SearchPage() {
   }
 
   const handleDownload = async (comic: ComicInfo) => {
-    try {
-      await startDownload(comic.id, comic)
-    } catch (err) {
-      console.error('Download failed:', err)
-    }
+    await downloadWithConflictCheck(comic)
   }
 
   const handleBatchDownload = async () => {

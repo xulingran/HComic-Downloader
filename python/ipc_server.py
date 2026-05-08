@@ -105,12 +105,11 @@ class IPCServer:
         }
 
     def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str = None) -> Dict:
-        if source and source in ("hcomic", "moeimg"):
-            self.parser.set_source(source)
+        effective_source = source if source in ("hcomic", "moeimg") else self.config.default_source
         effective_query = query
-        if source == "moeimg" and mode in ("author", "tag"):
+        if effective_source == "moeimg" and mode in ("author", "tag"):
             effective_query = f"{mode}:{query}"
-        comics, pagination = self.parser.search(effective_query, page=page)
+        comics, pagination = self.parser.search(effective_query, page=page, source=effective_source)
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": {
@@ -120,7 +119,7 @@ class IPCServer:
             },
         }
 
-    def handle_download(self, comic_id: str, comic_data: dict = None) -> Dict:
+    def handle_download(self, comic_id: str, comic_data: dict = None, overwrite: bool = False) -> Dict:
         from models import ComicInfo
         data = comic_data or {}
         comic = ComicInfo(
@@ -135,6 +134,13 @@ class IPCServer:
             tags=data.get("tags") or [],
             author=data.get("author"),
         )
+        if not overwrite:
+            output_path = self.cbz_builder.get_output_path_for_format(
+                comic, self.config.output_format, self.config.download_dir
+            )
+            if os.path.exists(output_path):
+                return {"taskId": None, "status": "conflict", "conflictPath": output_path}
+
         task_id = self._download_manager.add_task(comic)
         task = self._download_manager.tasks.get(task_id)
         return {
@@ -142,11 +148,29 @@ class IPCServer:
             "status": task.status.value if task else "queued",
         }
 
+    def handle_check_download_conflict(self, comic_data: dict) -> Dict:
+        from models import ComicInfo
+        data = comic_data or {}
+        comic = ComicInfo(
+            id=data.get("id", ""),
+            title=data.get("title", ""),
+            source_site=data.get("sourceSite") or data.get("source", "hcomic"),
+            comic_source=data.get("source", ""),
+            author=data.get("author"),
+        )
+        output_path = self.cbz_builder.get_output_path_for_format(
+            comic, self.config.output_format, self.config.download_dir
+        )
+        return {
+            "hasConflict": os.path.exists(output_path),
+            "path": output_path,
+        }
+
     def handle_get_favourites(self, page: int = 1) -> Dict:
         from parser import ParserResponseError
         try:
             comics, pagination, needs_login = self.parser.favourites(
-                page=page, raise_errors=True
+                page=page, raise_errors=True, source="hcomic"
             )
             return {
                 "comics": [self._comic_to_dict(c) for c in comics],
@@ -185,7 +209,7 @@ class IPCServer:
         return {"success": True}
 
     def handle_verify_auth(self) -> Dict:
-        is_valid, message = self.parser.verify_login_status()
+        is_valid, message = self.parser.verify_login_status(source="hcomic")
         return {"valid": is_valid, "message": message}
 
     def handle_get_config(self) -> Dict:
@@ -283,6 +307,7 @@ class IPCServer:
         handlers = {
             "search": self.handle_search,
             "download": self.handle_download,
+            "check_download_conflict": self.handle_check_download_conflict,
             "get_favourites": self.handle_get_favourites,
             "apply_auth": self.handle_apply_auth,
             "verify_auth": self.handle_verify_auth,

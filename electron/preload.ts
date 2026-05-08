@@ -1,5 +1,8 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { SEARCH_MODES, COMIC_SOURCES, CONFIG_KEYS } from '../shared/types'
+import {
+  SEARCH_MODES, COMIC_SOURCES, CONFIG_KEYS,
+  IPC_CHANNELS, NOTIFICATION_CHANNELS,
+} from '../shared/types'
 
 const VALID_SEARCH_MODES = new Set<string>(SEARCH_MODES)
 const VALID_SOURCES = new Set<string>(COMIC_SOURCES)
@@ -13,59 +16,66 @@ function validatePage(page: unknown): asserts page is number {
 
 contextBridge.exposeInMainWorld('hcomic', {
   search: (query: unknown, mode: unknown, page: unknown, source?: unknown) => {
-    if (typeof query !== 'string' || query.length === 0) throw new Error('Invalid query')
+    if (typeof query !== 'string' || query.length === 0 || query.length > 512) throw new Error('Invalid query')
     if (typeof mode !== 'string' || !VALID_SEARCH_MODES.has(mode)) throw new Error('Invalid mode')
     validatePage(page)
     if (source !== undefined && source !== null) {
       if (typeof source !== 'string' || !VALID_SOURCES.has(source)) throw new Error('Invalid source')
-      return ipcRenderer.invoke('python:search', query, mode, page, source)
+      return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, source)
     }
-    return ipcRenderer.invoke('python:search', query, mode, page)
+    return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page)
   },
 
-  download: (comicId: unknown, comicData: unknown) => {
+  download: (comicId: unknown, comicData: unknown, overwrite?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0) throw new Error('Invalid comicId')
     if (typeof comicData !== 'object' || comicData === null) throw new Error('Invalid comicData')
-    return ipcRenderer.invoke('python:download', comicId, comicData)
+    if (overwrite !== undefined && typeof overwrite !== 'boolean') throw new Error('Invalid overwrite')
+    return ipcRenderer.invoke(IPC_CHANNELS.DOWNLOAD, comicId, comicData, overwrite)
+  },
+
+  checkDownloadConflict: (comicData: unknown) => {
+    if (typeof comicData !== 'object' || comicData === null) throw new Error('Invalid comicData')
+    return ipcRenderer.invoke(IPC_CHANNELS.CHECK_DOWNLOAD_CONFLICT, comicData)
   },
 
   getFavourites: (page?: unknown) => {
     const p = page ?? 1
     validatePage(p)
-    return ipcRenderer.invoke('python:get-favourites', p)
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_FAVOURITES, p)
   },
 
-  getConfig: () => ipcRenderer.invoke('python:get-config'),
+  getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CONFIG),
 
   setConfig: (key: unknown, value: unknown) => {
     if (typeof key !== 'string' || !VALID_CONFIG_KEYS.has(key)) throw new Error('Invalid config key')
-    return ipcRenderer.invoke('python:set-config', key, value)
+    return ipcRenderer.invoke(IPC_CHANNELS.SET_CONFIG, key, value)
   },
 
-  getDownloads: () => ipcRenderer.invoke('python:get-downloads'),
+  getDownloads: () => ipcRenderer.invoke(IPC_CHANNELS.GET_DOWNLOADS),
 
   cancelDownload: (taskId: unknown) => {
-    if (typeof taskId !== 'string' || taskId.length === 0) throw new Error('Invalid taskId')
-    return ipcRenderer.invoke('python:cancel-download', taskId)
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_DOWNLOAD, taskId)
   },
 
-  getStatistics: () => ipcRenderer.invoke('python:get-statistics'),
+  getStatistics: () => ipcRenderer.invoke(IPC_CHANNELS.GET_STATISTICS),
 
   applyAuth: (curlText: unknown) => {
-    if (typeof curlText !== 'string' || curlText.trim().length === 0) throw new Error('Invalid curlText')
-    return ipcRenderer.invoke('python:apply-auth', curlText)
+    if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) throw new Error('Invalid curlText')
+    return ipcRenderer.invoke(IPC_CHANNELS.APPLY_AUTH, curlText)
   },
 
-  verifyAuth: () => ipcRenderer.invoke('python:verify-auth'),
+  verifyAuth: () => ipcRenderer.invoke(IPC_CHANNELS.VERIFY_AUTH),
 
   openUrl: (url: unknown) => {
-    if (typeof url !== 'string' || url.length === 0) throw new Error('Invalid URL')
-    return ipcRenderer.invoke('open-external', url)
+    if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid URL')
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url)
   },
 
-  onDownloadProgress: (callback: (data: unknown) => void) => {
+  onDownloadProgress: (callback: unknown) => {
+    if (typeof callback !== 'function') throw new Error('Invalid callback')
     const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
-    ipcRenderer.on('download:progress', handler)
-    return () => { ipcRenderer.removeListener('download:progress', handler) }
+    ipcRenderer.on(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, handler)
+    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, handler) }
   },
 })

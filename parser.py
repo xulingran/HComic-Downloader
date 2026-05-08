@@ -1093,19 +1093,23 @@ class MultiSourceParser:
         self.source_auth[current] = {"cookie": cookie, "user_agent": user_agent}
         self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent)
 
-    def verify_login_status(self) -> Tuple[bool, str]:
-        return self.parsers[self.current_source].verify_login_status()
+    def verify_login_status(self, source: Optional[str] = None) -> Tuple[bool, str]:
+        src = source or self.current_source
+        return self.parsers[src].verify_login_status()
 
-    def search(self, keyword: str, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
-        return self.parsers[self.current_source].search(keyword, page=page)
+    def search(self, keyword: str, page: int = 1, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+        src = source or self.current_source
+        return self.parsers[src].search(keyword, page=page)
 
-    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
-        if not self.source_supports_favourites():
+    def favourites(self, page: int = 1, raise_errors: bool = False, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+        src = source or self.current_source
+        if not self.source_supports_favourites(src):
             return [], None, False
-        return self.parsers[self.current_source].favourites(page=page, raise_errors=raise_errors)
+        return self.parsers[src].favourites(page=page, raise_errors=raise_errors)
 
-    def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
-        return self.parsers[self.current_source].get_comic_detail(comic_id, slug=slug)
+    def get_comic_detail(self, comic_id: str, slug: str = "", source: Optional[str] = None) -> Optional[ComicInfo]:
+        src = source or self.current_source
+        return self.parsers[src].get_comic_detail(comic_id, slug=slug)
 
     def prepare_for_download(self, comic: ComicInfo) -> ComicInfo:
         source = (comic.source_site or self.current_source or "hcomic").lower()

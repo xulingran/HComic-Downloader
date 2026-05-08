@@ -111,6 +111,40 @@ class AuthManager:
         self._login_status_var = login_status_var
         self._go_login_btn = go_login_btn
         self._on_status_update = on_status_update
+        self._destroyed = False
+
+    def destroy(self):
+        """标记窗口已销毁，阻止后续 UI dispatch。"""
+        self._destroyed = True
+
+    def _root_exists(self) -> bool:
+        """检查 Tk root 是否仍可接收 UI 调度。"""
+        if self._destroyed:
+            return False
+        try:
+            return bool(self._root.winfo_exists())
+        except AttributeError:
+            return True
+        except (RuntimeError, tk.TclError):
+            return False
+
+    def _safe_ui_dispatch(self, callback: Callable[[], None]):
+        """安全地在主线程调度 UI 操作，窗口已销毁时静默跳过。"""
+        if not self._root_exists():
+            return
+
+        def guarded_callback():
+            if not self._root_exists():
+                return
+            try:
+                callback()
+            except (RuntimeError, tk.TclError):
+                pass
+
+        try:
+            self._root.after(0, guarded_callback)
+        except (RuntimeError, tk.TclError):
+            pass
 
     def get_current_source(self) -> str:
         """获取当前来源。"""
@@ -200,10 +234,10 @@ class AuthManager:
         def do_verify():
             try:
                 is_valid, _msg = self._parser.verify_login_status()
-                self._root.after(0, lambda: self._on_verify_complete(is_valid, source))
+                self._safe_ui_dispatch(lambda: self._on_verify_complete(is_valid, source))
             except Exception as e:
                 logger.error(f"登录验证失败: {e}")
-                self._root.after(0, lambda: self._login_status_var.set("验证失败"))
+                self._safe_ui_dispatch(lambda: self._login_status_var.set("验证失败"))
 
         threading.Thread(target=do_verify, daemon=True).start()
 

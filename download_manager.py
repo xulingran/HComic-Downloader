@@ -40,6 +40,12 @@ class DownloadManager:
         task_id = task.task_id
 
         with self._lock:
+            existing = self.tasks.get(task_id)
+            if existing and existing.status not in (
+                DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED
+            ):
+                logger.info(f"Task {task_id} already active ({existing.status.value}), skipping duplicate")
+                return task_id
             self.tasks[task_id] = task
             self.queue.append(task_id)
 
@@ -383,6 +389,20 @@ class ComicDownloadManager(DownloadManager):
         if output_format in ("folder", "zip", "cbz"):
             self.output_format = output_format
             logger.info(f"Output format set to: {output_format}")
+
+    def add_task(self, comic: ComicInfo) -> str:
+        """添加单个任务到队列，若 manager 已停止则自动重启。"""
+        task_id = super().add_task(comic)
+
+        should_start = False
+        with self._lock:
+            if not self.is_running:
+                should_start = True
+
+        if should_start:
+            self.start()
+
+        return task_id
 
     def _scan_temp_dir_progress(self, temp_dir: str, task):
         """扫描临时目录，恢复已完成页码进度。

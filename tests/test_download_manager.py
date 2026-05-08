@@ -345,7 +345,9 @@ def test_failed_output_scans_all_supported_image_extensions(tmp_path):
     dm.set_auto_retry_max_attempts(0)
     task_id = dm.add_task(ComicInfo(id="scan_1", title="Scan", pages=3))
 
-    dm._process_task(task_id)
+    deadline = time.time() + 5
+    while dm.tasks[task_id].status != DownloadStatus.FAILED and time.time() < deadline:
+        time.sleep(0.05)
 
     task = dm.tasks[task_id]
     assert task.status == DownloadStatus.FAILED
@@ -454,7 +456,10 @@ def test_task_lifecycle_queued_to_completed(tmp_path):
         output_dir=str(tmp_path),
     )
     task_id = dm.add_task(ComicInfo(id="life_ok", title="Lifecycle OK", pages=3))
-    dm._process_task(task_id)
+
+    deadline = time.time() + 5
+    while dm.tasks[task_id].status not in (DownloadStatus.COMPLETED, DownloadStatus.FAILED) and time.time() < deadline:
+        time.sleep(0.05)
 
     task = dm.tasks[task_id]
     assert task.status == DownloadStatus.COMPLETED
@@ -471,7 +476,10 @@ def test_task_lifecycle_queued_to_failed_to_retry(tmp_path):
     )
     dm.set_auto_retry_max_attempts(0)
     task_id = dm.add_task(ComicInfo(id="life_fail", title="Lifecycle Fail", pages=3))
-    dm._process_task(task_id)
+
+    deadline = time.time() + 5
+    while dm.tasks[task_id].status != DownloadStatus.FAILED and time.time() < deadline:
+        time.sleep(0.05)
 
     assert dm.tasks[task_id].status == DownloadStatus.FAILED
     assert dm.retry_task(task_id) is True
@@ -535,3 +543,58 @@ def test_auto_retry_respects_max_attempts(tmp_path):
     assert task.status == DownloadStatus.FAILED
     assert task.retry_count == 1
     dm.stop()
+
+
+def test_add_task_auto_starts_stopped_manager(tmp_path):
+    """add_task on a stopped manager must restart the worker."""
+    dm = ComicDownloadManager(
+        downloader=_FakeDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    # Start with empty queue — worker exits immediately
+    dm.start()
+    time.sleep(0.3)
+    assert dm.is_running is False
+
+    # Add task — should auto-start
+    comic = ComicInfo(id="auto-start-test", title="Auto Start", pages=2)
+    task_id = dm.add_task(comic)
+
+    # Wait for completion
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if dm.tasks[task_id].status in (DownloadStatus.COMPLETED, DownloadStatus.FAILED):
+            break
+        time.sleep(0.05)
+
+    assert dm.tasks[task_id].status == DownloadStatus.COMPLETED
+
+
+def test_add_duplicate_task_returns_existing_for_active_task():
+    """非终态的重复 task_id 不应覆盖，应返回已有 task_id。"""
+    dm = DownloadManager()
+    comic = ComicInfo(id="dup1", title="Duplicate", pages=3)
+    task_id_1 = dm.add_task(comic)
+    assert dm.tasks[task_id_1].status == DownloadStatus.QUEUED
+
+    task_id_2 = dm.add_task(comic)
+    assert task_id_2 == task_id_1
+    assert len(dm.tasks) == 1
+    assert len(dm.queue) == 1
+    assert dm.tasks[task_id_1].status == DownloadStatus.QUEUED
+
+
+def test_add_duplicate_task_allows_redownload_for_completed():
+    """终态（completed/cancelled/failed）的任务允许重新下载。"""
+    dm = DownloadManager()
+    comic = ComicInfo(id="redl1", title="Redownload", pages=3)
+    task_id_1 = dm.add_task(comic)
+
+    # 模拟任务完成
+    dm.tasks[task_id_1].status = DownloadStatus.COMPLETED
+
+    task_id_2 = dm.add_task(comic)
+    assert task_id_2 == task_id_1
+    assert len(dm.queue) == 2
+    assert dm.tasks[task_id_1].status == DownloadStatus.QUEUED

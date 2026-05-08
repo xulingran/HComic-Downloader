@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
-import { useFavourites, useDownload } from '../hooks/useIpc'
+import { useFavourites } from '../hooks/useIpc'
+import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ComicCard } from '../components/common/ComicCard'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 
@@ -15,7 +16,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [needsLogin, setNeedsLogin] = useState(false)
   const { getFavourites } = useFavourites()
-  const { startDownload } = useDownload()
+  const { downloadWithConflictCheck } = useDownloadHelper()
 
   useEffect(() => {
     loadFavourites(1)
@@ -40,11 +41,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   }
 
   const handleDownload = async (comic: ComicInfo) => {
-    try {
-      await startDownload(comic.id, comic)
-    } catch (err) {
-      console.error('Download failed:', err)
-    }
+    await downloadWithConflictCheck(comic)
   }
 
   if (isLoading) {

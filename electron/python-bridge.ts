@@ -50,14 +50,23 @@ export class PythonBridge {
     const args = scriptPath ? [scriptPath] : []
 
     this.process = spawn(pythonPath, args, {
-      stdio: ['pipe', 'pipe', 'pipe']
+      stdio: ['pipe', 'pipe', 'pipe'],
+      windowsHide: true,
     })
+    const proc = this.process
 
-    this.process.stdout?.on('data', (data: Buffer) => {
+    proc.stdout?.on('data', (data: Buffer) => {
+      if (this.process !== proc) return
       this.buffer += data.toString()
       if (this.buffer.length > MAX_BUFFER_SIZE) {
         console.error('IPC buffer overflow, discarding')
         this.buffer = ''
+        for (const [, pending] of this.pendingRequests) {
+          clearTimeout(pending.timer)
+          pending.reject(new Error('IPC response too large'))
+        }
+        this.pendingRequests.clear()
+        this.handleProcessFailure('IPC buffer overflow')
         return
       }
       const lines = this.buffer.split('\n')
@@ -89,15 +98,18 @@ export class PythonBridge {
       }
     })
 
-    this.process.stderr?.on('data', (data: Buffer) => {
+    proc.stderr?.on('data', (data: Buffer) => {
+      if (this.process !== proc) return
       console.error('Python stderr:', data.toString())
     })
 
-    this.process.on('exit', (code) => {
+    proc.on('exit', (code) => {
+      if (this.process !== proc) return
       this.handleProcessFailure(`Python process exited with code ${code}`)
     })
 
-    this.process.on('error', (err) => {
+    proc.on('error', (err) => {
+      if (this.process !== proc) return
       console.error('Failed to start Python process:', err)
       this.handleProcessFailure(`Python process error: ${err.message}`)
     })
@@ -111,7 +123,11 @@ export class PythonBridge {
     this.pendingRequests.clear()
 
     if (this.process) {
-      this.process.removeAllListeners()
+      const oldProc = this.process
+      oldProc.stdout?.removeAllListeners('data')
+      oldProc.stderr?.removeAllListeners('data')
+      try { oldProc.kill() } catch { /* already dead */ }
+      oldProc.removeAllListeners()
       this.process = null
     }
 

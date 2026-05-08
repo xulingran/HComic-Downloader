@@ -63,8 +63,8 @@ import { app } from 'electron'
 
 import '../../../electron/main'
 
-// Import IPC_CHANNEL_MAP for parity test
-import { IPC_CHANNEL_MAP } from '../../../shared/types'
+// Import PYTHON_IPC_CHANNEL_MAP for parity test
+import { PYTHON_IPC_CHANNEL_MAP, IPC_CHANNELS } from '../../../shared/types'
 
 // Helper to flush microtasks so that app.whenReady().then() callback runs
 async function flushMicrotasks(): Promise<void> {
@@ -81,13 +81,14 @@ describe('main.ts', () => {
   })
 
   describe('IPC handler registration', () => {
-    it('should register all 11 IPC handlers', () => {
-      expect(handleCalls.length).toBe(11)
+    it('should register all 12 IPC handlers', () => {
+      expect(handleCalls.length).toBe(12)
     })
 
     const expectedChannels = [
       'python:search',
       'python:download',
+      'python:check-download-conflict',
       'python:get-favourites',
       'python:get-config',
       'python:set-config',
@@ -106,33 +107,42 @@ describe('main.ts', () => {
       })
     })
 
-    it('every python:* channel must exist in IPC_CHANNEL_MAP', () => {
+    it('every python:* channel must exist in PYTHON_IPC_CHANNEL_MAP', () => {
       const registeredPythonChannels = handleCalls
         .map(h => h.channel)
         .filter(c => c.startsWith('python:'))
 
-      const mapKeys = new Set(Object.keys(IPC_CHANNEL_MAP))
+      const mapKeys = new Set(Object.keys(PYTHON_IPC_CHANNEL_MAP))
       const registeredSet = new Set(registeredPythonChannels)
 
       // Every registered python:* channel must be in the map
       for (const ch of registeredSet) {
-        expect(mapKeys.has(ch), `Channel "${ch}" registered but not in IPC_CHANNEL_MAP`).toBe(true)
+        expect(mapKeys.has(ch), `Channel "${ch}" registered but not in PYTHON_IPC_CHANNEL_MAP`).toBe(true)
       }
 
-      // Every IPC_CHANNEL_MAP key must be registered
+      // Every PYTHON_IPC_CHANNEL_MAP key must be registered
       for (const ch of mapKeys) {
-        expect(registeredSet.has(ch), `Channel "${ch}" in IPC_CHANNEL_MAP but not registered`).toBe(true)
+        expect(registeredSet.has(ch), `Channel "${ch}" in PYTHON_IPC_CHANNEL_MAP but not registered`).toBe(true)
       }
     })
 
-    it('IPC_CHANNEL_MAP values must match Python handler method names', () => {
+    it('PYTHON_IPC_CHANNEL_MAP values must match Python handler method names', () => {
       const validMethods = new Set([
-        'search', 'download', 'get_favourites', 'get_config', 'set_config',
+        'search', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
         'get_downloads', 'cancel_download', 'get_statistics', 'apply_auth', 'verify_auth',
       ])
-      for (const [channel, method] of Object.entries(IPC_CHANNEL_MAP)) {
+      for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),
-          `IPC_CHANNEL_MAP["${channel}"] = "${method}" is not a known Python handler`
+          `PYTHON_IPC_CHANNEL_MAP["${channel}"] = "${method}" is not a known Python handler`
+        ).toBe(true)
+      }
+    })
+
+    it('every IPC_CHANNELS value (including OPEN_EXTERNAL) must be registered', () => {
+      const registeredSet = new Set(handleCalls.map(h => h.channel))
+      for (const ch of Object.values(IPC_CHANNELS)) {
+        expect(registeredSet.has(ch),
+          `IPC_CHANNELS.${Object.keys(IPC_CHANNELS).find(k => IPC_CHANNELS[k as keyof typeof IPC_CHANNELS] === ch)} = "${ch}" not registered`
         ).toBe(true)
       }
     })
@@ -152,7 +162,7 @@ describe('main.ts', () => {
 
     it('python:download delegates with comicId transformed to comic_id', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:download')!
-      const comicData = { title: 'Test Comic', url: 'http://example.com' }
+      const comicData = { title: 'Test Comic', url: 'http://example.com', source: 'NH', sourceSite: 'hcomic' }
       await handler.handler({}, 'comic-123', comicData)
 
       expect(mockBridgeCall).toHaveBeenCalledWith('download', {
@@ -295,6 +305,109 @@ describe('main.ts', () => {
       await expect(handler.handler({}, 'id', null)).rejects.toThrow('Invalid download comicData')
     })
 
+    it('python:download should reject comicId with path separators', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, '../evil', { title: 'Test', source: 'hcomic' }))
+        .rejects.toThrow('Invalid download comicId')
+    })
+
+    it('python:download should reject comicId with backslash', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'evil\\path', { title: 'Test', source: 'hcomic' }))
+        .rejects.toThrow('Invalid download comicId')
+    })
+
+    it('python:download should reject comicId with control characters', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'evil\x00id', { title: 'Test', source: 'hcomic' }))
+        .rejects.toThrow('Invalid download comicId')
+    })
+
+    it('python:download should reject comicId longer than 256 chars', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'a'.repeat(257), { title: 'Test', source: 'hcomic' }))
+        .rejects.toThrow('Invalid download comicId')
+    })
+
+    it('python:download should reject missing title', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'valid-id', { source: 'hcomic' }))
+        .rejects.toThrow('Invalid comicData.title')
+    })
+
+    it('python:download should reject pages exceeding max', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'valid-id', { title: 'Test', source: 'hcomic', pages: 999999 }))
+        .rejects.toThrow('Invalid comicData.pages')
+    })
+
+    it('python:download should reject non-integer pages', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'valid-id', { title: 'Test', source: 'hcomic', pages: 1.5 }))
+        .rejects.toThrow('Invalid comicData.pages')
+    })
+
+    it('python:download should reject invalid sourceSite', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'valid-id', { title: 'Test', source: 'NH', sourceSite: 'evil' }))
+        .rejects.toThrow('Invalid comicData.sourceSite')
+    })
+
+    it('python:download should accept real-world payload (source=NH, sourceSite=hcomic)', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await handler.handler({}, 'comic-999', { title: 'T', source: 'NH', sourceSite: 'hcomic' })
+      expect(mockBridgeCall).toHaveBeenCalledWith('download', {
+        comic_id: 'comic-999',
+        comic_data: { title: 'T', source: 'NH', sourceSite: 'hcomic' },
+      })
+    })
+
+    it('python:download should accept source=MMCG_SHORT', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await handler.handler({}, 'id', { title: 'T', source: 'MMCG_SHORT', sourceSite: 'hcomic' })
+      expect(mockBridgeCall).toHaveBeenCalledWith('download', expect.objectContaining({
+        comic_data: expect.objectContaining({ source: 'MMCG_SHORT', sourceSite: 'hcomic' }),
+      }))
+    })
+
+    it('python:download should reject non-array tags', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'valid-id', { title: 'Test', source: 'hcomic', tags: 'not-array' }))
+        .rejects.toThrow('Invalid comicData.tags')
+    })
+
+    it('python:download should reject tags with overlong entries', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await expect(handler.handler({}, 'valid-id', { title: 'Test', source: 'hcomic', tags: ['a'.repeat(65)] }))
+        .rejects.toThrow('Invalid comicData.tags')
+    })
+
+    it('python:download should accept valid payload', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await handler.handler({}, 'valid-id', {
+        title: 'Test Comic',
+        source: 'NH',
+        sourceSite: 'hcomic',
+        pages: 42,
+        mediaId: 'media-123',
+        tags: ['tag1', 'tag2'],
+        author: 'Author Name',
+      })
+      expect(mockBridgeCall).toHaveBeenCalledWith('download', {
+        comic_id: 'valid-id',
+        comic_data: expect.objectContaining({ title: 'Test Comic', source: 'NH' }),
+      })
+    })
+
+    it('python:download should accept payload with optional fields omitted', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:download')!
+      await handler.handler({}, 'minimal-id', { title: 'Minimal', source: 'MMCG_LONG' })
+      expect(mockBridgeCall).toHaveBeenCalledWith('download', {
+        comic_id: 'minimal-id',
+        comic_data: { title: 'Minimal', source: 'MMCG_LONG' },
+      })
+    })
+
     it('python:get-favourites should reject invalid page', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:get-favourites')!
       await expect(handler.handler({}, 0)).rejects.toThrow('Invalid favourites page')
@@ -323,6 +436,21 @@ describe('main.ts', () => {
     it('python:apply-auth should reject empty curlText', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
       await expect(handler.handler({}, '   ')).rejects.toThrow('Invalid apply_auth curlText')
+    })
+
+    it('python:search should reject query over 512 chars', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(handler.handler({}, 'a'.repeat(513), 'keyword', 1)).rejects.toThrow('Invalid search query')
+    })
+
+    it('python:cancel-download should reject taskId over 256 chars', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:cancel-download')!
+      await expect(handler.handler({}, 'a'.repeat(257))).rejects.toThrow('Invalid cancel_download taskId')
+    })
+
+    it('python:apply-auth should reject curlText over 64KB', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
+      await expect(handler.handler({}, 'c'.repeat(65537))).rejects.toThrow('Invalid apply_auth curlText')
     })
   })
 

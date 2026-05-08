@@ -46,8 +46,12 @@ export function useDownload() {
     return unsubscribe
   }, [])
 
-  const startDownload = useCallback(async (comicId: string, comicData: ComicInfo) => {
-    return invoke(() => window.hcomic!.download(comicId, comicData))
+  const startDownload = useCallback(async (comicId: string, comicData: ComicInfo, overwrite?: boolean) => {
+    return invoke(() => window.hcomic!.download(comicId, comicData, overwrite))
+  }, [invoke])
+
+  const checkDownloadConflict = useCallback(async (comicData: ComicInfo) => {
+    return invoke(() => window.hcomic!.checkDownloadConflict(comicData))
   }, [invoke])
 
   const cancelDownload = useCallback(async (taskId: string) => {
@@ -58,7 +62,7 @@ export function useDownload() {
     return invoke(() => window.hcomic!.getDownloads())
   }, [invoke])
 
-  return { startDownload, cancelDownload, getDownloads, progress }
+  return { startDownload, cancelDownload, getDownloads, checkDownloadConflict, progress }
 }
 
 export function useFavourites() {

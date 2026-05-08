@@ -52,12 +52,14 @@ describe('PythonBridge', () => {
       stdout: {
         on: vi.fn((event: string, cb: Function) => {
           if (event === 'data') stdoutCallbacks.push(cb)
-        })
+        }),
+        removeAllListeners: vi.fn()
       },
       stderr: {
         on: vi.fn((event: string, cb: Function) => {
           if (event === 'data') stderrCallbacks.push(cb)
-        })
+        }),
+        removeAllListeners: vi.fn()
       },
       on: vi.fn((event: string, cb: Function) => {
         if (event === 'exit') exitCallbacks.push(cb)
@@ -76,7 +78,8 @@ describe('PythonBridge', () => {
 
       expect(mockSpawn).toHaveBeenCalledTimes(1)
       expect(mockSpawn).toHaveBeenCalledWith('python', [expect.stringContaining('ipc_server.py')], {
-        stdio: ['pipe', 'pipe', 'pipe']
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true,
       })
     })
 
@@ -409,21 +412,81 @@ describe('PythonBridge', () => {
   })
 
   describe('buffer overflow protection', () => {
-    it('should discard buffer when it exceeds max size and remain functional', async () => {
+    it('should reject pending requests immediately when buffer overflows', async () => {
       const bridge = new PythonBridge()
 
-      // Send >1MB of garbage without newline
+      // Start a pending request first
+      const callPromise = bridge.call('search', { query: 'test' })
+
+      // Send >1MB of garbage without newline to trigger overflow
       const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
       stdoutCallbacks.forEach(cb => cb(bigData))
 
-      // Now send a valid request and response - should still work
-      const callPromise = bridge.call('get_config')
-      const written = JSON.parse(stdinWriteData[stdinWriteData.length - 1].trim())
-      const response = { jsonrpc: '2.0', id: written.id, result: { ok: true } }
-      stdoutCallbacks.forEach(cb => cb(Buffer.from(JSON.stringify(response) + '\n')))
+      // The pending request should be rejected immediately, not after 30s timeout
+      await expect(callPromise).rejects.toThrow('IPC response too large')
+    })
 
-      const result = await callPromise
-      expect(result).toEqual({ ok: true })
+    it('should kill old process on buffer overflow', () => {
+      new PythonBridge()
+
+      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      stdoutCallbacks.forEach(cb => cb(bigData))
+
+      expect(mockProcess.kill).toHaveBeenCalled()
+    })
+
+    it('should trigger restart after buffer overflow', () => {
+      vi.useFakeTimers()
+      new PythonBridge()
+      expect(mockSpawn).toHaveBeenCalledTimes(1)
+
+      // Trigger overflow - should call handleProcessFailure which schedules restart
+      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      stdoutCallbacks.forEach(cb => cb(bigData))
+
+      vi.advanceTimersByTime(2000)
+      expect(mockSpawn).toHaveBeenCalledTimes(2)
+      vi.useRealTimers()
+    })
+
+    it('should ignore old stdout data after overflow and restart', () => {
+      vi.useFakeTimers()
+      new PythonBridge()
+
+      // Trigger overflow — kills old process and schedules restart
+      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      stdoutCallbacks.forEach(cb => cb(bigData))
+
+      expect(mockProcess.kill).toHaveBeenCalled()
+      expect(mockProcess.stdout.removeAllListeners).toHaveBeenCalledWith('data')
+      expect(mockProcess.stderr.removeAllListeners).toHaveBeenCalledWith('data')
+
+      // Create a new mock process for the restart
+      const mockProcess2 = {
+        stdin: { write: vi.fn(), writable: true },
+        stdout: { on: vi.fn(), removeAllListeners: vi.fn() },
+        stderr: { on: vi.fn(), removeAllListeners: vi.fn() },
+        on: vi.fn(),
+        kill: vi.fn(),
+        removeAllListeners: vi.fn(),
+      }
+      mockSpawn.mockReturnValue(mockProcess2)
+
+      // Save old callback count before restart
+      const oldStdoutCount = stdoutCallbacks.length
+
+      // Advance time to trigger restart
+      vi.advanceTimersByTime(2000)
+      expect(mockSpawn).toHaveBeenCalledTimes(2)
+
+      // Fire OLD stdout callbacks (not the new ones)
+      for (let i = 0; i < oldStdoutCount; i++) {
+        stdoutCallbacks[i](Buffer.from('garbage from old process\n'))
+      }
+
+      // New process must NOT be killed by old callbacks
+      expect(mockProcess2.kill).not.toHaveBeenCalled()
+      vi.useRealTimers()
     })
   })
 

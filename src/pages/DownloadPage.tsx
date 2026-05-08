@@ -5,11 +5,22 @@ import { ProgressBar } from '../components/common/ProgressBar'
 
 export function DownloadPage() {
   const { tasks, setTasks, updateTask } = useDownloadStore()
-  const { getDownloads, cancelDownload } = useDownload()
+  const { getDownloads, cancelDownload, progress } = useDownload()
 
   useEffect(() => {
     loadDownloads()
   }, [])
+
+  useEffect(() => {
+    for (const [taskId, data] of Object.entries(progress)) {
+      updateTask(taskId, {
+        progress: data.progress,
+        downloadedPages: data.current,
+        totalPages: data.total,
+        status: data.status,
+      })
+    }
+  }, [progress, updateTask])
 
   const loadDownloads = async () => {
     try {

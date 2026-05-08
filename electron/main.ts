@@ -1,7 +1,11 @@
-import { app, BrowserWindow, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
-import { SEARCH_MODES, COMIC_SOURCES } from '../shared/types'
+import {
+  SEARCH_MODES, COMIC_SOURCES,
+  IPC_CHANNELS, NOTIFICATION_CHANNELS,
+  type DownloadProgressEvent,
+} from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -37,6 +41,99 @@ function validateDownloadDir(v: unknown): boolean {
 
 const MODE_VALUES = new Set<string>(SEARCH_MODES)
 const SOURCE_VALUES = new Set<string>(COMIC_SOURCES)
+
+const VALID_DOWNLOAD_STATUSES = new Set([
+  'queued', 'downloading', 'paused', 'completed', 'failed', 'cancelled',
+])
+
+function validateDownloadPayload(comicId: unknown, comicData: unknown) {
+  if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) {
+    throw new Error('Invalid download comicId')
+  }
+  if (comicId.includes('/') || comicId.includes('\\') || comicId.includes('..')) {
+    throw new Error('Invalid download comicId: path separators not allowed')
+  }
+  if (/[\x00-\x1f\x7f]/.test(comicId)) {
+    throw new Error('Invalid download comicId: control characters not allowed')
+  }
+  if (typeof comicData !== 'object' || comicData === null) {
+    throw new Error('Invalid download comicData')
+  }
+  const data = comicData as Record<string, unknown>
+
+  if (typeof data.title !== 'string' || data.title.length === 0 || data.title.length > 256) {
+    throw new Error('Invalid comicData.title')
+  }
+
+  if (data.pages !== undefined) {
+    if (typeof data.pages !== 'number' || !Number.isFinite(data.pages) || !Number.isInteger(data.pages) || data.pages < 0 || data.pages > 100000) {
+      throw new Error('Invalid comicData.pages')
+    }
+  }
+
+  if (data.mediaId !== undefined && data.mediaId !== null) {
+    if (typeof data.mediaId !== 'string' || data.mediaId.length > 256) {
+      throw new Error('Invalid comicData.mediaId')
+    }
+  }
+
+  if (typeof data.source !== 'string' || data.source.length === 0 || data.source.length > 64) {
+    throw new Error('Invalid comicData.source')
+  }
+  if (/[\x00-\x1f\x7f]/.test(data.source)) {
+    throw new Error('Invalid comicData.source: control characters not allowed')
+  }
+
+  if (data.sourceSite !== undefined && data.sourceSite !== null) {
+    if (typeof data.sourceSite !== 'string' || !SOURCE_VALUES.has(data.sourceSite)) {
+      throw new Error('Invalid comicData.sourceSite')
+    }
+  }
+
+  if (data.tags !== undefined && data.tags !== null) {
+    if (!Array.isArray(data.tags) || data.tags.length > 100) {
+      throw new Error('Invalid comicData.tags')
+    }
+    if (!data.tags.every(t => typeof t === 'string' && t.length <= 64)) {
+      throw new Error('Invalid comicData.tags: each tag must be a string ≤ 64 chars')
+    }
+  }
+
+  if (data.author !== undefined && data.author !== null) {
+    if (typeof data.author !== 'string' || data.author.length > 256) {
+      throw new Error('Invalid comicData.author')
+    }
+  }
+}
+
+function validateDownloadProgress(params: unknown): DownloadProgressEvent {
+  if (typeof params !== 'object' || params === null) {
+    throw new Error('Invalid download progress params')
+  }
+  const p = params as Record<string, unknown>
+  if (typeof p.taskId !== 'string' || p.taskId.length === 0 || p.taskId.length > 256) {
+    throw new Error('Invalid download progress: taskId')
+  }
+  if (typeof p.status !== 'string' || !VALID_DOWNLOAD_STATUSES.has(p.status)) {
+    throw new Error('Invalid download progress: status')
+  }
+  if (typeof p.progress !== 'number' || !Number.isFinite(p.progress) || p.progress < 0 || p.progress > 100) {
+    throw new Error('Invalid download progress: progress')
+  }
+  if (typeof p.current !== 'number' || !Number.isFinite(p.current) || !Number.isInteger(p.current) || p.current < 0) {
+    throw new Error('Invalid download progress: current')
+  }
+  if (typeof p.total !== 'number' || !Number.isFinite(p.total) || !Number.isInteger(p.total) || p.total < 0) {
+    throw new Error('Invalid download progress: total')
+  }
+  if (typeof p.current === 'number' && typeof p.total === 'number' && p.current > p.total) {
+    throw new Error('Invalid download progress: current exceeds total')
+  }
+  if (typeof p.title !== 'string' || p.title.length === 0 || p.title.length > 256) {
+    throw new Error('Invalid download progress: title')
+  }
+  return p as unknown as DownloadProgressEvent
+}
 
 const CONFIG_VALIDATORS: Record<string, { type: string; validate?: (v: unknown) => boolean }> = {
   themeMode: { type: 'string', validate: (v) => ['light', 'dark', 'auto'].includes(v as string) },
@@ -113,11 +210,12 @@ function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
   bridge.setNotificationHandler('download_progress', (params) => {
-    mainWindow?.webContents.send('download:progress', params)
+    const event = validateDownloadProgress(params)
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, event)
   })
 
-  ipcMain.handle('python:search', async (_, query, mode, page, source) => {
-    if (typeof query !== 'string' || query.length === 0) {
+  ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source) => {
+    if (typeof query !== 'string' || query.length === 0 || query.length > 512) {
       throw new Error('Invalid search query')
     }
     if (typeof mode !== 'string' || !MODE_VALUES.has(mode)) {
@@ -136,24 +234,23 @@ function registerIPCHandlers() {
     return bridge.call('search', params)
   })
 
-  ipcMain.handle('python:download', async (_, comicId, comicData) => {
-    if (typeof comicId !== 'string' || comicId.length === 0) {
-      throw new Error('Invalid download comicId')
+  ipcMain.handle(IPC_CHANNELS.DOWNLOAD, async (_, comicId, comicData, overwrite?: unknown) => {
+    validateDownloadPayload(comicId, comicData)
+    const params: Record<string, unknown> = { comic_id: comicId, comic_data: comicData }
+    if (overwrite === true) {
+      params.overwrite = true
     }
-    if (typeof comicData !== 'object' || comicData === null) {
-      throw new Error('Invalid download comicData')
-    }
-    const data = comicData as Record<string, unknown>
-    if (data.title !== undefined && typeof data.title !== 'string') {
-      throw new Error('Invalid comicData.title')
-    }
-    if (data.pages !== undefined && (typeof data.pages !== 'number' || !Number.isFinite(data.pages) || !Number.isInteger(data.pages) || data.pages < 0)) {
-      throw new Error('Invalid comicData.pages')
-    }
-    return bridge.call('download', { comic_id: comicId, comic_data: comicData })
+    return bridge.call('download', params)
   })
 
-  ipcMain.handle('python:get-favourites', async (_, page?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.CHECK_DOWNLOAD_CONFLICT, async (_, comicData) => {
+    if (typeof comicData !== 'object' || comicData === null) {
+      throw new Error('Invalid comic data')
+    }
+    return bridge.call('check_download_conflict', { comic_data: comicData })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_FAVOURITES, async (_, page?: unknown) => {
     const p = page ?? 1
     if (typeof p !== 'number' || !Number.isFinite(p) || !Number.isInteger(p) || p < 1 || p > 1000) {
       throw new Error('Invalid favourites page')
@@ -161,11 +258,11 @@ function registerIPCHandlers() {
     return bridge.call('get_favourites', { page: p })
   })
 
-  ipcMain.handle('python:get-config', async () => {
+  ipcMain.handle(IPC_CHANNELS.GET_CONFIG, async () => {
     return bridge.call('get_config')
   })
 
-  ipcMain.handle('python:set-config', async (_, key, value) => {
+  ipcMain.handle(IPC_CHANNELS.SET_CONFIG, async (_, key, value) => {
     if (typeof key !== 'string' || value === undefined) {
       throw new Error('Invalid set_config parameters')
     }
@@ -182,34 +279,34 @@ function registerIPCHandlers() {
     return bridge.call('set_config', { key, value })
   })
 
-  ipcMain.handle('python:get-downloads', async () => {
+  ipcMain.handle(IPC_CHANNELS.GET_DOWNLOADS, async () => {
     return bridge.call('get_downloads')
   })
 
-  ipcMain.handle('python:cancel-download', async (_, taskId) => {
-    if (typeof taskId !== 'string' || taskId.length === 0) {
+  ipcMain.handle(IPC_CHANNELS.CANCEL_DOWNLOAD, async (_, taskId) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
       throw new Error('Invalid cancel_download taskId')
     }
     return bridge.call('cancel_download', { task_id: taskId })
   })
 
-  ipcMain.handle('python:get-statistics', async () => {
+  ipcMain.handle(IPC_CHANNELS.GET_STATISTICS, async () => {
     return bridge.call('get_statistics')
   })
 
-  ipcMain.handle('python:apply-auth', async (_, curlText) => {
-    if (typeof curlText !== 'string' || curlText.trim().length === 0) {
+  ipcMain.handle(IPC_CHANNELS.APPLY_AUTH, async (_, curlText) => {
+    if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) {
       throw new Error('Invalid apply_auth curlText')
     }
     return bridge.call('apply_auth', { curl_text: curlText.trim() })
   })
 
-  ipcMain.handle('python:verify-auth', async () => {
+  ipcMain.handle(IPC_CHANNELS.VERIFY_AUTH, async () => {
     return bridge.call('verify_auth')
   })
 
-  ipcMain.handle('open-external', async (_, url: string) => {
-    if (typeof url !== 'string') throw new Error('Invalid URL')
+  ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url: string) => {
+    if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid URL')
     let parsed: URL
     try {
       parsed = new URL(url)
@@ -230,7 +327,8 @@ app.whenReady().then(() => {
     createWindow()
     registerIPCHandlers()
   } catch (err) {
-    console.error('Failed to initialize app:', err)
+    dialog.showErrorBox('启动失败', '应用初始化失败: ' + (err as Error).message)
+    app.quit()
   }
 })
 

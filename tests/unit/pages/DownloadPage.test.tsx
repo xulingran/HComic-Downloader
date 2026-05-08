@@ -21,7 +21,9 @@ vi.mock('@/hooks/useIpc', () => ({
   useDownload: vi.fn().mockReturnValue({
     getDownloads: mockGetDownloads,
     cancelDownload: mockCancelDownload,
-    startDownload: vi.fn()
+    startDownload: vi.fn(),
+    checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
+    progress: {},
   })
 }))
 

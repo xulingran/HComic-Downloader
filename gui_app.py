@@ -293,6 +293,8 @@ class HComicDownloaderGUI(tk.Tk):
         """销毁窗口前清理资源。"""
         if hasattr(self, 'dl_ctrl'):
             self.dl_ctrl.set_destroying(True)
+        if hasattr(self, "auth_manager"):
+            self.auth_manager.destroy()
         # 保存配置
         self._save_all_settings()
 

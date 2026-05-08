@@ -86,14 +86,28 @@ export type SetConfigArgs = {
   [K in ConfigKey]: [key: K, value: ConfigValueMap[K]]
 }[ConfigKey]
 
+export interface DownloadStartResult {
+  taskId: string
+  status: string
+}
+
+export interface DownloadConflictResult {
+  hasConflict: boolean
+  path: string
+}
+
 export interface IPCMethods {
   search: {
     params: { query: string; mode: string; page: number; source?: string }
     result: SearchResult
   }
   download: {
-    params: { comic_id: string; comic_data: ComicInfo }
-    result: { taskId: string }
+    params: { comic_id: string; comic_data: ComicInfo; overwrite?: boolean }
+    result: DownloadStartResult | { taskId: null; status: 'conflict'; conflictPath: string }
+  }
+  check_download_conflict: {
+    params: { comic_data: ComicInfo }
+    result: DownloadConflictResult
   }
   get_favourites: {
     params: { page?: number }
@@ -129,10 +143,11 @@ export interface IPCMethods {
   }
 }
 
-/** IPC channel to Python method name mapping. Keep in sync with preload ALLOWED_INVOKE_CHANNELS. */
-export const IPC_CHANNEL_MAP = {
+/** Python IPC channel to method name mapping. Only covers python:* channels. */
+export const PYTHON_IPC_CHANNEL_MAP = {
   'python:search': 'search',
   'python:download': 'download',
+  'python:check-download-conflict': 'check_download_conflict',
   'python:get-favourites': 'get_favourites',
   'python:get-config': 'get_config',
   'python:set-config': 'set_config',
@@ -143,12 +158,13 @@ export const IPC_CHANNEL_MAP = {
   'python:verify-auth': 'verify_auth',
 } as const
 
-export type IPCChannel = keyof typeof IPC_CHANNEL_MAP
+export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
 
-/** Positional parameter tuples matching how ipcMain.handle receives args for each channel */
+/** Positional parameter tuples matching how ipcMain.handle receives args for each python:* channel */
 export interface IPCChannelParamsMap {
   'python:search': [query: string, mode: string, page: number, source?: string]
-  'python:download': [comicId: string, comicData: ComicInfo]
+  'python:download': [comicId: string, comicData: ComicInfo, overwrite?: boolean]
+  'python:check-download-conflict': [comicData: ComicInfo],
   'python:get-favourites': [page?: number]
   'python:get-config': []
   'python:set-config': SetConfigArgs
@@ -159,13 +175,24 @@ export interface IPCChannelParamsMap {
   'python:verify-auth': []
 }
 
-export type IPCChannelResult<C extends IPCChannel> =
-  IPCMethods[typeof IPC_CHANNEL_MAP[C]]['result']
+export type IPCChannelResult<C extends PythonIPCChannel> =
+  IPCMethods[typeof PYTHON_IPC_CHANNEL_MAP[C]]['result']
+
+/** Validated notification event for download progress (Python -> Main -> Renderer) */
+export interface DownloadProgressEvent {
+  taskId: string
+  status: string
+  progress: number
+  current: number
+  total: number
+  title: string
+}
 
 /** Narrow API exposed by preload via window.hcomic */
 export interface HcomicAPI {
   search(query: string, mode: string, page: number, source?: string): Promise<SearchResult>
-  download(comicId: string, comicData: ComicInfo): Promise<{ taskId: string; status: string }>
+  download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadStartResult>
+  checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
   getFavourites(page?: number): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
   getConfig(): Promise<{ config: AppConfig }>
   setConfig(key: ConfigKey, value: ConfigValue): Promise<{ success: boolean }>
@@ -175,7 +202,7 @@ export interface HcomicAPI {
   applyAuth(curlText: string): Promise<{ success: boolean }>
   verifyAuth(): Promise<{ valid: boolean; message: string }>
   openUrl(url: string): Promise<void>
-  onDownloadProgress(callback: (data: unknown) => void): () => void
+  onDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void
 }
 
 /** Valid search modes — shared between preload and main */
@@ -187,6 +214,26 @@ export const COMIC_SOURCES = ['hcomic', 'moeimg'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
 
 /** Config keys accepted by set-config — shared between preload and main */
+/** Typed IPC channel constants — use instead of hardcoded strings */
+export const IPC_CHANNELS = {
+  SEARCH: 'python:search',
+  DOWNLOAD: 'python:download',
+  CHECK_DOWNLOAD_CONFLICT: 'python:check-download-conflict',
+  GET_FAVOURITES: 'python:get-favourites',
+  GET_CONFIG: 'python:get-config',
+  SET_CONFIG: 'python:set-config',
+  GET_DOWNLOADS: 'python:get-downloads',
+  CANCEL_DOWNLOAD: 'python:cancel-download',
+  GET_STATISTICS: 'python:get-statistics',
+  APPLY_AUTH: 'python:apply-auth',
+  VERIFY_AUTH: 'python:verify-auth',
+  OPEN_EXTERNAL: 'open-external',
+} as const
+
+export const NOTIFICATION_CHANNELS = {
+  DOWNLOAD_PROGRESS: 'download:progress',
+} as const
+
 export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
