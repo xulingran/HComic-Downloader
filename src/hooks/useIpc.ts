@@ -58,11 +58,31 @@ export function useDownload() {
     return invoke(() => window.hcomic!.cancelDownload(taskId))
   }, [invoke])
 
+  const pauseTask = useCallback(async (taskId: string) => {
+    return invoke(() => window.hcomic!.pauseTask(taskId))
+  }, [invoke])
+
+  const resumeTask = useCallback(async (taskId: string) => {
+    return invoke(() => window.hcomic!.resumeTask(taskId))
+  }, [invoke])
+
+  const retryTask = useCallback(async (taskId: string) => {
+    return invoke(() => window.hcomic!.retryTask(taskId))
+  }, [invoke])
+
+  const toggleGlobalPause = useCallback(async () => {
+    return invoke(() => window.hcomic!.toggleGlobalPause())
+  }, [invoke])
+
+  const getDownloadDetail = useCallback(async (taskId: string) => {
+    return invoke(() => window.hcomic!.getDownloadDetail(taskId))
+  }, [invoke])
+
   const getDownloads = useCallback(async () => {
     return invoke(() => window.hcomic!.getDownloads())
   }, [invoke])
 
-  return { startDownload, cancelDownload, getDownloads, checkDownloadConflict, progress }
+  return { startDownload, cancelDownload, getDownloads, checkDownloadConflict, progress, pauseTask, resumeTask, retryTask, toggleGlobalPause, getDownloadDetail }
 }
 
 export function useFavourites() {
@@ -86,7 +106,31 @@ export function useConfig() {
     return invoke(() => window.hcomic!.setConfig(key, value as any))
   }, [invoke])
 
-  return { getConfig, setConfig }
+  const openDownloadDir = useCallback(async () => {
+    return invoke(() => window.hcomic!.openDownloadDir())
+  }, [invoke])
+
+  return { getConfig, setConfig, openDownloadDir }
+}
+
+export function useProxyStatus() {
+  const { invoke } = useIpc()
+
+  const getProxyStatus = useCallback(async () => {
+    return invoke(() => window.hcomic!.getProxyStatus())
+  }, [invoke])
+
+  return { getProxyStatus }
+}
+
+export function useAvailableFonts() {
+  const { invoke } = useIpc()
+
+  const getAvailableFonts = useCallback(async () => {
+    return invoke(() => window.hcomic!.getAvailableFonts())
+  }, [invoke])
+
+  return { getAvailableFonts }
 }
 
 export function useStatistics() {

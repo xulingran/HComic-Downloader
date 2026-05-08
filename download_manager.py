@@ -1,6 +1,7 @@
 """下载管理器核心模块"""
 import logging
 import os
+import shutil
 import threading
 import time
 from typing import Dict, List, Optional, Callable
@@ -52,6 +53,7 @@ class DownloadManager:
 
         logger.info(f"Added task {task_id}: {comic.title}")
         self._notify_queue_changed()
+        self._notify_task_update(task)
         return task_id
 
     def add_tasks(self, comics: List[ComicInfo]) -> List[str]:
@@ -514,6 +516,16 @@ class ComicDownloadManager(DownloadManager):
             self.downloader.cleanup_temp_dir(result.temp_dir)
         task.temp_dir = None
 
+        if task._cancel_requested:
+            logger.info(f"Task {task.task_id} cancelled during packaging, discarding output")
+            if output_path and os.path.exists(output_path):
+                if os.path.isdir(output_path):
+                    shutil.rmtree(output_path, ignore_errors=True)
+                else:
+                    os.remove(output_path)
+            task.status = DownloadStatus.CANCELLED
+            return
+
         task.status = DownloadStatus.COMPLETED
         task.current_downloading_page = 0
         logger.info(f"Task {task.task_id} completed: {output_path}")
@@ -598,6 +610,14 @@ class ComicDownloadManager(DownloadManager):
                 task.status = DownloadStatus.PAUSED
                 self._notify_task_update(task)
                 logger.info(f"Task {task_id} paused after current checkpoint")
+                return
+
+            if task._cancel_requested:
+                logger.info(f"Task {task_id} cancelled after download returned, skipping success")
+                if result.temp_dir and os.path.exists(result.temp_dir):
+                    self.downloader.cleanup_temp_dir(result.temp_dir)
+                task.status = DownloadStatus.CANCELLED
+                self._notify_task_update(task)
                 return
 
             task.temp_dir = result.temp_dir

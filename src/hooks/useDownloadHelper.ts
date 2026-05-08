@@ -3,8 +3,10 @@ import { useDownloadStore } from '../stores/useDownloadStore'
 import type { ComicInfo, DownloadStatus } from '@shared/types'
 
 export function useDownloadHelper() {
-  const { startDownload, checkDownloadConflict } = useDownload()
+  const { startDownload, checkDownloadConflict, pauseTask, resumeTask, retryTask, toggleGlobalPause } = useDownload()
   const upsertTask = useDownloadStore((s) => s.upsertTask)
+  const updateTask = useDownloadStore((s) => s.updateTask)
+  const setGlobalPaused = useDownloadStore((s) => s.setGlobalPaused)
 
   const downloadWithConflictCheck = async (comic: ComicInfo) => {
     try {
@@ -42,5 +44,41 @@ export function useDownloadHelper() {
     }
   }
 
-  return { downloadWithConflictCheck, startDownload, checkDownloadConflict }
+  const handlePauseTask = async (taskId: string) => {
+    try {
+      await pauseTask(taskId)
+      updateTask(taskId, { status: 'paused' as DownloadStatus })
+    } catch (err) {
+      console.error('Failed to pause task:', err)
+    }
+  }
+
+  const handleResumeTask = async (taskId: string) => {
+    try {
+      await resumeTask(taskId)
+      updateTask(taskId, { status: 'queued' as DownloadStatus })
+    } catch (err) {
+      console.error('Failed to resume task:', err)
+    }
+  }
+
+  const handleRetryTask = async (taskId: string) => {
+    try {
+      await retryTask(taskId)
+      updateTask(taskId, { status: 'queued' as DownloadStatus, progress: 0, error: undefined })
+    } catch (err) {
+      console.error('Failed to retry task:', err)
+    }
+  }
+
+  const handleToggleGlobalPause = async () => {
+    try {
+      const result = await toggleGlobalPause()
+      setGlobalPaused(result.isPaused)
+    } catch (err) {
+      console.error('Failed to toggle global pause:', err)
+    }
+  }
+
+  return { downloadWithConflictCheck, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause }
 }

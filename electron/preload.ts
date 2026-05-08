@@ -74,10 +74,43 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url)
   },
 
+  fetchCover: (url: unknown) => {
+    if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid cover URL')
+    return ipcRenderer.invoke(IPC_CHANNELS.FETCH_COVER, url)
+  },
+
   onDownloadProgress: (callback: unknown) => {
     if (typeof callback !== 'function') throw new Error('Invalid callback')
     const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
     ipcRenderer.on(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, handler)
     return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, handler) }
+  },
+
+  pauseTask: (taskId: unknown) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    return ipcRenderer.invoke(IPC_CHANNELS.PAUSE_TASK, taskId)
+  },
+
+  resumeTask: (taskId: unknown) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    return ipcRenderer.invoke(IPC_CHANNELS.RESUME_TASK, taskId)
+  },
+
+  retryTask: (taskId: unknown) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    return ipcRenderer.invoke(IPC_CHANNELS.RETRY_TASK, taskId)
+  },
+
+  toggleGlobalPause: () => ipcRenderer.invoke(IPC_CHANNELS.TOGGLE_GLOBAL_PAUSE),
+
+  getProxyStatus: () => ipcRenderer.invoke(IPC_CHANNELS.GET_PROXY_STATUS),
+
+  getAvailableFonts: () => ipcRenderer.invoke(IPC_CHANNELS.GET_AVAILABLE_FONTS),
+
+  openDownloadDir: () => ipcRenderer.invoke(IPC_CHANNELS.OPEN_DOWNLOAD_DIR),
+
+  getDownloadDetail: (taskId: unknown) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, taskId)
   },
 })

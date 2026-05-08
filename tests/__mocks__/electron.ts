@@ -38,7 +38,18 @@ vi.mock('electron', () => ({
   BrowserWindow: mockBrowserWindow,
   ipcMain: mockIpcMain,
   ipcRenderer: mockIpcRenderer,
-  contextBridge: mockContextBridge
+  contextBridge: mockContextBridge,
+  dialog: {
+    showErrorBox: vi.fn(),
+    showMessageBoxSync: vi.fn().mockReturnValue(1),
+  },
+  Notification: {
+    isSupported: vi.fn().mockReturnValue(false),
+  },
+  shell: {
+    openExternal: vi.fn().mockResolvedValue(undefined),
+    openPath: vi.fn().mockResolvedValue(''),
+  },
 }))
 
 vi.mock('child_process', () => ({

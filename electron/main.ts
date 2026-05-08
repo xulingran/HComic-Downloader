@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, Notification } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 import {
@@ -11,10 +11,25 @@ let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 let shutdownDone = false
 
+// ── Notification state ──
+const activeTaskSet = new Set<string>()
+let notifyOnComplete = true
+let notifyWhenForeground: 'inactive' | 'always' = 'inactive'
+const completedTasks: Array<{ title: string; outputPath?: string }> = []
+const failedTasks: Array<{ title: string; error?: string }> = []
+
+const CLOSE_GET_DOWNLOADS_TIMEOUT_MS = 3_000
+
 const ALLOWED_EXTERNAL_DOMAINS = [
   'h-comic.com',
   'moeimg.net',
   'moeimg.fan',
+]
+
+const ALLOWED_COVER_DOMAINS = [
+  'h-comic.link',
+  'moeimg.fan',
+  'moeimg.net',
 ]
 
 const CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS = ['{author}', '{title}', '{id}']
@@ -166,6 +181,8 @@ const CONFIG_VALIDATORS: Record<string, { type: string; validate?: (v: unknown) 
   notifyOnComplete: { type: 'boolean' },
   notifyWhenForeground: { type: 'string', validate: (v) => ['inactive', 'always'].includes(v as string) },
   defaultSource: { type: 'string', validate: (v) => SOURCE_VALUES.has(v as string) },
+  fontName: { type: 'string', validate: (v) => typeof v === 'string' && v.length <= 128 },
+  fontSize: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 12 && (v as number) <= 20 },
 }
 
 function createWindow() {
@@ -234,10 +251,20 @@ function createWindow() {
 
     try {
       const bridge = getPythonBridge()
-      const result = await bridge.call('get_downloads') as { tasks: Array<{ status: string }> }
+      const timeout = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), CLOSE_GET_DOWNLOADS_TIMEOUT_MS)
+      )
+      const result = await Promise.race([
+        bridge.call('get_downloads'),
+        timeout,
+      ]) as { tasks: Array<{ status: string }> } | null
 
-      // Guard: if a quit was triggered while we were awaiting (e.g. Cmd+Q on macOS),
-      // or the window was already closed/destroyed, bail out.
+      // Timeout — just close the window
+      if (!result) {
+        if (win && !win.isDestroyed()) win.destroy()
+        return
+      }
+
       if (isQuitting || !win || win.isDestroyed() || mainWindow !== win) return
 
       const activeTasks = result.tasks.filter(
@@ -273,12 +300,82 @@ function createWindow() {
   })
 }
 
+function sendNativeNotification(title: string, body: string) {
+  if (!notifyOnComplete) return
+  if (notifyWhenForeground === 'inactive' && mainWindow?.isFocused()) return
+
+  if (!Notification.isSupported()) return
+
+  const notification = new Notification({ title, body })
+  notification.on('click', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+  notification.show()
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
+
+  // Sync notification settings from saved config on startup
+  bridge.call('get_config').then((result: any) => {
+    if (result?.config) {
+      if (typeof result.config.notify_on_complete === 'boolean') {
+        notifyOnComplete = result.config.notify_on_complete
+      }
+      if (result.config.notify_when_foreground === 'inactive' || result.config.notify_when_foreground === 'always') {
+        notifyWhenForeground = result.config.notify_when_foreground
+      }
+    }
+  }).catch(() => {})
 
   bridge.setNotificationHandler('download_progress', (params) => {
     const event = validateDownloadProgress(params)
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, event)
+
+    // ── Track active tasks ──
+    const activeStatuses = new Set(['queued', 'downloading', 'paused'])
+    if (activeStatuses.has(event.status)) {
+      activeTaskSet.add(event.taskId)
+    } else {
+      activeTaskSet.delete(event.taskId)
+    }
+
+    // ── Single task completion tracking ──
+    if (event.status === 'completed') {
+      completedTasks.push({ title: event.title })
+    }
+
+    // ── Single task failure tracking ──
+    if (event.status === 'failed') {
+      failedTasks.push({ title: event.title })
+    }
+
+    // ── Batch/completion notification ──
+    if (activeTaskSet.size === 0 && (completedTasks.length > 0 || failedTasks.length > 0)) {
+      const successCount = completedTasks.length
+      const failCount = failedTasks.length
+      if (successCount === 1 && failCount === 0) {
+        sendNativeNotification(
+          '下载完成',
+          `${completedTasks[0].title} 已下载完成`
+        )
+      } else {
+        const parts: string[] = []
+        if (successCount > 0) parts.push(`成功 ${successCount} 本`)
+        if (failCount > 0) parts.push(`失败 ${failCount} 本`)
+        sendNativeNotification(
+          '批量下载完成',
+          parts.join('，')
+        )
+      }
+      // Reset counters for next batch
+      completedTasks.length = 0
+      failedTasks.length = 0
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source) => {
@@ -343,7 +440,17 @@ function registerIPCHandlers() {
     if (validator.validate && !validator.validate(value)) {
       throw new Error(`Invalid value for ${key}: ${JSON.stringify(value)}`)
     }
-    return bridge.call('set_config', { key, value })
+    const prevNotifyOnComplete = notifyOnComplete
+    const prevNotifyWhenForeground = notifyWhenForeground
+    try {
+      if (key === 'notifyOnComplete') notifyOnComplete = value as boolean
+      if (key === 'notifyWhenForeground') notifyWhenForeground = value as 'inactive' | 'always'
+      return await bridge.call('set_config', { key, value })
+    } catch (err) {
+      if (key === 'notifyOnComplete') notifyOnComplete = prevNotifyOnComplete
+      if (key === 'notifyWhenForeground') notifyWhenForeground = prevNotifyWhenForeground
+      throw err
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_DOWNLOADS, async () => {
@@ -391,15 +498,100 @@ function registerIPCHandlers() {
     if (!allowed) throw new Error('Domain not allowed')
     await shell.openExternal(url)
   })
+
+  ipcMain.handle(IPC_CHANNELS.FETCH_COVER, async (_, url: string) => {
+    if (typeof url !== 'string' || url.length === 0 || url.length > 2048) {
+      throw new Error('Invalid cover URL')
+    }
+    let parsed: URL
+    try {
+      parsed = new URL(url)
+    } catch {
+      throw new Error('Invalid cover URL format')
+    }
+    if (parsed.protocol !== 'https:') {
+      throw new Error('Only HTTPS URLs are allowed for cover images')
+    }
+    const allowed = ALLOWED_COVER_DOMAINS.some(
+      d => parsed.hostname === d || parsed.hostname.endsWith('.' + d)
+    )
+    if (!allowed) {
+      throw new Error('Cover image domain not allowed')
+    }
+    return bridge.call('fetch_cover', { url })
+  })
+
+  // ── Phase 1: Download Manager task controls ──
+  ipcMain.handle(IPC_CHANNELS.PAUSE_TASK, async (_, taskId: string) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
+      throw new Error('Invalid pause_task taskId')
+    }
+    return bridge.call('pause_task', { task_id: taskId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RESUME_TASK, async (_, taskId: string) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
+      throw new Error('Invalid resume_task taskId')
+    }
+    return bridge.call('resume_task', { task_id: taskId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RETRY_TASK, async (_, taskId: string) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
+      throw new Error('Invalid retry_task taskId')
+    }
+    return bridge.call('retry_task', { task_id: taskId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.TOGGLE_GLOBAL_PAUSE, async () => {
+    return bridge.call('toggle_global_pause')
+  })
+
+  // ── Phase 1: System info ──
+  ipcMain.handle(IPC_CHANNELS.GET_PROXY_STATUS, async () => {
+    return bridge.call('get_proxy_status')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_AVAILABLE_FONTS, async () => {
+    return bridge.call('get_available_fonts')
+  })
+
+  // ── Phase 1: Download directory ──
+  ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async () => {
+    return bridge.call('open_download_dir')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, async (_, taskId: string) => {
+    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
+      throw new Error('Invalid get_download_detail taskId')
+    }
+    return bridge.call('get_download_detail', { task_id: taskId })
+  })
 }
 
 app.whenReady().then(() => {
   try {
+    // ── URI protocol registration (hcomic://) ──
+    if (process.platform !== 'linux') {
+      app.setAsDefaultProtocolClient('hcomic')
+    }
+
     createWindow()
     registerIPCHandlers()
   } catch (err) {
     dialog.showErrorBox('启动失败', '应用初始化失败: ' + (err as Error).message)
     app.quit()
+  }
+})
+
+// ── Handle URI protocol activation (Windows/macOS) ──
+app.on('open-url', (event, _url) => {
+  // hcomic://bring-to-front or similar
+  event.preventDefault()
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
   }
 })
 

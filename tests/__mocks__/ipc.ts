@@ -30,8 +30,18 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, any>
     getStatistics: vi.fn().mockResolvedValue({ totalDownloads: 0, completedDownloads: 0, failedDownloads: 0, totalSize: 0, downloadsByDay: [] }),
     applyAuth: vi.fn().mockResolvedValue({ success: true }),
     verifyAuth: vi.fn().mockResolvedValue({ valid: false, message: '' }),
+    shutdown: vi.fn().mockResolvedValue({ success: true, cancelledTasks: 0 }),
+    fetchCover: vi.fn().mockResolvedValue({ dataUri: 'data:image/png;base64,mock' }),
     openUrl: vi.fn().mockResolvedValue(undefined),
     onDownloadProgress: vi.fn().mockReturnValue(vi.fn()),
+    pauseTask: vi.fn().mockResolvedValue({ success: true }),
+    resumeTask: vi.fn().mockResolvedValue({ success: true }),
+    retryTask: vi.fn().mockResolvedValue({ success: true }),
+    toggleGlobalPause: vi.fn().mockResolvedValue({ isPaused: false }),
+    getProxyStatus: vi.fn().mockResolvedValue({ http: '', https: '', noProxy: '' }),
+    getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }),
+    openDownloadDir: vi.fn().mockResolvedValue({ success: true }),
+    getDownloadDetail: vi.fn().mockResolvedValue({ taskId: '', tempDir: '', errorMessage: '', outputPath: '' }),
     ...overrides,
   }
 

@@ -47,10 +47,30 @@ export interface AppConfig {
   notifyOnComplete: boolean
   notifyWhenForeground: 'inactive' | 'always'
   defaultSource: string
+  fontName: string
+  fontSize: number
   proxy?: string
   cookie?: string
   userAgent?: string
   hasAuth?: boolean
+}
+
+export interface ProxyStatus {
+  http: string
+  https: string
+  noProxy: string
+}
+
+export interface FontInfo {
+  name: string
+  label: string
+}
+
+export interface DownloadDetail {
+  taskId: string
+  tempDir: string
+  errorMessage: string
+  outputPath: string
 }
 
 export interface StatisticsData {
@@ -65,6 +85,7 @@ export interface StatisticsData {
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
+  | 'fontName' | 'fontSize'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -79,6 +100,8 @@ export type ConfigValueMap = {
   notifyOnComplete: boolean
   notifyWhenForeground: 'inactive' | 'always'
   defaultSource: string
+  fontName: string
+  fontSize: number
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -149,6 +172,42 @@ export interface IPCMethods {
     params: Record<string, never>
     result: { success: boolean; cancelledTasks: number }
   }
+  fetch_cover: {
+    params: { url: string }
+    result: { dataUri: string }
+  }
+  pause_task: {
+    params: { task_id: string }
+    result: { success: boolean }
+  }
+  resume_task: {
+    params: { task_id: string }
+    result: { success: boolean }
+  }
+  retry_task: {
+    params: { task_id: string }
+    result: { success: boolean }
+  }
+  toggle_global_pause: {
+    params: Record<string, never>
+    result: { isPaused: boolean }
+  }
+  get_proxy_status: {
+    params: Record<string, never>
+    result: ProxyStatus
+  }
+  get_available_fonts: {
+    params: Record<string, never>
+    result: { fonts: FontInfo[] }
+  }
+  open_download_dir: {
+    params: Record<string, never>
+    result: { success: boolean }
+  }
+  get_download_detail: {
+    params: { task_id: string }
+    result: DownloadDetail
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -165,6 +224,15 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:apply-auth': 'apply_auth',
   'python:verify-auth': 'verify_auth',
   'python:shutdown': 'shutdown',
+  'python:fetch-cover': 'fetch_cover',
+  'python:pause-task': 'pause_task',
+  'python:resume-task': 'resume_task',
+  'python:retry-task': 'retry_task',
+  'python:toggle-global-pause': 'toggle_global_pause',
+  'python:get-proxy-status': 'get_proxy_status',
+  'python:get-available-fonts': 'get_available_fonts',
+  'python:open-download-dir': 'open_download_dir',
+  'python:get-download-detail': 'get_download_detail',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -183,6 +251,15 @@ export interface IPCChannelParamsMap {
   'python:apply-auth': [curlText: string]
   'python:verify-auth': []
   'python:shutdown': []
+  'python:fetch-cover': [url: string]
+  'python:pause-task': [taskId: string]
+  'python:resume-task': [taskId: string]
+  'python:retry-task': [taskId: string]
+  'python:toggle-global-pause': []
+  'python:get-proxy-status': []
+  'python:get-available-fonts': []
+  'python:open-download-dir': []
+  'python:get-download-detail': [taskId: string]
 }
 
 export type IPCChannelResult<C extends PythonIPCChannel> =
@@ -212,8 +289,17 @@ export interface HcomicAPI {
   applyAuth(curlText: string): Promise<{ success: boolean }>
   verifyAuth(): Promise<{ valid: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
+  fetchCover(url: string): Promise<{ dataUri: string }>
   openUrl(url: string): Promise<void>
   onDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void
+  pauseTask(taskId: string): Promise<{ success: boolean }>
+  resumeTask(taskId: string): Promise<{ success: boolean }>
+  retryTask(taskId: string): Promise<{ success: boolean }>
+  toggleGlobalPause(): Promise<{ isPaused: boolean }>
+  getProxyStatus(): Promise<ProxyStatus>
+  getAvailableFonts(): Promise<{ fonts: FontInfo[] }>
+  openDownloadDir(): Promise<{ success: boolean }>
+  getDownloadDetail(taskId: string): Promise<DownloadDetail>
 }
 
 /** Valid search modes — shared between preload and main */
@@ -223,6 +309,12 @@ export type SearchMode = typeof SEARCH_MODES[number]
 /** Valid comic sources — shared between preload and main */
 export const COMIC_SOURCES = ['hcomic', 'moeimg'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
+
+/** JSON-RPC application error codes (Python backend) */
+export const IPC_ERROR_CODES = {
+  AUTH_REQUIRED: -32001,
+} as const
+export type IpcErrorCode = typeof IPC_ERROR_CODES[keyof typeof IPC_ERROR_CODES]
 
 /** Config keys accepted by set-config — shared between preload and main */
 /** Typed IPC channel constants — use instead of hardcoded strings */
@@ -239,7 +331,16 @@ export const IPC_CHANNELS = {
   APPLY_AUTH: 'python:apply-auth',
   VERIFY_AUTH: 'python:verify-auth',
   SHUTDOWN: 'python:shutdown',
+  FETCH_COVER: 'python:fetch-cover',
   OPEN_EXTERNAL: 'open-external',
+  PAUSE_TASK: 'python:pause-task',
+  RESUME_TASK: 'python:resume-task',
+  RETRY_TASK: 'python:retry-task',
+  TOGGLE_GLOBAL_PAUSE: 'python:toggle-global-pause',
+  GET_PROXY_STATUS: 'python:get-proxy-status',
+  GET_AVAILABLE_FONTS: 'python:get-available-fonts',
+  OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
+  GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
 } as const
 
 export const NOTIFICATION_CHANNELS = {
@@ -250,4 +351,5 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
+  'fontName', 'fontSize',
 ] as const

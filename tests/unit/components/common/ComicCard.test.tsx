@@ -8,6 +8,10 @@ vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' })
 }))
 
+vi.mock('@/hooks/useCoverImage', () => ({
+  useCoverImage: vi.fn().mockReturnValue({ coverSrc: 'data:image/png;base64,mock', retry: vi.fn() })
+}))
+
 const mockComic: ComicInfo = {
   id: '1',
   title: '测试漫画',
@@ -25,15 +29,17 @@ describe('ComicCard', () => {
   it('renders cover image', () => {
     render(<ComicCard comic={mockComic} />)
     const img = screen.getByRole('img')
-    expect(img).toHaveAttribute('src', mockComic.coverUrl)
+    expect(img).toHaveAttribute('src', 'data:image/png;base64,mock')
     expect(img).toHaveAttribute('alt', mockComic.title)
   })
 
   it('calls onClick when clicked', async () => {
     const onClick = vi.fn()
-    render(<ComicCard comic={mockComic} onClick={onClick} />)
+    const { container } = render(<ComicCard comic={mockComic} onClick={onClick} />)
 
-    await userEvent.click(screen.getByText('测试漫画'))
+    // Click the card container div instead of the title text (title has stopPropagation)
+    const card = container.querySelector('div[class*="rounded-xl"]')!
+    await userEvent.click(card)
     expect(onClick).toHaveBeenCalledWith(mockComic)
   })
 
@@ -56,7 +62,7 @@ describe('ComicCard', () => {
 
   it('calls onToggleSelect when checkbox clicked in batchMode', async () => {
     const onToggleSelect = vi.fn()
-    render(
+    const { container } = render(
       <ComicCard
         comic={mockComic}
         batchMode={true}
@@ -64,8 +70,9 @@ describe('ComicCard', () => {
       />
     )
 
-    // In batchMode, clicking the card triggers onToggleSelect instead of onClick
-    await userEvent.click(screen.getByText('测试漫画'))
+    // Click the card container div instead of the title text (title has stopPropagation)
+    const card = container.querySelector('div[class*="rounded-xl"]')!
+    await userEvent.click(card)
     expect(onToggleSelect).toHaveBeenCalledWith(mockComic)
   })
 

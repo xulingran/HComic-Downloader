@@ -61,6 +61,19 @@ class Config:
         self.auth_cookie = hcomic_auth.get("cookie", "")
         self.auth_user_agent = hcomic_auth.get("user_agent", "")
 
+        try:
+            self.concurrent_downloads = max(1, min(10, int(self.concurrent_downloads)))
+        except (ValueError, TypeError):
+            self.concurrent_downloads = 4
+        try:
+            self.timeout = max(5, min(300, int(self.timeout)))
+        except (ValueError, TypeError):
+            self.timeout = 30
+        try:
+            self.retry_times = max(0, min(10, int(self.retry_times)))
+        except (ValueError, TypeError):
+            self.retry_times = 3
+
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
         normalized: dict[str, dict[str, str]] = {}

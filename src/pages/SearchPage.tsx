@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
+import { useBatchSelect } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
 import { ComicInfo } from '@shared/types'
 
@@ -20,12 +21,21 @@ export function SearchPage() {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState('keyword')
   const [source, setSource] = useState('hcomic')
-  const [batchMode, setBatchMode] = useState(false)
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [jumpPage, setJumpPage] = useState('')
+  const [showJumpDialog, setShowJumpDialog] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { downloadWithConflictCheck } = useDownloadHelper()
   const { getConfig } = useConfig()
+  const {
+    batchMode,
+    setBatchMode,
+    selectedIds,
+    toggleSelect,
+    selectAll,
+    clearSelection,
+    exitBatchMode,
+  } = useBatchSelect()
 
   useEffect(() => {
     getConfig().then(result => {
@@ -34,23 +44,6 @@ export function SearchPage() {
       }
     }).catch(() => {})
   }, [])
-
-  const toggleSelect = (comic: ComicInfo) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev)
-      if (next.has(comic.id)) next.delete(comic.id)
-      else next.add(comic.id)
-      return next
-    })
-  }
-
-  const selectAll = () => {
-    setSelectedIds(new Set(comics.map(c => c.id)))
-  }
-
-  const clearSelection = () => {
-    setSelectedIds(new Set())
-  }
 
   const handleSearch = async (page: number = 1) => {
     if (!query.trim()) return
@@ -83,14 +76,13 @@ export function SearchPage() {
       const comic = comics.find(c => c.id === id)
       if (comic) await handleDownload(comic)
     }
-    clearSelection()
-    setBatchMode(false)
+    exitBatchMode()
   }
 
   return (
     <div className="space-y-6">
       <div className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm">
-        <div className="flex gap-3 mb-3">
+        <div className="flex gap-3">
           <select
             value={source}
             onChange={(e) => setSource(e.target.value)}
@@ -116,9 +108,7 @@ export function SearchPage() {
               </option>
             ))}
           </select>
-        </div>
 
-        <div className="flex gap-3">
           <input
             type="text"
             value={query}
@@ -139,6 +129,13 @@ export function SearchPage() {
             {isLoading ? '搜索中...' : '搜索'}
           </button>
         </div>
+
+        {/* ── Query context hint ── */}
+        <div className="mt-2 text-xs text-[var(--text-secondary)]">
+          源: {sources.find(s => s.value === source)?.label} | 模式: {searchModes.find(m => m.value === mode)?.label}
+          {pagination && ` | 第 ${pagination.currentPage}/${pagination.totalPages} 页`}
+          {pagination && pagination.totalItems > 0 && ` | 共 ${pagination.totalItems} 条结果`}
+        </div>
       </div>
 
       {comics.length > 0 && (
@@ -157,7 +154,7 @@ export function SearchPage() {
           </label>
           {batchMode && (
             <>
-              <button onClick={selectAll} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+              <button onClick={() => selectAll(comics)} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
                 全选
               </button>
               <button onClick={clearSelection} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
@@ -198,7 +195,7 @@ export function SearchPage() {
       )}
 
       {pagination && pagination.totalPages > 1 && (
-        <div className="flex justify-center gap-2">
+        <div className="flex justify-center items-center gap-2">
           <button
             onClick={() => handleSearch(pagination.currentPage - 1)}
             disabled={pagination.currentPage <= 1}
@@ -207,7 +204,14 @@ export function SearchPage() {
           >
             上一页
           </button>
-          <span className="px-3 py-1 text-[var(--text-primary)]">
+          <span
+            onClick={() => {
+              setJumpPage(String(pagination.currentPage))
+              setShowJumpDialog(true)
+            }}
+            className="px-3 py-1 text-[var(--accent)] cursor-pointer hover:underline"
+            title="点击跳转到指定页"
+          >
             {pagination.currentPage} / {pagination.totalPages}
           </span>
           <button
@@ -218,6 +222,55 @@ export function SearchPage() {
           >
             下一页
           </button>
+        </div>
+      )}
+
+      {/* ── Page jump dialog ── */}
+      {showJumpDialog && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowJumpDialog(false)}>
+          <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-medium text-[var(--text-primary)] mb-4">跳转到指定页</h3>
+            <input
+              type="number"
+              value={jumpPage}
+              onChange={(e) => setJumpPage(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const page = parseInt(jumpPage, 10)
+                  if (page >= 1 && page <= (pagination?.totalPages || 1)) {
+                    handleSearch(page)
+                    setShowJumpDialog(false)
+                  }
+                }
+              }}
+              min={1}
+              max={pagination?.totalPages || 1}
+              placeholder={`1 - ${pagination?.totalPages || 1}`}
+              className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                         text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2 mt-4">
+              <button
+                onClick={() => setShowJumpDialog(false)}
+                className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+              >
+                取消
+              </button>
+              <button
+                onClick={() => {
+                  const page = parseInt(jumpPage, 10)
+                  if (page >= 1 && page <= (pagination?.totalPages || 1)) {
+                    handleSearch(page)
+                    setShowJumpDialog(false)
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white"
+              >
+                跳转
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

@@ -3,15 +3,18 @@ import { DownloadTask } from '@shared/types'
 
 interface DownloadState {
   tasks: DownloadTask[]
+  isGloballyPaused: boolean
   setTasks: (tasks: DownloadTask[]) => void
   addTask: (task: DownloadTask) => void
   upsertTask: (task: DownloadTask) => void
   updateTask: (id: string, updates: Partial<DownloadTask>) => void
   removeTask: (id: string) => void
+  setGlobalPaused: (paused: boolean) => void
 }
 
 export const useDownloadStore = create<DownloadState>((set) => ({
   tasks: [],
+  isGloballyPaused: false,
   setTasks: (tasks) => set({ tasks }),
   addTask: (task) => set((state) => ({ tasks: [...state.tasks, task] })),
   upsertTask: (task) =>
@@ -28,5 +31,6 @@ export const useDownloadStore = create<DownloadState>((set) => ({
   removeTask: (id) =>
     set((state) => ({
       tasks: state.tasks.filter((t) => t.id !== id)
-    }))
+    })),
+  setGlobalPaused: (paused) => set({ isGloballyPaused: paused }),
 }))

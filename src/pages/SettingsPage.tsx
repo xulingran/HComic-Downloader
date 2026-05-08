@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
-import { useConfig } from '../hooks/useIpc'
+import { useConfig, useProxyStatus, useAvailableFonts } from '../hooks/useIpc'
 import { useAuth } from '../hooks/useIpc'
-import type { ConfigKey, ConfigValueMap } from '@shared/types'
+import type { ConfigKey, ConfigValueMap, FontInfo, ProxyStatus } from '@shared/types'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
 type CardStyle = 'cover' | 'detailed'
@@ -24,8 +24,10 @@ interface ConfigState {
 
 export function SettingsPage() {
   const { themeMode, cardStyle, setThemeMode, setCardStyle } = useSettingsStore()
-  const { getConfig, setConfig } = useConfig()
+  const { getConfig, setConfig, openDownloadDir } = useConfig()
   const { applyAuth, verifyAuth } = useAuth()
+  const { getProxyStatus } = useProxyStatus()
+  const { getAvailableFonts } = useAvailableFonts()
   const [curlText, setCurlText] = useState('')
   const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'valid' | 'invalid' | 'error'>('idle')
   const [loginMessage, setLoginMessage] = useState('')
@@ -44,10 +46,33 @@ export function SettingsPage() {
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [availableFonts, setAvailableFonts] = useState<FontInfo[]>([])
+  const [fontName, setFontName] = useState('')
+  const [fontSize, setFontSize] = useState(14)
+  const [proxyStatus, setProxyStatus] = useState<ProxyStatus | null>(null)
+  const [proxyLoading, setProxyLoading] = useState(false)
 
   useEffect(() => {
     loadConfig()
   }, [])
+
+  // ── Load fonts and proxy ──
+  useEffect(() => {
+    getAvailableFonts().then((result) => setAvailableFonts(result.fonts)).catch(() => {})
+    loadProxyStatus()
+  }, [])
+
+  const loadProxyStatus = async () => {
+    setProxyLoading(true)
+    try {
+      const result = await getProxyStatus()
+      setProxyStatus(result)
+    } catch {
+      setProxyStatus(null)
+    } finally {
+      setProxyLoading(false)
+    }
+  }
 
   const loadConfig = async () => {
     try {
@@ -82,6 +107,9 @@ export function SettingsPage() {
             setLoginStatus('idle')
           }
         }
+        // ── Font config ──
+        if (result.config.fontName) setFontName(result.config.fontName)
+        if (result.config.fontSize) setFontSize(result.config.fontSize)
       }
     } catch (err) {
       console.error('Failed to load config:', err)
@@ -254,6 +282,61 @@ export function SettingsPage() {
               ))}
             </div>
           </div>
+
+          {/* ── Font selection ── */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">字体</label>
+            <select
+              value={fontName}
+              onChange={async (e) => {
+                const name = e.target.value
+                setFontName(name)
+                setSaveError(null)
+                setIsSaving(true)
+                try {
+                  await setConfig('fontName', name)
+                  document.documentElement.style.setProperty('--app-font-family', name)
+                } catch (err: any) {
+                  setSaveError(err?.message || '保存失败')
+                } finally {
+                  setIsSaving(false)
+                }
+              }}
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                         text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+            >
+              {availableFonts.map((f) => (
+                <option key={f.name} value={f.name}>{f.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* ── Font size ── */}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+              字体大小 ({fontSize}px)
+            </label>
+            <input
+              type="range"
+              min="12"
+              max="20"
+              value={fontSize}
+              onChange={async (e) => {
+                const size = parseInt(e.target.value)
+                setFontSize(size)
+                setIsSaving(true)
+                try {
+                  await setConfig('fontSize', size)
+                  document.documentElement.style.setProperty('--app-font-size', `${size}px`)
+                } catch (err: any) {
+                  setSaveError(err?.message || '保存失败')
+                } finally {
+                  setIsSaving(false)
+                }
+              }}
+              className="w-full"
+            />
+          </div>
         </div>
       </div>
 
@@ -284,15 +367,28 @@ export function SettingsPage() {
 
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">下载目录</label>
-            <input
-              type="text"
-              value={config.downloadDir}
-              onChange={(e) => handleTextConfigChange('downloadDir', e.target.value)}
-              onBlur={() => handleTextConfigBlur('downloadDir')}
-              placeholder="请输入下载目录的绝对路径"
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                         text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
-            />
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={config.downloadDir}
+                onChange={(e) => handleTextConfigChange('downloadDir', e.target.value)}
+                onBlur={() => handleTextConfigBlur('downloadDir')}
+                placeholder="请输入下载目录的绝对路径"
+                className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                           text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                onClick={async () => {
+                  try { await openDownloadDir() } catch (err: any) {
+                    setSaveError(err?.message || '打开目录失败')
+                  }
+                }}
+                className="px-3 py-2 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                           text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] whitespace-nowrap"
+              >
+                打开
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -469,6 +565,31 @@ export function SettingsPage() {
               {loginMessage}
             </p>
           )}
+        </div>
+      </div>
+
+      {/* ── Proxy status ── */}
+      <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-4">
+        <h3 className="text-base font-medium text-[var(--text-primary)] border-b border-[var(--border)] pb-3">
+          系统代理
+        </h3>
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[var(--text-secondary)] w-16 flex-shrink-0">HTTP:</span>
+            <span className="text-[var(--text-primary)]">{proxyStatus?.http || '未检测到'}</span>
+          </div>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-[var(--text-secondary)] w-16 flex-shrink-0">HTTPS:</span>
+            <span className="text-[var(--text-primary)]">{proxyStatus?.https || '未检测到'}</span>
+          </div>
+          <button
+            onClick={loadProxyStatus}
+            disabled={proxyLoading}
+            className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                       text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] disabled:opacity-50"
+          >
+            {proxyLoading ? '检测中...' : '刷新代理'}
+          </button>
         </div>
       </div>
 

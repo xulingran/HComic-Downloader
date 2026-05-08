@@ -28,10 +28,13 @@ vi.mock('electron', () => {
       whenReady: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       quit: vi.fn(),
+      setAsDefaultProtocolClient: vi.fn(),
     },
     BrowserWindow: MockBrowserWindow,
     ipcMain: { handle: mockHandle },
     shell: { openExternal: vi.fn().mockResolvedValue(undefined) },
+    dialog: { showErrorBox: vi.fn(), showMessageBoxSync: vi.fn().mockReturnValue(1), },
+    Notification: { isSupported: vi.fn().mockReturnValue(false), },
   }
 })
 

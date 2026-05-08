@@ -19,8 +19,10 @@ const {
 }))
 
 vi.mock('@/hooks/useIpc', () => ({
-  useConfig: vi.fn().mockReturnValue({ getConfig: mockGetConfig, setConfig: mockSetConfig }),
-  useAuth: vi.fn().mockReturnValue({ applyAuth: mockApplyAuth, verifyAuth: mockVerifyAuth })
+  useConfig: vi.fn().mockReturnValue({ getConfig: mockGetConfig, setConfig: mockSetConfig, openDownloadDir: vi.fn().mockResolvedValue({ success: true }) }),
+  useAuth: vi.fn().mockReturnValue({ applyAuth: mockApplyAuth, verifyAuth: mockVerifyAuth }),
+  useProxyStatus: vi.fn().mockReturnValue({ getProxyStatus: vi.fn().mockResolvedValue({ http: '', https: '', noProxy: '' }) }),
+  useAvailableFonts: vi.fn().mockReturnValue({ getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }) }),
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({

@@ -38,7 +38,8 @@ vi.mock('electron', () => {
     app: {
       whenReady: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
-      quit: vi.fn()
+      quit: vi.fn(),
+      setAsDefaultProtocolClient: vi.fn(),
     },
     BrowserWindow: MockBrowserWindow,
     ipcMain: {
@@ -46,7 +47,14 @@ vi.mock('electron', () => {
     },
     shell: {
       openExternal: vi.fn().mockResolvedValue(undefined)
-    }
+    },
+    dialog: {
+      showErrorBox: vi.fn(),
+      showMessageBoxSync: vi.fn().mockReturnValue(1),
+    },
+    Notification: {
+      isSupported: vi.fn().mockReturnValue(false),
+    },
   }
 })
 
@@ -83,8 +91,9 @@ describe('main.ts', () => {
   })
 
   describe('IPC handler registration', () => {
-    it('should register all 13 IPC handlers', () => {
-      expect(handleCalls.length).toBe(13)
+    it('should register all IPC handlers', () => {
+      // 14 original + 8 new = 22 total
+      expect(handleCalls.length).toBe(22)
     })
 
     const expectedChannels = [
@@ -99,7 +108,17 @@ describe('main.ts', () => {
       'python:get-statistics',
       'python:apply-auth',
       'python:verify-auth',
-      'open-external'
+      'python:shutdown',
+      'python:fetch-cover',
+      'open-external',
+      'python:pause-task',
+      'python:resume-task',
+      'python:retry-task',
+      'python:toggle-global-pause',
+      'python:get-proxy-status',
+      'python:get-available-fonts',
+      'python:open-download-dir',
+      'python:get-download-detail',
     ]
 
     expectedChannels.forEach(channel => {
@@ -132,6 +151,8 @@ describe('main.ts', () => {
       const validMethods = new Set([
         'search', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
         'get_downloads', 'cancel_download', 'get_statistics', 'apply_auth', 'verify_auth', 'shutdown',
+        'fetch_cover', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
+        'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),
