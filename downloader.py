@@ -84,6 +84,18 @@ class ComicDownloader:
         """配置登录相关请求头。"""
         configure_session_auth(self.session, {"User-Agent": self.default_user_agent}, cookie, user_agent)
 
+    def rebuild_session(self):
+        """重建 HTTP 会话以应用新的重试/超时配置，保留已有认证头。
+
+        旧 session 不会立即关闭——进行中的下载线程可能仍持有引用。
+        它将在所有引用释放后由 GC 回收。
+        """
+        old_session = self.session
+        self.session = self._create_session()
+        for key in ("Cookie", "User-Agent"):
+            if key in old_session.headers:
+                self.session.headers[key] = old_session.headers[key]
+
     def close(self):
         """关闭底层会话连接。"""
         self.session.close()

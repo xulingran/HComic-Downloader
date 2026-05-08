@@ -2,9 +2,10 @@ import { useEffect } from 'react'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useDownload } from '../hooks/useIpc'
 import { ProgressBar } from '../components/common/ProgressBar'
+import type { DownloadStatus } from '@shared/types'
 
 export function DownloadPage() {
-  const { tasks, setTasks, updateTask } = useDownloadStore()
+  const { tasks, setTasks, addTask, updateTask } = useDownloadStore()
   const { getDownloads, cancelDownload, progress } = useDownload()
 
   useEffect(() => {
@@ -12,15 +13,27 @@ export function DownloadPage() {
   }, [])
 
   useEffect(() => {
+    const currentTasks = useDownloadStore.getState().tasks
     for (const [taskId, data] of Object.entries(progress)) {
-      updateTask(taskId, {
-        progress: data.progress,
-        downloadedPages: data.current,
-        totalPages: data.total,
-        status: data.status,
-      })
+      if (currentTasks.some((t) => t.id === taskId)) {
+        updateTask(taskId, {
+          status: data.status as DownloadStatus,
+          progress: data.progress,
+          totalPages: data.total,
+          downloadedPages: data.current,
+        })
+      } else {
+        addTask({
+          id: taskId,
+          comic: { id: taskId, title: data.title || '', url: '', coverUrl: '', source: '' },
+          status: data.status as DownloadStatus,
+          progress: data.progress,
+          totalPages: data.total,
+          downloadedPages: data.current,
+        })
+      }
     }
-  }, [progress, updateTask])
+  }, [progress, addTask, updateTask])
 
   const loadDownloads = async () => {
     try {

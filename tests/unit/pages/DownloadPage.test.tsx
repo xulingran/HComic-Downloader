@@ -8,7 +8,9 @@ const { mockGetDownloads, mockCancelDownload, mockStoreState } = vi.hoisted(() =
   const state = {
     tasks: [] as DownloadTask[],
     setTasks: vi.fn(),
-    updateTask: vi.fn()
+    addTask: vi.fn(),
+    updateTask: vi.fn(),
+    getState: () => ({ tasks: state.tasks })
   }
   return {
     mockGetDownloads: vi.fn(),
@@ -28,7 +30,10 @@ vi.mock('@/hooks/useIpc', () => ({
 }))
 
 vi.mock('@/stores/useDownloadStore', () => ({
-  useDownloadStore: vi.fn(() => mockStoreState)
+  useDownloadStore: Object.assign(
+    vi.fn(() => mockStoreState),
+    { getState: mockStoreState.getState }
+  )
 }))
 
 vi.mock('@/components/common/ProgressBar', () => ({

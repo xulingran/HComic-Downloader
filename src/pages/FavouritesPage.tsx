@@ -34,7 +34,12 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       setNeedsLogin(result.needsLogin)
       setCurrentPage(page)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load favourites')
+      const msg = err instanceof Error ? err.message : 'Failed to load favourites'
+      if (msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
+        setNeedsLogin(true)
+      } else {
+        setError(msg)
+      }
     } finally {
       setIsLoading(false)
     }

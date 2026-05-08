@@ -52,6 +52,12 @@ class IPCServer:
             timeout=self.config.timeout,
             retry_times=self.config.retry_times,
         )
+        saved_auth = self.config.source_auth.get("hcomic", {})
+        if saved_auth:
+            self.downloader.configure_auth(
+                cookie=saved_auth.get("cookie", ""),
+                user_agent=saved_auth.get("user_agent", ""),
+            )
         self.cbz_builder = CBZBuilder(
             filename_template=self.config.cbz_filename_template,
             config=self.config,
@@ -85,11 +91,12 @@ class IPCServer:
         print(json.dumps(notification), flush=True)
 
     def _comic_to_dict(self, comic) -> Dict:
-        cover_url = ""
-        try:
-            cover_url = comic.get_image_url(1)
-        except Exception:
-            cover_url = comic.cover_url or ""
+        cover_url = comic.cover_url or ""
+        if not cover_url:
+            try:
+                cover_url = comic.get_image_url(1)
+            except Exception:
+                cover_url = ""
 
         return {
             "id": comic.id,
@@ -184,14 +191,14 @@ class IPCServer:
         except ParserResponseError as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "login", "auth")):
-                return {"comics": [], "pagination": None, "needsLogin": True, "error": {"type": "auth", "message": msg}}
-            return {"comics": [], "pagination": None, "needsLogin": False, "error": {"type": "network", "message": msg}}
+                raise ValueError(f"AUTH_REQUIRED:{msg}")
+            raise RuntimeError(msg)
         except (ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error(f"Get favourites parse error: {e}")
-            return {"comics": [], "pagination": None, "needsLogin": False, "error": {"type": "parse", "message": str(e)}}
+            raise RuntimeError(f"Parse error: {e}")
         except Exception as e:
             logger.error(f"Get favourites unexpected error: {e}")
-            return {"comics": [], "pagination": None, "needsLogin": False, "error": {"type": "unknown", "message": str(e)}}
+            raise
 
     def handle_apply_auth(self, curl_text: str) -> Dict:
         if not curl_text or not curl_text.strip():
@@ -204,6 +211,7 @@ class IPCServer:
         self.config.save(_get_config_path())
 
         self.parser.configure_auth(cookie=cookie, user_agent=user_agent, source="hcomic")
+        self.downloader.configure_auth(cookie=cookie, user_agent=user_agent)
 
         logger.info(f"Auth applied: cookie length={len(cookie)}, ua length={len(user_agent)}")
         return {"success": True}
@@ -240,9 +248,9 @@ class IPCServer:
     def handle_set_config(self, key: str, value: Any) -> Dict:
         python_key = CONFIG_KEY_MAP.get(key)
         if not python_key:
-            return {"success": False, "error": f"Unknown config key: {key}"}
+            raise ValueError(f"Unknown config key: {key}")
         if not hasattr(self.config, python_key):
-            return {"success": False, "error": f"Unknown config key: {key}"}
+            raise ValueError(f"Unknown config key: {key}")
         try:
             setattr(self.config, python_key, value)
             self.config.save(_get_config_path())
@@ -261,6 +269,7 @@ class IPCServer:
                 self.downloader.timeout = value
             elif key == 'retryTimes':
                 self.downloader.retry_times = value
+                self.downloader.rebuild_session()
             elif key == 'cbzFilenameTemplate':
                 self.cbz_builder.filename_template = value
             elif key == 'defaultSource':
@@ -269,7 +278,7 @@ class IPCServer:
             return {"success": True}
         except Exception as e:
             logger.error(f"Set config error for {key}: {e}")
-            return {"success": False, "error": str(e)}
+            raise
 
     def handle_get_downloads(self) -> Dict:
         tasks = []

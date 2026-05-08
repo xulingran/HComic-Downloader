@@ -91,6 +91,10 @@ export interface DownloadStartResult {
   status: string
 }
 
+export type DownloadResult =
+  | DownloadStartResult
+  | { taskId: null; status: 'conflict'; conflictPath: string }
+
 export interface DownloadConflictResult {
   hasConflict: boolean
   path: string
@@ -191,7 +195,7 @@ export interface DownloadProgressEvent {
 /** Narrow API exposed by preload via window.hcomic */
 export interface HcomicAPI {
   search(query: string, mode: string, page: number, source?: string): Promise<SearchResult>
-  download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadStartResult>
+  download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
   getFavourites(page?: number): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
   getConfig(): Promise<{ config: AppConfig }>
