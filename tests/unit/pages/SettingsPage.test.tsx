@@ -112,7 +112,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      const input = screen.getByPlaceholderText('留空使用默认目录') as HTMLInputElement
+      const input = screen.getByPlaceholderText('请输入下载目录的绝对路径') as HTMLInputElement
       expect(input.value).toBe('/downloads')
     })
   })
@@ -192,12 +192,13 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('留空使用默认目录')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText('请输入下载目录的绝对路径')).toBeInTheDocument()
     })
 
-    const input = screen.getByPlaceholderText('留空使用默认目录')
+    const input = screen.getByPlaceholderText('请输入下载目录的绝对路径')
     await userEvent.clear(input)
     await userEvent.type(input, '/new/path')
+    await userEvent.tab()
 
     expect(mockSetConfig).toHaveBeenCalledWith('downloadDir', '/new/path')
   })
@@ -450,5 +451,63 @@ describe('SettingsPage', () => {
     await userEvent.click(screen.getByText('始终通知'))
 
     expect(mockSetConfig).toHaveBeenCalledWith('notifyWhenForeground', 'always')
+  })
+
+  it('hydrates themeMode from config on load', async () => {
+    mockGetConfig.mockResolvedValue({
+      config: { ...defaultConfig, themeMode: 'dark' }
+    })
+
+    render(<SettingsPage />)
+
+    await waitFor(() => {
+      expect(mockSetThemeMode).toHaveBeenCalledWith('dark')
+    })
+  })
+
+  it('restores previous value on blur save failure', async () => {
+    mockSetConfig.mockRejectedValueOnce(new Error('Invalid value'))
+    // After failure, getConfig returns the previous valid value
+    mockGetConfig
+      .mockResolvedValueOnce({ config: defaultConfig })
+      .mockResolvedValueOnce({ config: defaultConfig })
+
+    render(<SettingsPage />)
+
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('请输入下载目录的绝对路径')).toBeInTheDocument()
+    })
+
+    const input = screen.getByPlaceholderText('请输入下载目录的绝对路径')
+    await userEvent.clear(input)
+    await userEvent.tab()
+
+    await waitFor(() => {
+      // getConfig should be called again to restore the previous value
+      expect(mockGetConfig).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('preserves zero values for numeric config fields', async () => {
+    mockGetConfig.mockResolvedValue({
+      config: {
+        ...defaultConfig,
+        retryTimes: 0,
+        batchDownloadDelay: 0,
+        autoRetryMaxAttempts: 0,
+        concurrentDownloads: 0,
+        timeout: 0,
+      }
+    })
+
+    render(<SettingsPage />)
+
+    await waitFor(() => {
+      // Verify zero values are shown, not default fallbacks
+      expect(screen.getByText('并发下载数 (0)')).toBeInTheDocument()
+      expect(screen.getByText('超时时间 (0秒)')).toBeInTheDocument()
+      expect(screen.getByText('重试次数 (0)')).toBeInTheDocument()
+      expect(screen.getByText('批量下载延迟 (0秒)')).toBeInTheDocument()
+    })
   })
 })

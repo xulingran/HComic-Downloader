@@ -8,6 +8,8 @@ import {
 } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
+let isQuitting = false
+let shutdownDone = false
 
 const ALLOWED_EXTERNAL_DOMAINS = [
   'h-comic.com',
@@ -20,11 +22,27 @@ const CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS = ['{author}', '{title}', '{id}']
 function validateCbzTemplate(v: unknown): boolean {
   if (typeof v !== 'string' || v.length === 0 || v.length > 256) return false
   if (v.includes('/') || v.includes('\\') || v.includes('..')) return false
-  // Reject unclosed braces: { without a matching }
-  if (/\{[^}]*$/.test(v) || /^[^{]*\}/.test(v)) return false
-  // Match ALL {…} blocks and reject any not in the whitelist
-  // This catches format specifiers like {id:>10} that would bypass a name-only regex
-  const parts = v.match(/\{[^}]+\}/g) || []
+
+  // Python str.format() brace validation:
+  // Walk the string tracking brace depth, handling {{ / }} escapes
+  let depth = 0
+  for (let i = 0; i < v.length; i++) {
+    if (v[i] === '{') {
+      if (i + 1 < v.length && v[i + 1] === '{') { i++; continue }
+      depth++
+    } else if (v[i] === '}') {
+      if (i + 1 < v.length && v[i + 1] === '}') { i++; continue }
+      depth--
+      if (depth < 0) return false
+    }
+  }
+  if (depth !== 0) return false
+
+  // Reject bare {} (positional placeholder) — Python would fail with keyword args
+  if (/\{\}/.test(v)) return false
+
+  // Only allow whitelisted placeholders
+  const parts = v.match(/\{[^{}]+\}/g) || []
   return parts.every(p => CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS.includes(p.toLowerCase()))
 }
 
@@ -204,6 +222,55 @@ function createWindow() {
   mainWindow.on('closed', () => {
     mainWindow = null
   })
+
+  mainWindow.on('close', async (e) => {
+    if (isQuitting) return
+
+    // Always prevent to allow async work (Electron won't await async handlers)
+    e.preventDefault()
+
+    // Snapshot the window reference before any await
+    const win = mainWindow
+
+    try {
+      const bridge = getPythonBridge()
+      const result = await bridge.call('get_downloads') as { tasks: Array<{ status: string }> }
+
+      // Guard: if a quit was triggered while we were awaiting (e.g. Cmd+Q on macOS),
+      // or the window was already closed/destroyed, bail out.
+      if (isQuitting || !win || win.isDestroyed() || mainWindow !== win) return
+
+      const activeTasks = result.tasks.filter(
+        t => t.status === 'downloading' || t.status === 'queued' || t.status === 'paused'
+      )
+
+      if (activeTasks.length > 0) {
+        const choice = dialog.showMessageBoxSync(win, {
+          type: 'question',
+          title: '确认退出',
+          message: `还有 ${activeTasks.length} 个下载任务正在进行中。`,
+          detail: '退出将取消所有正在进行的下载。',
+          buttons: ['取消下载并退出', '继续下载'],
+          defaultId: 1,
+          cancelId: 1,
+        })
+        if (choice === 0) {
+          // User confirmed quit — trigger full app quit (before-quit handles bridge shutdown)
+          isQuitting = true
+          app.quit()
+        }
+        // choice === 1: user chose to keep running, window stays open
+      } else {
+        // No active downloads — just close this window, don't touch bridge
+        // (macOS: bridge stays alive for Dock re-activate; Windows/Linux:
+        //  window-all-closed triggers app.quit() → before-quit handles shutdown)
+        win.destroy()
+      }
+    } catch {
+      // Bridge unreachable — just close the window
+      if (win && !win.isDestroyed()) win.destroy()
+    }
+  })
 }
 
 function registerIPCHandlers() {
@@ -305,6 +372,10 @@ function registerIPCHandlers() {
     return bridge.call('verify_auth')
   })
 
+  ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
+    return bridge.call('shutdown')
+  })
+
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url: string) => {
     if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid URL')
     let parsed: URL
@@ -344,7 +415,20 @@ app.on('activate', () => {
   }
 })
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  if (shutdownDone) return
+  // Prevent default quit to do async graceful shutdown, then re-quit.
+  e.preventDefault()
+  isQuitting = true
   const bridge = getPythonBridge()
-  bridge.kill()
+  bridge.shutdown()
+    .then(() => {
+      shutdownDone = true
+      app.quit()
+    })
+    .catch(() => {
+      shutdownDone = true
+      bridge.kill()
+      app.quit()
+    })
 })

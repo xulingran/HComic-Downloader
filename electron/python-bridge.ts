@@ -189,6 +189,16 @@ export class PythonBridge {
       this.process = null
     }
   }
+
+  async shutdown(): Promise<void> {
+    if (!this.process) return
+    try {
+      await this.call('shutdown', {})
+    } catch {
+      // Shutdown RPC may fail if process is already dead
+    }
+    this.kill()
+  }
 }
 
 let bridge: PythonBridge | null = null

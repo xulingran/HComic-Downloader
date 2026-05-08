@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useTheme } from './hooks/useTheme'
+import { useSettingsStore } from './stores/useSettingsStore'
 import { Sidebar } from './components/Sidebar'
 import { SearchPage } from './pages/SearchPage'
 import { DownloadPage } from './pages/DownloadPage'
@@ -8,7 +9,18 @@ import { SettingsPage } from './pages/SettingsPage'
 import { StatisticsPage } from './pages/StatisticsPage'
 
 function App() {
+  const { setThemeMode } = useSettingsStore()
   useTheme()
+
+  useEffect(() => {
+    window.hcomic?.getConfig().then((result) => {
+      const mode = result?.config?.themeMode
+      if (mode === 'light' || mode === 'dark' || mode === 'auto') {
+        setThemeMode(mode)
+      }
+    }).catch(() => { /* 配置加载失败保持默认主题 */ })
+  }, [setThemeMode])
+
   const [activePage, setActivePage] = useState('search')
 
   const renderPage = () => {

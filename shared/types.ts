@@ -145,6 +145,10 @@ export interface IPCMethods {
     params: Record<string, never>
     result: { valid: boolean; message: string }
   }
+  shutdown: {
+    params: Record<string, never>
+    result: { success: boolean; cancelledTasks: number }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -160,6 +164,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-statistics': 'get_statistics',
   'python:apply-auth': 'apply_auth',
   'python:verify-auth': 'verify_auth',
+  'python:shutdown': 'shutdown',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -177,6 +182,7 @@ export interface IPCChannelParamsMap {
   'python:get-statistics': []
   'python:apply-auth': [curlText: string]
   'python:verify-auth': []
+  'python:shutdown': []
 }
 
 export type IPCChannelResult<C extends PythonIPCChannel> =
@@ -205,6 +211,7 @@ export interface HcomicAPI {
   getStatistics(): Promise<StatisticsData>
   applyAuth(curlText: string): Promise<{ success: boolean }>
   verifyAuth(): Promise<{ valid: boolean; message: string }>
+  shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   openUrl(url: string): Promise<void>
   onDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void
 }
@@ -231,6 +238,7 @@ export const IPC_CHANNELS = {
   GET_STATISTICS: 'python:get-statistics',
   APPLY_AUTH: 'python:apply-auth',
   VERIFY_AUTH: 'python:verify-auth',
+  SHUTDOWN: 'python:shutdown',
   OPEN_EXTERNAL: 'open-external',
 } as const
 

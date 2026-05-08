@@ -42,7 +42,11 @@ class IPCServer:
         from download_manager import ComicDownloadManager
         from cbz_builder import CBZBuilder
 
-        self.config = Config.load(_get_config_path())
+        try:
+            self.config = Config.load(_get_config_path())
+        except Exception as e:
+            logger.warning("Config load failed, using defaults: %s", e)
+            self.config = Config()
         self.parser = MultiSourceParser(
             default_source=self.config.default_source,
             source_auth=self.config.source_auth,
@@ -111,6 +115,32 @@ class IPCServer:
             "pages": comic.pages if hasattr(comic, 'pages') else None,
         }
 
+    def _build_and_prepare_comic(self, data: dict, comic_id: str = None) -> "ComicInfo":
+        """Build a ComicInfo from frontend data and prepare it for download.
+
+        Ensures the comic has full metadata (author, title, pages, etc.)
+        fetched from the API so that output path computation matches the
+        actual download path exactly.
+        """
+        from models import ComicInfo
+        comic = ComicInfo(
+            id=comic_id or data.get("id", ""),
+            title=data.get("title", "Unknown"),
+            preview_url=data.get("url", ""),
+            cover_url=data.get("coverUrl", ""),
+            source_site=data.get("sourceSite") or data.get("source", "hcomic"),
+            comic_source=data.get("source", ""),
+            media_id=data.get("mediaId", ""),
+            pages=data.get("pages") or 0,
+            tags=data.get("tags") or [],
+            author=data.get("author"),
+        )
+        if self._download_manager.prepare_comic:
+            prepared = self._download_manager.prepare_comic(comic)
+            if prepared is not None:
+                comic = prepared
+        return comic
+
     def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str = None) -> Dict:
         effective_source = source if source in ("hcomic", "moeimg") else self.config.default_source
         effective_query = query
@@ -127,20 +157,8 @@ class IPCServer:
         }
 
     def handle_download(self, comic_id: str, comic_data: dict = None, overwrite: bool = False) -> Dict:
-        from models import ComicInfo
-        data = comic_data or {}
-        comic = ComicInfo(
-            id=comic_id,
-            title=data.get("title", "Unknown"),
-            preview_url=data.get("url", ""),
-            cover_url=data.get("coverUrl", ""),
-            source_site=data.get("sourceSite") or data.get("source", "hcomic"),
-            comic_source=data.get("source", ""),
-            media_id=data.get("mediaId", ""),
-            pages=data.get("pages") or 0,
-            tags=data.get("tags") or [],
-            author=data.get("author"),
-        )
+        comic = self._build_and_prepare_comic(comic_data or {}, comic_id=comic_id)
+
         if not overwrite:
             output_path = self.cbz_builder.get_output_path_for_format(
                 comic, self.config.output_format, self.config.download_dir
@@ -156,15 +174,7 @@ class IPCServer:
         }
 
     def handle_check_download_conflict(self, comic_data: dict) -> Dict:
-        from models import ComicInfo
-        data = comic_data or {}
-        comic = ComicInfo(
-            id=data.get("id", ""),
-            title=data.get("title", ""),
-            source_site=data.get("sourceSite") or data.get("source", "hcomic"),
-            comic_source=data.get("source", ""),
-            author=data.get("author"),
-        )
+        comic = self._build_and_prepare_comic(comic_data or {})
         output_path = self.cbz_builder.get_output_path_for_format(
             comic, self.config.output_format, self.config.download_dir
         )
@@ -308,6 +318,21 @@ class IPCServer:
             "downloadsByDay": [],
         }
 
+    def handle_shutdown(self) -> Dict:
+        """Gracefully shut down: cancel active tasks, wait for completion, stop the queue."""
+        active_statuses = {"queued", "downloading", "paused"}
+        cancelled_count = 0
+        for task_id in list(self._download_manager.tasks.keys()):
+            task = self._download_manager.tasks.get(task_id)
+            if task and task.status.value in active_statuses:
+                self._download_manager.cancel_task(task_id)
+                cancelled_count += 1
+        self._download_manager.stop()
+        if cancelled_count > 0:
+            self._download_manager.wait_active_downloads(timeout=10.0)
+        logger.info(f"Shutdown: cancelled {cancelled_count} active tasks")
+        return {"success": True, "cancelledTasks": cancelled_count}
+
     def handle_request(self, request: Dict) -> Dict:
         method = request.get("method")
         params = request.get("params", {})
@@ -325,6 +350,7 @@ class IPCServer:
             "get_downloads": self.handle_get_downloads,
             "cancel_download": self.handle_cancel_download,
             "get_statistics": self.handle_get_statistics,
+            "shutdown": self.handle_shutdown,
         }
 
         handler = handlers.get(method)

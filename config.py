@@ -46,6 +46,9 @@ class Config:
         # 验证输出格式
         if self.output_format not in ("folder", "zip", "cbz"):
             self.output_format = "cbz"
+        # 归一化主题模式
+        if self.theme_mode not in ("auto", "light", "dark"):
+            self.theme_mode = "auto"
         hcomic_auth = self.get_source_auth("hcomic")
         if (
             not hcomic_auth.get("cookie")
@@ -100,8 +103,22 @@ class Config:
         """从文件加载配置，如果不存在则返回默认配置"""
         if config_path and os.path.exists(config_path):
             import json
-            with open(config_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+            try:
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+            except (json.JSONDecodeError, OSError) as e:
+                logger.warning(
+                    "Config file %s is corrupted (%s); backing up and using defaults",
+                    config_path, e,
+                )
+                try:
+                    backup_path = config_path + ".corrupted"
+                    if not os.path.exists(backup_path):
+                        os.replace(config_path, backup_path)
+                        logger.info("Corrupted config backed up to %s", backup_path)
+                except OSError:
+                    pass
+                return cls()
             if not isinstance(data, dict):
                 return cls()
             # 迁移旧配置：auth_cookie/auth_user_agent -> source_auth.hcomic

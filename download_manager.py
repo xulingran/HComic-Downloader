@@ -29,6 +29,7 @@ class DownloadManager:
         self._lock = threading.Lock()
         self._queue_condition = threading.Condition(self._lock)
         self._stop_event = threading.Event()
+        self._worker_thread: Optional[threading.Thread] = None
 
         # 回调
         self._on_task_update: Optional[Callable[[DownloadTask], None]] = None
@@ -78,7 +79,8 @@ class DownloadManager:
             self._stop_event.clear()
             self.is_running = True
 
-        threading.Thread(target=self._process_queue, daemon=True).start()
+        self._worker_thread = threading.Thread(target=self._process_queue, daemon=True)
+        self._worker_thread.start()
         logger.info("Download manager started")
 
     def stop(self):
@@ -86,6 +88,23 @@ class DownloadManager:
         self._stop_event.set()
         self._notify_queue_changed()
         logger.info("Download manager stop requested")
+
+    def wait_active_downloads(self, timeout: float = 10.0) -> bool:
+        """等待队列工作线程完全退出（包括正在执行的下载收尾和清理）。
+
+        调用方应先 cancel_task + stop，再调此方法。
+
+        Args:
+            timeout: 最大等待秒数。
+
+        Returns:
+            True 如果工作线程已结束，False 如果超时。
+        """
+        thread = self._worker_thread
+        if thread is None or not thread.is_alive():
+            return True
+        thread.join(timeout=timeout)
+        return not thread.is_alive()
 
     def _process_queue(self):
         """队列处理主循环（在后台线程运行）"""

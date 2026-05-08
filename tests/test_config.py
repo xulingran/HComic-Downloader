@@ -328,5 +328,124 @@ class TestConfigConstructorNoSideEffects(unittest.TestCase):
             self.assertFalse(os.path.exists(nonexistent))
 
 
+class TestConfigLoadCorrupted(unittest.TestCase):
+    """测试 Config.load() 处理损坏配置文件"""
+
+    def test_load_corrupted_json_returns_default(self):
+        """损坏的 JSON 文件应返回默认配置"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+            f.write("{invalid json content!!!")
+
+        try:
+            config = Config.load(config_path)
+            self.assertIsInstance(config, Config)
+            self.assertEqual(config.concurrent_downloads, 4)
+            self.assertEqual(config.theme_mode, "auto")
+        finally:
+            backup_path = config_path + ".corrupted"
+            if os.path.exists(backup_path):
+                os.unlink(backup_path)
+            if os.path.exists(config_path):
+                os.unlink(config_path)
+
+    def test_load_corrupted_json_creates_backup(self):
+        """损坏的 JSON 文件应被备份为 .corrupted"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+            f.write("not valid json {{{")
+
+        backup_path = config_path + ".corrupted"
+        try:
+            Config.load(config_path)
+            self.assertTrue(os.path.exists(backup_path),
+                            "应创建 .corrupted 备份文件")
+        finally:
+            if os.path.exists(backup_path):
+                os.unlink(backup_path)
+            if os.path.exists(config_path):
+                os.unlink(config_path)
+
+    def test_corrupted_backup_not_overwritten(self):
+        """已存在 .corrupted 备份时不覆盖"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+            f.write("bad json 1")
+
+        backup_path = config_path + ".corrupted"
+        try:
+            # 第一次损坏：创建备份
+            Config.load(config_path)
+            self.assertTrue(os.path.exists(backup_path))
+            with open(backup_path, 'r') as f:
+                first_backup = f.read()
+
+            # 创建新的损坏文件（模拟第二次损坏）
+            with open(config_path, 'w') as f:
+                f.write("bad json 2 different")
+
+            # 第二次损坏：不应覆盖备份
+            Config.load(config_path)
+            with open(backup_path, 'r') as f:
+                second_backup = f.read()
+            self.assertEqual(first_backup, second_backup,
+                             "第二次损坏不应覆盖已有的 .corrupted 备份")
+        finally:
+            if os.path.exists(backup_path):
+                os.unlink(backup_path)
+            if os.path.exists(config_path):
+                os.unlink(config_path)
+
+    def test_load_nonexistent_file_returns_default(self):
+        """不存在的文件应返回默认配置（已有行为，回归测试）"""
+        config = Config.load("/nonexistent/path/config.json")
+        self.assertIsInstance(config, Config)
+        self.assertEqual(config.concurrent_downloads, 4)
+
+
+class TestThemeModeNormalization(unittest.TestCase):
+    """测试 theme_mode 归一化"""
+
+    def test_invalid_theme_mode_normalized_to_auto(self):
+        """非法 theme_mode 值应被归一化为 auto"""
+        config = Config(theme_mode="weird")
+        self.assertEqual(config.theme_mode, "auto")
+
+    def test_empty_theme_mode_normalized_to_auto(self):
+        """空字符串 theme_mode 应被归一化为 auto"""
+        config = Config(theme_mode="")
+        self.assertEqual(config.theme_mode, "auto")
+
+    def test_valid_dark_preserved(self):
+        """合法 dark 值应保留"""
+        config = Config(theme_mode="dark")
+        self.assertEqual(config.theme_mode, "dark")
+
+    def test_valid_light_preserved(self):
+        """合法 light 值应保留"""
+        config = Config(theme_mode="light")
+        self.assertEqual(config.theme_mode, "light")
+
+    def test_valid_auto_preserved(self):
+        """合法 auto 值应保留"""
+        config = Config(theme_mode="auto")
+        self.assertEqual(config.theme_mode, "auto")
+
+    def test_invalid_theme_mode_from_file_normalized(self):
+        """从文件加载的非法 theme_mode 应被归一化"""
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            config_path = f.name
+            json.dump({
+                'theme_mode': 'weird',
+                'download_dir': '/tmp/test',
+            }, f)
+
+        try:
+            config = Config.load(config_path)
+            self.assertEqual(config.theme_mode, "auto")
+        finally:
+            os.unlink(config_path)
+
+
 if __name__ == '__main__':
     unittest.main()

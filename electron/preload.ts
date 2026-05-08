@@ -67,6 +67,8 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   verifyAuth: () => ipcRenderer.invoke(IPC_CHANNELS.VERIFY_AUTH),
 
+  shutdown: () => ipcRenderer.invoke(IPC_CHANNELS.SHUTDOWN),
+
   openUrl: (url: unknown) => {
     if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid URL')
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url)

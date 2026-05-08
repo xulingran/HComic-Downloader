@@ -3,9 +3,10 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // Use vi.hoisted to create all shared state and mock functions
 // These are hoisted to the top of the file, before vi.mock factories run
-const { mockBridgeCall, mockBridgeKill, handleCalls, capturedInstances } = vi.hoisted(() => ({
+const { mockBridgeCall, mockBridgeKill, mockBridgeShutdown, handleCalls, capturedInstances } = vi.hoisted(() => ({
   mockBridgeCall: vi.fn().mockResolvedValue({ success: true }),
   mockBridgeKill: vi.fn(),
+  mockBridgeShutdown: vi.fn().mockResolvedValue(undefined),
   handleCalls: [] as Array<{ channel: string; handler: Function }>,
   capturedInstances: [] as any[]
 }))
@@ -54,6 +55,7 @@ vi.mock('../../../electron/python-bridge', () => ({
   getPythonBridge: () => ({
     call: mockBridgeCall,
     kill: mockBridgeKill,
+    shutdown: mockBridgeShutdown,
     setNotificationHandler: vi.fn()
   })
 }))
@@ -81,8 +83,8 @@ describe('main.ts', () => {
   })
 
   describe('IPC handler registration', () => {
-    it('should register all 12 IPC handlers', () => {
-      expect(handleCalls.length).toBe(12)
+    it('should register all 13 IPC handlers', () => {
+      expect(handleCalls.length).toBe(13)
     })
 
     const expectedChannels = [
@@ -129,7 +131,7 @@ describe('main.ts', () => {
     it('PYTHON_IPC_CHANNEL_MAP values must match Python handler method names', () => {
       const validMethods = new Set([
         'search', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
-        'get_downloads', 'cancel_download', 'get_statistics', 'apply_auth', 'verify_auth',
+        'get_downloads', 'cancel_download', 'get_statistics', 'apply_auth', 'verify_auth', 'shutdown',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),
@@ -249,18 +251,21 @@ describe('main.ts', () => {
       expect(app.on).toHaveBeenCalledWith('activate', expect.any(Function))
     })
 
-    it('should register before-quit listener that kills bridge', () => {
+    it('should register before-quit listener that shuts down bridge', () => {
       expect(app.on).toHaveBeenCalledWith('before-quit', expect.any(Function))
 
-      // Find the before-quit handler and invoke it
+      // Find the before-quit handler and invoke it with a mock event
       const beforeQuitCall = vi.mocked(app.on).mock.calls.find(
         call => call[0] === 'before-quit'
       )
       expect(beforeQuitCall).toBeDefined()
       const beforeQuitHandler = beforeQuitCall![1]
-      beforeQuitHandler()
+      const mockEvent = { preventDefault: vi.fn() }
+      beforeQuitHandler(mockEvent)
 
-      expect(mockBridgeKill).toHaveBeenCalled()
+      // Handler prevents default, starts async shutdown, then calls app.quit()
+      expect(mockEvent.preventDefault).toHaveBeenCalled()
+      expect(mockBridgeShutdown).toHaveBeenCalled()
     })
   })
 
@@ -587,6 +592,42 @@ describe('main.ts', () => {
       const handler = handleCalls.find(h => h.channel === 'python:set-config')!
       await handler.handler({}, 'cbzFilenameTemplate', '{author}-{title}.cbz')
       expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'cbzFilenameTemplate', value: '{author}-{title}.cbz' })
+    })
+
+    it('should reject cbzFilenameTemplate with stray closing brace', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '{author}}'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should reject cbzFilenameTemplate with stray opening brace', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '{author'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should reject cbzFilenameTemplate with extra trailing brace', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '{author}-{title}}.cbz'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should reject cbzFilenameTemplate with empty placeholder', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'cbzFilenameTemplate', '{}.cbz'))
+        .rejects.toThrow('Invalid value for cbzFilenameTemplate')
+    })
+
+    it('should accept cbzFilenameTemplate with all three placeholders', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await handler.handler({}, 'cbzFilenameTemplate', '{author}-{title}-{id}.cbz')
+      expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'cbzFilenameTemplate', value: '{author}-{title}-{id}.cbz' })
+    })
+
+    it('should accept cbzFilenameTemplate with no placeholders', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await handler.handler({}, 'cbzFilenameTemplate', 'comic.cbz')
+      expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'cbzFilenameTemplate', value: 'comic.cbz' })
     })
   })
 })

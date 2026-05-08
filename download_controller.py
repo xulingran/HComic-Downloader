@@ -444,9 +444,9 @@ class DownloadController:
                     self.downloader.cleanup_temp_dir(temp_dir)
 
                 self._root.after(0, lambda: self.download_complete(output_path))
-            except (OSError, DownloadError) as e:
+            except Exception as e:
                 error_msg = str(e)
-                logger.error(f"Download error: {error_msg}")
+                logger.error("Download error: %s", error_msg, exc_info=True)
                 self._root.after(0, lambda: self.download_error(error_msg, temp_dir))
 
         threading.Thread(target=do_download, daemon=True).start()

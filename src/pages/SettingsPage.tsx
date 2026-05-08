@@ -43,6 +43,7 @@ export function SettingsPage() {
     defaultSource: 'hcomic'
   })
   const [isSaving, setIsSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     loadConfig()
@@ -53,19 +54,22 @@ export function SettingsPage() {
       const result = await getConfig()
       if (result.config) {
         setConfigState({
-          downloadDir: result.config.downloadDir || '',
-          concurrentDownloads: result.config.concurrentDownloads || 4,
-          timeout: result.config.timeout || 30,
-          retryTimes: result.config.retryTimes || 3,
-          cbzFilenameTemplate: result.config.cbzFilenameTemplate || '{author}-{title}.cbz',
-          batchDownloadDelay: result.config.batchDownloadDelay || 1,
-          autoRetryMaxAttempts: result.config.autoRetryMaxAttempts || 2,
+          downloadDir: result.config.downloadDir ?? '',
+          concurrentDownloads: result.config.concurrentDownloads ?? 4,
+          timeout: result.config.timeout ?? 30,
+          retryTimes: result.config.retryTimes ?? 3,
+          cbzFilenameTemplate: result.config.cbzFilenameTemplate ?? '{author}-{title}.cbz',
+          batchDownloadDelay: result.config.batchDownloadDelay ?? 1,
+          autoRetryMaxAttempts: result.config.autoRetryMaxAttempts ?? 2,
           notifyOnComplete: result.config.notifyOnComplete !== false,
-          notifyWhenForeground: result.config.notifyWhenForeground || 'inactive',
-          defaultSource: result.config.defaultSource || 'hcomic'
+          notifyWhenForeground: result.config.notifyWhenForeground ?? 'inactive',
+          defaultSource: result.config.defaultSource ?? 'hcomic'
         })
         if (result.config.outputFormat) {
           setOutputFormat(result.config.outputFormat as OutputFormat)
+        }
+        if (result.config.themeMode === 'light' || result.config.themeMode === 'dark' || result.config.themeMode === 'auto') {
+          setThemeMode(result.config.themeMode)
         }
         // 检查已有登录状态
         if (result.config.hasAuth) {
@@ -85,8 +89,19 @@ export function SettingsPage() {
   }
 
   const handleThemeChange = async (mode: ThemeMode) => {
+    setSaveError(null)
+    const prev = themeMode
     setThemeMode(mode)
-    await saveConfig('themeMode', mode)
+    setIsSaving(true)
+    try {
+      await setConfig('themeMode', mode)
+    } catch (err: any) {
+      setThemeMode(prev)
+      setSaveError(err?.message || '保存失败')
+      setTimeout(() => setSaveError(null), 5000)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleCardStyleChange = (style: CardStyle) => {
@@ -94,21 +109,60 @@ export function SettingsPage() {
   }
 
   const handleOutputFormatChange = async (format: OutputFormat) => {
+    setSaveError(null)
+    const prev = outputFormat
     setOutputFormat(format)
-    await saveConfig('outputFormat', format)
+    setIsSaving(true)
+    try {
+      await setConfig('outputFormat', format)
+    } catch (err: any) {
+      setOutputFormat(prev)
+      setSaveError(err?.message || '保存失败')
+      setTimeout(() => setSaveError(null), 5000)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   const handleConfigChange = async (key: ConfigKey, value: ConfigValueMap[ConfigKey]) => {
+    setSaveError(null)
+    const prevValue = (config as any)[key]
     setConfigState(prev => ({ ...prev, [key]: value }))
-    await saveConfig(key, value)
-  }
-
-  const saveConfig = async (key: ConfigKey, value: ConfigValueMap[ConfigKey]) => {
     setIsSaving(true)
     try {
       await setConfig(key, value)
-    } catch (err) {
-      console.error('Failed to save config:', err)
+    } catch (err: any) {
+      setConfigState(prev => ({ ...prev, [key]: prevValue }))
+      setSaveError(err?.message || '保存失败')
+      setTimeout(() => setSaveError(null), 5000)
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  const handleTextConfigChange = (key: ConfigKey, value: string) => {
+    setSaveError(null)
+    setConfigState(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleTextConfigBlur = async (key: ConfigKey) => {
+    const value = (config as any)[key]
+    setIsSaving(true)
+    try {
+      await setConfig(key, value)
+    } catch (err: any) {
+      // 从后端重新加载上一个有效值
+      try {
+        const result = await getConfig()
+        if (result.config) {
+          const restored = (result.config as any)[key]
+          if (restored !== undefined) {
+            setConfigState(prev => ({ ...prev, [key]: restored }))
+          }
+        }
+      } catch { /* reload 也失败则只显示错误 */ }
+      setSaveError(err?.message || '保存失败')
+      setTimeout(() => setSaveError(null), 5000)
     } finally {
       setIsSaving(false)
     }
@@ -147,9 +201,14 @@ export function SettingsPage() {
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">设置</h2>
-        {isSaving && (
-          <span className="text-sm text-[var(--text-secondary)]">保存中...</span>
-        )}
+        <div className="flex items-center gap-2">
+          {saveError && (
+            <span className="text-sm text-red-500">{saveError}</span>
+          )}
+          {isSaving && (
+            <span className="text-sm text-[var(--text-secondary)]">保存中...</span>
+          )}
+        </div>
       </div>
 
       <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
@@ -228,9 +287,10 @@ export function SettingsPage() {
             <input
               type="text"
               value={config.downloadDir}
-              onChange={(e) => handleConfigChange('downloadDir', e.target.value)}
-              placeholder="留空使用默认目录"
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+              onChange={(e) => handleTextConfigChange('downloadDir', e.target.value)}
+              onBlur={() => handleTextConfigBlur('downloadDir')}
+              placeholder="请输入下载目录的绝对路径"
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                          text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
             />
           </div>
@@ -300,9 +360,10 @@ export function SettingsPage() {
             <input
               type="text"
               value={config.cbzFilenameTemplate}
-              onChange={(e) => handleConfigChange('cbzFilenameTemplate', e.target.value)}
+              onChange={(e) => handleTextConfigChange('cbzFilenameTemplate', e.target.value)}
+              onBlur={() => handleTextConfigBlur('cbzFilenameTemplate')}
               placeholder="{author}-{title}.cbz"
-              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] 
+              className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                          text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
             />
             <p className="text-xs text-[var(--text-secondary)] mt-1">
