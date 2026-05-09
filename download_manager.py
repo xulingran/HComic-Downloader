@@ -36,9 +36,9 @@ class DownloadManager:
         self._on_task_update: Optional[Callable[[DownloadTask], None]] = None
         self._on_queue_complete: Optional[Callable[[], None]] = None
 
-    def add_task(self, comic: ComicInfo) -> str:
+    def add_task(self, comic: ComicInfo, overwrite: bool = False) -> str:
         """添加单个任务到队列"""
-        task = DownloadTask(comic=comic, status=DownloadStatus.QUEUED)
+        task = DownloadTask(comic=comic, status=DownloadStatus.QUEUED, overwrite=overwrite)
         task_id = task.task_id
 
         with self._lock:
@@ -411,9 +411,9 @@ class ComicDownloadManager(DownloadManager):
             self.output_format = output_format
             logger.info(f"Output format set to: {output_format}")
 
-    def add_task(self, comic: ComicInfo) -> str:
+    def add_task(self, comic: ComicInfo, overwrite: bool = False) -> str:
         """添加单个任务到队列，若 manager 已停止则自动重启。"""
-        task_id = super().add_task(comic)
+        task_id = super().add_task(comic, overwrite=overwrite)
 
         should_start = False
         with self._lock:
@@ -452,25 +452,26 @@ class ComicDownloadManager(DownloadManager):
             all_pages = set(range(1, task.comic.pages + 1))
             task.failed_pages = sorted(all_pages - set(task.completed_pages))
 
-    def _process_output_by_format(self, temp_dir: str, comic) -> str:
+    def _process_output_by_format(self, temp_dir: str, comic, overwrite: bool = False) -> str:
         """根据输出格式处理下载内容
 
         Args:
             temp_dir: 临时图片目录
             comic: 漫画信息
+            overwrite: 是否覆盖已有文件
 
         Returns:
             输出路径
         """
         if self.output_format == "folder":
             # 保存为普通文件夹（移动临时目录）
-            return self.cbz_builder.save_as_folder(temp_dir, comic, self.output_dir)
+            return self.cbz_builder.save_as_folder(temp_dir, comic, self.output_dir, overwrite=overwrite)
         output_path = self.cbz_builder.get_output_path_for_format(comic, self.output_format, self.output_dir)
         if self.output_format == "zip":
             # 打包为 ZIP
-            return self.cbz_builder.build_zip(temp_dir, comic, output_path)
+            return self.cbz_builder.build_zip(temp_dir, comic, output_path, overwrite=overwrite)
         # 打包为 CBZ
-        return self.cbz_builder.build_cbz(temp_dir, comic, output_path)
+        return self.cbz_builder.build_cbz(temp_dir, comic, output_path, overwrite=overwrite)
 
     def _execute_download(self, task: DownloadTask) -> DownloadResult:
         """执行漫画下载并返回结果。"""
@@ -480,12 +481,15 @@ class ComicDownloadManager(DownloadManager):
                 task.comic = prepared
 
         cancel_event = threading.Event()
+        pause_event = threading.Event()
         if task._cancel_requested:
             cancel_event.set()
 
         def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
             if task._cancel_requested:
                 cancel_event.set()
+            if task._pause_requested:
+                pause_event.set()
             with self._lock:
                 task.progress_current = current
                 task.progress_total = total
@@ -501,6 +505,7 @@ class ComicDownloadManager(DownloadManager):
             failed_pages=task.failed_pages,
             progress_callback=progress_callback,
             cancel_event=cancel_event,
+            pause_event=pause_event,
         )
 
         if cancel_event.is_set():
@@ -510,7 +515,21 @@ class ComicDownloadManager(DownloadManager):
 
     def _handle_download_success(self, task: DownloadTask, result: DownloadResult) -> None:
         """处理下载成功：格式转换、清理临时目录、更新状态。"""
-        output_path = self._process_output_by_format(result.temp_dir, task.comic)
+        # 构建前复查目标路径冲突
+        if not task.overwrite:
+            output_path = self.cbz_builder.get_output_path_for_format(
+                task.comic, self.output_format, self.output_dir
+            )
+            if os.path.exists(output_path):
+                logger.warning(f"Conflict detected at build time for {output_path}, skipping")
+                task.status = DownloadStatus.FAILED
+                task.error_message = f"File already exists: {output_path}"
+                if result.temp_dir and os.path.exists(result.temp_dir):
+                    self.downloader.cleanup_temp_dir(result.temp_dir)
+                task.temp_dir = None
+                return
+
+        output_path = self._process_output_by_format(result.temp_dir, task.comic, overwrite=task.overwrite)
 
         if self.output_format != "folder":
             self.downloader.cleanup_temp_dir(result.temp_dir)

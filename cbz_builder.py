@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 import zipfile
 from datetime import datetime
 from pathlib import Path
@@ -57,6 +58,7 @@ class CBZBuilder:
         comic: ComicInfo,
         output_path: Optional[str] = None,
         download_dir: Optional[str] = None,
+        overwrite: bool = False,
     ) -> str:
         """创建 CBZ 文件
 
@@ -65,6 +67,7 @@ class CBZBuilder:
             comic: 漫画信息
             output_path: 输出路径（可选，默认使用模板生成）
             download_dir: 下载目录，用于校验路径（可选，默认使用配置中的目录）
+            overwrite: 是否覆盖已有文件
 
         Returns:
             CBZ 文件路径
@@ -73,6 +76,9 @@ class CBZBuilder:
         if output_path is None:
             output_path = self._generate_output_path(comic)
         self._validate_path_in_dir(output_path, self._get_download_dir(download_dir))
+
+        if not overwrite and os.path.exists(output_path):
+            raise FileExistsError(f"Output already exists: {output_path}")
 
         # 确保输出目录存在
         output_dir = os.path.dirname(output_path)
@@ -86,17 +92,28 @@ class CBZBuilder:
 
         logger.info(f"Building CBZ: {output_path}")
 
-        # 创建 CBZ 文件
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # 添加 ComicInfo.xml
-            comic_info_xml = self.generate_comic_info_xml(comic)
-            zf.writestr('ComicInfo.xml', comic_info_xml)
+        # 用唯一临时文件写入，成功后原子替换
+        basename = os.path.basename(output_path)
+        output_dir_path = os.path.dirname(output_path)
+        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                # 添加 ComicInfo.xml
+                comic_info_xml = self.generate_comic_info_xml(comic)
+                zf.writestr('ComicInfo.xml', comic_info_xml)
 
-            # 添加图片
-            for i, img_path in enumerate(image_files, 1):
-                arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
-                zf.write(img_path, arcname)
-                logger.debug(f"Added: {arcname}")
+                # 添加图片
+                for i, img_path in enumerate(image_files, 1):
+                    arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
+                    zf.write(img_path, arcname)
+                    logger.debug(f"Added: {arcname}")
+
+            os.replace(tmp_path, output_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
 
         logger.info(f"CBZ created: {output_path}")
         return output_path
@@ -248,6 +265,7 @@ class CBZBuilder:
         comic: ComicInfo,
         output_path: Optional[str] = None,
         download_dir: Optional[str] = None,
+        overwrite: bool = False,
     ) -> str:
         """创建 ZIP 文件（不含 ComicInfo.xml）
 
@@ -256,6 +274,7 @@ class CBZBuilder:
             comic: 漫画信息
             output_path: 输出路径（可选，默认使用模板生成）
             download_dir: 下载目录，用于校验路径（可选，默认使用配置中的目录）
+            overwrite: 是否覆盖已有文件
 
         Returns:
             ZIP 文件路径
@@ -264,6 +283,9 @@ class CBZBuilder:
         if output_path is None:
             output_path = self._generate_output_path_for_format(comic, "zip")
         self._validate_path_in_dir(output_path, self._get_download_dir(download_dir))
+
+        if not overwrite and os.path.exists(output_path):
+            raise FileExistsError(f"Output already exists: {output_path}")
 
         # 确保输出目录存在
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -275,12 +297,23 @@ class CBZBuilder:
 
         logger.info(f"Building ZIP: {output_path}")
 
-        # 创建 ZIP 文件
-        with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            for i, img_path in enumerate(image_files, 1):
-                arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
-                zf.write(img_path, arcname)
-                logger.debug(f"Added: {arcname}")
+        # 用唯一临时文件写入，成功后原子替换
+        basename = os.path.basename(output_path)
+        output_dir_path = os.path.dirname(output_path)
+        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                for i, img_path in enumerate(image_files, 1):
+                    arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
+                    zf.write(img_path, arcname)
+                    logger.debug(f"Added: {arcname}")
+
+            os.replace(tmp_path, output_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
 
         logger.info(f"ZIP created: {output_path}")
         return output_path
@@ -290,6 +323,7 @@ class CBZBuilder:
         image_dir: str,
         comic: ComicInfo,
         output_dir: Optional[str] = None,
+        overwrite: bool = False,
     ) -> str:
         """保存为普通文件夹（移动并重命名临时目录）
 
@@ -297,6 +331,7 @@ class CBZBuilder:
             image_dir: 图片临时目录
             comic: 漫画信息
             output_dir: 输出目录（可选，默认使用配置中的目录）
+            overwrite: 是否覆盖已有目录
 
         Returns:
             文件夹路径
@@ -311,14 +346,30 @@ class CBZBuilder:
         # 确保输出目录存在
         os.makedirs(output_dir, exist_ok=True)
 
-        # 如果目标文件夹已存在，先删除（覆盖）
         if os.path.exists(output_path):
-            logger.warning(f"Target folder exists, removing: {output_path}")
-            shutil.rmtree(output_path)
-
-        # 移动临时目录到目标位置
-        logger.info(f"Moving folder: {image_dir} -> {output_path}")
-        shutil.move(image_dir, output_path)
+            if not overwrite:
+                raise FileExistsError(f"Output folder already exists: {output_path}")
+            # 用唯一临时目录名做备份，避免误删已有的同名 .tmp_old
+            backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
+            # mkdtemp 会创建目录，但我们需要 move 到它上面，所以先删掉空目录
+            os.rmdir(backup_path)
+            logger.info(f"Target folder exists, backing up: {output_path} -> {backup_path}")
+            shutil.move(output_path, backup_path)
+            try:
+                logger.info(f"Moving folder: {image_dir} -> {output_path}")
+                shutil.move(image_dir, output_path)
+                shutil.rmtree(backup_path)
+            except Exception:
+                # 恢复备份
+                if os.path.exists(output_path):
+                    shutil.rmtree(output_path, ignore_errors=True)
+                if os.path.exists(backup_path):
+                    shutil.move(backup_path, output_path)
+                raise
+        else:
+            # 移动临时目录到目标位置
+            logger.info(f"Moving folder: {image_dir} -> {output_path}")
+            shutil.move(image_dir, output_path)
 
         logger.info(f"Folder saved: {output_path}")
         return output_path
@@ -403,6 +454,7 @@ def build_cbz_simple(
     image_dir: str,
     output_path: str,
     comic_info: Optional[ComicInfo] = None,
+    overwrite: bool = False,
 ) -> str:
     """简单方式创建 CBZ（无 ComicInfo.xml）
 
@@ -410,10 +462,14 @@ def build_cbz_simple(
         image_dir: 图片目录
         output_path: 输出路径
         comic_info: 漫画信息（可选）
+        overwrite: 是否覆盖已有文件
 
     Returns:
         CBZ 文件路径
     """
+    if not overwrite and os.path.exists(output_path):
+        raise FileExistsError(f"Output already exists: {output_path}")
+
     builder = CBZBuilder()
     image_files = builder._collect_image_files(image_dir)
 
@@ -422,14 +478,25 @@ def build_cbz_simple(
 
     os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
 
-    with zipfile.ZipFile(output_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-        # 如果提供了漫画信息，添加 ComicInfo.xml
-        if comic_info:
-            comic_info_xml = builder.generate_comic_info_xml(comic_info)
-            zf.writestr('ComicInfo.xml', comic_info_xml)
+    basename = os.path.basename(output_path)
+    out_dir = os.path.dirname(output_path) or '.'
+    fd, tmp_path = tempfile.mkstemp(dir=out_dir, prefix=f".{basename}.", suffix=".tmp")
+    os.close(fd)
+    try:
+        with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            # 如果提供了漫画信息，添加 ComicInfo.xml
+            if comic_info:
+                comic_info_xml = builder.generate_comic_info_xml(comic_info)
+                zf.writestr('ComicInfo.xml', comic_info_xml)
 
-        for i, img_path in enumerate(image_files, 1):
-            arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
-            zf.write(img_path, arcname)
+            for i, img_path in enumerate(image_files, 1):
+                arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
+                zf.write(img_path, arcname)
+
+        os.replace(tmp_path, output_path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
 
     return output_path

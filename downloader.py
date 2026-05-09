@@ -5,6 +5,7 @@ import re
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+import concurrent.futures
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -259,6 +260,7 @@ class ComicDownloader:
         completed_pages: Optional[List[int]] = None,
         failed_pages: Optional[List[int]] = None,
         cancel_event: Optional[threading.Event] = None,
+        pause_event: Optional[threading.Event] = None,
     ) -> DownloadResult:
         """断点续传下载漫画
 
@@ -334,9 +336,13 @@ class ComicDownloader:
         last_progress_ts = 0.0
 
         with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
-            # 提交任务（支持取消）
             future_to_page = {}
-            for page_num in pages_to_download:
+            remaining_pages = list(pages_to_download)
+            submitted_idx = 0
+
+            # 初始只提交 concurrent_downloads 个页
+            initial_batch = remaining_pages[:self.concurrent_downloads]
+            for page_num in initial_batch:
                 if cancel_event and cancel_event.is_set():
                     break
                 url = image_urls[page_num - 1]  # 转换为 0-based 索引
@@ -347,37 +353,60 @@ class ComicDownloader:
                     output_path,
                 )
                 future_to_page[future] = page_num
+            submitted_idx = len(initial_batch)
 
-            # 处理完成的任务
-            for future in as_completed(future_to_page):
+            # 处理完成的任务，按需提交下一页
+            while future_to_page:
+                # 等待任意一个 future 完成
+                done, _ = concurrent.futures.wait(
+                    future_to_page.keys(),
+                    return_when=concurrent.futures.FIRST_COMPLETED,
+                )
+
                 if cancel_event and cancel_event.is_set():
                     for f in future_to_page:
                         f.cancel()
                     break
-                page_num = future_to_page[future]
-                try:
-                    success = future.result()
-                    if success:
-                        downloaded_count += 1
-                        new_completed.append(page_num)
-                    else:
-                        new_failed.append(page_num)
-                except Exception as e:
-                    logger.error(f"Download error for page {page_num}: {e}")
-                    new_failed.append(page_num)
 
-                # 更新进度
-                if progress_callback:
-                    now = time.monotonic()
-                    status = f"下载中... ({downloaded_count}/{total})"
-                    if new_failed:
-                        status += f"，失败: {len(new_failed)}"
-                    if (
-                        (now - last_progress_ts) >= PROGRESS_THROTTLE_SEC
-                        or downloaded_count >= total
-                    ):
-                        progress_callback(downloaded_count, total, status, comic_info)
-                        last_progress_ts = now
+                for future in done:
+                    page_num = future_to_page.pop(future)
+                    try:
+                        success = future.result()
+                        if success:
+                            downloaded_count += 1
+                            new_completed.append(page_num)
+                        else:
+                            new_failed.append(page_num)
+                    except Exception as e:
+                        logger.error(f"Download error for page {page_num}: {e}")
+                        new_failed.append(page_num)
+
+                    # 更新进度
+                    if progress_callback:
+                        now = time.monotonic()
+                        status = f"下载中... ({downloaded_count}/{total})"
+                        if new_failed:
+                            status += f"，失败: {len(new_failed)}"
+                        if (
+                            (now - last_progress_ts) >= PROGRESS_THROTTLE_SEC
+                            or downloaded_count >= total
+                        ):
+                            progress_callback(downloaded_count, total, status, comic_info)
+                            last_progress_ts = now
+
+                    # 如果未暂停，提交下一页
+                    is_paused = pause_event and pause_event.is_set()
+                    if not is_paused and submitted_idx < len(remaining_pages):
+                        next_page = remaining_pages[submitted_idx]
+                        submitted_idx += 1
+                        url = image_urls[next_page - 1]
+                        output_path = temp_dir / f"{next_page:03d}.jpg"
+                        new_future = executor.submit(
+                            self._download_image_task,
+                            url,
+                            output_path,
+                        )
+                        future_to_page[new_future] = next_page
 
         # 合并结果
         all_completed = completed_pages + new_completed

@@ -584,13 +584,15 @@ class MoeImgParser:
         except (TypeError, ValueError):
             page_num = 1
 
-        if mode == "keyword" and not keyword:
-            # moeimg 在 query 为空时，/spa/search 返回空结果；改走最新更新接口。
-            data = self._request_json("/spa/latest-manga", params={"page": page_num})
-        elif mode == "keyword":
-            data = self._request_json("/spa/search", params={"query": keyword, "page": page_num})
-        else:
-            data = self._search_entity(mode=mode, keyword=keyword, page=page_num)
+        try:
+            if mode == "keyword" and not keyword:
+                data = self._request_json("/spa/latest-manga", params={"page": page_num})
+            elif mode == "keyword":
+                data = self._request_json("/spa/search", params={"query": keyword, "page": page_num})
+            else:
+                data = self._search_entity(mode=mode, keyword=keyword, page=page_num)
+        except ParserResponseError:
+            return [], None
 
         if not data:
             return [], None
@@ -610,15 +612,18 @@ class MoeImgParser:
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
         """获取漫画详情并补全可下载图片地址。"""
-        detail_data = self._get_manga_detail_payload(comic_id)
-        if not isinstance(detail_data, dict):
+        try:
+            detail_data = self._get_manga_detail_payload(comic_id)
+            if not isinstance(detail_data, dict):
+                return None
+
+            detail = detail_data.get("detail") or {}
+            if not isinstance(detail, dict):
+                detail = {}
+
+            chapter_detail = self._fetch_read_data(comic_id)
+        except ParserResponseError:
             return None
-
-        detail = detail_data.get("detail") or {}
-        if not isinstance(detail, dict):
-            detail = {}
-
-        chapter_detail = self._fetch_read_data(comic_id)
 
         title = (
             (detail.get("manga_name") or "").strip()
@@ -709,7 +714,7 @@ class MoeImgParser:
             total_pages = 0
         return max(total_pages, len(image_urls), preview_pages)
 
-    def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> Optional[dict]:
+    def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> dict:
         url = f"{self.BASE_URL}{path}"
         try:
             response = self.session.get(url, params=params, timeout=self.timeout)
@@ -717,7 +722,7 @@ class MoeImgParser:
             return response.json()
         except (requests.RequestException, ValueError) as e:
             logger.error(f"MoeImg request failed: {url} ({e})")
-            return None
+            raise ParserResponseError(f"MoeImg request failed: {url} ({e})") from e
 
     def _search_entity(self, mode: str, keyword: str, page: int) -> Optional[dict]:
         entity_id = self._resolve_entity_id(mode=mode, keyword=keyword)
@@ -757,7 +762,10 @@ class MoeImgParser:
         复杂度注意：对每个搜索结果都会发起一次详情请求，最坏情况下
         时间复杂度为 O(n*m*k)。为避免无限制搜索，最多处理前 5 条结果。
         """
-        search_data = self._request_json("/spa/search", params={"query": keyword, "page": 1})
+        try:
+            search_data = self._request_json("/spa/search", params={"query": keyword, "page": 1})
+        except ParserResponseError:
+            return None
         if not isinstance(search_data, dict):
             return None
 
@@ -780,7 +788,10 @@ class MoeImgParser:
             manga_id = item.get("manga_id")
             if manga_id is None:
                 continue
-            detail = self._get_manga_detail_payload(str(manga_id))
+            try:
+                detail = self._get_manga_detail_payload(str(manga_id))
+            except ParserResponseError:
+                continue
             if not isinstance(detail, dict):
                 continue
             entity_items = detail.get("authors") if mode == "author" else detail.get("tags")

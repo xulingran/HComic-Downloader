@@ -332,7 +332,7 @@ class IPCServer:
             if os.path.exists(output_path):
                 return {"taskId": None, "status": "conflict", "conflictPath": output_path}
 
-        task_id = self._download_manager.add_task(comic)
+        task_id = self._download_manager.add_task(comic, overwrite=overwrite)
         task = self._download_manager.tasks.get(task_id)
         return {
             "taskId": task_id,

@@ -185,6 +185,7 @@ class _FakeDownloader:
         completed_pages=None,
         failed_pages=None,
         cancel_event=None,
+        pause_event=None,
     ):
         total = 3
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
@@ -225,7 +226,7 @@ class _FakeCBZBuilder:
     def _record_call(self, kind, output_path):
         self.calls.append((kind, output_path))
 
-    def build_cbz(self, temp_dir, comic, output_path=None):
+    def build_cbz(self, temp_dir, comic, output_path=None, overwrite=False):
         self._record_call("cbz", output_path)
         os.makedirs(temp_dir, exist_ok=True)
         output_path = output_path or os.path.join(temp_dir, f"{comic.id}.cbz")
@@ -233,7 +234,7 @@ class _FakeCBZBuilder:
             f.write(b"")
         return output_path
 
-    def build_zip(self, temp_dir, comic, output_path=None):
+    def build_zip(self, temp_dir, comic, output_path=None, overwrite=False):
         self._record_call("zip", output_path)
         os.makedirs(temp_dir, exist_ok=True)
         output_path = output_path or os.path.join(temp_dir, f"{comic.id}.zip")
@@ -241,7 +242,7 @@ class _FakeCBZBuilder:
             f.write(b"")
         return output_path
 
-    def save_as_folder(self, temp_dir, comic, output_dir=None):
+    def save_as_folder(self, temp_dir, comic, output_dir=None, overwrite=False):
         self._record_call("folder", output_dir)
         output_dir = output_dir or temp_dir
         target_dir = os.path.join(output_dir, f"{comic.id}")

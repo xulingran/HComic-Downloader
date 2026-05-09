@@ -79,11 +79,10 @@ class HComicDownloaderGUI(tk.Tk):
         export_system_proxies_to_env()
 
         # 初始化组件
-        # 启动默认来源固定为 h-comic，运行时可切换。
-        self.config.default_source = "hcomic"
+        # Config.__post_init__ 已校验 default_source 合法性（非法值回退 hcomic）
         self.parser = MultiSourceParser(
             timeout=self.config.timeout,
-            default_source="hcomic",
+            default_source=self.config.default_source,
             source_auth=self.config.source_auth,
             cookie=self.config.auth_cookie,
             user_agent=self.config.auth_user_agent,

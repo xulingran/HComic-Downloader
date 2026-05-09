@@ -316,7 +316,15 @@ class DownloadController:
         self.download_manager.set_output_dir(sv["download_dir"])
         self.download_manager.set_output_format(self.config.output_format)
         self.download_manager.set_delay_after(sv["batch_delay"])
-        self.download_manager.add_tasks(comics)
+
+        # 区分 overwrite 和非 overwrite 漫画
+        if conflicts:
+            for comic in no_conflict:
+                self.download_manager.add_task(comic, overwrite=False)
+            for comic in overwrite:
+                self.download_manager.add_task(comic, overwrite=True)
+        else:
+            self.download_manager.add_tasks(comics)
 
         dm_ui = sv.get("download_manager_ui")
         if dm_ui and not dm_ui.is_expanded:
@@ -404,6 +412,9 @@ class DownloadController:
             if decisions is None or not decisions.get(0, False):
                 self._on_status_update("已取消下载")
                 return
+            overwrite_confirmed = True
+        else:
+            overwrite_confirmed = False
 
         format_display = {"folder": "文件夹", "zip": "ZIP格式", "cbz": "CBZ格式"}.get(output_format, "CBZ格式")
         if not messagebox.askyesno(
@@ -433,14 +444,14 @@ class DownloadController:
 
                 if output_format == "folder":
                     self._root.after(0, lambda: self._on_status_update("正在保存文件夹..."))
-                    output_path = self.cbz_builder.save_as_folder(temp_dir, comic_to_download, current_dir)
+                    output_path = self.cbz_builder.save_as_folder(temp_dir, comic_to_download, current_dir, overwrite=overwrite_confirmed)
                 elif output_format == "zip":
                     self._root.after(0, lambda: self._on_status_update("正在打包 ZIP..."))
-                    output_path = self.cbz_builder.build_zip(temp_dir, comic_to_download, target_output_path)
+                    output_path = self.cbz_builder.build_zip(temp_dir, comic_to_download, target_output_path, overwrite=overwrite_confirmed)
                     self.downloader.cleanup_temp_dir(temp_dir)
                 else:
                     self._root.after(0, lambda: self._on_status_update("正在打包 CBZ..."))
-                    output_path = self.cbz_builder.build_cbz(temp_dir, comic_to_download, target_output_path)
+                    output_path = self.cbz_builder.build_cbz(temp_dir, comic_to_download, target_output_path, overwrite=overwrite_confirmed)
                     self.downloader.cleanup_temp_dir(temp_dir)
 
                 self._root.after(0, lambda: self.download_complete(output_path))

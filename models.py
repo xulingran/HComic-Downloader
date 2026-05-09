@@ -175,6 +175,7 @@ class DownloadTask:
     current_downloading_page: int = 0
     retry_count: int = 0
     last_failed_at: Optional[float] = None
+    overwrite: bool = False
 
     @property
     def task_id(self) -> str:

@@ -74,7 +74,7 @@ class TestDownloadGUI(unittest.TestCase):
 
         self.app.parser.prepare_for_download = lambda comic: prepared_comic
         self.app.cbz_builder.get_output_path_for_format = lambda comic, output_format, output_dir: "/tmp/test.cbz"
-        self.app.cbz_builder.build_cbz = lambda temp_dir, comic, output_path: "/tmp/test.cbz"
+        self.app.cbz_builder.build_cbz = lambda temp_dir, comic, output_path, **kwargs: "/tmp/test.cbz"
         self.app.downloader.cleanup_temp_dir = lambda temp_dir: None
         self.app.downloader.download_comic_resume = (
             lambda comic, output_dir, progress_callback=None, **kwargs: downloaded_comics.append(comic) or DownloadResult(success=True, completed_pages=[1], failed_pages=[], temp_dir="/tmp/temp_moeimg_123")
@@ -151,6 +151,54 @@ class TestDownloadGUI(unittest.TestCase):
                 self.assertEqual(build_mock.call_args.args[2], expected_output_path)
                 self.assertEqual(downloaded_comics[0].pages, 2)
                 self.assertEqual(downloaded_comics[0].author, "作者B")
+
+    @patch("tkinter.messagebox.showinfo")
+    @patch("tkinter.messagebox.askyesno", return_value=True)
+    @patch("download_controller.show_conflict_dialog")
+    def test_single_download_passes_overwrite_when_conflict_accepted(self, mock_conflict, mock_askyesno, _mock_showinfo):
+        """冲突对话框确认覆盖后，builder 应收到 overwrite=True。"""
+        mock_conflict.return_value = {0: True}
+        source_comic = ComicInfo(
+            id="ow1",
+            title="覆盖测试",
+            source_site="moeimg",
+            pages=0,
+            author=None,
+            image_urls=[],
+        )
+        prepared_comic = ComicInfo(
+            id="ow1",
+            title="覆盖测试",
+            source_site="moeimg",
+            pages=2,
+            author="作者O",
+            image_urls=["https://cdn.example/001.webp", "https://cdn.example/002.webp"],
+        )
+
+        self.app.config.output_format = "cbz"
+        self.app.download_dir_var.set(tempfile.gettempdir())
+        self.app.search_ctrl.ensure_comics_detail_ready = lambda comics, progress_callback=None: [prepared_comic]
+        expected_path = os.path.join(tempfile.gettempdir(), "ow1.cbz")
+        self.app.cbz_builder.get_output_path_for_format = MagicMock(return_value=expected_path)
+        build_mock = MagicMock(return_value=expected_path)
+        self.app.cbz_builder.build_cbz = build_mock
+        self.app.downloader.cleanup_temp_dir = lambda temp_dir: None
+        self.app.downloader.download_comic_resume = (
+            lambda comic, output_dir, progress_callback=None, **kwargs: DownloadResult(success=True, completed_pages=[1, 2], failed_pages=[], temp_dir="/tmp/temp_ow1")
+        )
+
+        with patch("gui.threading.Thread", ImmediateThread), patch("gui.os.path.exists", return_value=True):
+            self.app.dl_ctrl.download_comic(
+                source_comic,
+                self.app.search_ctrl.ensure_comics_detail_ready,
+                self.app.search_btn,
+                self.app.favourites_btn,
+            )
+
+        ok = self._wait_until(lambda: (not self.app.dl_ctrl.is_downloading) and build_mock.called)
+        self.assertTrue(ok)
+        build_mock.assert_called_once()
+        self.assertEqual(build_mock.call_args.kwargs.get("overwrite"), True)
 
     @patch("tkinter.messagebox.showerror")
     @patch("tkinter.messagebox.showinfo")

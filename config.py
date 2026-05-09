@@ -204,7 +204,7 @@ def _restrict_file_permissions_win32(filepath: str) -> None:
     import subprocess
     try:
         username = os.environ.get('USERNAME', os.environ.get('USER', 'CURRENT'))
-        subprocess.run(
+        result = subprocess.run(
             [
                 "icacls", filepath,
                 "/inheritance:r",
@@ -214,5 +214,15 @@ def _restrict_file_permissions_win32(filepath: str) -> None:
             check=False,
             timeout=5,
         )
-    except Exception:
-        pass
+        if result.returncode != 0:
+            stderr = result.stderr.decode('utf-8', errors='replace').strip() if result.stderr else ""
+            logger.warning(
+                "Failed to restrict file permissions for %s (exit code %d): %s",
+                filepath, result.returncode, stderr,
+            )
+    except FileNotFoundError:
+        logger.warning("icacls not found on PATH; cannot restrict file permissions for %s", filepath)
+    except subprocess.TimeoutExpired:
+        logger.warning("icacls timed out while restricting permissions for %s", filepath)
+    except Exception as e:
+        logger.warning("Unexpected error restricting file permissions for %s: %s", filepath, e)
