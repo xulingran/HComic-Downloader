@@ -1,9 +1,9 @@
-import { useDownload } from './useIpc'
+import { useDownloadCommands } from './useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import type { ComicInfo, DownloadStatus } from '@shared/types'
 
 export function useDownloadHelper() {
-  const { startDownload, checkDownloadConflict, pauseTask, resumeTask, retryTask, toggleGlobalPause } = useDownload()
+  const { startDownload, checkDownloadConflict, pauseTask, resumeTask, retryTask, toggleGlobalPause } = useDownloadCommands()
   const upsertTask = useDownloadStore((s) => s.upsertTask)
   const updateTask = useDownloadStore((s) => s.updateTask)
   const setGlobalPaused = useDownloadStore((s) => s.setGlobalPaused)

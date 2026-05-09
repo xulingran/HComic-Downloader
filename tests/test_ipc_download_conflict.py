@@ -15,7 +15,9 @@ from python.ipc_server import IPCServer
 def ipc_server(tmp_path):
     with patch('python.ipc_server._get_config_path', return_value=str(tmp_path / 'config.json')):
         server = IPCServer()
-    return server
+    yield server
+    server._download_manager.stop()
+    server._download_manager.wait_active_downloads(timeout=5)
 
 
 def _resolve_output_path(server, comic_id, title, source_site="hcomic"):

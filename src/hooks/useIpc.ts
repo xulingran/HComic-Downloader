@@ -34,17 +34,8 @@ export function useSearch() {
   return { search }
 }
 
-export function useDownload() {
+export function useDownloadCommands() {
   const { invoke } = useIpc()
-  const [progress, setProgress] = useState<Record<string, any>>({})
-
-  useEffect(() => {
-    if (!window.hcomic?.onDownloadProgress) return
-    const unsubscribe = window.hcomic.onDownloadProgress((data: any) => {
-      setProgress(prev => ({ ...prev, [data.taskId]: data }))
-    })
-    return unsubscribe
-  }, [])
 
   const startDownload = useCallback(async (comicId: string, comicData: ComicInfo, overwrite?: boolean) => {
     return invoke(() => window.hcomic!.download(comicId, comicData, overwrite))
@@ -82,7 +73,27 @@ export function useDownload() {
     return invoke(() => window.hcomic!.getDownloads())
   }, [invoke])
 
-  return { startDownload, cancelDownload, getDownloads, checkDownloadConflict, progress, pauseTask, resumeTask, retryTask, toggleGlobalPause, getDownloadDetail }
+  return { startDownload, cancelDownload, getDownloads, checkDownloadConflict, pauseTask, resumeTask, retryTask, toggleGlobalPause, getDownloadDetail }
+}
+
+export function useDownloadProgress() {
+  const [progress, setProgress] = useState<Record<string, any>>({})
+
+  useEffect(() => {
+    if (!window.hcomic?.onDownloadProgress) return
+    const unsubscribe = window.hcomic.onDownloadProgress((data: any) => {
+      setProgress(prev => ({ ...prev, [data.taskId]: data }))
+    })
+    return unsubscribe
+  }, [])
+
+  return { progress }
+}
+
+export function useDownload() {
+  const commands = useDownloadCommands()
+  const { progress } = useDownloadProgress()
+  return { ...commands, progress }
 }
 
 export function useFavourites() {

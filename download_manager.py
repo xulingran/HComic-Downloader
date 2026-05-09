@@ -2,6 +2,7 @@
 import logging
 import os
 import shutil
+import tempfile
 import threading
 import time
 from typing import Dict, List, Optional, Callable
@@ -273,7 +274,9 @@ class DownloadManager:
             if not task:
                 return False
 
-            if task.status == DownloadStatus.DOWNLOADING:
+            if task.status not in (
+                DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED
+            ):
                 task._cancel_requested = True
 
             task.status = DownloadStatus.CANCELLED
@@ -473,6 +476,95 @@ class ComicDownloadManager(DownloadManager):
         # 打包为 CBZ
         return self.cbz_builder.build_cbz(temp_dir, comic, output_path, overwrite=overwrite)
 
+    def _build_staged_output(self, temp_dir: str, comic) -> tuple[str, str, Optional[str]]:
+        """Build the requested output into a staging path.
+
+        Returns:
+            (staged_path, final_path, staging_root)
+        """
+        final_path = self.cbz_builder.get_output_path_for_format(
+            comic, self.output_format, self.output_dir
+        )
+
+        if self.output_format == "folder":
+            staging_root = tempfile.mkdtemp(dir=self.output_dir, prefix=".hcomic_stage_")
+            try:
+                staged_path = self.cbz_builder.save_as_folder(
+                    temp_dir, comic, staging_root, overwrite=False
+                )
+                return staged_path, final_path, staging_root
+            except Exception:
+                shutil.rmtree(staging_root, ignore_errors=True)
+                raise
+
+        output_dir = os.path.dirname(final_path)
+        os.makedirs(output_dir, exist_ok=True)
+        basename = os.path.basename(final_path)
+        ext = ".zip" if self.output_format == "zip" else ".cbz"
+        fd, staged_path = tempfile.mkstemp(
+            dir=output_dir,
+            prefix=f".{basename}.stage.",
+            suffix=ext,
+        )
+        os.close(fd)
+        os.unlink(staged_path)
+
+        if self.output_format == "zip":
+            self.cbz_builder.build_zip(temp_dir, comic, staged_path, overwrite=True)
+        else:
+            self.cbz_builder.build_cbz(temp_dir, comic, staged_path, overwrite=True)
+        return staged_path, final_path, None
+
+    def _cleanup_staged_output(self, staged_path: Optional[str], staging_root: Optional[str] = None) -> None:
+        """Remove a staged output without touching the final destination."""
+        if staging_root and os.path.exists(staging_root):
+            shutil.rmtree(staging_root, ignore_errors=True)
+            return
+        if not staged_path or not os.path.exists(staged_path):
+            return
+        if os.path.isdir(staged_path):
+            shutil.rmtree(staged_path, ignore_errors=True)
+        else:
+            try:
+                os.remove(staged_path)
+            except FileNotFoundError:
+                pass
+
+    def _commit_staged_output(
+        self,
+        staged_path: str,
+        final_path: str,
+        overwrite: bool = False,
+    ) -> str:
+        """Atomically commit staged output to the final destination when possible."""
+        if os.path.exists(final_path) and not overwrite:
+            raise FileExistsError(f"Output already exists: {final_path}")
+
+        if not os.path.isdir(staged_path):
+            os.replace(staged_path, final_path)
+            return final_path
+
+        output_dir = os.path.dirname(final_path)
+        os.makedirs(output_dir, exist_ok=True)
+        if not os.path.exists(final_path):
+            shutil.move(staged_path, final_path)
+            return final_path
+
+        folder_name = os.path.basename(final_path)
+        backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
+        os.rmdir(backup_path)
+        shutil.move(final_path, backup_path)
+        try:
+            shutil.move(staged_path, final_path)
+            shutil.rmtree(backup_path)
+        except Exception:
+            if os.path.exists(final_path):
+                shutil.rmtree(final_path, ignore_errors=True)
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, final_path)
+            raise
+        return final_path
+
     def _execute_download(self, task: DownloadTask) -> DownloadResult:
         """执行漫画下载并返回结果。"""
         if self.prepare_comic:
@@ -515,6 +607,14 @@ class ComicDownloadManager(DownloadManager):
 
     def _handle_download_success(self, task: DownloadTask, result: DownloadResult) -> None:
         """处理下载成功：格式转换、清理临时目录、更新状态。"""
+        if task._cancel_requested:
+            logger.info(f"Task {task.task_id} cancelled before packaging, discarding temp")
+            if result.temp_dir and os.path.exists(result.temp_dir):
+                self.downloader.cleanup_temp_dir(result.temp_dir)
+            task.temp_dir = None
+            task.status = DownloadStatus.CANCELLED
+            return
+
         # 构建前复查目标路径冲突
         if not task.overwrite:
             output_path = self.cbz_builder.get_output_path_for_format(
@@ -529,21 +629,32 @@ class ComicDownloadManager(DownloadManager):
                 task.temp_dir = None
                 return
 
-        output_path = self._process_output_by_format(result.temp_dir, task.comic, overwrite=task.overwrite)
+        staged_path = None
+        staging_root = None
+        try:
+            staged_path, output_path, staging_root = self._build_staged_output(result.temp_dir, task.comic)
+
+            if task._cancel_requested:
+                logger.info(f"Task {task.task_id} cancelled during packaging, discarding staged output")
+                self._cleanup_staged_output(staged_path, staging_root)
+                if self.output_format != "folder" and result.temp_dir and os.path.exists(result.temp_dir):
+                    self.downloader.cleanup_temp_dir(result.temp_dir)
+                task.temp_dir = None
+                task.status = DownloadStatus.CANCELLED
+                return
+
+            output_path = self._commit_staged_output(staged_path, output_path, overwrite=task.overwrite)
+            if staging_root and os.path.exists(staging_root):
+                shutil.rmtree(staging_root, ignore_errors=True)
+            staged_path = None
+            staging_root = None
+        except Exception:
+            self._cleanup_staged_output(staged_path, staging_root)
+            raise
 
         if self.output_format != "folder":
             self.downloader.cleanup_temp_dir(result.temp_dir)
         task.temp_dir = None
-
-        if task._cancel_requested:
-            logger.info(f"Task {task.task_id} cancelled during packaging, discarding output")
-            if output_path and os.path.exists(output_path):
-                if os.path.isdir(output_path):
-                    shutil.rmtree(output_path, ignore_errors=True)
-                else:
-                    os.remove(output_path)
-            task.status = DownloadStatus.CANCELLED
-            return
 
         task.status = DownloadStatus.COMPLETED
         task.current_downloading_page = 0
@@ -622,6 +733,14 @@ class ComicDownloadManager(DownloadManager):
             result = self._execute_download(task)
             temp_dir = result.temp_dir
 
+            if task._cancel_requested:
+                logger.info(f"Task {task_id} cancelled after download returned, skipping success")
+                if result.temp_dir and os.path.exists(result.temp_dir):
+                    self.downloader.cleanup_temp_dir(result.temp_dir)
+                task.status = DownloadStatus.CANCELLED
+                self._notify_task_update(task)
+                return
+
             if task._pause_requested:
                 task.temp_dir = result.temp_dir
                 task.completed_pages = result.completed_pages
@@ -629,14 +748,6 @@ class ComicDownloadManager(DownloadManager):
                 task.status = DownloadStatus.PAUSED
                 self._notify_task_update(task)
                 logger.info(f"Task {task_id} paused after current checkpoint")
-                return
-
-            if task._cancel_requested:
-                logger.info(f"Task {task_id} cancelled after download returned, skipping success")
-                if result.temp_dir and os.path.exists(result.temp_dir):
-                    self.downloader.cleanup_temp_dir(result.temp_dir)
-                task.status = DownloadStatus.CANCELLED
-                self._notify_task_update(task)
                 return
 
             task.temp_dir = result.temp_dir

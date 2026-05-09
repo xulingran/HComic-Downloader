@@ -10,6 +10,17 @@ const { mockGetFavourites } = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useIpc', () => ({
   useFavourites: vi.fn().mockReturnValue({ getFavourites: mockGetFavourites }),
+  useDownloadCommands: vi.fn().mockReturnValue({
+    startDownload: vi.fn().mockResolvedValue({ taskId: 'test-id' }),
+    cancelDownload: vi.fn().mockResolvedValue({ success: true }),
+    getDownloads: vi.fn().mockResolvedValue({ tasks: [] }),
+    checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
+    pauseTask: vi.fn(),
+    resumeTask: vi.fn(),
+    retryTask: vi.fn(),
+    toggleGlobalPause: vi.fn(),
+    getDownloadDetail: vi.fn(),
+  }),
   useDownload: vi.fn().mockReturnValue({
     startDownload: vi.fn().mockResolvedValue({ taskId: 'test-id' }),
     cancelDownload: vi.fn().mockResolvedValue({ success: true }),

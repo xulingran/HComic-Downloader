@@ -123,7 +123,19 @@ def test_cancel_task():
 
     assert dm.cancel_task(task_id) is True
     assert dm.tasks[task_id].status == DownloadStatus.CANCELLED
+    assert dm.tasks[task_id]._cancel_requested is True
     assert task_id not in dm.queue
+
+
+def test_cancel_paused_task_sets_cancel_requested():
+    dm = DownloadManager()
+    task_id = dm.add_task(ComicInfo(id="paused_cancel", title="Paused Cancel", pages=1))
+
+    dm.tasks[task_id].status = DownloadStatus.PAUSED
+
+    assert dm.cancel_task(task_id) is True
+    assert dm.tasks[task_id].status == DownloadStatus.CANCELLED
+    assert dm.tasks[task_id]._cancel_requested is True
 
 
 def test_get_stats():
@@ -278,6 +290,74 @@ def test_process_output_by_format_uses_final_file_path(tmp_path):
         expected_path = os.path.join(str(tmp_path), f"{comic.id}{suffix}")
         assert result == expected_path
         assert builder.calls == [(kind, expected_path)]
+
+
+class _InstantDownloader:
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+        temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
+        os.makedirs(temp_dir, exist_ok=True)
+        with open(os.path.join(temp_dir, "001.jpg"), "wb") as f:
+            f.write(b"image")
+        if progress_callback:
+            progress_callback(1, 1, "done", None)
+        return DownloadResult(
+            success=True,
+            completed_pages=[1],
+            failed_pages=[],
+            temp_dir=temp_dir,
+        )
+
+    def cleanup_temp_dir(self, temp_dir):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+class _BlockingCBZBuilder(_FakeCBZBuilder):
+    def __init__(self, final_path):
+        super().__init__()
+        self.final_path = final_path
+        self.entered = threading.Event()
+        self.release = threading.Event()
+
+    def get_output_path_for_format(self, comic, output_format, output_dir):
+        return self.final_path
+
+    def build_cbz(self, temp_dir, comic, output_path=None, overwrite=False):
+        self.entered.set()
+        assert output_path != self.final_path
+        assert overwrite is True
+        self.release.wait(timeout=2)
+        with open(output_path, "wb") as f:
+            f.write(b"new-output")
+        return output_path
+
+
+def test_cancel_during_packaging_preserves_existing_overwrite_target(tmp_path):
+    final_path = tmp_path / "existing.cbz"
+    final_path.write_bytes(b"old-output")
+    builder = _BlockingCBZBuilder(str(final_path))
+    dm = ComicDownloadManager(
+        downloader=_InstantDownloader(),
+        cbz_builder=builder,
+        output_dir=str(tmp_path),
+    )
+    dm.set_auto_retry_max_attempts(0)
+
+    task_id = dm.add_task(
+        ComicInfo(id="pack_cancel", title="Pack Cancel", pages=1),
+        overwrite=True,
+    )
+    assert builder.entered.wait(timeout=2)
+
+    assert dm.cancel_task(task_id) is True
+    builder.release.set()
+
+    deadline = time.time() + 3
+    while dm.is_running and time.time() < deadline:
+        time.sleep(0.02)
+
+    assert dm.tasks[task_id].status == DownloadStatus.CANCELLED
+    assert final_path.read_bytes() == b"old-output"
+    assert not list(tmp_path.glob("*.stage.*"))
 
 
 def test_pause_downloading_task_keeps_paused_state(tmp_path):

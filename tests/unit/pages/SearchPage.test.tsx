@@ -28,6 +28,17 @@ const { mockGetConfig } = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useIpc', () => ({
   useSearch: vi.fn().mockReturnValue({ search: mockSearch }),
+  useDownloadCommands: vi.fn().mockReturnValue({
+    startDownload: mockStartDownload,
+    cancelDownload: vi.fn(),
+    getDownloads: vi.fn(),
+    checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
+    pauseTask: vi.fn(),
+    resumeTask: vi.fn(),
+    retryTask: vi.fn(),
+    toggleGlobalPause: vi.fn(),
+    getDownloadDetail: vi.fn(),
+  }),
   useDownload: vi.fn().mockReturnValue({
     startDownload: mockStartDownload,
     cancelDownload: vi.fn(),

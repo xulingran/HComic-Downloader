@@ -713,6 +713,11 @@ class IPCServer:
                 self._write_response(response)
             except json.JSONDecodeError as e:
                 logger.error(f"JSON parse error: {e}")
+                self._write_response({
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": f"Parse error: {e}"},
+                })
             except Exception as e:
                 logger.error(f"Unexpected error: {e}")
 
