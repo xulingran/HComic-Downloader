@@ -323,11 +323,11 @@ function registerIPCHandlers() {
   // Sync notification settings from saved config on startup
   bridge.call('get_config').then((result: any) => {
     if (result?.config) {
-      if (typeof result.config.notify_on_complete === 'boolean') {
-        notifyOnComplete = result.config.notify_on_complete
+      if (typeof result.config.notifyOnComplete === 'boolean') {
+        notifyOnComplete = result.config.notifyOnComplete
       }
-      if (result.config.notify_when_foreground === 'inactive' || result.config.notify_when_foreground === 'always') {
-        notifyWhenForeground = result.config.notify_when_foreground
+      if (result.config.notifyWhenForeground === 'inactive' || result.config.notifyWhenForeground === 'always') {
+        notifyWhenForeground = result.config.notifyWhenForeground
       }
     }
   }).catch(() => {})

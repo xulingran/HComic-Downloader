@@ -6,10 +6,11 @@ import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import concurrent.futures
+import shutil
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
-from io import BytesIO
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -18,7 +19,7 @@ from PIL import Image
 
 from constants import DEFAULT_USER_AGENT
 from image_formats import MIME_TO_EXT, PAGE_FILENAME_FORMAT, PIL_FORMAT_TO_EXT
-from models import ComicInfo
+from models import ComicInfo, DownloadCancelledError
 from utils import apply_system_proxy_to_session, configure_session_auth, ensure_dir, format_file_size, sanitize_filename
 
 logger = logging.getLogger(__name__)
@@ -147,10 +148,18 @@ class ComicDownloader:
     def download_image(self, url: str, path: str):
         """下载单张图片，自动检测格式
 
+        使用流式下载，设置单张图片大小上限（100MB），避免内存暴涨。
+
         Args:
             url: 图片 URL
             path: 保存路径
+
+        Raises:
+            DownloadError: 下载失败或图片过大
         """
+        MAX_IMAGE_SIZE = 100 * 1024 * 1024
+        CHUNK_SIZE = 8192
+
         try:
             response = self.session.get(url, timeout=self.timeout, stream=True)
             response.raise_for_status()
@@ -158,31 +167,46 @@ class ComicDownloader:
             # 确保目录存在
             ensure_dir(os.path.dirname(path))
 
-            # 下载内容
-            content = response.content
+            # 流式写入临时文件
+            fd, tmp_path = tempfile.mkstemp(suffix='.tmp', dir=os.path.dirname(path))
+            try:
+                total = 0
+                with os.fdopen(fd, 'wb') as f:
+                    for chunk in response.iter_content(chunk_size=CHUNK_SIZE):
+                        if chunk:
+                            total += len(chunk)
+                            if total > MAX_IMAGE_SIZE:
+                                raise DownloadError(
+                                    f"Image too large (exceeded 100MB): {url}"
+                                )
+                            f.write(chunk)
 
-            # 检测图片格式
-            ext = None
-            # 首先尝试从 Content-Type 获取
-            content_type = response.headers.get('Content-Type', '')
-            ext = MIME_TO_EXT.get(content_type.lower())
+                # 检测图片格式
+                ext = None
+                # 首先尝试从 Content-Type 获取
+                content_type = response.headers.get('Content-Type', '')
+                ext = MIME_TO_EXT.get(content_type.lower())
 
-            # 如果 Content-Type 不可靠，使用 Pillow 检测
-            if not ext:
-                try:
-                    with Image.open(BytesIO(content)) as img:
-                        ext = PIL_FORMAT_TO_EXT.get(img.format, '.jpg')
-                except (IOError, SyntaxError, ValueError):
-                    logger.debug("Image format detection failed for %s, defaulting to .jpg", url)
-                    ext = '.jpg'
+                # 如果 Content-Type 不可靠，使用 Pillow 从文件检测
+                if not ext:
+                    try:
+                        with Image.open(tmp_path) as img:
+                            ext = PIL_FORMAT_TO_EXT.get(img.format, '.jpg')
+                    except (IOError, SyntaxError, ValueError):
+                        logger.debug("Image format detection failed for %s, defaulting to .jpg", url)
+                        ext = '.jpg'
 
-            # 确保路径有正确的扩展名
-            if not path.endswith(ext):
-                path = os.path.splitext(path)[0] + ext
+                # 确保路径有正确的扩展名
+                if not path.endswith(ext):
+                    path = os.path.splitext(path)[0] + ext
 
-            # 保存文件
-            with open(path, 'wb') as f:
-                f.write(content)
+                # 原子替换
+                shutil.move(tmp_path, path)
+                tmp_path = None
+
+            finally:
+                if tmp_path is not None and os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
 
             logger.debug(f"Downloaded: {url} -> {path}")
 
@@ -429,7 +453,12 @@ class ComicDownloader:
             logger.info(f"Waiting {delay_after}s before next download")
             if progress_callback:
                 progress_callback(downloaded_count, total, f"等待 {delay_after} 秒...", comic_info)
-            time.sleep(delay_after)
+            if cancel_event is not None:
+                if cancel_event.wait(delay_after):
+                    logger.info("Cancel requested during delay after")
+                    raise DownloadCancelledError("Cancelled during delay after download")
+            else:
+                time.sleep(delay_after)
 
         return DownloadResult(
             success=success,

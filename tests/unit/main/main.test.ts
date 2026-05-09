@@ -3,13 +3,19 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // Use vi.hoisted to create all shared state and mock functions
 // These are hoisted to the top of the file, before vi.mock factories run
-const { mockBridgeCall, mockBridgeKill, mockBridgeShutdown, handleCalls, capturedInstances } = vi.hoisted(() => ({
-  mockBridgeCall: vi.fn().mockResolvedValue({ success: true }),
-  mockBridgeKill: vi.fn(),
-  mockBridgeShutdown: vi.fn().mockResolvedValue(undefined),
-  handleCalls: [] as Array<{ channel: string; handler: Function }>,
-  capturedInstances: [] as any[]
-}))
+const { mockBridgeCall, mockBridgeKill, mockBridgeShutdown, handleCalls, capturedInstances, notificationHandlers, MockNotification } = vi.hoisted(() => {
+  const mockNotify = vi.fn().mockImplementation(function () { return { on: vi.fn(), show: vi.fn() } })
+  mockNotify.isSupported = vi.fn().mockReturnValue(true)
+  return {
+    mockBridgeCall: vi.fn().mockResolvedValue({ success: true }),
+    mockBridgeKill: vi.fn(),
+    mockBridgeShutdown: vi.fn().mockResolvedValue(undefined),
+    handleCalls: [] as Array<{ channel: string; handler: Function }>,
+    capturedInstances: [] as any[],
+    notificationHandlers: {} as Record<string, Function>,
+    MockNotification: mockNotify,
+  }
+})
 
 // Mock electron module
 vi.mock('electron', () => {
@@ -21,6 +27,7 @@ vi.mock('electron', () => {
   class MockBrowserWindow {
     webContents = {
       on: vi.fn(),
+      send: vi.fn(),
       setWindowOpenHandler: vi.fn()
     }
     loadURL = vi.fn()
@@ -28,6 +35,10 @@ vi.mock('electron', () => {
     once = vi.fn()
     on = vi.fn()
     show = vi.fn()
+    isFocused = vi.fn().mockReturnValue(false)
+    isMinimized = vi.fn().mockReturnValue(false)
+    restore = vi.fn()
+    focus = vi.fn()
     static getAllWindows = vi.fn().mockReturnValue([])
     constructor(public options?: any) {
       capturedInstances.push(this)
@@ -52,9 +63,7 @@ vi.mock('electron', () => {
       showErrorBox: vi.fn(),
       showMessageBoxSync: vi.fn().mockReturnValue(1),
     },
-    Notification: {
-      isSupported: vi.fn().mockReturnValue(false),
-    },
+    Notification: MockNotification,
   }
 })
 
@@ -64,7 +73,9 @@ vi.mock('../../../electron/python-bridge', () => ({
     call: mockBridgeCall,
     kill: mockBridgeKill,
     shutdown: mockBridgeShutdown,
-    setNotificationHandler: vi.fn()
+    setNotificationHandler: (method: string, handler: Function) => {
+      notificationHandlers[method] = handler
+    }
   })
 }))
 
@@ -91,9 +102,19 @@ describe('main.ts', () => {
   })
 
   describe('IPC handler registration', () => {
+    let initBridgeCalls: any[][] = []
+
+    beforeAll(() => {
+      initBridgeCalls = [...mockBridgeCall.mock.calls]
+    })
+
     it('should register all IPC handlers', () => {
       // 14 original + 8 new = 22 total
       expect(handleCalls.length).toBe(22)
+    })
+
+    it('should call get_config on startup to sync notification settings', () => {
+      expect(initBridgeCalls.some(call => call[0] === 'get_config')).toBe(true)
     })
 
     const expectedChannels = [
@@ -651,4 +672,75 @@ describe('main.ts', () => {
       expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'cbzFilenameTemplate', value: 'comic.cbz' })
     })
   })
+
+  describe('notification behavior', () => {
+    beforeEach(() => {
+      MockNotification.mockClear()
+      MockNotification.isSupported.mockReturnValue(true)
+    })
+
+    it('should NOT send notification when notifyOnComplete is false', async () => {
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyOnComplete', false)
+
+      const callback = notificationHandlers['download_progress']
+      expect(callback).toBeDefined()
+      callback({
+        taskId: 'test-notify-off',
+        status: 'completed',
+        progress: 100,
+        current: 10,
+        total: 10,
+        title: 'Test Comic',
+      })
+
+      expect(MockNotification).not.toHaveBeenCalled()
+    })
+
+    it('should send notification when notifyOnComplete is true and all tasks done', async () => {
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyOnComplete', true)
+
+      const callback = notificationHandlers['download_progress']
+
+      // Add active task to the set
+      callback({
+        taskId: 'test-notify-on',
+        status: 'downloading',
+        progress: 50,
+        current: 5,
+        total: 10,
+        title: 'Active Comic',
+      })
+
+      // Complete the task — should trigger batch notification
+      callback({
+        taskId: 'test-notify-on',
+        status: 'completed',
+        progress: 100,
+        current: 10,
+        total: 10,
+        title: 'Active Comic',
+      })
+
+      expect(MockNotification).toHaveBeenCalledTimes(1)
+      expect(MockNotification).toHaveBeenCalledWith({
+        title: '下载完成',
+        body: 'Active Comic 已下载完成',
+      })
+    })
+
+    it('should NOT send notification when isSupported returns false', async () => {
+      MockNotification.isSupported.mockReturnValue(false)
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyOnComplete', true)
+
+      const callback = notificationHandlers['download_progress']
+      callback({ taskId: 'test-unsupported', status: 'downloading', progress: 50, current: 5, total: 10, title: 'Any' })
+      callback({ taskId: 'test-unsupported', status: 'completed', progress: 100, current: 10, total: 10, title: 'Any' })
+
+      expect(MockNotification).not.toHaveBeenCalled()
+    })
+  })
+
 })
