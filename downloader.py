@@ -128,24 +128,33 @@ class ComicDownloader:
             return "https://moeimg.fan/"
         return "https://h-comic.com/"
 
-    def _download_image_task(self, url: str, output_path: Path) -> bool:
-        """下载单张图片的任务
+    def _download_image_task(self, url: str, output_path: Path, referer: str = "") -> bool:
+        """下载单张图片的任务（每个任务创建独立 session，避免线程间共享）
 
         Args:
             url: 图片 URL
             output_path: 输出路径
+            referer: 可选的 Referer 请求头
 
         Returns:
             是否成功
         """
+        session = None
         try:
-            self.download_image(url, str(output_path))
+            session = self._create_session()
+            for key in ("Cookie", "User-Agent"):
+                if key in self.session.headers:
+                    session.headers[key] = self.session.headers[key]
+            self.download_image(url, str(output_path), referer=referer, session=session)
             return True
         except Exception as e:
             logger.error(f"Failed to download {url}: {e}")
             return False
+        finally:
+            if session is not None:
+                session.close()
 
-    def download_image(self, url: str, path: str):
+    def download_image(self, url: str, path: str, referer: str = "", session: Optional[requests.Session] = None):
         """下载单张图片，自动检测格式
 
         使用流式下载，设置单张图片大小上限（100MB），避免内存暴涨。
@@ -153,6 +162,8 @@ class ComicDownloader:
         Args:
             url: 图片 URL
             path: 保存路径
+            referer: 可选的 Referer 请求头，避免修改共享 session 状态
+            session: 可选的独立 session（线程路径使用），默认使用 self.session
 
         Raises:
             DownloadError: 下载失败或图片过大
@@ -161,7 +172,11 @@ class ComicDownloader:
         CHUNK_SIZE = 8192
 
         try:
-            response = self.session.get(url, timeout=self.timeout, stream=True)
+            headers = {}
+            if referer:
+                headers["Referer"] = referer
+            s = session or self.session
+            response = s.get(url, timeout=self.timeout, stream=True, headers=headers)
             response.raise_for_status()
 
             # 确保目录存在
@@ -309,8 +324,8 @@ class ComicDownloader:
         temp_dir = Path(output_dir) / self._build_temp_dir_name(comic)
         ensure_dir(str(temp_dir))
 
-        # 不同来源要求不同 Referer
-        self.session.headers["Referer"] = self._build_referer(comic)
+        # 不同来源要求不同 Referer（per-request 传参，避免修改共享 session 状态）
+        download_referer = self._build_referer(comic)
 
         # 获取所有图片 URL
         image_urls = comic.get_all_image_urls()
@@ -375,6 +390,7 @@ class ComicDownloader:
                     self._download_image_task,
                     url,
                     output_path,
+                    download_referer,
                 )
                 future_to_page[future] = page_num
             submitted_idx = len(initial_batch)
@@ -429,6 +445,7 @@ class ComicDownloader:
                             self._download_image_task,
                             url,
                             output_path,
+                            download_referer,
                         )
                         future_to_page[new_future] = next_page
 

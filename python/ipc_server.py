@@ -689,11 +689,19 @@ class IPCServer:
             line = line.strip()
             if not line:
                 continue
+            req_id = None
             try:
                 request = json.loads(line)
                 method = request.get("method")
                 req_id = request.get("id")
                 params = request.get("params", {})
+
+                if not isinstance(params, dict):
+                    self._write_response({
+                        "jsonrpc": "2.0", "id": req_id,
+                        "error": {"code": -32602, "message": "Invalid params: must be an object"},
+                    })
+                    continue
 
                 # ── fetch_cover: dispatch to thread pool, don't block main loop ──
                 if method == "fetch_cover":
@@ -720,6 +728,11 @@ class IPCServer:
                 })
             except Exception as e:
                 logger.error(f"Unexpected error: {e}")
+                self._write_response({
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32603, "message": f"Internal error: {e}"},
+                })
 
 
 if __name__ == "__main__":

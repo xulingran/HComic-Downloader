@@ -13,12 +13,12 @@ def test_download_resume_uses_source_specific_temp_dir_and_referer(tmp_path, mon
         image_urls=["https://nvme1.cdndelivers.cloud/data/example/001.webp"],
     )
 
-    monkeypatch.setattr(downloader, "_download_image_task", lambda url, path: True)
+    # referer is now passed as per-request header, not stored in session
+    monkeypatch.setattr(downloader, "_download_image_task", lambda url, path, referer="": True)
     result = downloader.download_comic_resume(comic, str(tmp_path))
 
     assert result.success is True
     assert result.temp_dir.endswith("temp_moeimg_123")
-    assert downloader.session.headers.get("Referer") == "https://moeimg.fan/"
 
 
 def test_download_resume_defaults_hcomic_referer(tmp_path, monkeypatch):
@@ -32,12 +32,11 @@ def test_download_resume_defaults_hcomic_referer(tmp_path, monkeypatch):
         comic_source="NH",
     )
 
-    monkeypatch.setattr(downloader, "_download_image_task", lambda url, path: True)
+    monkeypatch.setattr(downloader, "_download_image_task", lambda url, path, referer="": True)
     result = downloader.download_comic_resume(comic, str(tmp_path))
 
     assert result.success is True
     assert result.temp_dir.endswith("temp_hcomic_456")
-    assert downloader.session.headers.get("Referer") == "https://h-comic.com/"
 
 
 def test_configure_auth_resets_user_agent_when_empty():
@@ -64,7 +63,7 @@ def test_download_resume_single_page_failure_keeps_other_pages(tmp_path, monkeyp
         comic_source="NH",
     )
 
-    def fake_download(url, path):
+    def fake_download(url, path, referer=""):
         # 仅让第 2 页失败，其它页成功
         return not str(path).endswith("002.jpg")
 

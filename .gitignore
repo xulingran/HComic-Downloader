@@ -41,3 +41,6 @@ dist-renderer/
 python/build/
 python/dist/
 dist/
+
+# TypeScript build info
+*.tsbuildinfo

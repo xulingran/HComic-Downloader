@@ -807,7 +807,7 @@ class SearchController:
                 try:
                     self._prepare_single_comic_detail(comic)
                     self._root.after(0, lambda c=comic, g=generation: self._on_result_detail_prefetched(c, g))
-                except (ParserResponseError, ValueError) as e:
+                except (ParserResponseError, ValueError, RuntimeError) as e:
                     logger.warning(f"Result detail prefetch failed: {comic.title} ({e})")
 
         threading.Thread(target=do_prefetch, daemon=True).start()

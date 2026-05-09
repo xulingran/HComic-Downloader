@@ -21,12 +21,72 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+ALLOWED_FILENAME_PLACEHOLDERS = {"author", "title", "id"}
+
+
 class CBZBuilder:
     """CBZ 文件构建器"""
 
     def __init__(self, filename_template: str = "{author}-{title}.cbz", config: Optional["Config"] = None):
-        self.filename_template = filename_template
+        self.validate_filename_template(filename_template)
+        self._filename_template = filename_template
         self._config = config
+
+    @property
+    def filename_template(self) -> str:
+        return self._filename_template
+
+    @filename_template.setter
+    def filename_template(self, value: str) -> None:
+        self.validate_filename_template(value)
+        self._filename_template = value
+
+    @staticmethod
+    def validate_filename_template(template: str) -> None:
+        """Validate filename template against allowed placeholders.
+
+        Raises ValueError if the template is invalid.
+        """
+        if not isinstance(template, str) or len(template) == 0 or len(template) > 256:
+            raise ValueError("Filename template must be a non-empty string ≤ 256 characters")
+        if "/" in template or "\\" in template or ".." in template:
+            raise ValueError("Filename template must not contain path separators")
+
+        # Validate brace syntax: handle {{ and }} escapes
+        depth = 0
+        i = 0
+        while i < len(template):
+            ch = template[i]
+            if ch == "{":
+                if i + 1 < len(template) and template[i + 1] == "{":
+                    i += 2
+                    continue
+                depth += 1
+            elif ch == "}":
+                if i + 1 < len(template) and template[i + 1] == "}":
+                    i += 2
+                    continue
+                depth -= 1
+                if depth < 0:
+                    raise ValueError("Filename template has unbalanced braces")
+            i += 1
+        if depth != 0:
+            raise ValueError("Filename template has unbalanced braces")
+
+        # Reject bare {} positional placeholder
+        if "{}" in template:
+            raise ValueError("Filename template must not contain positional placeholders")
+
+        # Only allow whitelisted placeholders
+        import re
+        parts = re.findall(r"\{[^{}]+\}", template)
+        for part in parts:
+            name = part[1:-1]  # strip { and }, keep original case
+            if name not in ALLOWED_FILENAME_PLACEHOLDERS:
+                raise ValueError(
+                    f"Unknown placeholder {{{name}}} in filename template. "
+                    f"Allowed: {{{', '.join(sorted(ALLOWED_FILENAME_PLACEHOLDERS))}}}"
+                )
 
     def _get_download_dir(self, download_dir: Optional[str] = None) -> str:
         """获取下载目录，优先使用传入值，否则回退到配置。"""

@@ -242,6 +242,7 @@ class DownloadManager:
     def pause_task(self, task_id: str) -> bool:
         """暂停指定任务"""
         changed = False
+        task_to_notify = None
         with self._lock:
             task = self.tasks.get(task_id)
             if not task:
@@ -250,14 +251,16 @@ class DownloadManager:
             if task.status == DownloadStatus.DOWNLOADING:
                 task._pause_requested = True
                 task.status = DownloadStatus.PAUSED
-                self._notify_task_update(task)
+                task_to_notify = task
                 logger.info(f"Task {task_id} paused")
                 changed = True
             elif task.status == DownloadStatus.QUEUED:
                 task.status = DownloadStatus.PAUSED
-                self._notify_task_update(task)
+                task_to_notify = task
                 changed = True
 
+        if task_to_notify:
+            self._notify_task_update(task_to_notify)
         if changed:
             self._notify_queue_changed()
         return changed
@@ -265,6 +268,7 @@ class DownloadManager:
     def resume_task(self, task_id: str) -> bool:
         """继续指定任务"""
         should_start = False
+        task_to_notify = None
         with self._lock:
             task = self.tasks.get(task_id)
             if not task or task.status != DownloadStatus.PAUSED:
@@ -272,12 +276,14 @@ class DownloadManager:
 
             task._pause_requested = False
             task.status = DownloadStatus.QUEUED
-            self._notify_task_update(task)
+            task_to_notify = task
             logger.info(f"Task {task_id} resumed")
 
             if not self.is_running:
                 should_start = True
 
+        if task_to_notify:
+            self._notify_task_update(task_to_notify)
         if should_start:
             self.start()
         self._notify_queue_changed()
@@ -286,6 +292,7 @@ class DownloadManager:
     def cancel_task(self, task_id: str) -> bool:
         """取消指定任务"""
         changed = False
+        task_to_notify = None
         with self._lock:
             task = self.tasks.get(task_id)
             if not task:
@@ -302,9 +309,11 @@ class DownloadManager:
             if task_id in self.queue:
                 self.queue.remove(task_id)
 
-            self._notify_task_update(task)
+            task_to_notify = task
             logger.info(f"Task {task_id} cancelled")
             changed = True
+        if task_to_notify:
+            self._notify_task_update(task_to_notify)
         if changed:
             self._notify_queue_changed()
         return changed
@@ -319,6 +328,7 @@ class DownloadManager:
             是否成功重置任务
         """
         should_start = False
+        task_to_notify = None
         with self._lock:
             task = self.tasks.get(task_id)
             if not task or task.status != DownloadStatus.FAILED:
@@ -329,12 +339,14 @@ class DownloadManager:
             task.retry_count += 1
             task.error_message = None
             # 保留 failed_pages 和 completed_pages 用于断点续传
-            self._notify_task_update(task)
+            task_to_notify = task
             logger.info(f"Task {task_id} queued for retry (attempt #{task.retry_count})")
 
             # 检查是否需要启动队列处理器
             should_start = not self.is_running
 
+        if task_to_notify:
+            self._notify_task_update(task_to_notify)
         # 在锁外启动处理器
         if should_start:
             self.start()
