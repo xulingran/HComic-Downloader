@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
@@ -37,6 +37,8 @@ export function SearchPage() {
     exitBatchMode,
   } = useBatchSelect()
 
+  const searchGenRef = useRef(0)
+
   useEffect(() => {
     getConfig().then(result => {
       if (result.config.defaultSource) {
@@ -49,17 +51,22 @@ export function SearchPage() {
     if (!query.trim()) return
     clearSelection()
 
+    const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
 
     try {
       const result = await search(query, mode, page, source)
+      if (gen !== searchGenRef.current) return  // 丢弃旧请求的响应
       setComics(result.comics)
       setPagination(result.pagination)
     } catch (err) {
+      if (gen !== searchGenRef.current) return
       setError(err instanceof Error ? err.message : 'Search failed')
     } finally {
-      setLoading(false)
+      if (gen === searchGenRef.current) {
+        setLoading(false)
+      }
     }
   }
 

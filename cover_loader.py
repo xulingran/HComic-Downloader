@@ -33,6 +33,7 @@ class CoverLoader:
         self.cover_load_generation: int = 0
         self.cover_loading_keys: set[str] = set()
         self.cover_loading_lock = threading.Lock()
+        self._closed = False
 
         self._pending_image_updates: dict = {}
         self._pending_image_flush_after_id: Optional[str] = None
@@ -85,7 +86,8 @@ class CoverLoader:
             with self.cover_loading_lock:
                 if cache_key in self.image_cache:
                     photo = self.image_cache[cache_key]
-                    self._root.after(0, lambda l=label, p=photo: self._safe_update_image(l, p))
+                    if not self._closed:
+                        self._root.after(0, lambda l=label, p=photo: self._safe_update_image(l, p))
                     return
 
             response = self._session_get(
@@ -97,20 +99,16 @@ class CoverLoader:
 
             img = Image.open(BytesIO(response.content))
             img.thumbnail((cover_width, cover_height), Image.Resampling.LANCZOS)
-            photo = ImageTk.PhotoImage(img)
 
-            if generation != self.cover_load_generation:
+            if generation != self.cover_load_generation or self._closed:
                 return
 
-            with self.cover_loading_lock:
-                self.image_cache[cache_key] = photo
-                # LRU eviction: keep cache bounded
-                while len(self.image_cache) > MAX_CACHE_SIZE:
-                    self.image_cache.popitem(last=False)
-            self._root.after(0, lambda l=label, p=photo: self._safe_update_image(l, p))
+            # 主线程：创建 PhotoImage、缓存、更新 UI
+            self._root.after(0, lambda l=label, im=img, ck=cache_key:
+                             self._on_cover_loaded(l, im, ck))
         except Exception as e:
             logger.debug(f"Failed to load cover: {e}")
-            if generation == self.cover_load_generation:
+            if generation == self.cover_load_generation and not self._closed:
                 self._root.after(
                     0,
                     lambda l=label, u=url, w=card_width, g=generation: self._show_cover_retry_icon(l, u, w, g),
@@ -119,6 +117,20 @@ class CoverLoader:
             if cache_key:
                 with self.cover_loading_lock:
                     self.cover_loading_keys.discard(cache_key)
+
+    def _on_cover_loaded(self, label: ttk.Label, pil_img: Image.Image, cache_key: str):
+        """主线程：创建 PhotoImage、缓存、更新 label。"""
+        if self._closed:
+            return
+        try:
+            photo = ImageTk.PhotoImage(pil_img)
+            with self.cover_loading_lock:
+                self.image_cache[cache_key] = photo
+                while len(self.image_cache) > MAX_CACHE_SIZE:
+                    self.image_cache.popitem(last=False)
+            self._safe_update_image(label, photo)
+        except tk.TclError:
+            logger.debug("Failed to create PhotoImage: Tk not available")
 
     def _show_cover_retry_icon(self, label: ttk.Label, url: str, card_width: int, generation: int):
         if generation != self.cover_load_generation:
@@ -202,6 +214,8 @@ class CoverLoader:
             label.bind("<Button-1>", handler)
 
     def shutdown(self):
+        self._closed = True
+        self.increment_generation()
         try:
             self.cover_executor.shutdown(wait=False, cancel_futures=True)
         except TypeError:

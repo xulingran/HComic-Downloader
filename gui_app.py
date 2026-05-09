@@ -294,9 +294,7 @@ class HComicDownloaderGUI(tk.Tk):
             self.dl_ctrl.set_destroying(True)
         if hasattr(self, "auth_manager"):
             self.auth_manager.destroy()
-        # 保存配置
-        self._save_all_settings()
-
+        # 先停止后台 UI 回调，再保存配置
         if hasattr(self, "theme_bridge"):
             self.theme_bridge.destroy()
         if hasattr(self, "scroll_handler"):
@@ -304,6 +302,12 @@ class HComicDownloaderGUI(tk.Tk):
         if hasattr(self, "cover_loader"):
             self.cover_loader.clear_pending()
             self.cover_loader.shutdown()
+
+        try:
+            self._save_all_settings()
+        except Exception as e:
+            logger.warning(f"保存设置失败: {e}")
+
         stop_download_manager_for_shutdown(getattr(self, "download_manager", None))
         super().destroy()
 

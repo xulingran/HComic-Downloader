@@ -453,8 +453,9 @@ class ComicDownloader:
         all_completed = completed_pages + new_completed
         all_failed = new_failed
 
-        # 判断是否成功
-        success = len(all_failed) == 0
+        # 判断是否成功（全部页面完成且无失败）
+        all_pages_downloaded = len(set(all_completed)) + len(all_failed) == total
+        success = len(all_failed) == 0 and all_pages_downloaded
 
         if success:
             logger.info(f"Download completed: {comic.title}")
