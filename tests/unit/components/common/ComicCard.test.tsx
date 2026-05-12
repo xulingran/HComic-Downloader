@@ -2,10 +2,11 @@ import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ComicCard } from '@/components/common/ComicCard'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 import type { ComicInfo } from '@shared/types'
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false })
 }))
 
 vi.mock('@/hooks/useCoverImage', () => ({
@@ -99,5 +100,94 @@ describe('ComicCard', () => {
     await userEvent.click(downloadButton)
     expect(onDownload).toHaveBeenCalledWith(mockComic)
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  describe('DetailedCard (detailed mode)', () => {
+    const comicWithAllFields: ComicInfo = {
+      id: '1',
+      title: 'テスト漫画タイトル',
+      url: 'https://example.com/1',
+      coverUrl: 'https://example.com/cover.jpg',
+      source: 'test',
+      author: '作者A',
+      pages: 128,
+      tags: ['NTR', '魔法少女', '触手', '女体化', '種付け', '魔物']
+    }
+
+    beforeEach(() => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+    })
+
+    it('renders as a flex row', () => {
+      const { container } = render(<ComicCard comic={comicWithAllFields} />)
+      const row = container.firstElementChild as HTMLElement
+      expect(row.className).toContain('flex')
+      expect(row.className).toContain('items-center')
+    })
+
+    it('renders square thumbnail', () => {
+      render(<ComicCard comic={comicWithAllFields} />)
+      const img = screen.getByRole('img')
+      const thumbWrapper = img.parentElement!
+      expect(thumbWrapper.className).toContain('w-14')
+      expect(thumbWrapper.className).toContain('h-14')
+    })
+
+    it('renders author and page count as subtitle', () => {
+      render(<ComicCard comic={comicWithAllFields} />)
+      expect(screen.getByText('作者A')).toBeInTheDocument()
+      expect(screen.getByText(/128/)).toBeInTheDocument()
+    })
+
+    it('renders tags as pill elements', () => {
+      render(<ComicCard comic={comicWithAllFields} />)
+      expect(screen.getByText('NTR')).toBeInTheDocument()
+      expect(screen.getByText('魔法少女')).toBeInTheDocument()
+      expect(screen.getByText('触手')).toBeInTheDocument()
+      expect(screen.getByText('+3')).toBeInTheDocument()
+    })
+
+    it('shows download button always visible (no opacity-0)', () => {
+      const onDownload = vi.fn()
+      const { container } = render(
+        <ComicCard comic={comicWithAllFields} onDownload={onDownload} />
+      )
+      // Find the download button — it's the last button in the row, contains an SVG with download path
+      const buttons = container.querySelectorAll('button')
+      const downloadButton = Array.from(buttons).find(b => b.querySelector('svg path[d*="M4 16v1"]'))
+      expect(downloadButton).toBeTruthy()
+      expect(downloadButton!.className).not.toContain('opacity-0')
+    })
+
+    it('selected state uses border-l accent', () => {
+      const { container } = render(
+        <ComicCard comic={comicWithAllFields} batchMode={true} selected={true} />
+      )
+      const row = container.firstElementChild as HTMLElement
+      expect(row.className).toContain('border-l-2')
+      expect(row.className).toContain('border-l-[var(--accent)]')
+    })
+  })
+
+  describe('SFW mode', () => {
+    beforeEach(() => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: true })
+    })
+
+    afterEach(() => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+
+    it('shows SFW placeholder in CoverCard', () => {
+      const { container } = render(<ComicCard comic={mockComic} />)
+      expect(screen.getByText('SFW')).toBeInTheDocument()
+      expect(container.querySelector('img')).not.toBeInTheDocument()
+    })
+
+    it('shows SFW placeholder in DetailedCard', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: true })
+      const { container } = render(<ComicCard comic={mockComic} />)
+      expect(container.querySelector('img')).not.toBeInTheDocument()
+    })
   })
 })

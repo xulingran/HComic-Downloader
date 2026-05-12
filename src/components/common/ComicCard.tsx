@@ -10,21 +10,22 @@ interface ComicCardProps {
   batchMode?: boolean
   onToggleSelect?: (comic: ComicInfo) => void
   onDownload?: (comic: ComicInfo) => void
+  sfwMode?: boolean
 }
 
 export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload }: ComicCardProps) {
-  const { cardStyle } = useSettingsStore()
+  const { cardStyle, sfwMode } = useSettingsStore()
   const [titleExpanded, setTitleExpanded] = useState(false)
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} />
   }
-  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} />
+  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} />
 }
 
-function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, titleExpanded, onToggleTitle }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
+function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, titleExpanded, onToggleTitle, sfwMode }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef)
+  const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const handleClick = () => {
     if (batchMode) onToggleSelect?.(comic)
     else onClick?.(comic)
@@ -60,7 +61,12 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
         </button>
       )}
       <div className="aspect-[3/4] bg-[var(--bg-secondary)] relative overflow-hidden">
-        {coverSrc === undefined && comic.coverUrl ? (
+        {sfwMode ? (
+          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)] flex-col gap-1">
+            <span className="text-3xl">📖</span>
+            <span className="text-xs font-medium">SFW</span>
+          </div>
+        ) : coverSrc === undefined && comic.coverUrl ? (
           <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
             <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -108,9 +114,9 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, titleExpanded, onToggleTitle }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, titleExpanded, onToggleTitle, sfwMode }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef)
+  const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const [showAllTags, setShowAllTags] = useState(false)
   const handleClick = () => {
     if (batchMode) onToggleSelect?.(comic)
@@ -121,33 +127,26 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
     <div
       ref={containerRef}
       onClick={handleClick}
-      className={`bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-all duration-200
-                 cursor-pointer overflow-hidden flex relative
-                 ${selected ? 'ring-2 ring-[var(--accent)] shadow-[var(--accent)]/20 shadow-lg' : ''}`}
+      className={`flex items-center px-4 py-2.5 cursor-pointer transition-colors duration-150
+                  border-b border-[var(--border)] hover:bg-[var(--bg-secondary)]
+                  ${selected ? 'border-l-2 border-l-[var(--accent)] bg-[var(--accent)]/5' : ''}`}
     >
       {batchMode && (
-        <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center
-                        ${selected ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-white/80 bg-black/30'}`}>
+        <div className={`mr-2 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
+                        ${selected ? 'bg-[var(--accent)] border-[var(--accent)]' : 'border-[var(--text-secondary)]'}`}>
           {selected && (
-            <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+            <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           )}
         </div>
       )}
-      {!batchMode && onDownload && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDownload(comic) }}
-          className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-black/50 text-white
-                     flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-        </button>
-      )}
-      <div className="w-20 h-20 bg-[var(--bg-secondary)] flex-shrink-0">
-        {coverSrc === undefined && comic.coverUrl ? (
+      <div className="w-14 h-14 bg-[var(--bg-secondary)] flex-shrink-0 rounded-md overflow-hidden">
+        {sfwMode ? (
+          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
+            <span className="text-xl">📖</span>
+          </div>
+        ) : coverSrc === undefined && comic.coverUrl ? (
           <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
             <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -176,21 +175,20 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
           </div>
         )}
       </div>
-      <div className="flex-1 p-3 flex flex-col justify-center min-w-0">
+      <div className="flex-1 min-w-0 ml-3">
         <h3
           onClick={(e) => { e.stopPropagation(); onToggleTitle() }}
           className={`text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text
-                     ${titleExpanded ? '' : 'line-clamp-2'}`}
+                     ${titleExpanded ? '' : 'truncate'}`}
           title={comic.title}
         >
           {comic.title}
         </h3>
-        {comic.author && (
-          <p className="text-xs text-[var(--text-secondary)] mt-1 truncate select-text">{comic.author}</p>
-        )}
-        {comic.pages != null && comic.pages > 0 && (
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5">{comic.pages} 页</p>
-        )}
+        <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+          {comic.author && <span>{comic.author}</span>}
+          {comic.author && comic.pages != null && comic.pages > 0 && <span className="mx-1.5">·</span>}
+          {comic.pages != null && comic.pages > 0 && <span>{comic.pages} 页</span>}
+        </div>
         {comic.tags && comic.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
             {(showAllTags ? comic.tags : comic.tags.slice(0, 3)).map((tag, i) => (
@@ -220,6 +218,17 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
           </div>
         )}
       </div>
+      {!batchMode && onDownload && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onDownload(comic) }}
+          className="flex-shrink-0 ml-2 w-7 h-7 rounded-full bg-[var(--bg-secondary)] text-[var(--text-secondary)]
+                     flex items-center justify-center hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+        </button>
+      )}
     </div>
   )
 }
