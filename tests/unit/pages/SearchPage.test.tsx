@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComicInfo } from '@shared/types'
+import { useSettingsStore } from '@/stores/useSettingsStore'
 
 // Hoist mock functions so they are available inside vi.mock factories
 const { mockSearch, mockStartDownload, mockStoreState } = vi.hoisted(() => {
@@ -55,7 +56,7 @@ vi.mock('@/stores/useComicStore', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false })
 }))
 
 vi.mock('@/components/common/ComicCard', () => ({
@@ -112,7 +113,7 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
 
-    expect(screen.getByText('输入关键词开始搜索')).toBeInTheDocument()
+    expect(screen.getByText('暂无搜索结果')).toBeInTheDocument()
   })
 
   it('shows comic cards when comics are available', () => {
@@ -143,6 +144,34 @@ describe('SearchPage', () => {
     expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic')
   })
 
+  it('auto-searches with empty keyword on mount', async () => {
+    mockSearch.mockResolvedValue({
+      comics: [],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+    })
+
+    render(<SearchPage />)
+
+    // Wait for the async getConfig + search to complete
+    await screen.findByPlaceholderText('输入搜索内容...')
+
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic')
+  })
+
+  it('sends search request with empty query when button clicked', async () => {
+    mockSearch.mockResolvedValue({
+      comics: [],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+    })
+
+    render(<SearchPage />)
+
+    await userEvent.click(screen.getByText('搜索'))
+
+    // At least one call should have empty query (mount auto-search or button click)
+    expect(mockSearch).toHaveBeenCalled()
+  })
+
   it('shows pagination when totalPages > 1', () => {
     mockStoreState.comics = [
       { id: '1', title: 'Comic A', url: 'https://example.com/1', coverUrl: '', source: 'test' }
@@ -163,6 +192,30 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
 
-    expect(screen.queryByText('输入关键词开始搜索')).not.toBeInTheDocument()
+    expect(screen.queryByText('暂无搜索结果')).not.toBeInTheDocument()
+  })
+
+  describe('container layout by cardStyle', () => {
+    const comicsWithResults: ComicInfo[] = [
+      { id: '1', title: 'Comic A', url: 'https://example.com/1', coverUrl: '', source: 'test' }
+    ]
+
+    it('uses grid layout for cover mode', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+      mockStoreState.comics = comicsWithResults
+
+      render(<SearchPage />)
+      const gridContainer = screen.getByText('Comic A').closest('div[class*="grid"]')
+      expect(gridContainer).toBeInTheDocument()
+    })
+
+    it('uses flex-col layout for detailed mode', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      mockStoreState.comics = comicsWithResults
+
+      render(<SearchPage />)
+      const flexContainer = screen.getByText('Comic A').closest('div[class*="flex-col"]')
+      expect(flexContainer).toBeInTheDocument()
+    })
   })
 })

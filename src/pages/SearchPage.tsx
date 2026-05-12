@@ -2,9 +2,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
-import { useBatchSelect } from '../hooks/useBatchSelect'
+import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
 import { ComicInfo } from '@shared/types'
+import { useSettingsStore } from '../stores/useSettingsStore'
 
 const searchModes = [
   { value: 'keyword', label: '关键词' },
@@ -36,19 +37,41 @@ export function SearchPage() {
     clearSelection,
     exitBatchMode,
   } = useBatchSelect()
+  const { cardStyle } = useSettingsStore()
 
   const searchGenRef = useRef(0)
 
   useEffect(() => {
+    let cancelled = false
+    const gen = ++searchGenRef.current
+    setLoading(true)
+
     getConfig().then(result => {
+      if (cancelled) return
+      const resolvedSource = result.config.defaultSource || source
       if (result.config.defaultSource) {
         setSource(result.config.defaultSource)
       }
-    }).catch(() => {})
+      return search('', mode, 1, resolvedSource)
+    }).then(result => {
+      if (cancelled || gen !== searchGenRef.current) return
+      if (result) {
+        setComics(result.comics)
+        setPagination(result.pagination)
+      }
+    }).catch(err => {
+      if (cancelled || gen !== searchGenRef.current) return
+      setError(err instanceof Error ? err.message : 'Search failed')
+    }).finally(() => {
+      if (!cancelled && gen === searchGenRef.current) {
+        setLoading(false)
+      }
+    })
+
+    return () => { cancelled = true }
   }, [])
 
   const handleSearch = async (page: number = 1) => {
-    if (!query.trim()) return
     clearSelection()
 
     const gen = ++searchGenRef.current
@@ -79,8 +102,8 @@ export function SearchPage() {
   }
 
   const handleBatchDownload = async () => {
-    for (const id of selectedIds) {
-      const comic = comics.find(c => c.id === id)
+    for (const key of selectedIds) {
+      const comic = comics.find(c => getComicKey(c) === key)
       if (comic) await handleDownload(comic)
     }
     exitBatchMode()
@@ -186,14 +209,17 @@ export function SearchPage() {
       )}
 
       {comics.length > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <div className={cardStyle === 'detailed'
+          ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+          : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
+        }>
           {comics.map((comic) => (
             <ComicCard
-              key={comic.id}
+              key={getComicKey(comic)}
               comic={comic}
               onClick={handleComicClick}
               batchMode={batchMode}
-              selected={selectedIds.has(comic.id)}
+              selected={selectedIds.has(getComicKey(comic))}
               onToggleSelect={toggleSelect}
               onDownload={handleDownload}
             />
@@ -283,7 +309,7 @@ export function SearchPage() {
 
       {!isLoading && comics.length === 0 && (
         <div className="text-center text-[var(--text-secondary)] py-12">
-          输入关键词开始搜索
+          暂无搜索结果
         </div>
       )}
     </div>
