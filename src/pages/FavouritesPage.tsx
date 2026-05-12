@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useFavourites } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
-import { useBatchSelect } from '../hooks/useBatchSelect'
+import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
 import { LoginExpiredDialog } from '../components/common/LoginExpiredDialog'
 import { ComicInfo, PaginationInfo } from '@shared/types'
+import { useSettingsStore } from '../stores/useSettingsStore'
 
 interface FavouritesPageProps {
   onNavigateToSettings?: () => void
@@ -29,6 +30,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     clearSelection,
     exitBatchMode,
   } = useBatchSelect()
+  const { cardStyle } = useSettingsStore()
 
   useEffect(() => {
     loadFavourites(1)
@@ -66,8 +68,8 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   }
 
   const handleBatchDownload = async () => {
-    for (const id of selectedIds) {
-      const comic = comics.find(c => c.id === id)
+    for (const key of selectedIds) {
+      const comic = comics.find(c => getComicKey(c) === key)
       if (comic) await handleDownload(comic)
     }
     exitBatchMode()
@@ -168,14 +170,17 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             )}
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+          <div className={cardStyle === 'detailed'
+            ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+            : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
+          }>
             {comics.map((comic) => (
               <ComicCard
-                key={comic.id}
+                key={getComicKey(comic)}
                 comic={comic}
                 onClick={handleComicClick}
                 batchMode={batchMode}
-                selected={selectedIds.has(comic.id)}
+                selected={selectedIds.has(getComicKey(comic))}
                 onToggleSelect={toggleSelect}
                 onDownload={handleDownload}
               />
