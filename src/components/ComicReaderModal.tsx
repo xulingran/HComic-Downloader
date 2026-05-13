@@ -27,6 +27,18 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
   const observerRef = useRef<IntersectionObserver | null>(null)
+  const settingsPanelRef = useRef<HTMLDivElement>(null)
+
+  // Close settings panel on outside click
+  useEffect(() => {
+    if (!settingsOpen) return
+    const handler = (e: MouseEvent) => {
+      if (settingsPanelRef.current?.contains(e.target as Node)) return
+      setSettingsOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [settingsOpen])
 
   // Fetch URLs when modal opens
   useEffect(() => {
@@ -174,7 +186,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                 ref={(el) => { pageRefs.current[idx] = el }}
                 style={{ width: imageWidth + '%' }}
               >
-                <ReaderPage url={url} index={idx} />
+                <ReaderPage url={url} index={idx} priority={false} cachedDataUri={undefined} />
               </div>
             ))}
           </div>
@@ -210,6 +222,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
         {settingsOpen && (
           <div
+            ref={settingsPanelRef}
             className="absolute bottom-full right-4 mb-2 rounded-lg"
             style={{
               background: 'rgba(0,0,0,0.6)',
@@ -255,7 +268,12 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   )
 }
 
-function ReaderPage({ url, index }: { url: string; index: number }) {
+function ReaderPage({ url, index, priority, cachedDataUri }: {
+  url: string
+  index: number
+  priority?: boolean
+  cachedDataUri?: string
+}) {
   const [error, setError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [dataUri, setDataUri] = useState<string | null>(null)
@@ -282,7 +300,12 @@ function ReaderPage({ url, index }: { url: string; index: number }) {
   }, [])
 
   useEffect(() => {
-    if (!isVisible || dataUri || error) return
+    if (cachedDataUri && !dataUri) {
+      setDataUri(cachedDataUri)
+      return
+    }
+    if (dataUri || error) return
+    if (!isVisible && !priority) return
     let cancelled = false
 
     Promise.resolve()
@@ -301,7 +324,7 @@ function ReaderPage({ url, index }: { url: string; index: number }) {
         setError(true)
       })
     return () => { cancelled = true }
-  }, [dataUri, error, isVisible, retryTick, url])
+  }, [cachedDataUri, dataUri, error, isVisible, priority, retryTick, url])
 
   const retry = () => {
     setError(false)
@@ -329,8 +352,8 @@ function ReaderPage({ url, index }: { url: string; index: number }) {
   }
 
   return (
-    <div ref={containerRef} style={{ aspectRatio: '3/4' }} className="relative flex items-center justify-center">
-      {isVisible ? (
+    <div ref={containerRef} style={dataUri ? undefined : { aspectRatio: '3/4' }} className="relative flex items-center justify-center">
+      {(isVisible || priority || dataUri) ? (
         <>
           {!dataUri && (
             <div className="absolute inset-0 flex items-center justify-center">

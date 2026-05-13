@@ -225,6 +225,23 @@ describe('ComicReaderModal', () => {
     expect(screen.getByText('50%')).toBeInTheDocument()
   })
 
+  describe('ReaderPage cache and priority', () => {
+    it('uses cachedDataUri when provided', async () => {
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: ['https://img.example.com/1.jpg', 'https://img.example.com/2.jpg', 'https://img.example.com/3.jpg'],
+        totalPages: 3,
+        currentPage: 1,
+      }))
+      mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,cached-page-1' })
+
+      render(
+        <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
+      )
+
+      await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(3))
+    })
+  })
+
   describe('settings panel', () => {
     it('renders settings gear button in footer', () => {
       render(
