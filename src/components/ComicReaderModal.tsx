@@ -21,6 +21,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     reset,
   } = useComicReader()
 
+  const { pageGap, imageWidth, setPageGap, setImageWidth } = useReaderSettings()
+  const [settingsOpen, setSettingsOpen] = useState(false)
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
   const observerRef = useRef<IntersectionObserver | null>(null)
@@ -98,8 +101,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   if (!open) return null
 
   const progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0
-  const { pageGap, imageWidth, setPageGap, setImageWidth } = useReaderSettings()
-  const [settingsOpen, setSettingsOpen] = useState(false)
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#1a1a2e]">
