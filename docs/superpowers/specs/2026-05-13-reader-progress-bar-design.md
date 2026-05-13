@@ -1,5 +1,7 @@
 # 漫画阅读器：可拖拽进度条 + 智能预加载
 
+> **Status:** ✅ Implemented
+
 ## 背景
 
 当前 `ComicReaderModal` 的底部进度条是纯展示组件，不支持任何交互。用户无法快速跳转到指定页面。同时，现有图片加载通过 IntersectionObserver（400px rootMargin）按需触发，所有进入视口的页面同时开始加载，没有优先级区分。
