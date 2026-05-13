@@ -282,6 +282,44 @@ describe('ComicReaderModal', () => {
     })
   })
 
+  describe('smart preloading on jump', () => {
+    it('preloads pages sequentially after slider drag', async () => {
+      const urls = Array.from({ length: 20 }, (_, i) => `https://img.example.com/${i + 1}.jpg`)
+      const setCurrentPage = vi.fn()
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: urls,
+        totalPages: 20,
+        currentPage: 1,
+        setCurrentPage,
+      }))
+      mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,preloaded' })
+
+      render(
+        <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
+      )
+
+      // Wait for initial load
+      await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalled())
+
+      mockFetchPreviewImage.mockClear()
+
+      // Simulate dragging to page 10
+      const slider = screen.getByRole('slider')
+      slider.getBoundingClientRect = vi.fn(() => ({ left: 0, width: 300, right: 300, top: 0, bottom: 0, height: 24, x: 0, y: 0 }) as DOMRect)
+      slider.setPointerCapture = vi.fn()
+      Element.prototype.scrollIntoView = vi.fn()
+
+      // clientX=150 on 300px track → 50% of 20 pages → page 10
+      fireEvent.pointerDown(slider, { clientX: 150, pointerId: 1 })
+      fireEvent.pointerUp(slider, { pointerId: 1 })
+
+      // Verify sequential preloading was triggered starting from page 10
+      await waitFor(() => {
+        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/10.jpg')
+      })
+    })
+  })
+
   describe('settings panel', () => {
     it('renders settings gear button in footer', () => {
       render(

@@ -28,6 +28,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const dragPageRef = useRef(0)
   const sliderRef = useRef<HTMLDivElement>(null)
 
+  const [preloadTarget, setPreloadTarget] = useState<number | null>(null)
+  const imageCacheRef = useRef(new Map<number, string>())
+  const [cacheVersion, setCacheVersion] = useState(0)
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
   const observerRef = useRef<IntersectionObserver | null>(null)
@@ -96,6 +100,44 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     return () => { observerRef.current?.disconnect() }
   }, [loadingState, imageUrls.length])
 
+  // Serial preloading around jump target
+  useEffect(() => {
+    if (preloadTarget == null || loadingState !== 'loaded') return
+    let cancelled = false
+    const cache = imageCacheRef.current
+    const FORWARD = 5
+    const BACKWARD = 2
+    const queue: number[] = []
+
+    for (let i = 0; i <= FORWARD; i++) {
+      const pg = preloadTarget + i
+      if (pg >= 1 && pg <= imageUrls.length && !cache.has(pg - 1)) queue.push(pg)
+    }
+    for (let i = 1; i <= BACKWARD; i++) {
+      const pg = preloadTarget - i
+      if (pg >= 1 && pg <= imageUrls.length && !cache.has(pg - 1)) queue.push(pg)
+    }
+
+    if (queue.length === 0) return
+
+    const loadNext = async (idx: number) => {
+      if (cancelled || idx >= queue.length) return
+      const pg = queue[idx]
+      try {
+        const result = await window.hcomic!.fetchPreviewImage(imageUrls[pg - 1])
+        if (cancelled) return
+        if (result?.dataUri) {
+          cache.set(pg - 1, result.dataUri)
+          setCacheVersion((v) => v + 1)
+        }
+      } catch {}
+      await loadNext(idx + 1)
+    }
+
+    loadNext(0)
+    return () => { cancelled = true }
+  }, [preloadTarget, loadingState, imageUrls])
+
   // Keyboard handler
   useEffect(() => {
     if (!open) return
@@ -133,6 +175,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const handleSliderPointerUp = () => {
     if (!isDragging) return
     setIsDragging(false)
+    if (dragPageRef.current > 0) {
+      setPreloadTarget(dragPageRef.current)
+    }
   }
 
   const updateDragPosition = (e: React.PointerEvent) => {
@@ -218,7 +263,12 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                 ref={(el) => { pageRefs.current[idx] = el }}
                 style={{ width: imageWidth + '%' }}
               >
-                <ReaderPage url={url} index={idx} priority={false} cachedDataUri={undefined} />
+                <ReaderPage
+                  url={url}
+                  index={idx}
+                  priority={preloadTarget != null && Math.abs(idx + 1 - preloadTarget) <= 5}
+                  cachedDataUri={imageCacheRef.current.get(idx)}
+                />
               </div>
             ))}
           </div>
