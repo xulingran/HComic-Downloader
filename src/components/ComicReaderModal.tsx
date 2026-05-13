@@ -24,6 +24,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const { pageGap, imageWidth, setPageGap, setImageWidth } = useReaderSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
+  const [isDragging, setIsDragging] = useState(false)
+  const dragPageRef = useRef(0)
+  const sliderRef = useRef<HTMLDivElement>(null)
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
   const observerRef = useRef<IntersectionObserver | null>(null)
@@ -114,6 +118,34 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0
 
+  const handleSliderPointerDown = (e: React.PointerEvent) => {
+    e.preventDefault()
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    setIsDragging(true)
+    updateDragPosition(e)
+  }
+
+  const handleSliderPointerMove = (e: React.PointerEvent) => {
+    if (!isDragging) return
+    updateDragPosition(e)
+  }
+
+  const handleSliderPointerUp = () => {
+    if (!isDragging) return
+    setIsDragging(false)
+  }
+
+  const updateDragPosition = (e: React.PointerEvent) => {
+    const track = sliderRef.current
+    if (!track) return
+    const rect = track.getBoundingClientRect()
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
+    const page = Math.max(1, Math.round(pct * totalPages))
+    dragPageRef.current = page
+    pageRefs.current[page - 1]?.scrollIntoView({ behavior: 'instant' })
+    setCurrentPage(page)
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-[#1a1a2e]">
       {/* Header */}
@@ -200,12 +232,49 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       >
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500">{progress}%</span>
-          <div className="flex-1 h-[3px] rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
-            <div
-              className="h-full rounded-full transition-all duration-300"
-              style={{ width: `${progress}%`, background: '#6c8cff' }}
-            />
+          <div
+            ref={sliderRef}
+            data-track
+            role="slider"
+            aria-valuemin={1}
+            aria-valuemax={totalPages}
+            aria-valuenow={currentPage}
+            aria-label="页面进度"
+            className="flex-1 h-6 flex items-center cursor-pointer"
+            style={{ padding: '8px 0' }}
+            onPointerDown={handleSliderPointerDown}
+            onPointerMove={handleSliderPointerMove}
+            onPointerUp={handleSliderPointerUp}
+          >
+            <div className="w-full relative" style={{ height: '4px' }}>
+              <div className="absolute inset-0 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }} />
+              <div
+                className="absolute left-0 top-0 bottom-0 rounded-full"
+                style={{ width: `${progress}%`, background: '#6c8cff' }}
+              />
+              <div
+                className="absolute top-1/2 rounded-full"
+                style={{
+                  left: `${progress}%`,
+                  transform: 'translate(-50%, -50%)',
+                  width: isDragging ? 18 : 14,
+                  height: isDragging ? 18 : 14,
+                  background: '#6c8cff',
+                  boxShadow: '0 0 6px rgba(108,140,255,0.5)',
+                  transition: isDragging ? 'none' : 'left 0.2s, width 0.15s, height 0.15s',
+                  ...(isDragging ? { touchAction: 'none' } : {}),
+                }}
+              />
+            </div>
           </div>
+          {isDragging && (
+            <span
+              className="text-xs px-2 py-0.5 rounded"
+              style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}
+            >
+              {currentPage} / {totalPages}
+            </span>
+          )}
           <span className="text-xs text-gray-500">ESC 关闭 | ↑↓ 滚动</span>
           <button
             aria-label="阅读设置"

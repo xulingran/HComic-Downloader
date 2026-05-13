@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { useComicReader } from '@/hooks/useComicReader'
 import userEvent from '@testing-library/user-event'
 import { ComicReaderModal } from '@/components/ComicReaderModal'
@@ -239,6 +239,46 @@ describe('ComicReaderModal', () => {
       )
 
       await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(3))
+    })
+  })
+
+  describe('draggable progress bar', () => {
+    it('renders slider track with correct aria attributes', () => {
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: ['url1', 'url2', 'url3', 'url4'],
+        totalPages: 4,
+        currentPage: 2,
+      }))
+      render(
+        <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
+      )
+      const slider = screen.getByRole('slider')
+      expect(slider).toBeInTheDocument()
+      expect(slider).toHaveAttribute('aria-valuemin', '1')
+      expect(slider).toHaveAttribute('aria-valuemax', '4')
+      expect(slider).toHaveAttribute('aria-valuenow', '2')
+    })
+
+    it('updates displayed page on pointer drag', async () => {
+      const setCurrentPage = vi.fn()
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: Array.from({ length: 10 }, (_, i) => `url${i}`),
+        totalPages: 10,
+        currentPage: 1,
+        setCurrentPage,
+      }))
+      render(
+        <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
+      )
+
+      const slider = screen.getByRole('slider')
+      slider.getBoundingClientRect = vi.fn(() => ({ left: 0, width: 300, right: 300, top: 0, bottom: 0, height: 24, x: 0, y: 0 }) as DOMRect)
+      slider.setPointerCapture = vi.fn()
+      Element.prototype.scrollIntoView = vi.fn()
+
+      // clientX=150 on a 300px-wide track → 50% → page 5
+      fireEvent.pointerDown(slider, { clientX: 150, pointerId: 1 })
+      expect(setCurrentPage).toHaveBeenCalledWith(5)
     })
   })
 
