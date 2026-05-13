@@ -54,6 +54,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       fetchUrls(comic)
     } else {
       reset()
+      setPreloadTarget(null)
+      imageCacheRef.current.clear()
     }
   }, [open, comic, fetchUrls, reset])
 
@@ -72,6 +74,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
     observerRef.current = new IntersectionObserver(
       (entries) => {
+        if (isDragging) return
         let topPage = currentPage
         let topY = Infinity
         for (const entry of entries) {
@@ -98,7 +101,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     }
 
     return () => { observerRef.current?.disconnect() }
-  }, [loadingState, imageUrls.length])
+  }, [loadingState, imageUrls.length, isDragging, currentPage])
 
   // Serial preloading around jump target
   useEffect(() => {
