@@ -3,7 +3,7 @@ import { useFavourites } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
-import { LoginExpiredDialog } from '../components/common/LoginExpiredDialog'
+import { ComicReaderModal } from '../components/ComicReaderModal'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 
@@ -18,8 +18,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [needsLogin, setNeedsLogin] = useState(false)
-  const [showLoginDialog, setShowLoginDialog] = useState(false)
-  const { getFavourites } = useFavourites()
+  const { getFavourites, checkDownloadedStatus } = useFavourites()
   const { downloadWithConflictCheck } = useDownloadHelper()
   const {
     batchMode,
@@ -31,6 +30,11 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     exitBatchMode,
   } = useBatchSelect()
   const { cardStyle } = useSettingsStore()
+  const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
+  const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
+
+  const getTaskId = (comic: ComicInfo) =>
+    `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
 
   useEffect(() => {
     loadFavourites(1)
@@ -47,6 +51,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       setPagination(result.pagination ?? null)
       setNeedsLogin(result.needsLogin)
       setCurrentPage(page)
+
+      checkDownloadedStatus(result.comics).then((statusResult) => {
+        setDownloadedStatus(statusResult.statusMap)
+      }).catch(() => {})
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load favourites'
       if ((err as any)?.code === -32001 || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
@@ -61,6 +69,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
 
   const handleComicClick = (comic: ComicInfo) => {
     console.log('Comic clicked:', comic)
+  }
+
+  const handleOpenReader = (comic: ComicInfo) => {
+    setReaderComic(comic)
   }
 
   const handleDownload = async (comic: ComicInfo) => {
@@ -108,24 +120,12 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
 
       {needsLogin ? (
         <div className="text-center py-12">
-          <div className="text-[var(--text-secondary)] mb-4">登录信息已过期或未配置</div>
+          <div className="text-[var(--text-secondary)] mb-4">登录信息已过期或未配置，请前往设置页面重新登录</div>
           <div className="flex justify-center gap-3">
-            <button
-              onClick={() => window.hcomic?.openUrl('https://h-comic.com')}
-              className="px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors text-sm"
-            >
-              打开网站登录
-            </button>
-            <button
-              onClick={() => setShowLoginDialog(true)}
-              className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-colors text-sm"
-            >
-              查看重新登录步骤
-            </button>
             {onNavigateToSettings && (
               <button
                 onClick={onNavigateToSettings}
-                className="px-4 py-2 bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] rounded-lg hover:bg-[var(--bg-tertiary)] transition-colors text-sm"
+                className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-colors text-sm"
               >
                 前往设置
               </button>
@@ -179,10 +179,12 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
                 key={getComicKey(comic)}
                 comic={comic}
                 onClick={handleComicClick}
+                onOpenReader={handleOpenReader}
                 batchMode={batchMode}
                 selected={selectedIds.has(getComicKey(comic))}
                 onToggleSelect={toggleSelect}
                 onDownload={handleDownload}
+                downloadStatus={downloadedStatus[getTaskId(comic)]}
               />
             ))}
           </div>
@@ -213,12 +215,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         </>
       )}
 
-      <LoginExpiredDialog
-        open={showLoginDialog}
-        onClose={() => setShowLoginDialog(false)}
-        onGoToSettings={() => { setShowLoginDialog(false); onNavigateToSettings?.() }}
-        onOpenWebsite={() => window.hcomic?.openUrl('https://h-comic.com')}
-      />
+      {readerComic && (
+        <ComicReaderModal
+          comic={readerComic}
+          open={!!readerComic}
+          onClose={() => setReaderComic(null)}
+        />
+      )}
     </div>
   )
 }
