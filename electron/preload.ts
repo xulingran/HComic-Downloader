@@ -16,7 +16,7 @@ function validatePage(page: unknown): asserts page is number {
 
 contextBridge.exposeInMainWorld('hcomic', {
   search: (query: unknown, mode: unknown, page: unknown, source?: unknown) => {
-    if (typeof query !== 'string' || query.length === 0 || query.length > 512) throw new Error('Invalid query')
+    if (typeof query !== 'string' || query.length > 512) throw new Error('Invalid query')
     if (typeof mode !== 'string' || !VALID_SEARCH_MODES.has(mode)) throw new Error('Invalid mode')
     validatePage(page)
     if (source !== undefined && source !== null) {
@@ -112,5 +112,24 @@ contextBridge.exposeInMainWorld('hcomic', {
   getDownloadDetail: (taskId: unknown) => {
     if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
     return ipcRenderer.invoke(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, taskId)
+  },
+
+  getPreviewUrls: (comicData: unknown) => {
+    if (typeof comicData !== 'object' || comicData === null) throw new Error('Invalid comicData')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_PREVIEW_URLS, comicData)
+  },
+
+  fetchPreviewImage: (imageUrl: unknown) => {
+    if (typeof imageUrl !== 'string' || imageUrl.length === 0 || imageUrl.length > 2048) throw new Error('Invalid preview image URL')
+    return ipcRenderer.invoke(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, imageUrl)
+  },
+
+  checkDownloadedStatus: (comics: unknown) => {
+    if (!Array.isArray(comics) || comics.length === 0) throw new Error('Invalid comics')
+    if (comics.length > 200) throw new Error('Too many comics')
+    for (const c of comics) {
+      if (typeof c !== 'object' || c === null) throw new Error('Invalid comic in comics')
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.CHECK_DOWNLOADED_STATUS, comics)
   },
 })

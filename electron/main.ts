@@ -34,6 +34,12 @@ const ALLOWED_COVER_DOMAINS = [
 
 const CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS = ['{author}', '{title}', '{id}']
 
+function logPreviewDebug(message: string, details?: Record<string, unknown>) {
+  if (!app.isPackaged) {
+    console.log(message, details)
+  }
+}
+
 function validateCbzTemplate(v: unknown): boolean {
   if (typeof v !== 'string' || v.length === 0 || v.length > 256) return false
   if (v.includes('/') || v.includes('\\') || v.includes('..')) return false
@@ -58,7 +64,7 @@ function validateCbzTemplate(v: unknown): boolean {
 
   // Only allow whitelisted placeholders
   const parts = v.match(/\{[^{}]+\}/g) || []
-  return parts.every(p => CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS.includes(p.toLowerCase()))
+  return parts.every(p => CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS.includes(p))
 }
 
 function validateDownloadDir(v: unknown): boolean {
@@ -76,7 +82,7 @@ const MODE_VALUES = new Set<string>(SEARCH_MODES)
 const SOURCE_VALUES = new Set<string>(COMIC_SOURCES)
 
 const VALID_DOWNLOAD_STATUSES = new Set([
-  'queued', 'downloading', 'paused', 'completed', 'failed', 'cancelled',
+  'queued', 'downloading', 'pausing', 'paused', 'completed', 'failed', 'cancelled',
 ])
 
 function validateDownloadPayload(comicId: unknown, comicData: unknown) {
@@ -183,6 +189,7 @@ const CONFIG_VALIDATORS: Record<string, { type: string; validate?: (v: unknown) 
   defaultSource: { type: 'string', validate: (v) => SOURCE_VALUES.has(v as string) },
   fontName: { type: 'string', validate: (v) => typeof v === 'string' && v.length <= 128 },
   fontSize: { type: 'number', validate: (v) => Number.isInteger(v) && (v as number) >= 12 && (v as number) <= 20 },
+  sfwMode: { type: 'boolean' },
 }
 
 function createWindow() {
@@ -231,6 +238,24 @@ function createWindow() {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
+  // Inject correct Referer for comic page image requests
+  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: ['https://h-comic.link/*', 'https://*.h-comic.link/*', 'https://moeimg.fan/*', 'https://*.moeimg.fan/*'] },
+    (details, callback) => {
+      const url = new URL(details.url)
+      let referer = ''
+      if (url.hostname === 'h-comic.link' || url.hostname.endsWith('.h-comic.link')) {
+        referer = 'https://h-comic.com/'
+      } else if (url.hostname === 'moeimg.fan' || url.hostname.endsWith('.moeimg.fan')) {
+        referer = 'https://moeimg.fan/'
+      }
+      if (referer) {
+        details.requestHeaders['Referer'] = referer
+      }
+      callback(details)
+    }
+  )
+
   mainWindow.webContents.on('did-fail-load', (_event, _errorCode, errorDescription) => {
     console.error('Failed to load:', errorDescription)
     mainWindow?.show()
@@ -268,7 +293,7 @@ function createWindow() {
       if (isQuitting || !win || win.isDestroyed() || mainWindow !== win) return
 
       const activeTasks = result.tasks.filter(
-        t => t.status === 'downloading' || t.status === 'queued' || t.status === 'paused'
+        t => t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused'
       )
 
       if (activeTasks.length > 0) {
@@ -337,7 +362,7 @@ function registerIPCHandlers() {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, event)
 
     // ── Track active tasks ──
-    const activeStatuses = new Set(['queued', 'downloading', 'paused'])
+    const activeStatuses = new Set(['queued', 'downloading', 'paused', 'pausing'])
     if (activeStatuses.has(event.status)) {
       activeTaskSet.add(event.taskId)
     } else {
@@ -379,7 +404,7 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source) => {
-    if (typeof query !== 'string' || query.length === 0 || query.length > 512) {
+    if (typeof query !== 'string' || query.length > 512) {
       throw new Error('Invalid search query')
     }
     if (typeof mode !== 'string' || !MODE_VALUES.has(mode)) {
@@ -566,6 +591,73 @@ function registerIPCHandlers() {
       throw new Error('Invalid get_download_detail taskId')
     }
     return bridge.call('get_download_detail', { task_id: taskId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_PREVIEW_URLS, async (_, comicData: unknown) => {
+    if (typeof comicData !== 'object' || comicData === null) {
+      throw new Error('Invalid comic data')
+    }
+    const data = comicData as Record<string, unknown>
+    if (typeof data.id !== 'string' || data.id.length === 0 || data.id.length > 256) {
+      throw new Error('Invalid comic id')
+    }
+    if (data.sourceSite !== undefined && data.sourceSite !== null) {
+      if (typeof data.sourceSite !== 'string' || !SOURCE_VALUES.has(data.sourceSite)) {
+        throw new Error('Invalid comicData.sourceSite')
+      }
+    }
+    logPreviewDebug('[preview] get-preview-urls request', {
+      id: data.id,
+      sourceSite: data.sourceSite ?? 'hcomic',
+      pages: data.pages,
+      mediaId: data.mediaId,
+      source: data.source,
+    })
+    const result = await bridge.call('get_preview_urls', { comic_data: comicData }) as { imageUrls?: unknown[]; totalPages?: unknown }
+    logPreviewDebug('[preview] get-preview-urls result', {
+      id: data.id,
+      urls: Array.isArray(result?.imageUrls) ? result.imageUrls.length : 0,
+      totalPages: result?.totalPages,
+    })
+    return result
+  })
+
+  ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown) => {
+    if (typeof imageUrl !== 'string' || imageUrl.length === 0 || imageUrl.length > 2048) {
+      throw new Error('Invalid preview image URL')
+    }
+    try {
+      const parsed = new URL(imageUrl)
+      if (parsed.protocol !== 'https:') {
+        throw new Error('Only HTTPS URLs are allowed for preview images')
+      }
+    } catch (e: unknown) {
+      if (e instanceof Error && e.message !== 'Only HTTPS URLs are allowed for preview images') {
+        throw new Error('Invalid preview image URL format')
+      }
+      throw e
+    }
+    logPreviewDebug('[preview] fetch-preview-image request', { imageUrl })
+    return bridge.call('fetch_preview_image', { image_url: imageUrl })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CHECK_DOWNLOADED_STATUS, async (_, comics: unknown) => {
+    if (!Array.isArray(comics) || comics.length === 0) {
+      throw new Error('Invalid comics')
+    }
+    if (comics.length > 200) {
+      throw new Error('Too many comics')
+    }
+    for (const c of comics) {
+      if (typeof c !== 'object' || c === null) {
+        throw new Error('Invalid comic in comics')
+      }
+      const data = c as Record<string, unknown>
+      if (typeof data.id !== 'string' || data.id.length === 0 || data.id.length > 256) {
+        throw new Error('Invalid comic id in check_downloaded_status')
+      }
+    }
+    return bridge.call('check_downloaded_status', { comics })
   })
 }
 
