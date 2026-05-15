@@ -96,3 +96,60 @@ def test_record_download_stores_timestamp(db, sample_comic, tmp_path):
     assert row is not None
     assert int(before) <= row[0] <= int(after) + 1
     conn.close()
+
+
+def test_check_batch_returns_downloaded_when_file_exists(db, sample_comic, tmp_path):
+    output_path = str(tmp_path / "Test Author-Test Comic.cbz")
+    with open(output_path, 'w') as f:
+        f.write("fake cbz")
+    db.record_download(sample_comic, output_path, "cbz")
+
+    keys = [("hcomic", "12345", "MMCG_SHORT")]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
+
+
+def test_check_batch_returns_unknown_when_no_record(db, tmp_path):
+    keys = [("hcomic", "99999", "MMCG_SHORT")]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result[("hcomic", "99999", "MMCG_SHORT")] == "unknown"
+
+
+def test_check_batch_returns_unknown_when_file_missing(db, sample_comic, tmp_path):
+    output_path = str(tmp_path / "deleted.cbz")
+    db.record_download(sample_comic, output_path, "cbz")
+
+    keys = [("hcomic", "12345", "MMCG_SHORT")]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result[("hcomic", "12345", "MMCG_SHORT")] == "unknown"
+
+
+def test_check_batch_fallback_to_expected_path(db, sample_comic, tmp_path):
+    stale_path = str(tmp_path / "old_dir" / "old.cbz")
+    db.record_download(sample_comic, stale_path, "cbz")
+
+    from cbz_builder import CBZBuilder
+    builder = CBZBuilder(filename_template="{author}-{title}.cbz")
+    expected_path = builder.get_output_path(sample_comic, str(tmp_path))
+    os.makedirs(os.path.dirname(expected_path), exist_ok=True)
+    with open(expected_path, 'w') as f:
+        f.write("fake cbz")
+
+    keys = [("hcomic", "12345", "MMCG_SHORT")]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
+
+
+def test_check_batch_multiple_keys(db, sample_comic, tmp_path):
+    output_path = str(tmp_path / "out.cbz")
+    with open(output_path, 'w') as f:
+        f.write("fake")
+    db.record_download(sample_comic, output_path, "cbz")
+
+    keys = [
+        ("hcomic", "12345", "MMCG_SHORT"),
+        ("hcomic", "99999", "MMCG_SHORT"),
+    ]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
+    assert result[("hcomic", "99999", "MMCG_SHORT")] == "unknown"

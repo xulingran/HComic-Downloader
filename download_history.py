@@ -55,6 +55,69 @@ class DownloadHistoryDB:
         ))
         self._conn.commit()
 
+    def check_downloaded_batch(
+        self,
+        comic_keys: List[Tuple[str, str, str]],
+        output_dir: str,
+        output_format: str,
+        filename_template: str,
+    ) -> Dict[Tuple[str, str, str], str]:
+        """Check download status for a batch of comics.
+
+        Args:
+            comic_keys: List of (source_site, comic_id, comic_source) tuples.
+            output_dir: Current download directory.
+            output_format: Current output format (folder/zip/cbz).
+            filename_template: Current filename template.
+
+        Returns:
+            Dict mapping each key to "downloaded" or "unknown".
+        """
+        if not comic_keys:
+            return {}
+
+        placeholders = ",".join(["(?, ?, ?)"] * len(comic_keys))
+        flat_keys = []
+        for k in comic_keys:
+            flat_keys.extend(k)
+
+        cursor = self._conn.execute(f"""
+            SELECT source_site, comic_id, comic_source, output_path, title, author
+            FROM download_history
+            WHERE (source_site, comic_id, comic_source) IN ({placeholders})
+        """, flat_keys)
+
+        db_records: Dict[Tuple[str, str, str], dict] = {}
+        for row in cursor:
+            key = (row[0], row[1], row[2])
+            db_records[key] = {"output_path": row[3], "title": row[4], "author": row[5]}
+
+        from cbz_builder import CBZBuilder
+        builder = CBZBuilder(filename_template=filename_template)
+
+        result: Dict[Tuple[str, str, str], str] = {}
+        for key in comic_keys:
+            record = db_records.get(key)
+            if record and os.path.exists(record["output_path"]):
+                result[key] = "downloaded"
+            else:
+                comic = ComicInfo(
+                    id=key[1],
+                    title=record["title"] if record else "",
+                    author=record["author"] if record else None,
+                    source_site=key[0],
+                    comic_source=key[2],
+                )
+                expected_path = builder.get_output_path_for_format(
+                    comic, output_format, output_dir
+                )
+                if os.path.exists(expected_path):
+                    result[key] = "downloaded"
+                else:
+                    result[key] = "unknown"
+
+        return result
+
     def close(self):
         if self._conn:
             self._conn.close()
