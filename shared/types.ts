@@ -32,7 +32,7 @@ export interface DownloadTask {
   error?: string
 }
 
-export type DownloadStatus = 'queued' | 'downloading' | 'paused' | 'completed' | 'failed' | 'cancelled'
+export type DownloadStatus = 'queued' | 'downloading' | 'pausing' | 'paused' | 'completed' | 'failed' | 'cancelled'
 
 export interface AppConfig {
   themeMode: 'light' | 'dark' | 'auto'
@@ -49,6 +49,7 @@ export interface AppConfig {
   defaultSource: string
   fontName: string
   fontSize: number
+  sfwMode: boolean
   proxy?: string
   cookie?: string
   userAgent?: string
@@ -73,6 +74,15 @@ export interface DownloadDetail {
   outputPath: string
 }
 
+export interface PreviewUrlsResult {
+  imageUrls: string[]
+  totalPages: number
+}
+
+export interface PreviewImageResult {
+  dataUri: string
+}
+
 export interface StatisticsData {
   totalDownloads: number
   completedDownloads: number
@@ -85,7 +95,7 @@ export interface StatisticsData {
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
-  | 'fontName' | 'fontSize'
+  | 'fontName' | 'fontSize' | 'sfwMode'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -102,6 +112,7 @@ export type ConfigValueMap = {
   defaultSource: string
   fontName: string
   fontSize: number
+  sfwMode: boolean
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -208,6 +219,18 @@ export interface IPCMethods {
     params: { task_id: string }
     result: DownloadDetail
   }
+  get_preview_urls: {
+    params: { comic_data: ComicInfo }
+    result: PreviewUrlsResult
+  }
+  fetch_preview_image: {
+    params: { image_url: string }
+    result: PreviewImageResult
+  }
+  check_downloaded_status: {
+    params: { comics: ComicInfo[] }
+    result: { statusMap: Record<string, 'downloaded' | 'unknown'> }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -233,6 +256,9 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-available-fonts': 'get_available_fonts',
   'python:open-download-dir': 'open_download_dir',
   'python:get-download-detail': 'get_download_detail',
+  'python:get-preview-urls': 'get_preview_urls',
+  'python:fetch-preview-image': 'fetch_preview_image',
+  'python:check-downloaded-status': 'check_downloaded_status',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -260,6 +286,9 @@ export interface IPCChannelParamsMap {
   'python:get-available-fonts': []
   'python:open-download-dir': []
   'python:get-download-detail': [taskId: string]
+  'python:get-preview-urls': [comicData: ComicInfo]
+  'python:fetch-preview-image': [imageUrl: string]
+  'python:check-downloaded-status': [comics: ComicInfo[]]
 }
 
 export type IPCChannelResult<C extends PythonIPCChannel> =
@@ -300,6 +329,9 @@ export interface HcomicAPI {
   getAvailableFonts(): Promise<{ fonts: FontInfo[] }>
   openDownloadDir(): Promise<{ success: boolean }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
+  getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
+  fetchPreviewImage(imageUrl: string): Promise<PreviewImageResult>
+  checkDownloadedStatus(comics: ComicInfo[]): Promise<{ statusMap: Record<string, 'downloaded' | 'unknown'> }>
 }
 
 /** Valid search modes — shared between preload and main */
@@ -341,6 +373,9 @@ export const IPC_CHANNELS = {
   GET_AVAILABLE_FONTS: 'python:get-available-fonts',
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
+  GET_PREVIEW_URLS: 'python:get-preview-urls',
+  FETCH_PREVIEW_IMAGE: 'python:fetch-preview-image',
+  CHECK_DOWNLOADED_STATUS: 'python:check-downloaded-status',
 } as const
 
 export const NOTIFICATION_CHANNELS = {
@@ -351,5 +386,5 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
-  'fontName', 'fontSize',
+  'fontName', 'fontSize', 'sfwMode',
 ] as const
