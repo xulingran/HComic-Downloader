@@ -10,25 +10,32 @@ interface ComicCardProps {
   batchMode?: boolean
   onToggleSelect?: (comic: ComicInfo) => void
   onDownload?: (comic: ComicInfo) => void
+  onOpenReader?: (comic: ComicInfo) => void
   sfwMode?: boolean
+  downloadStatus?: 'downloaded' | 'unknown'
 }
 
-export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload }: ComicCardProps) {
+export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus }: ComicCardProps) {
   const { cardStyle, sfwMode } = useSettingsStore()
   const [titleExpanded, setTitleExpanded] = useState(false)
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} downloadStatus={downloadStatus} />
   }
-  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} />
+  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} downloadStatus={downloadStatus} />
 }
 
-function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, titleExpanded, onToggleTitle, sfwMode }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
+function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, titleExpanded, onToggleTitle, sfwMode, downloadStatus }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const handleClick = () => {
     if (batchMode) onToggleSelect?.(comic)
     else onClick?.(comic)
+  }
+  const handleReaderClick = () => {
+    if (!sfwMode && onOpenReader) {
+      onOpenReader(comic)
+    }
   }
 
   return (
@@ -60,7 +67,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
           </svg>
         </button>
       )}
-      <div className="aspect-[3/4] bg-[var(--bg-secondary)] relative overflow-hidden">
+      <div className="aspect-[3/4] bg-[var(--bg-secondary)] relative overflow-hidden" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
         {sfwMode ? (
           <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)] flex-col gap-1">
             <span className="text-3xl">📖</span>
@@ -94,10 +101,25 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
             📖
           </div>
         )}
+        {downloadStatus === 'downloaded' && (
+          <div className="absolute top-1.5 right-1.5 z-[5] w-[22px] h-[22px] rounded-full
+                          bg-green-500/90 flex items-center justify-center">
+            <svg className="w-[13px] h-[13px] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        )}
       </div>
       <div className="p-3">
         <h3
-          onClick={(e) => { e.stopPropagation(); onToggleTitle() }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!sfwMode && onOpenReader) {
+              onOpenReader(comic)
+            } else {
+              onToggleTitle()
+            }
+          }}
           className={`text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text
                      ${titleExpanded ? '' : 'line-clamp-2'}`}
           title={comic.title}
@@ -114,13 +136,18 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, titleExpanded, onToggleTitle, sfwMode }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, titleExpanded, onToggleTitle, sfwMode, downloadStatus }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const [showAllTags, setShowAllTags] = useState(false)
   const handleClick = () => {
     if (batchMode) onToggleSelect?.(comic)
     else onClick?.(comic)
+  }
+  const handleReaderClick = () => {
+    if (!sfwMode && onOpenReader) {
+      onOpenReader(comic)
+    }
   }
 
   return (
@@ -141,7 +168,7 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
           )}
         </div>
       )}
-      <div className="w-14 h-14 bg-[var(--bg-secondary)] flex-shrink-0 rounded-md overflow-hidden">
+      <div className="w-14 h-14 bg-[var(--bg-secondary)] flex-shrink-0 rounded-md overflow-hidden cursor-pointer relative" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
         {sfwMode ? (
           <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
             <span className="text-xl">📖</span>
@@ -174,10 +201,25 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
             📖
           </div>
         )}
+        {downloadStatus === 'downloaded' && (
+          <div className="absolute top-0.5 right-0.5 z-[5] w-4 h-4 rounded-full
+                          bg-green-500/90 flex items-center justify-center">
+            <svg className="w-[9px] h-[9px] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        )}
       </div>
       <div className="flex-1 min-w-0 ml-3">
         <h3
-          onClick={(e) => { e.stopPropagation(); onToggleTitle() }}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (!sfwMode && onOpenReader) {
+              onOpenReader(comic)
+            } else {
+              onToggleTitle()
+            }
+          }}
           className={`text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text
                      ${titleExpanded ? '' : 'truncate'}`}
           title={comic.title}
