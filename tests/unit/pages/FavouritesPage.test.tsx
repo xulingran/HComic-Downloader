@@ -4,12 +4,16 @@ import userEvent from '@testing-library/user-event'
 import type { ComicInfo } from '@shared/types'
 
 // Hoist mock functions so they are available inside vi.mock factories
-const { mockGetFavourites } = vi.hoisted(() => ({
-  mockGetFavourites: vi.fn()
+const { mockGetFavourites, mockCheckDownloadedStatus } = vi.hoisted(() => ({
+  mockGetFavourites: vi.fn(),
+  mockCheckDownloadedStatus: vi.fn().mockResolvedValue({ statusMap: {} }),
 }))
 
 vi.mock('@/hooks/useIpc', () => ({
-  useFavourites: vi.fn().mockReturnValue({ getFavourites: mockGetFavourites }),
+  useFavourites: vi.fn().mockReturnValue({
+    getFavourites: mockGetFavourites,
+    checkDownloadedStatus: mockCheckDownloadedStatus,
+  }),
   useDownloadCommands: vi.fn().mockReturnValue({
     startDownload: vi.fn().mockResolvedValue({ taskId: 'test-id' }),
     cancelDownload: vi.fn().mockResolvedValue({ success: true }),

@@ -28,7 +28,12 @@ vi.mock('electron', () => {
     webContents = {
       on: vi.fn(),
       send: vi.fn(),
-      setWindowOpenHandler: vi.fn()
+      setWindowOpenHandler: vi.fn(),
+      session: {
+        webRequest: {
+          onBeforeSendHeaders: vi.fn(),
+        },
+      },
     }
     loadURL = vi.fn()
     loadFile = vi.fn()
@@ -109,8 +114,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 14 original + 8 new = 22 total
-      expect(handleCalls.length).toBe(22)
+      // 14 original + 8 new + 1 preview URL + 1 preview image + 1 check downloaded = 25 total
+      expect(handleCalls.length).toBe(25)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -131,6 +136,7 @@ describe('main.ts', () => {
       'python:verify-auth',
       'python:shutdown',
       'python:fetch-cover',
+      'python:fetch-preview-image',
       'open-external',
       'python:pause-task',
       'python:resume-task',
@@ -140,6 +146,8 @@ describe('main.ts', () => {
       'python:get-available-fonts',
       'python:open-download-dir',
       'python:get-download-detail',
+      'python:get-preview-urls',
+      'python:check-downloaded-status',
     ]
 
     expectedChannels.forEach(channel => {
@@ -172,8 +180,9 @@ describe('main.ts', () => {
       const validMethods = new Set([
         'search', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
         'get_downloads', 'cancel_download', 'get_statistics', 'apply_auth', 'verify_auth', 'shutdown',
-        'fetch_cover', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
-        'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail',
+        'fetch_cover', 'fetch_preview_image', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
+        'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',
+        'check_downloaded_status',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),
@@ -211,6 +220,44 @@ describe('main.ts', () => {
 
       expect(mockBridgeCall).toHaveBeenCalledWith('download', {
         comic_id: 'comic-123',
+        comic_data: comicData
+      })
+    })
+
+    it('python:fetch-preview-image delegates with imageUrl transformed to image_url', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:fetch-preview-image')!
+      const imageUrl = 'https://h-comic.link/api/nh/media123/pages/1'
+      await handler.handler({}, imageUrl)
+
+      expect(mockBridgeCall).toHaveBeenCalledWith('fetch_preview_image', {
+        image_url: imageUrl
+      })
+    })
+
+    it('python:fetch-preview-image accepts h-comic.com image URLs', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:fetch-preview-image')!
+      const imageUrl = 'https://h-comic.com/api/nh/media123/pages/1'
+      await handler.handler({}, imageUrl)
+
+      expect(mockBridgeCall).toHaveBeenCalledWith('fetch_preview_image', {
+        image_url: imageUrl
+      })
+    })
+
+    it('python:get-preview-urls delegates comicData to bridge', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:get-preview-urls')!
+      const comicData = {
+        id: 'comic-123',
+        title: 'Preview Comic',
+        url: 'https://h-comic.com/comics/example?id=comic-123',
+        source: 'NH',
+        sourceSite: 'hcomic',
+        pages: 0,
+        mediaId: '',
+      }
+      await handler.handler({}, comicData)
+
+      expect(mockBridgeCall).toHaveBeenCalledWith('get_preview_urls', {
         comic_data: comicData
       })
     })
@@ -315,6 +362,16 @@ describe('main.ts', () => {
     it('python:search should reject invalid query', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:search')!
       await expect(handler.handler({}, 123, 'keyword', 1)).rejects.toThrow('Invalid search query')
+    })
+
+    it('python:search should allow empty query for homepage search', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await handler.handler({}, '', 'keyword', 1)
+      expect(mockBridgeCall).toHaveBeenCalledWith('search', {
+        query: '',
+        mode: 'keyword',
+        page: 1
+      })
     })
 
     it('python:search should reject invalid mode', async () => {
