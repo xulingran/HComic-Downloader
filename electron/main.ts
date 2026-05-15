@@ -19,6 +19,10 @@ const completedTasks: Array<{ title: string; outputPath?: string }> = []
 const failedTasks: Array<{ title: string; error?: string }> = []
 
 const CLOSE_GET_DOWNLOADS_TIMEOUT_MS = 3_000
+const NOTIFICATION_BATCH_LIMIT = 100
+const DEV_SERVER_MAX_RETRIES = 5
+const DEV_SERVER_RETRY_DELAY_MS = 1_000
+const SHUTDOWN_TIMEOUT_MS = 5_000
 
 const ALLOWED_EXTERNAL_DOMAINS = [
   'h-comic.com',
@@ -192,6 +196,23 @@ const CONFIG_VALIDATORS: Record<string, { type: string; validate?: (v: unknown) 
   sfwMode: { type: 'boolean' },
 }
 
+function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
+  win.loadURL(url).catch(() => {})
+  win.webContents.once('did-fail-load', () => {
+    if (attempt >= DEV_SERVER_MAX_RETRIES) {
+      console.error(`Dev server failed to load after ${DEV_SERVER_MAX_RETRIES} retries`)
+      win.show()
+      return
+    }
+    console.log(`Dev server not ready, retrying (${attempt + 1}/${DEV_SERVER_MAX_RETRIES})...`)
+    setTimeout(() => {
+      if (!win.isDestroyed()) {
+        loadWithRetry(win, url, attempt + 1)
+      }
+    }, DEV_SERVER_RETRY_DELAY_MS)
+  })
+}
+
 function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/preload.js')
 
@@ -223,7 +244,7 @@ function createWindow() {
     if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
       throw new Error(`ELECTRON_RENDERER_URL must be localhost: ${devServerUrl}`)
     }
-    mainWindow.loadURL(devServerUrl)
+    loadWithRetry(mainWindow, devServerUrl)
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
@@ -256,10 +277,13 @@ function createWindow() {
     }
   )
 
-  mainWindow.webContents.on('did-fail-load', (_event, _errorCode, errorDescription) => {
-    console.error('Failed to load:', errorDescription)
-    mainWindow?.show()
-  })
+  // Dev server retry is handled by loadWithRetry; only show window on prod load failure
+  if (!process.env.ELECTRON_RENDERER_URL) {
+    mainWindow.webContents.on('did-fail-load', (_event, _errorCode, errorDescription) => {
+      console.error('Failed to load:', errorDescription)
+      mainWindow?.show()
+    })
+  }
 
   mainWindow.on('closed', () => {
     mainWindow = null
@@ -380,7 +404,9 @@ function registerIPCHandlers() {
     }
 
     // ── Batch/completion notification ──
-    if (activeTaskSet.size === 0 && (completedTasks.length > 0 || failedTasks.length > 0)) {
+    const shouldNotify = activeTaskSet.size === 0
+      || (completedTasks.length + failedTasks.length >= NOTIFICATION_BATCH_LIMIT)
+    if (shouldNotify && (completedTasks.length > 0 || failedTasks.length > 0)) {
       const successCount = completedTasks.length
       const failCount = failedTasks.length
       if (successCount === 1 && failCount === 0) {
@@ -705,14 +731,29 @@ app.on('before-quit', (e) => {
   e.preventDefault()
   isQuitting = true
   const bridge = getPythonBridge()
+
+  let timedOut = false
+  const timer = setTimeout(() => {
+    timedOut = true
+    bridge.kill()
+    shutdownDone = true
+    app.quit()
+  }, SHUTDOWN_TIMEOUT_MS)
+
   bridge.shutdown()
     .then(() => {
-      shutdownDone = true
-      app.quit()
+      clearTimeout(timer)
+      if (!timedOut) {
+        shutdownDone = true
+        app.quit()
+      }
     })
     .catch(() => {
-      shutdownDone = true
-      bridge.kill()
-      app.quit()
+      clearTimeout(timer)
+      if (!timedOut) {
+        bridge.kill()
+        shutdownDone = true
+        app.quit()
+      }
     })
 })
