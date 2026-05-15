@@ -44,10 +44,13 @@ CONFIG_KEY_MAP = {
     'defaultSource': 'default_source',
     'fontName': 'font_name',
     'fontSize': 'font_size',
+    'sfwMode': 'sfw_mode',
 }
 
 _COVER_CACHE_MAX_SIZE = 200
 _COVER_POOL_MAX_WORKERS = 4
+_PREVIEW_POOL_MAX_WORKERS = 4
+_PREVIEW_IMAGE_MAX_SIZE = 12 * 1024 * 1024
 
 
 class IPCServer:
@@ -55,6 +58,14 @@ class IPCServer:
         "h-comic.link",
         "moeimg.fan",
         "moeimg.net",
+    }
+    ALLOWED_PREVIEW_IMAGE_DOMAINS = {
+        "h-comic.com",
+        "h-comic.link",
+        "moeimg.fan",
+        "moeimg.net",
+        "cdndelivers.cloud",
+        "bunnyssd.com",
     }
 
     def __init__(self):
@@ -100,9 +111,20 @@ class IPCServer:
         self._download_manager.set_callbacks(on_task_update=self._on_download_update)
         self._download_manager.start()
 
+        # Download history database
+        from download_history import DownloadHistoryDB
+        self._history_db = DownloadHistoryDB(
+            os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "download_history.db")
+        )
+        self._download_manager.on_download_success = self._on_download_success_record
+
         # Thread pool for async cover fetches — keeps main loop responsive
         self._cover_executor = ThreadPoolExecutor(
             max_workers=_COVER_POOL_MAX_WORKERS, thread_name_prefix="cover"
+        )
+        # Reader page fetches must not queue behind cover thumbnails.
+        self._preview_executor = ThreadPoolExecutor(
+            max_workers=_PREVIEW_POOL_MAX_WORKERS, thread_name_prefix="preview"
         )
         self._stdout_lock = threading.Lock()
         self._cover_cache: OrderedDict[str, str] = OrderedDict()
@@ -128,6 +150,29 @@ class IPCServer:
             session.headers.update(src_headers)
         return session
 
+    def _headers_for_image_url(self, url: str) -> dict[str, str]:
+        headers = {
+            "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+            "Referer": self._referer_for_image_url(url),
+        }
+        hostname = urlparse(url).hostname or ""
+        source = "moeimg" if (
+            hostname == "moeimg.fan"
+            or hostname.endswith(".moeimg.fan")
+            or hostname.endswith(".moeimg.net")
+            or hostname.endswith(".cdndelivers.cloud")
+        ) else "hcomic"
+        try:
+            parser = self.parser.parsers.get(source)
+            if parser:
+                headers.update(dict(parser.session.headers))
+            else:
+                headers.update(dict(self.parser.session.headers))
+        except Exception:
+            pass
+        headers["Referer"] = self._referer_for_image_url(url)
+        return headers
+
     @staticmethod
     def _detect_image_type(data: bytes) -> str:
         """Detect image MIME type from magic bytes."""
@@ -141,6 +186,8 @@ class IPCServer:
             return 'image/gif'
         if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
             return 'image/webp'
+        if data[4:8] == b'ftyp' and (b'avif' in data[8:32] or b'avis' in data[8:32]):
+            return 'image/avif'
         return ''
 
     def _validate_cover_url(self, url: str) -> None:
@@ -157,6 +204,91 @@ class IPCServer:
             for d in self.ALLOWED_COVER_DOMAINS
         ):
             raise ValueError(f"Domain not allowed: {hostname}")
+
+    def _validate_preview_image_url(self, url: str) -> None:
+        if not url or not isinstance(url, str):
+            raise ValueError("Missing or invalid image_url")
+        if len(url) > 2048:
+            raise ValueError("URL too long")
+        parsed = urlparse(url)
+        if parsed.scheme != "https":
+            raise ValueError("Only HTTPS URLs are allowed")
+        hostname = parsed.hostname or ""
+        if not any(
+            hostname == d or hostname.endswith("." + d)
+            for d in self.ALLOWED_PREVIEW_IMAGE_DOMAINS
+        ):
+            raise ValueError(f"Domain not allowed: {hostname}")
+
+    @staticmethod
+    def _referer_for_image_url(url: str) -> str:
+        hostname = urlparse(url).hostname or ""
+        if (
+            hostname == "moeimg.fan"
+            or hostname.endswith(".moeimg.fan")
+            or hostname.endswith(".moeimg.net")
+            or hostname.endswith(".cdndelivers.cloud")
+            or hostname.endswith(".bunnyssd.com")
+        ):
+            return "https://moeimg.fan/"
+        return "https://h-comic.com/"
+
+    def _fetch_image_as_data_uri(self, url: str, max_size: int) -> str:
+        self._validate_preview_image_url(url)
+        session = self.downloader._create_session()
+        try:
+            for key in ("Cookie", "User-Agent"):
+                if key in self.downloader.session.headers:
+                    session.headers[key] = self.downloader.session.headers[key]
+
+            final_url, session = self.downloader.url_validator.resolve_redirects(url, session, self.downloader.timeout)
+            final_parsed = urlparse(final_url)
+            final_hostname = final_parsed.hostname or ""
+            if final_parsed.scheme != "https":
+                raise ValueError(f"Redirect target must use HTTPS, got: {final_parsed.scheme}")
+            if not any(
+                final_hostname == d or final_hostname.endswith("." + d)
+                for d in self.ALLOWED_PREVIEW_IMAGE_DOMAINS
+            ):
+                raise ValueError(f"Redirect target domain not allowed: {final_hostname}")
+
+            headers = {
+                "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+                "Referer": self._referer_for_image_url(url),
+            }
+            with session.get(
+                final_url,
+                timeout=self.downloader.timeout,
+                headers=headers,
+                stream=True,
+                allow_redirects=False,
+            ) as response:
+                response.raise_for_status()
+
+                chunks: list[bytes] = []
+                total = 0
+                for chunk in response.iter_content(chunk_size=8192):
+                    if not chunk:
+                        continue
+                    total += len(chunk)
+                    if total > max_size:
+                        raise ValueError("Image too large")
+                    chunks.append(chunk)
+            content = b"".join(chunks)
+        finally:
+            session.close()
+
+        content_type = self._detect_image_type(content)
+        if not content_type:
+            raise ValueError("Response is not a recognized image format")
+
+        b64 = base64.b64encode(content).decode("ascii")
+        return f"data:{content_type};base64,{b64}"
+
+    def _do_fetch_preview_image(self, url: str) -> str:
+        """Fetch a preview page image through the authenticated Python session."""
+        self._validate_preview_image_url(url)
+        return self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE)
 
     def _do_fetch_cover(self, url: str) -> str:
         """Fetch cover image and return base64 data URI (thread-safe, called from pool)."""
@@ -242,6 +374,23 @@ class IPCServer:
                 "error": {"code": -32000, "message": str(e)},
             })
 
+    def _async_fetch_preview_image(self, url: str, req_id: str) -> None:
+        """Thread-pool target: fetch a reader page image and write response."""
+        try:
+            data_uri = self._do_fetch_preview_image(url)
+            self._write_response({
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "result": {"dataUri": data_uri},
+            })
+        except Exception as e:
+            logger.error("Preview image fetch error for %s: %s", url, e)
+            self._write_response({
+                "jsonrpc": "2.0",
+                "id": req_id,
+                "error": {"code": -32000, "message": str(e)},
+            })
+
     # ── handlers ──────────────────────────────────────────────────────────
 
     def _on_download_update(self, task):
@@ -259,6 +408,43 @@ class IPCServer:
             },
         }
         self._write_response(notification)
+
+    def _on_download_success_record(self, comic, output_path: str, output_format: str):
+        """Record a successful download to the history database."""
+        try:
+            self._history_db.record_download(comic, output_path, output_format)
+            logger.info("Recorded download history for %s", comic.title)
+        except Exception:
+            logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
+
+    def handle_check_downloaded_status(self, comics: list) -> dict:
+        """Check which comics from the list have been downloaded."""
+        if not isinstance(comics, list):
+            raise ValueError("Invalid comics parameter")
+
+        keys = []
+        for c in comics:
+            if not isinstance(c, dict):
+                continue
+            source_site = c.get("sourceSite", "hcomic") or "hcomic"
+            comic_id = c.get("id", "")
+            comic_source = c.get("source", "")
+            if comic_id:
+                keys.append((source_site, comic_id, comic_source))
+
+        status_map = self._history_db.check_downloaded_batch(
+            keys,
+            self.config.download_dir,
+            self.config.output_format,
+            self.config.cbz_filename_template,
+        )
+
+        result = {}
+        for key, status in status_map.items():
+            task_id = f"{key[0]}_{key[2]}_{key[1]}"
+            result[task_id] = status
+
+        return {"statusMap": result}
 
     def _comic_to_dict(self, comic) -> Dict:
         cover_url = comic.cover_url or ""
@@ -294,15 +480,18 @@ class IPCServer:
             title=data.get("title", "Unknown"),
             preview_url=data.get("url", ""),
             cover_url=data.get("coverUrl", ""),
-            source_site=data.get("sourceSite") or data.get("source", "hcomic"),
+            source_site=data.get("sourceSite", "") or "hcomic",
             comic_source=data.get("source", ""),
             media_id=data.get("mediaId", ""),
             pages=data.get("pages") or 0,
+            image_urls=data.get("imageUrls") or data.get("image_urls") or [],
             tags=data.get("tags") or [],
             author=data.get("author"),
         )
-        if self._download_manager.prepare_comic:
-            prepared = self._download_manager.prepare_comic(comic)
+        download_manager = getattr(self, "_download_manager", None)
+        prepare_comic = getattr(download_manager, "prepare_comic", None)
+        if prepare_comic:
+            prepared = prepare_comic(comic)
             if prepared is not None:
                 comic = prepared
         return comic
@@ -413,6 +602,7 @@ class IPCServer:
             'default_source': self.config.default_source,
             'font_name': getattr(self.config, 'font_name', ''),
             'font_size': getattr(self.config, 'font_size', 14),
+            'sfw_mode': getattr(self.config, 'sfw_mode', False),
         }
         config = {}
         for snake_key, value in raw.items():
@@ -431,14 +621,8 @@ class IPCServer:
             raise ValueError(f"Unknown config key: {key}")
 
         old_value = getattr(self.config, python_key)
-        try:
-            setattr(self.config, python_key, value)
-            self.config.save(_get_config_path())
-        except Exception as e:
-            setattr(self.config, python_key, old_value)
-            logger.error(f"Set config save error for {key}: {e}")
-            raise
 
+        # Apply runtime state first — if this fails, nothing was persisted
         try:
             if key == 'downloadDir':
                 self._download_manager.set_output_dir(value)
@@ -460,19 +644,45 @@ class IPCServer:
             elif key == 'defaultSource':
                 self.parser.set_source(value)
         except Exception as e:
-            setattr(self.config, python_key, old_value)
-            try:
-                self.config.save(_get_config_path())
-            except Exception as rollback_err:
-                logger.error(f"Failed to rollback config file for {key}: {rollback_err}")
             logger.error(f"Set config runtime error for {key}: {e}")
+            raise
+
+        # Runtime succeeded — now persist
+        try:
+            setattr(self.config, python_key, value)
+            self.config.save(_get_config_path())
+        except Exception as e:
+            # Rollback runtime state
+            try:
+                if key == 'downloadDir':
+                    self._download_manager.set_output_dir(old_value)
+                elif key == 'outputFormat':
+                    self._download_manager.set_output_format(old_value)
+                elif key == 'batchDownloadDelay':
+                    self._download_manager.set_delay_after(old_value)
+                elif key == 'autoRetryMaxAttempts':
+                    self._download_manager.set_auto_retry_max_attempts(old_value)
+                elif key == 'concurrentDownloads':
+                    self.downloader.concurrent_downloads = old_value
+                elif key == 'timeout':
+                    self.downloader.timeout = old_value
+                elif key == 'retryTimes':
+                    self.downloader.retry_times = old_value
+                    self.downloader.rebuild_session()
+                elif key == 'cbzFilenameTemplate':
+                    self.cbz_builder.filename_template = old_value
+                elif key == 'defaultSource':
+                    self.parser.set_source(old_value)
+            except Exception as rollback_err:
+                logger.error(f"Failed to rollback runtime for {key}: {rollback_err}")
+            logger.error(f"Set config save error for {key}: {e}")
             raise
 
         return {"success": True}
 
     def handle_get_downloads(self) -> Dict:
         tasks = []
-        for task_id, task in self._download_manager.tasks.items():
+        for task_id, task in self._download_manager.snapshot_tasks().items():
             tasks.append({
                 "id": task_id,
                 "comic": self._comic_to_dict(task.comic),
@@ -500,7 +710,7 @@ class IPCServer:
 
     def handle_shutdown(self) -> Dict:
         """Gracefully shut down: cancel active tasks, wait for completion, stop the queue."""
-        active_statuses = {"queued", "downloading", "paused"}
+        active_statuses = {"queued", "downloading", "paused", "pausing"}
         cancelled_count = 0
         for task_id in list(self._download_manager.tasks.keys()):
             task = self._download_manager.tasks.get(task_id)
@@ -508,9 +718,10 @@ class IPCServer:
                 self._download_manager.cancel_task(task_id)
                 cancelled_count += 1
         self._download_manager.stop()
-        if cancelled_count > 0:
+        if self._download_manager._worker_thread and self._download_manager._worker_thread.is_alive():
             self._download_manager.wait_active_downloads(timeout=10.0)
         self._cover_executor.shutdown(cancel_futures=True, wait=False)
+        self._preview_executor.shutdown(cancel_futures=True, wait=False)
         logger.info(f"Shutdown: cancelled {cancelled_count} active tasks")
         return {"success": True, "cancelledTasks": cancelled_count}
 
@@ -637,6 +848,49 @@ class IPCServer:
             "outputPath": output_path,
         }
 
+    def handle_fetch_preview_image(self, image_url: str) -> Dict:
+        self._validate_preview_image_url(image_url)
+        logger.info("fetch_preview_image: url=%s", image_url)
+        data_uri = self._do_fetch_preview_image(image_url)
+        return {"dataUri": data_uri}
+
+    def handle_get_preview_urls(self, comic_data: dict) -> Dict:
+        """Return all image URLs after applying the same metadata preparation as downloads."""
+        if not isinstance(comic_data, dict):
+            raise ValueError("Invalid comic data")
+
+        comic_id = comic_data.get("id", "")
+        source_site = comic_data.get("sourceSite", "hcomic") or "hcomic"
+
+        if not comic_id or not isinstance(comic_id, str):
+            raise ValueError("Missing comic id")
+
+        logger.info(
+            "get_preview_urls: id=%s source_site=%s pages=%s media_id=%s source=%s",
+            comic_id,
+            source_site,
+            comic_data.get("pages"),
+            comic_data.get("mediaId"),
+            comic_data.get("source"),
+        )
+
+        comic = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
+        image_urls = comic.get_all_image_urls()
+        total_pages = max(comic.pages or 0, len(image_urls))
+
+        logger.info(
+            "get_preview_urls result: id=%s source_site=%s media_id=%s urls=%d total=%d",
+            comic_id,
+            comic.source_site,
+            comic.media_id,
+            len(image_urls),
+            total_pages,
+        )
+        return {
+            "imageUrls": image_urls,
+            "totalPages": total_pages,
+        }
+
     # ── request routing ───────────────────────────────────────────────────
 
     def handle_request(self, request: Dict) -> Dict:
@@ -665,6 +919,9 @@ class IPCServer:
             "get_available_fonts": self.handle_get_available_fonts,
             "open_download_dir": self.handle_open_download_dir,
             "get_download_detail": self.handle_get_download_detail,
+            "get_preview_urls": self.handle_get_preview_urls,
+            "fetch_preview_image": self.handle_fetch_preview_image,
+            "check_downloaded_status": self.handle_check_downloaded_status,
         }
 
         handler = handlers.get(method)
@@ -715,6 +972,20 @@ class IPCServer:
                         })
                         continue
                     self._cover_executor.submit(self._async_fetch_cover, url, req_id)
+                    continue
+
+                # ── fetch_preview_image: authenticated image proxy for reader pages ──
+                if method == "fetch_preview_image":
+                    image_url = params.get("image_url", "")
+                    try:
+                        self._validate_preview_image_url(image_url)
+                    except ValueError as e:
+                        self._write_response({
+                            "jsonrpc": "2.0", "id": req_id,
+                            "error": {"code": -32602, "message": str(e)},
+                        })
+                        continue
+                    self._preview_executor.submit(self._async_fetch_preview_image, image_url, req_id)
                     continue
 
                 response = self.handle_request(request)
