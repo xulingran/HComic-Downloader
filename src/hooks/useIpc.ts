@@ -103,7 +103,11 @@ export function useFavourites() {
     return invoke(() => window.hcomic!.getFavourites(page))
   }, [invoke])
 
-  return { getFavourites }
+  const checkDownloadedStatus = useCallback(async (comics: ComicInfo[]) => {
+    return invoke(() => window.hcomic!.checkDownloadedStatus(comics))
+  }, [invoke])
+
+  return { getFavourites, checkDownloadedStatus }
 }
 
 export function useConfig() {
