@@ -1,4 +1,5 @@
 """下载管理器核心模块"""
+import copy
 import logging
 import os
 import shutil
@@ -47,12 +48,12 @@ class DownloadManager:
             if existing and existing.status not in (
                 DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED
             ):
-                logger.info(f"Task {task_id} already active ({existing.status.value}), skipping duplicate")
+                logger.info("Task %s already active (%s), skipping duplicate", task_id, existing.status.value)
                 return task_id
             self.tasks[task_id] = task
             self.queue.append(task_id)
 
-        logger.info(f"Added task {task_id}: {comic.title}")
+        logger.info("Added task %s: %s", task_id, comic.title)
         self._notify_queue_changed()
         self._notify_task_update(task)
         return task_id
@@ -112,6 +113,7 @@ class DownloadManager:
     def _process_queue(self):
         """队列处理主循环（在后台线程运行）"""
         logger.info("Queue processor started")
+        drained = False
 
         while True:
             should_exit = False
@@ -135,6 +137,8 @@ class DownloadManager:
                         self._queue_condition.wait()
                         continue
 
+                    # Queue drained naturally — no stop requested, no pending tasks
+                    drained = True
                     should_exit = True
                     break
 
@@ -147,7 +151,7 @@ class DownloadManager:
             self.is_running = False
         logger.info("Queue processor stopped")
 
-        if self._on_queue_complete:
+        if drained and self._on_queue_complete:
             self._on_queue_complete()
 
     def _get_next_task(self) -> Optional[str]:
@@ -176,7 +180,7 @@ class DownloadManager:
                 continue
 
             # 跳过失败/暂停任务，轮转到队列尾部
-            if task.status in (DownloadStatus.FAILED, DownloadStatus.PAUSED):
+            if task.status in (DownloadStatus.FAILED, DownloadStatus.PAUSED, DownloadStatus.PAUSING):
                 seen.add(task_id)
                 self.queue.append(self.queue.pop(0))
                 continue
@@ -193,15 +197,9 @@ class DownloadManager:
     def _has_pending_tasks_locked(self) -> bool:
         """检查是否仍有未完成任务（调用方需持有 _lock）。"""
         return any(
-            task.status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED)
+            task.status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSING, DownloadStatus.PAUSED)
             for task in self.tasks.values()
         )
-
-    def _verify_task_status_locked(self, task_id: str, expected_status: DownloadStatus) -> bool:
-        """锁内检查任务状态是否匹配预期。"""
-        with self._lock:
-            task = self.tasks.get(task_id)
-            return task is not None and task.status == expected_status
 
     def _snapshot_queue_state(self) -> tuple[list[str], dict[str, DownloadStatus]]:
         """锁内返回队列和任务状态快照。"""
@@ -213,6 +211,11 @@ class DownloadManager:
                 if task:
                     statuses[tid] = task.status
             return queue_copy, statuses
+
+    def snapshot_tasks(self) -> dict:
+        """锁内返回所有任务的只读快照（任务 ID -> 任务深拷贝）。"""
+        with self._lock:
+            return {tid: copy.deepcopy(task) for tid, task in self.tasks.items()}
 
     def _notify_queue_changed(self):
         """唤醒队列处理线程，响应任务状态变化。"""
@@ -232,7 +235,7 @@ class DownloadManager:
 
         # 实际下载逻辑由子类或回调实现
         # 这里仅模拟状态流转
-        logger.info(f"Processing task {task_id}: {task.comic.title}")
+        logger.info("Processing task %s: %s", task_id, task.comic.title)
 
     def _notify_task_update(self, task: DownloadTask):
         """通知任务更新"""
@@ -249,10 +252,10 @@ class DownloadManager:
                 return False
 
             if task.status == DownloadStatus.DOWNLOADING:
-                task._pause_requested = True
-                task.status = DownloadStatus.PAUSED
+                task.request_pause()
+                task.status = DownloadStatus.PAUSING
                 task_to_notify = task
-                logger.info(f"Task {task_id} paused")
+                logger.info("Task %s pausing (waiting for current batch)", task_id)
                 changed = True
             elif task.status == DownloadStatus.QUEUED:
                 task.status = DownloadStatus.PAUSED
@@ -271,13 +274,13 @@ class DownloadManager:
         task_to_notify = None
         with self._lock:
             task = self.tasks.get(task_id)
-            if not task or task.status != DownloadStatus.PAUSED:
+            if not task or task.status not in (DownloadStatus.PAUSED, DownloadStatus.PAUSING):
                 return False
 
-            task._pause_requested = False
+            task.clear_pause_request()
             task.status = DownloadStatus.QUEUED
             task_to_notify = task
-            logger.info(f"Task {task_id} resumed")
+            logger.info("Task %s resumed", task_id)
 
             if not self.is_running:
                 should_start = True
@@ -301,7 +304,7 @@ class DownloadManager:
             if task.status not in (
                 DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED
             ):
-                task._cancel_requested = True
+                task.request_cancel()
 
             task.status = DownloadStatus.CANCELLED
 
@@ -310,7 +313,7 @@ class DownloadManager:
                 self.queue.remove(task_id)
 
             task_to_notify = task
-            logger.info(f"Task {task_id} cancelled")
+            logger.info("Task %s cancelled", task_id)
             changed = True
         if task_to_notify:
             self._notify_task_update(task_to_notify)
@@ -340,7 +343,7 @@ class DownloadManager:
             task.error_message = None
             # 保留 failed_pages 和 completed_pages 用于断点续传
             task_to_notify = task
-            logger.info(f"Task {task_id} queued for retry (attempt #{task.retry_count})")
+            logger.info("Task %s queued for retry (attempt #%s)", task_id, task.retry_count)
 
             # 检查是否需要启动队列处理器
             should_start = not self.is_running
@@ -360,7 +363,7 @@ class DownloadManager:
             self.global_pause = not self.global_pause
             new_state = self.global_pause
         self._notify_queue_changed()
-        logger.info(f"Global pause: {new_state}")
+        logger.info("Global pause: %s", new_state)
         return new_state
 
     def get_stats(self) -> dict:
@@ -418,6 +421,17 @@ class ComicDownloadManager(DownloadManager):
         self.delay_after = 0  # 批量下载间隔（秒）
         self.auto_retry_max_attempts = 2  # 自动重试次数（默认2次）
         self.output_format = output_format  # 输出格式: folder | zip | cbz
+        self.on_download_success = None  # Optional callback: (comic, output_path, output_format) -> None
+
+    @staticmethod
+    def _safe_rmtree(path: str, parent_dir: str) -> None:
+        """验证路径在 parent_dir 内后再执行删除。"""
+        real_path = os.path.realpath(path)
+        real_parent = os.path.realpath(parent_dir)
+        if real_path != real_parent and not real_path.startswith(real_parent + os.sep):
+            logger.warning("Refusing to rmtree path outside output dir: %s", path)
+            return
+        shutil.rmtree(path, ignore_errors=True)
 
     def set_auto_retry_max_attempts(self, attempts: int):
         """设置自动重试次数
@@ -443,7 +457,7 @@ class ComicDownloadManager(DownloadManager):
         """
         if output_format in ("folder", "zip", "cbz"):
             self.output_format = output_format
-            logger.info(f"Output format set to: {output_format}")
+            logger.info("Output format set to: %s", output_format)
 
     def add_task(self, comic: ComicInfo, overwrite: bool = False) -> str:
         """添加单个任务到队列，若 manager 已停止则自动重启。"""
@@ -486,27 +500,6 @@ class ComicDownloadManager(DownloadManager):
             all_pages = set(range(1, task.comic.pages + 1))
             task.failed_pages = sorted(all_pages - set(task.completed_pages))
 
-    def _process_output_by_format(self, temp_dir: str, comic, overwrite: bool = False) -> str:
-        """根据输出格式处理下载内容
-
-        Args:
-            temp_dir: 临时图片目录
-            comic: 漫画信息
-            overwrite: 是否覆盖已有文件
-
-        Returns:
-            输出路径
-        """
-        if self.output_format == "folder":
-            # 保存为普通文件夹（移动临时目录）
-            return self.cbz_builder.save_as_folder(temp_dir, comic, self.output_dir, overwrite=overwrite)
-        output_path = self.cbz_builder.get_output_path_for_format(comic, self.output_format, self.output_dir)
-        if self.output_format == "zip":
-            # 打包为 ZIP
-            return self.cbz_builder.build_zip(temp_dir, comic, output_path, overwrite=overwrite)
-        # 打包为 CBZ
-        return self.cbz_builder.build_cbz(temp_dir, comic, output_path, overwrite=overwrite)
-
     def _build_staged_output(self, temp_dir: str, comic) -> tuple[str, str, Optional[str]]:
         """Build the requested output into a staging path.
 
@@ -525,7 +518,7 @@ class ComicDownloadManager(DownloadManager):
                 )
                 return staged_path, final_path, staging_root
             except Exception:
-                shutil.rmtree(staging_root, ignore_errors=True)
+                self._safe_rmtree(staging_root, self.output_dir)
                 raise
 
         output_dir = os.path.dirname(final_path)
@@ -549,12 +542,12 @@ class ComicDownloadManager(DownloadManager):
     def _cleanup_staged_output(self, staged_path: Optional[str], staging_root: Optional[str] = None) -> None:
         """Remove a staged output without touching the final destination."""
         if staging_root and os.path.exists(staging_root):
-            shutil.rmtree(staging_root, ignore_errors=True)
+            self._safe_rmtree(staging_root, self.output_dir)
             return
         if not staged_path or not os.path.exists(staged_path):
             return
         if os.path.isdir(staged_path):
-            shutil.rmtree(staged_path, ignore_errors=True)
+            self._safe_rmtree(staged_path, self.output_dir)
         else:
             try:
                 os.remove(staged_path)
@@ -569,7 +562,7 @@ class ComicDownloadManager(DownloadManager):
     ) -> str:
         """Atomically commit staged output to the final destination when possible."""
         if os.path.exists(final_path) and not overwrite:
-            raise FileExistsError(f"Output already exists: {final_path}")
+            raise FileExistsError("Output already exists: %s" % final_path)
 
         if not os.path.isdir(staged_path):
             os.replace(staged_path, final_path)
@@ -587,10 +580,10 @@ class ComicDownloadManager(DownloadManager):
         shutil.move(final_path, backup_path)
         try:
             shutil.move(staged_path, final_path)
-            shutil.rmtree(backup_path)
+            self._safe_rmtree(backup_path, self.output_dir)
         except Exception:
             if os.path.exists(final_path):
-                shutil.rmtree(final_path, ignore_errors=True)
+                self._safe_rmtree(final_path, self.output_dir)
             if os.path.exists(backup_path):
                 shutil.move(backup_path, final_path)
             raise
@@ -606,16 +599,15 @@ class ComicDownloadManager(DownloadManager):
         cancel_event = threading.Event()
         pause_event = threading.Event()
         with self._lock:
-            if task._cancel_requested:
+            if task.is_cancel_requested:
                 cancel_event.set()
 
         def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
             with self._lock:
-                if task._cancel_requested:
+                if task.is_cancel_requested:
                     cancel_event.set()
-                if task._pause_requested:
+                if task.is_pause_requested:
                     pause_event.set()
-            with self._lock:
                 task.progress_current = current
                 task.progress_total = total
                 elapsed = time.time() - task.started_at if task.started_at else 0.0
@@ -638,43 +630,54 @@ class ComicDownloadManager(DownloadManager):
 
         return result
 
-    def _handle_download_success(self, task: DownloadTask, result: DownloadResult) -> None:
-        """处理下载成功：格式转换、清理临时目录、更新状态。"""
-        with self._lock:
-            _cancel_req = task._cancel_requested
-        if _cancel_req:
-            logger.info(f"Task {task.task_id} cancelled before packaging, discarding temp")
+    def _check_cancel_before_packaging(self, task: DownloadTask, result: DownloadResult) -> bool:
+        """检查任务是否在打包前被取消。返回 True 表示已取消。"""
+        if task.is_cancel_requested:
+            logger.info("Task %s cancelled before packaging, discarding temp", task.task_id)
             if result.temp_dir and os.path.exists(result.temp_dir):
                 self.downloader.cleanup_temp_dir(result.temp_dir)
             with self._lock:
                 task.temp_dir = None
                 task.status = DownloadStatus.CANCELLED
+            return True
+        return False
+
+    def _check_output_conflict(self, task: DownloadTask) -> bool:
+        """检查输出路径冲突。返回 True 表示有冲突（已处理）。"""
+        if task.overwrite:
+            return False
+        output_path = self.cbz_builder.get_output_path_for_format(
+            task.comic, self.output_format, self.output_dir
+        )
+        if not os.path.exists(output_path):
+            return False
+        logger.warning("Conflict detected at build time for %s, skipping", output_path)
+        with self._lock:
+            task.status = DownloadStatus.FAILED
+            task.error_message = "File already exists: %s" % output_path
+        if task.temp_dir and os.path.exists(task.temp_dir):
+            self.downloader.cleanup_temp_dir(task.temp_dir)
+        task.temp_dir = None
+        return True
+
+    def _handle_download_success(self, task: DownloadTask, result: DownloadResult) -> None:
+        """处理下载成功：格式转换、清理临时目录、更新状态。"""
+        with self._lock:
+            task.temp_dir = result.temp_dir
+
+        if self._check_cancel_before_packaging(task, result):
             return
 
-        # 构建前复查目标路径冲突
-        if not task.overwrite:
-            output_path = self.cbz_builder.get_output_path_for_format(
-                task.comic, self.output_format, self.output_dir
-            )
-            if os.path.exists(output_path):
-                logger.warning(f"Conflict detected at build time for {output_path}, skipping")
-                with self._lock:
-                    task.status = DownloadStatus.FAILED
-                    task.error_message = f"File already exists: {output_path}"
-                if result.temp_dir and os.path.exists(result.temp_dir):
-                    self.downloader.cleanup_temp_dir(result.temp_dir)
-                task.temp_dir = None
-                return
+        if self._check_output_conflict(task):
+            return
 
         staged_path = None
         staging_root = None
         try:
             staged_path, output_path, staging_root = self._build_staged_output(result.temp_dir, task.comic)
 
-            with self._lock:
-                _cancel_req = task._cancel_requested
-            if _cancel_req:
-                logger.info(f"Task {task.task_id} cancelled during packaging, discarding staged output")
+            if task.is_cancel_requested:
+                logger.info("Task %s cancelled during packaging, discarding staged output", task.task_id)
                 self._cleanup_staged_output(staged_path, staging_root)
                 if self.output_format != "folder" and result.temp_dir and os.path.exists(result.temp_dir):
                     self.downloader.cleanup_temp_dir(result.temp_dir)
@@ -685,7 +688,7 @@ class ComicDownloadManager(DownloadManager):
 
             output_path = self._commit_staged_output(staged_path, output_path, overwrite=task.overwrite)
             if staging_root and os.path.exists(staging_root):
-                shutil.rmtree(staging_root, ignore_errors=True)
+                self._safe_rmtree(staging_root, self.output_dir)
             staged_path = None
             staging_root = None
         except Exception:
@@ -698,7 +701,13 @@ class ComicDownloadManager(DownloadManager):
             task.temp_dir = None
             task.status = DownloadStatus.COMPLETED
             task.current_downloading_page = 0
-        logger.info(f"Task {task.task_id} completed: {output_path}")
+        logger.info("Task %s completed: %s", task.task_id, output_path if 'output_path' in dir() else "")
+
+        if self.on_download_success:
+            try:
+                self.on_download_success(task.comic, output_path, self.output_format)
+            except Exception:
+                logger.warning("on_download_success callback failed", exc_info=True)
 
     def _handle_download_failure(self, task: DownloadTask, result: DownloadResult) -> None:
         """处理下载失败：记录失败信息并尝试自动重试。"""
@@ -712,7 +721,7 @@ class ComicDownloadManager(DownloadManager):
 
     def _handle_download_exception(self, task: DownloadTask, exception: Exception, temp_dir: Optional[str]) -> None:
         """处理下载异常：保留进度、尝试自动重试或清理。"""
-        logger.error(f"Task {task.task_id} failed: {exception}")
+        logger.error("Task %s failed: %s", task.task_id, exception)
 
         with self._lock:
             _is_cancelled = task.status == DownloadStatus.CANCELLED
@@ -730,7 +739,7 @@ class ComicDownloadManager(DownloadManager):
                 try:
                     self._scan_temp_dir_progress(temp_dir, task)
                 except Exception as scan_error:
-                    logger.warning(f"Failed to scan temp dir for progress: {scan_error}")
+                    logger.warning("Failed to scan temp dir %s for progress: %s", temp_dir, scan_error)
 
         self._attempt_auto_retry(task)
 
@@ -741,14 +750,15 @@ class ComicDownloadManager(DownloadManager):
                 task.retry_count += 1
                 task.status = DownloadStatus.QUEUED
             logger.warning(
-                f"Task {task.task_id} failed, auto-retrying ({task.retry_count}/{self.auto_retry_max_attempts}): {task.error_message}"
+                "Task %s failed, auto-retrying (%s/%s): %s",
+                task.task_id, task.retry_count, self.auto_retry_max_attempts, task.error_message
             )
             self._notify_queue_changed()
         else:
             with self._lock:
                 task.status = DownloadStatus.FAILED
                 task.current_downloading_page = 0
-            logger.error(f"Task {task.task_id} failed after {task.retry_count} retries: {task.error_message}")
+            logger.error("Task %s failed after %s retries: %s", task.task_id, task.retry_count, task.error_message)
 
     def _apply_delay_after(self, task_id: str) -> None:
         """在任务完成后应用批量下载间隔。"""
@@ -762,9 +772,38 @@ class ComicDownloadManager(DownloadManager):
             for s in task_statuses.values()
         )
         if has_pending:
-            logger.info(f"Waiting {self.delay_after}s before next download")
+            logger.info("Waiting %ss before next download", self.delay_after)
             if self._stop_event.wait(self.delay_after):
                 logger.info("Stop requested during delay after, aborting wait")
+
+    def _handle_post_download(self, task: DownloadTask, result: DownloadResult) -> None:
+        """处理下载完成后的取消/暂停检查和结果分发。"""
+        with self._lock:
+            task.temp_dir = result.temp_dir
+            task.completed_pages = result.completed_pages
+            task.failed_pages = result.failed_pages
+        self._notify_task_update(task)
+
+        if task.is_cancel_requested:
+            logger.info("Task %s cancelled after download returned, skipping success", task.task_id)
+            if result.temp_dir and os.path.exists(result.temp_dir):
+                self.downloader.cleanup_temp_dir(result.temp_dir)
+            with self._lock:
+                task.status = DownloadStatus.CANCELLED
+            self._notify_task_update(task)
+            return
+
+        if task.is_pause_requested:
+            with self._lock:
+                task.status = DownloadStatus.PAUSED
+            self._notify_task_update(task)
+            logger.info("Task %s paused after current checkpoint", task.task_id)
+            return
+
+        if result.success:
+            self._handle_download_success(task, result)
+        else:
+            self._handle_download_failure(task, result)
 
     def _process_task(self, task_id: str):
         """处理单个下载任务（编排器）。"""
@@ -781,40 +820,7 @@ class ComicDownloadManager(DownloadManager):
         try:
             result = self._execute_download(task)
             temp_dir = result.temp_dir
-
-            with self._lock:
-                _cancel_req = task._cancel_requested
-            if _cancel_req:
-                logger.info(f"Task {task_id} cancelled after download returned, skipping success")
-                if result.temp_dir and os.path.exists(result.temp_dir):
-                    self.downloader.cleanup_temp_dir(result.temp_dir)
-                with self._lock:
-                    task.status = DownloadStatus.CANCELLED
-                self._notify_task_update(task)
-                return
-
-            with self._lock:
-                _pause_req = task._pause_requested
-            if _pause_req:
-                with self._lock:
-                    task.temp_dir = result.temp_dir
-                    task.completed_pages = result.completed_pages
-                    task.failed_pages = result.failed_pages
-                    task.status = DownloadStatus.PAUSED
-                self._notify_task_update(task)
-                logger.info(f"Task {task_id} paused after current checkpoint")
-                return
-
-            with self._lock:
-                task.temp_dir = result.temp_dir
-                task.completed_pages = result.completed_pages
-                task.failed_pages = result.failed_pages
-            self._notify_task_update(task)
-
-            if result.success:
-                self._handle_download_success(task, result)
-            else:
-                self._handle_download_failure(task, result)
+            self._handle_post_download(task, result)
         except DownloadCancelledError as e:
             if e.temp_dir and os.path.exists(e.temp_dir):
                 self.downloader.cleanup_temp_dir(e.temp_dir)

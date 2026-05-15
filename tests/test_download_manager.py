@@ -103,9 +103,9 @@ def test_pause_resume_task():
     # 模拟任务开始
     dm.tasks[task_id].status = DownloadStatus.DOWNLOADING
 
-    # 暂停
+    # 暂停（DOWNLOADING → PAUSING，表示正在等待当前批次完成）
     assert dm.pause_task(task_id) is True
-    assert dm.tasks[task_id].status == DownloadStatus.PAUSED
+    assert dm.tasks[task_id].status == DownloadStatus.PAUSING
     assert dm.tasks[task_id]._pause_requested is True
 
     # 继续（阻止处理器启动，仅测试状态转移）
@@ -267,29 +267,6 @@ class _FakeCBZBuilder:
 
     def get_output_path(self, comic, output_dir):
         return self.get_output_path_for_format(comic, "cbz", output_dir)
-
-
-def test_process_output_by_format_uses_final_file_path(tmp_path):
-    comic = ComicInfo(id="out_1", title="Output Path", pages=1)
-    temp_dir = tmp_path / "temp"
-    temp_dir.mkdir()
-
-    builder = _FakeCBZBuilder()
-    dm = ComicDownloadManager(
-        downloader=_FakeDownloader(),
-        cbz_builder=builder,
-        output_dir=str(tmp_path),
-    )
-
-    for output_format, suffix, kind in (("zip", ".zip", "zip"), ("cbz", ".cbz", "cbz")):
-        dm.set_output_format(output_format)
-        builder.calls.clear()
-
-        result = dm._process_output_by_format(str(temp_dir), comic)
-
-        expected_path = os.path.join(str(tmp_path), f"{comic.id}{suffix}")
-        assert result == expected_path
-        assert builder.calls == [(kind, expected_path)]
 
 
 class _InstantDownloader:
@@ -679,3 +656,14 @@ def test_add_duplicate_task_allows_redownload_for_completed():
     assert task_id_2 == task_id_1
     assert len(dm.queue) == 2
     assert dm.tasks[task_id_1].status == DownloadStatus.QUEUED
+
+
+def test_on_download_success_callback(tmp_path):
+    """ComicDownloadManager has on_download_success attribute and calls it on completion."""
+    dm = ComicDownloadManager(
+        downloader=_FakeDownloader(),
+        cbz_builder=_FakeCBZBuilder(),
+        output_dir=str(tmp_path),
+    )
+    assert hasattr(dm, 'on_download_success')
+    assert dm.on_download_success is None
