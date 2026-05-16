@@ -102,11 +102,17 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
           </div>
         )}
         {downloadStatus === 'downloaded' && (
-          <div className="absolute top-1.5 right-1.5 z-[5] w-[22px] h-[22px] rounded-full
-                          bg-green-500/90 flex items-center justify-center">
-            <svg className="w-[13px] h-[13px] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+          <div className="absolute top-[3%] right-[3%] z-[5]
+                          rounded-lg bg-gray-800/60 backdrop-blur-sm
+                          p-[3px] sm:p-[4px] md:p-[5px] lg:p-[6px]
+                          flex items-center justify-center">
+            <div className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] md:w-[28px] md:h-[28px] lg:w-[32px] lg:h-[32px]
+                            rounded-full bg-green-500 flex items-center justify-center">
+              <svg className="w-[12px] h-[12px] sm:w-[14px] sm:h-[14px] md:w-[17px] md:h-[17px] lg:w-[19px] lg:h-[19px]
+                              text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
           </div>
         )}
       </div>
@@ -202,11 +208,17 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
           </div>
         )}
         {downloadStatus === 'downloaded' && (
-          <div className="absolute top-0.5 right-0.5 z-[5] w-4 h-4 rounded-full
-                          bg-green-500/90 flex items-center justify-center">
-            <svg className="w-[9px] h-[9px] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-            </svg>
+          <div className="absolute top-[5%] right-[5%] z-[5]
+                          rounded-md bg-gray-800/60 backdrop-blur-sm
+                          p-[2px]
+                          flex items-center justify-center">
+            <div className="w-[16px] h-[16px] sm:w-[18px] sm:h-[18px]
+                            rounded-full bg-green-500 flex items-center justify-center">
+              <svg className="w-[10px] h-[10px] sm:w-[11px] sm:h-[11px]
+                              text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
           </div>
         )}
       </div>
