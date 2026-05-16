@@ -196,9 +196,42 @@ const CONFIG_VALIDATORS: Record<string, { type: string; validate?: (v: unknown) 
   sfwMode: { type: 'boolean' },
 }
 
+// ── Reusable validation helpers ──────────────────────────────────────────
+
+function validateTaskId(id: unknown, label = 'taskId'): asserts id is string {
+  if (typeof id !== 'string' || id.length === 0 || id.length > 256) {
+    throw new Error(`Invalid ${label}`)
+  }
+}
+
+function validateUrlFormat(url: unknown, label = 'URL', maxLength = 2048): asserts url is string {
+  if (typeof url !== 'string' || url.length === 0 || url.length > maxLength) {
+    throw new Error(`Invalid ${label}`)
+  }
+  try { new URL(url) } catch { throw new Error(`Invalid ${label} format`) }
+}
+
+function validateHttpsUrlWithDomains(
+  url: unknown,
+  allowedDomains: string[],
+  label = 'URL',
+  maxLength = 2048,
+): asserts url is string {
+  validateUrlFormat(url, label, maxLength)
+  const parsed = new URL(url as string)
+  if (parsed.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed')
+  if (!allowedDomains.some(d => parsed.hostname === d || parsed.hostname.endsWith('.' + d))) {
+    throw new Error('Domain not allowed')
+  }
+}
+
+function validateComicObject(data: unknown): asserts data is Record<string, unknown> {
+  if (typeof data !== 'object' || data === null) throw new Error('Invalid comic data')
+}
+
 function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
   win.loadURL(url).catch(() => {})
-  win.webContents.once('did-fail-load', () => {
+  const onFail = () => {
     if (attempt >= DEV_SERVER_MAX_RETRIES) {
       console.error(`Dev server failed to load after ${DEV_SERVER_MAX_RETRIES} retries`)
       win.show()
@@ -210,6 +243,10 @@ function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
         loadWithRetry(win, url, attempt + 1)
       }
     }, DEV_SERVER_RETRY_DELAY_MS)
+  }
+  win.webContents.once('did-fail-load', onFail)
+  win.webContents.once('did-finish-load', () => {
+    win.webContents.removeListener('did-fail-load', onFail)
   })
 }
 
@@ -509,9 +546,7 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.CANCEL_DOWNLOAD, async (_, taskId) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
-      throw new Error('Invalid cancel_download taskId')
-    }
+    validateTaskId(taskId, 'cancel_download taskId')
     return bridge.call('cancel_download', { task_id: taskId })
   })
 
@@ -535,62 +570,28 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url: string) => {
-    if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid URL')
-    let parsed: URL
-    try {
-      parsed = new URL(url)
-    } catch {
-      throw new Error('Invalid URL format')
-    }
-    if (parsed.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed')
-    const allowed = ALLOWED_EXTERNAL_DOMAINS.some(
-      d => parsed.hostname === d || parsed.hostname.endsWith('.' + d)
-    )
-    if (!allowed) throw new Error('Domain not allowed')
+    validateHttpsUrlWithDomains(url, ALLOWED_EXTERNAL_DOMAINS, 'URL')
     await shell.openExternal(url)
   })
 
   ipcMain.handle(IPC_CHANNELS.FETCH_COVER, async (_, url: string) => {
-    if (typeof url !== 'string' || url.length === 0 || url.length > 2048) {
-      throw new Error('Invalid cover URL')
-    }
-    let parsed: URL
-    try {
-      parsed = new URL(url)
-    } catch {
-      throw new Error('Invalid cover URL format')
-    }
-    if (parsed.protocol !== 'https:') {
-      throw new Error('Only HTTPS URLs are allowed for cover images')
-    }
-    const allowed = ALLOWED_COVER_DOMAINS.some(
-      d => parsed.hostname === d || parsed.hostname.endsWith('.' + d)
-    )
-    if (!allowed) {
-      throw new Error('Cover image domain not allowed')
-    }
+    validateHttpsUrlWithDomains(url, ALLOWED_COVER_DOMAINS, 'cover image URL')
     return bridge.call('fetch_cover', { url })
   })
 
   // ── Phase 1: Download Manager task controls ──
   ipcMain.handle(IPC_CHANNELS.PAUSE_TASK, async (_, taskId: string) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
-      throw new Error('Invalid pause_task taskId')
-    }
+    validateTaskId(taskId, 'pause_task taskId')
     return bridge.call('pause_task', { task_id: taskId })
   })
 
   ipcMain.handle(IPC_CHANNELS.RESUME_TASK, async (_, taskId: string) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
-      throw new Error('Invalid resume_task taskId')
-    }
+    validateTaskId(taskId, 'resume_task taskId')
     return bridge.call('resume_task', { task_id: taskId })
   })
 
   ipcMain.handle(IPC_CHANNELS.RETRY_TASK, async (_, taskId: string) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
-      throw new Error('Invalid retry_task taskId')
-    }
+    validateTaskId(taskId, 'retry_task taskId')
     return bridge.call('retry_task', { task_id: taskId })
   })
 
@@ -613,16 +614,12 @@ function registerIPCHandlers() {
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, async (_, taskId: string) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) {
-      throw new Error('Invalid get_download_detail taskId')
-    }
+    validateTaskId(taskId, 'get_download_detail taskId')
     return bridge.call('get_download_detail', { task_id: taskId })
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_PREVIEW_URLS, async (_, comicData: unknown) => {
-    if (typeof comicData !== 'object' || comicData === null) {
-      throw new Error('Invalid comic data')
-    }
+    validateComicObject(comicData)
     const data = comicData as Record<string, unknown>
     if (typeof data.id !== 'string' || data.id.length === 0 || data.id.length > 256) {
       throw new Error('Invalid comic id')
