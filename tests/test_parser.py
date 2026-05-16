@@ -429,7 +429,7 @@ class TestHComicParserAdditionalCoverage:
             media_id="abc123",
             comic_source="NH"
         )
-        urls = parser.extract_image_urls(comic)
+        urls = comic.get_all_image_urls()
         assert len(urls) == 3
         assert all("h-comic.link/api/nh/abc123/pages/" in url for url in urls)
 

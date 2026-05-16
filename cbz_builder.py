@@ -5,15 +5,13 @@ import re
 import shutil
 import tempfile
 import zipfile
-from datetime import datetime
-from pathlib import Path
 from typing import List, Optional, TYPE_CHECKING
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
 
 from image_formats import PAGE_FILENAME_FORMAT, SUPPORTED_IMAGE_EXTENSIONS
 from models import ArchiveBuildOptions, ComicInfo
-from utils import sanitize_filename, sanitize_path_chars
+from utils import sanitize_path_chars
 
 if TYPE_CHECKING:
     from config import Config

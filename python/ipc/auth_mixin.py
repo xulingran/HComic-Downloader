@@ -1,6 +1,5 @@
 """Authentication and favourites mixin for IPCServer."""
 
-import json
 import logging
 from typing import Dict
 

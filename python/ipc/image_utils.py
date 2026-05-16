@@ -33,20 +33,3 @@ def referer_for_image_url(url: str) -> str:
         return "https://moeimg.fan/"
     return "https://h-comic.com/"
 
-
-def headers_for_image_url(url: str, parser_session_headers: dict) -> dict:
-    """Build request headers for fetching an image URL."""
-    headers = {
-        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
-        "Referer": referer_for_image_url(url),
-    }
-    hostname = urlparse(url).hostname or ""
-    source = "moeimg" if (
-        hostname == "moeimg.fan"
-        or hostname.endswith(".moeimg.fan")
-        or hostname.endswith(".moeimg.net")
-        or hostname.endswith(".cdndelivers.cloud")
-    ) else "hcomic"
-    headers.update(parser_session_headers)
-    headers["Referer"] = referer_for_image_url(url)
-    return headers

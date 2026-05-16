@@ -1,7 +1,6 @@
 """数据模型"""
 from dataclasses import dataclass, field
 from enum import Enum
-import threading
 import time
 from typing import List, Optional
 
@@ -221,20 +220,6 @@ class AuthConfig:
     """认证配置，封装 cookie 和 user_agent。"""
     cookie: str = ""
     user_agent: str = ""
-
-
-@dataclass
-class DownloadResumeOptions:
-    """断点续传下载选项，封装 download_comic_resume 的参数。"""
-    comic: ComicInfo
-    output_dir: str
-    progress_callback: Optional[object] = None
-    delay_after: int = 0
-    comic_info: Optional[dict] = None
-    completed_pages: Optional[List[int]] = None
-    failed_pages: Optional[List[int]] = None
-    cancel_event: Optional[threading.Event] = None
-    pause_event: Optional[threading.Event] = None
 
 
 @dataclass

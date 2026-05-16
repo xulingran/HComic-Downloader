@@ -134,6 +134,28 @@ class DownloadHistoryDB:
 
         return result
 
+    def get_all_records(self) -> List[Dict]:
+        """Return all download history records."""
+        with self._lock:
+            cursor = self._conn.execute(
+                "SELECT source_site, comic_id, comic_source, title, author, "
+                "output_path, output_format, downloaded_at "
+                "FROM download_history"
+            )
+            columns = ["source_site", "comic_id", "comic_source", "title",
+                        "author", "output_path", "output_format", "downloaded_at"]
+            return [dict(zip(columns, row)) for row in cursor]
+
+    def update_output_path(self, key: Tuple[str, str, str], new_path: str):
+        """Update the output_path for a specific record."""
+        with self._lock:
+            self._conn.execute(
+                "UPDATE download_history SET output_path = ? "
+                "WHERE source_site = ? AND comic_id = ? AND comic_source = ?",
+                (new_path, key[0], key[1], key[2]),
+            )
+            self._conn.commit()
+
     def close(self):
         if self._conn:
             self._conn.close()

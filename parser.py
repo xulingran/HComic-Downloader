@@ -524,17 +524,6 @@ class HComicParser:
         json_ready = cls._quote_unquoted_js_keys(js_obj_text)
         return json.loads(json_ready)
 
-    def extract_image_urls(self, comic: ComicInfo) -> List[str]:
-        """提取漫画的所有图片 URL
-
-        Args:
-            comic: 漫画信息
-
-        Returns:
-            图片 URL 列表
-        """
-        return comic.get_all_image_urls()
-
 
 class MoeImgParser:
     """moeimg.fan 解析器。"""

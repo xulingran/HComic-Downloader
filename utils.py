@@ -1,7 +1,7 @@
 """工具函数模块"""
 import os
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 from urllib.request import getproxies
 
 KB = 1024
@@ -41,39 +41,6 @@ def ensure_dir(path: str):
         path: 目录路径
     """
     os.makedirs(path, exist_ok=True)
-
-
-def format_file_size(size: int) -> str:
-    """格式化文件大小
-
-    Args:
-        size: 字节数
-
-    Returns:
-        格式化后的字符串 (如: 1.5 MB)
-    """
-    if size < KB:
-        return f"{size} B"
-    elif size < MB:
-        return f"{size / KB:.1f} KB"
-    elif size < GB:
-        return f"{size / MB:.1f} MB"
-    else:
-        return f"{size / GB:.1f} GB"
-
-
-def format_tags(tags: List[str]) -> str:
-    """格式化标签列表为逗号分隔的字符串
-
-    Args:
-        tags: 标签列表
-
-    Returns:
-        逗号分隔的标签字符串
-    """
-    if not tags:
-        return ""
-    return ", ".join(str(tag) for tag in tags if tag)
 
 
 def get_system_proxies() -> Dict[str, str]:
@@ -129,29 +96,6 @@ def sanitize_path_chars(name: str) -> str:
     if not name:
         return "unknown"
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
-
-
-def export_system_proxies_to_env(strip_credentials: bool = True) -> Dict[str, str]:
-    """将系统代理导出到环境变量（不覆盖用户已显式设置值）。
-
-    Args:
-        strip_credentials: 若为 True，在写入环境变量前移除代理 URL 中的
-            user:pass@ 部分，防止凭据泄漏。
-
-    Warning: 代理认证信息（如 http://user:pass@proxy）会写入 os.environ，
-    可能被子进程继承。生产环境中应评估此风险。
-    """
-    proxies = get_system_proxies()
-    for scheme in ("http", "https"):
-        value = proxies.get(scheme)
-        if not value:
-            continue
-        if strip_credentials:
-            value = re.sub(r'://[^@]+@', '://', value)
-        env_name = f"{scheme}_proxy"
-        os.environ.setdefault(env_name, value)
-        os.environ.setdefault(env_name.upper(), value)
-    return proxies
 
 
 def configure_session_auth(

@@ -16,9 +16,9 @@ from urllib3.util.retry import Retry
 
 from constants import DEFAULT_USER_AGENT
 from image_downloader import ImageDownloader
-from models import ComicInfo, DownloadCancelledError, DownloadResumeOptions
-from url_validator import DownloadError, UrlValidator
-from utils import apply_system_proxy_to_session, configure_session_auth, ensure_dir, format_file_size, sanitize_filename
+from models import ComicInfo, DownloadCancelledError
+from url_validator import UrlValidator
+from utils import apply_system_proxy_to_session, configure_session_auth, ensure_dir, sanitize_filename
 
 logger = logging.getLogger(__name__)
 

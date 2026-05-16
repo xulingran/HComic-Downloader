@@ -29,9 +29,10 @@ from ipc.download_mixin import DownloadMixin
 from ipc.config_mixin import ConfigMixin
 from ipc.auth_mixin import AuthMixin
 from ipc.search_mixin import SearchMixin
+from ipc.migration_mixin import MigrationMixin
 
 
-class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixin, AuthMixin):
+class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixin, AuthMixin, MigrationMixin):
 
     def __init__(self):
         from parser import MultiSourceParser
@@ -101,6 +102,9 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             max_disk=_COVER_CACHE_MAX_SIZE * 2 + 100,
         )
 
+        # Migration engine
+        self._init_migration()
+
     # ── backward-compatible static helpers (delegated to image_utils) ─────
 
     @staticmethod
@@ -148,6 +152,13 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             "get_preview_urls": self.handle_get_preview_urls,
             "fetch_preview_image": self.handle_fetch_preview_image,
             "check_downloaded_status": self.handle_check_downloaded_status,
+            "start_migration": self.handle_start_migration,
+            "confirm_migration": self.handle_confirm_migration,
+            "pause_migration": self.handle_pause_migration,
+            "resume_migration": self.handle_resume_migration,
+            "cancel_migration": self.handle_cancel_migration,
+            "get_migration_status": self.handle_get_migration_status,
+            "resolve_unmatched": self.handle_resolve_unmatched,
         }
 
         handler = handlers.get(method)

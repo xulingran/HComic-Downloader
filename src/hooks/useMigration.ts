@@ -1,0 +1,128 @@
+import { useCallback, useState, useEffect } from 'react'
+import { useIpc } from './useIpc'
+import type {
+  MigrationProgressEvent,
+  MigrationCompleteEvent,
+  MigrationErrorEvent,
+} from '@shared/types'
+
+export function useMigration() {
+  const { invoke } = useIpc()
+
+  const [progress, setProgress] = useState<MigrationProgressEvent | null>(null)
+  const [complete, setComplete] = useState<MigrationCompleteEvent | null>(null)
+  const [errors, setErrors] = useState<MigrationErrorEvent[]>([])
+  const [isActive, setIsActive] = useState(false)
+
+  useEffect(() => {
+    if (!window.hcomic?.onMigrationProgress) return
+    const unsub1 = window.hcomic.onMigrationProgress((data: MigrationProgressEvent) => {
+      setProgress(data)
+      setIsActive(true)
+    })
+    const unsub2 = window.hcomic.onMigrationComplete((data: MigrationCompleteEvent) => {
+      setComplete(data)
+      setIsActive(false)
+    })
+    const unsub3 = window.hcomic.onMigrationError((data: MigrationErrorEvent) => {
+      setErrors(prev => [...prev, data])
+    })
+    return () => { unsub1(); unsub2(); unsub3() }
+  }, [])
+
+  const resetState = useCallback(() => {
+    setProgress(null)
+    setComplete(null)
+    setErrors([])
+    setIsActive(false)
+  }, [])
+
+  const startMigration = useCallback(async (targetDir: string, mode: 'full' | 'repair') => {
+    resetState()
+    return invoke(() => window.hcomic!.startMigration(targetDir, mode))
+  }, [invoke, resetState])
+
+  const confirmMigration = useCallback(async (migrationId: string) => {
+    setIsActive(true)
+    setErrors([])
+    setProgress(null)
+    setComplete(null)
+    return invoke(() => window.hcomic!.confirmMigration(migrationId))
+  }, [invoke])
+
+  const pauseMigration = useCallback(async () => {
+    return invoke(() => window.hcomic!.pauseMigration())
+  }, [invoke])
+
+  const resumeMigration = useCallback(async () => {
+    setIsActive(true)
+    return invoke(() => window.hcomic!.resumeMigration())
+  }, [invoke])
+
+  const cancelMigration = useCallback(async () => {
+    return invoke(() => window.hcomic!.cancelMigration())
+  }, [invoke])
+
+  const getMigrationStatus = useCallback(async () => {
+    return invoke(() => window.hcomic!.getMigrationStatus())
+  }, [invoke])
+
+  const syncFromBackend = useCallback(async () => {
+    try {
+      const status = await invoke(() => window.hcomic!.getMigrationStatus())
+      if (!status || status.status === 'none') {
+        resetState()
+        return
+      }
+      if (status.status === 'running') {
+        setIsActive(true)
+        setProgress({
+          completed: status.completed_items,
+          total: status.total_items,
+          currentFile: '',
+          phase: 'moving',
+        })
+      } else if (status.status === 'completed') {
+        setComplete({
+          total: status.total_items,
+          succeeded: status.completed_items,
+          failed: status.failed_items?.length ?? 0,
+          elapsed: 0,
+        })
+        setIsActive(false)
+      } else if (status.status === 'paused') {
+        setIsActive(true)
+        setProgress({
+          completed: status.completed_items,
+          total: status.total_items,
+          currentFile: '',
+          phase: 'moving',
+        })
+      }
+    } catch {
+      // IPC call failed, keep default empty state
+    }
+  }, [invoke, resetState])
+
+  const resolveUnmatched = useCallback(async (
+    matches: Array<{ dbKey: string[]; file_path: string }>,
+  ) => {
+    return invoke(() => window.hcomic!.resolveUnmatched(matches))
+  }, [invoke])
+
+  return {
+    startMigration,
+    confirmMigration,
+    pauseMigration,
+    resumeMigration,
+    cancelMigration,
+    getMigrationStatus,
+    resolveUnmatched,
+    syncFromBackend,
+    progress,
+    complete,
+    errors,
+    isActive,
+    resetState,
+  }
+}

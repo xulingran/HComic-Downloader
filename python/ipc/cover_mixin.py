@@ -4,8 +4,7 @@ import base64
 import logging
 from urllib.parse import urlparse
 
-from .image_utils import detect_image_type, referer_for_image_url
-from .types import _COVER_POOL_MAX_WORKERS
+from .image_utils import detect_image_type
 from utils import KB
 
 logger = logging.getLogger(__name__)
@@ -49,8 +48,6 @@ class CoverMixin:
 
     def _do_fetch_cover(self, url: str) -> str:
         """Fetch cover image and return base64 data URI (thread-safe, called from pool)."""
-        parsed = urlparse(url)
-
         headers = {"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}
         try:
             src_headers = dict(self.parser.session.headers)

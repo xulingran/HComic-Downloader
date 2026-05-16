@@ -130,4 +130,46 @@ contextBridge.exposeInMainWorld('hcomic', {
     }
     return ipcRenderer.invoke(IPC_CHANNELS.CHECK_DOWNLOADED_STATUS, comics)
   },
+
+  startMigration: (targetDir: unknown, mode: unknown) => {
+    if (typeof targetDir !== 'string' || targetDir.length === 0) throw new Error('Invalid targetDir')
+    if (mode !== 'full' && mode !== 'repair') throw new Error('Invalid mode')
+    return ipcRenderer.invoke(IPC_CHANNELS.START_MIGRATION, targetDir, mode)
+  },
+
+  confirmMigration: (migrationId: unknown) => {
+    if (typeof migrationId !== 'string' || migrationId.length === 0) throw new Error('Invalid migrationId')
+    return ipcRenderer.invoke(IPC_CHANNELS.CONFIRM_MIGRATION, migrationId)
+  },
+
+  pauseMigration: () => ipcRenderer.invoke(IPC_CHANNELS.PAUSE_MIGRATION),
+  resumeMigration: () => ipcRenderer.invoke(IPC_CHANNELS.RESUME_MIGRATION),
+  cancelMigration: () => ipcRenderer.invoke(IPC_CHANNELS.CANCEL_MIGRATION),
+  getMigrationStatus: () => ipcRenderer.invoke(IPC_CHANNELS.GET_MIGRATION_STATUS),
+
+  resolveUnmatched: (matches: unknown) => {
+    if (!Array.isArray(matches)) throw new Error('Invalid matches')
+    return ipcRenderer.invoke(IPC_CHANNELS.RESOLVE_UNMATCHED, matches)
+  },
+
+  onMigrationProgress: (callback: unknown) => {
+    if (typeof callback !== 'function') throw new Error('Invalid callback')
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
+    ipcRenderer.on(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, handler)
+    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, handler) }
+  },
+
+  onMigrationComplete: (callback: unknown) => {
+    if (typeof callback !== 'function') throw new Error('Invalid callback')
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
+    ipcRenderer.on(NOTIFICATION_CHANNELS.MIGRATION_COMPLETE, handler)
+    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.MIGRATION_COMPLETE, handler) }
+  },
+
+  onMigrationError: (callback: unknown) => {
+    if (typeof callback !== 'function') throw new Error('Invalid callback')
+    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
+    ipcRenderer.on(NOTIFICATION_CHANNELS.MIGRATION_ERROR, handler)
+    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.MIGRATION_ERROR, handler) }
+  },
 })

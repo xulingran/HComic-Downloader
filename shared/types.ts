@@ -83,6 +83,34 @@ export interface PreviewImageResult {
   dataUri: string
 }
 
+export interface MigrationPlanPreview {
+  migrationId: string
+  totalItems: number
+  sourceDir: string
+  targetDir: string
+  isSameDrive: boolean
+}
+
+export interface MigrationProgressEvent {
+  completed: number
+  total: number
+  currentFile: string
+  speed: number
+  phase: string
+}
+
+export interface MigrationCompleteEvent {
+  total: number
+  succeeded: number
+  failed: number
+  elapsed: number
+}
+
+export interface MigrationErrorEvent {
+  message: string
+  file_path: string
+}
+
 /** Keys that can be persisted via set-config */
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
@@ -219,6 +247,34 @@ export interface IPCMethods {
     params: { comics: ComicInfo[] }
     result: { statusMap: Record<string, 'downloaded' | 'unknown'> }
   }
+  start_migration: {
+    params: { target_dir: string; mode: string }
+    result: MigrationPlanPreview
+  }
+  confirm_migration: {
+    params: { migration_id: string }
+    result: { started: boolean }
+  }
+  pause_migration: {
+    params: Record<string, never>
+    result: { paused: boolean }
+  }
+  resume_migration: {
+    params: Record<string, never>
+    result: { resumed: boolean }
+  }
+  cancel_migration: {
+    params: Record<string, never>
+    result: { cancelled: boolean }
+  }
+  get_migration_status: {
+    params: Record<string, never>
+    result: Record<string, unknown>
+  }
+  resolve_unmatched: {
+    params: { matches: Array<{ db_key: string[]; file_path: string }> }
+    result: { resolved: number }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -246,6 +302,13 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-preview-urls': 'get_preview_urls',
   'python:fetch-preview-image': 'fetch_preview_image',
   'python:check-downloaded-status': 'check_downloaded_status',
+  'python:start-migration': 'start_migration',
+  'python:confirm-migration': 'confirm_migration',
+  'python:pause-migration': 'pause_migration',
+  'python:resume-migration': 'resume_migration',
+  'python:cancel-migration': 'cancel_migration',
+  'python:get-migration-status': 'get_migration_status',
+  'python:resolve-unmatched': 'resolve_unmatched',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -287,6 +350,16 @@ export interface HcomicAPI {
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
   fetchPreviewImage(imageUrl: string): Promise<PreviewImageResult>
   checkDownloadedStatus(comics: ComicInfo[]): Promise<{ statusMap: Record<string, 'downloaded' | 'unknown'> }>
+  startMigration(targetDir: string, mode: 'full' | 'repair'): Promise<MigrationPlanPreview>
+  confirmMigration(migrationId: string): Promise<{ started: boolean }>
+  pauseMigration(): Promise<{ paused: boolean }>
+  resumeMigration(): Promise<{ resumed: boolean }>
+  cancelMigration(): Promise<{ cancelled: boolean }>
+  getMigrationStatus(): Promise<Record<string, unknown>>
+  resolveUnmatched(matches: Array<{ dbKey: string[]; file_path: string }>): Promise<{ resolved: number }>
+  onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
+  onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
+  onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
 }
 
 /** Valid search modes — shared between preload and main */
@@ -330,10 +403,20 @@ export const IPC_CHANNELS = {
   GET_PREVIEW_URLS: 'python:get-preview-urls',
   FETCH_PREVIEW_IMAGE: 'python:fetch-preview-image',
   CHECK_DOWNLOADED_STATUS: 'python:check-downloaded-status',
+  START_MIGRATION: 'python:start-migration',
+  CONFIRM_MIGRATION: 'python:confirm-migration',
+  PAUSE_MIGRATION: 'python:pause-migration',
+  RESUME_MIGRATION: 'python:resume-migration',
+  CANCEL_MIGRATION: 'python:cancel-migration',
+  GET_MIGRATION_STATUS: 'python:get-migration-status',
+  RESOLVE_UNMATCHED: 'python:resolve-unmatched',
 } as const
 
 export const NOTIFICATION_CHANNELS = {
   DOWNLOAD_PROGRESS: 'download:progress',
+  MIGRATION_PROGRESS: 'migration:progress',
+  MIGRATION_COMPLETE: 'migration:complete',
+  MIGRATION_ERROR: 'migration:error',
 } as const
 
 export const CONFIG_KEYS = [

@@ -466,6 +466,18 @@ function registerIPCHandlers() {
     }
   })
 
+  bridge.setNotificationHandler('migration_progress', (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, params)
+  })
+
+  bridge.setNotificationHandler('migration_complete', (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_COMPLETE, params)
+  })
+
+  bridge.setNotificationHandler('migration_error', (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_ERROR, params)
+  })
+
   ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source) => {
     if (typeof query !== 'string' || query.length > 512) {
       throw new Error('Invalid search query')
@@ -677,6 +689,66 @@ function registerIPCHandlers() {
       }
     }
     return bridge.call('check_downloaded_status', { comics })
+  })
+
+  // ── Migration ──
+  ipcMain.handle(IPC_CHANNELS.START_MIGRATION, async (_, targetDir: unknown, mode: unknown) => {
+    if (typeof targetDir !== 'string' || targetDir.length === 0 || targetDir.length > 1024) {
+      throw new Error('Invalid targetDir')
+    }
+    if (targetDir.includes('..') || /[\x00-\x1f\x7f]/.test(targetDir)) {
+      throw new Error('Invalid targetDir: path traversal or control characters')
+    }
+    if (!/^[a-zA-Z]:\\|^\\\\|^\//.test(targetDir)) {
+      throw new Error('targetDir must be an absolute path')
+    }
+    if (mode !== 'full' && mode !== 'repair') {
+      throw new Error('mode must be "full" or "repair"')
+    }
+    return bridge.call('start_migration', { target_dir: targetDir, mode })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CONFIRM_MIGRATION, async (_, migrationId: unknown) => {
+    if (typeof migrationId !== 'string' || migrationId.length === 0 || migrationId.length > 256) {
+      throw new Error('Invalid migrationId')
+    }
+    return bridge.call('confirm_migration', { migration_id: migrationId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.PAUSE_MIGRATION, async () => {
+    return bridge.call('pause_migration')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RESUME_MIGRATION, async () => {
+    return bridge.call('resume_migration')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CANCEL_MIGRATION, async () => {
+    return bridge.call('cancel_migration')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_MIGRATION_STATUS, async () => {
+    return bridge.call('get_migration_status')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.RESOLVE_UNMATCHED, async (_, matches: unknown) => {
+    if (!Array.isArray(matches) || matches.length > 10000) {
+      throw new Error('Invalid matches')
+    }
+    for (const m of matches) {
+      if (typeof m !== 'object' || m === null) throw new Error('Invalid match item')
+      const item = m as Record<string, unknown>
+      if (!Array.isArray(item.dbKey) || typeof item.file_path !== 'string') {
+        throw new Error('Invalid match item: dbKey must be array, file_path must be string')
+      }
+    }
+    const params = {
+      matches: (matches as Array<{ dbKey: string[]; file_path: string }>).map(m => ({
+        db_key: m.dbKey,
+        file_path: m.file_path,
+      })),
+    }
+    return bridge.call('resolve_unmatched', params)
   })
 }
 

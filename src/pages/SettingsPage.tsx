@@ -9,6 +9,8 @@ import { DownloadSettings } from '../components/settings/DownloadSettings'
 import { AuthSettings } from '../components/settings/AuthSettings'
 import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
+import { MigrationDialog } from '../components/settings/MigrationDialog'
+import { useMigration } from '../hooks/useMigration'
 
 type CardStyle = 'cover' | 'detailed'
 type OutputFormat = 'folder' | 'zip' | 'cbz'
@@ -62,6 +64,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus | null>(null)
   const [proxyLoading, setProxyLoading] = useState(false)
   const { createHandler } = useOptimisticConfig(setConfig, setSaveError, setIsSaving)
+  const [isMigrationOpen, setIsMigrationOpen] = useState(false)
+  const migrationHook = useMigration()
 
   useEffect(() => {
     loadConfig()
@@ -226,6 +230,31 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         </div>
       </div>
 
+      {migrationHook.isActive && (
+        <div className="bg-[var(--accent)]/10 border border-[var(--accent)] rounded-xl px-6 py-4 flex items-center gap-4">
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium text-[var(--text-primary)]">
+              正在后台迁移漫画库 ({migrationHook.progress?.completed ?? 0}/{migrationHook.progress?.total ?? 0})
+            </p>
+            <div className="w-full h-1.5 bg-[var(--bg-secondary)] rounded-full mt-2 overflow-hidden">
+              <div
+                className="h-full bg-[var(--accent)] rounded-full transition-all duration-300"
+                style={{
+                  width: `${migrationHook.progress && migrationHook.progress.total > 0
+                    ? Math.round((migrationHook.progress.completed / migrationHook.progress.total) * 100) : 0}%`
+                }}
+              />
+            </div>
+          </div>
+          <button
+            onClick={() => setIsMigrationOpen(true)}
+            className="px-3 py-1.5 text-sm rounded-lg bg-[var(--accent)] text-white whitespace-nowrap"
+          >
+            查看详情
+          </button>
+        </div>
+      )}
+
       <AppearanceSettings
         themeMode={themeMode}
         cardStyle={cardStyle}
@@ -259,6 +288,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         onTextConfigBlur={handleTextConfigBlur}
         openDownloadDir={openDownloadDir}
         setSaveError={setSaveError}
+        onOpenMigration={() => setIsMigrationOpen(true)}
       />
 
       <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
@@ -304,6 +334,12 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         notifyOnComplete={config.notifyOnComplete}
         notifyWhenForeground={config.notifyWhenForeground}
         onConfigChange={handleConfigChange}
+      />
+
+      <MigrationDialog
+        isOpen={isMigrationOpen}
+        onClose={() => setIsMigrationOpen(false)}
+        currentDownloadDir={config.downloadDir}
       />
     </div>
   )

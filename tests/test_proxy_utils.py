@@ -3,7 +3,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from utils import apply_system_proxy_to_session, export_system_proxies_to_env, get_system_proxies
+from utils import apply_system_proxy_to_session, get_system_proxies
 
 
 class DummySession:
@@ -28,37 +28,6 @@ class TestProxyUtils(unittest.TestCase):
         self.assertTrue(session.trust_env)
         self.assertEqual(proxies["http"], "http://127.0.0.1:7890")
         self.assertEqual(session.proxies["https"], "http://127.0.0.1:7890")
-
-    def test_export_system_proxies_to_env_should_not_override_existing(self):
-        old_http = os.environ.get("http_proxy")
-        old_https = os.environ.get("https_proxy")
-        old_https_upper = os.environ.get("HTTPS_PROXY")
-        try:
-            os.environ["http_proxy"] = "http://existing:8080"
-            os.environ.pop("https_proxy", None)
-            os.environ.pop("HTTPS_PROXY", None)
-
-            with patch("utils.getproxies", return_value={"https": "127.0.0.1:7890"}):
-                export_system_proxies_to_env()
-
-            self.assertEqual(os.environ["http_proxy"], "http://existing:8080")
-            self.assertEqual(os.environ["https_proxy"], "http://127.0.0.1:7890")
-            self.assertEqual(os.environ["HTTPS_PROXY"], "http://127.0.0.1:7890")
-        finally:
-            if old_http is None:
-                os.environ.pop("http_proxy", None)
-            else:
-                os.environ["http_proxy"] = old_http
-
-            if old_https is None:
-                os.environ.pop("https_proxy", None)
-            else:
-                os.environ["https_proxy"] = old_https
-
-            if old_https_upper is None:
-                os.environ.pop("HTTPS_PROXY", None)
-            else:
-                os.environ["HTTPS_PROXY"] = old_https_upper
 
 
 if __name__ == "__main__":

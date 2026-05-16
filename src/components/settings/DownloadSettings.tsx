@@ -18,6 +18,7 @@ interface DownloadSettingsProps {
   onTextConfigBlur: (key: ConfigKey) => void
   openDownloadDir: () => Promise<{ success: boolean }>
   setSaveError: (err: string | null) => void
+  onOpenMigration: () => void
 }
 
 export function DownloadSettings({
@@ -29,6 +30,7 @@ export function DownloadSettings({
   onTextConfigBlur,
   openDownloadDir,
   setSaveError,
+  onOpenMigration,
 }: DownloadSettingsProps) {
   return (
     <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
@@ -78,6 +80,15 @@ export function DownloadSettings({
                          text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] whitespace-nowrap"
             >
               打开
+            </button>
+          </div>
+          <div className="mt-2">
+            <button
+              onClick={onOpenMigration}
+              className="px-3 py-1.5 text-sm rounded-lg border border-[var(--accent)] text-[var(--accent)]
+                         hover:bg-[var(--accent)] hover:text-white transition-colors"
+            >
+              迁移漫画库
             </button>
           </div>
         </div>

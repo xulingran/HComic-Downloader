@@ -166,11 +166,6 @@ class DownloadManager:
         if drained and self._on_queue_complete:
             self._on_queue_complete()
 
-    def _get_next_task(self) -> Optional[str]:
-        """获取下一个可处理的任务"""
-        with self._lock:
-            return self._get_next_task_locked()
-
     def _get_next_task_locked(self) -> Optional[str]:
         """获取下一个可处理的任务（调用方需持有 _lock）。
 
@@ -191,11 +186,6 @@ class DownloadManager:
                 return task_id
         self._cleanup_finished_from_queue()
         return None
-
-    def _has_pending_tasks(self) -> bool:
-        """检查是否仍有未完成任务（包括暂停中的任务）"""
-        with self._lock:
-            return self._has_pending_tasks_locked()
 
     def _has_pending_tasks_locked(self) -> bool:
         """检查是否仍有未完成任务（调用方需持有 _lock）。"""
@@ -422,25 +412,6 @@ class DownloadManager:
                 "cancelled": sum(1 for t in self.tasks.values() if t.status == DownloadStatus.CANCELLED),
             }
             return stats
-
-    def clear_completed(self):
-        """清理已完成/已取消的任务（失败任务保留供重试）"""
-        changed = False
-        with self._lock:
-            to_remove = [
-                task_id for task_id, task in self.tasks.items()
-                if task.status in (
-                    DownloadStatus.COMPLETED,
-                    DownloadStatus.CANCELLED,
-                )
-            ]
-            for task_id in to_remove:
-                del self.tasks[task_id]
-                if task_id in self.queue:
-                    self.queue.remove(task_id)
-                changed = True
-        if changed:
-            self._notify_queue_changed()
 
 
 class ComicDownloadManager(DownloadManager):

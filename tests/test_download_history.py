@@ -187,3 +187,50 @@ def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
         comic_data_map=comic_data_map,
     )
     assert result_with[key] == "downloaded"
+
+
+def test_get_all_records_returns_all_rows(db, sample_comic, tmp_path):
+    db.record_download(sample_comic, str(tmp_path / "a.cbz"), "cbz")
+    comic2 = ComicInfo(id="67890", title="Comic 2", source_site="hcomic", comic_source="NH")
+    db.record_download(comic2, str(tmp_path / "b.cbz"), "cbz")
+
+    records = db.get_all_records()
+    assert len(records) == 2
+    keys = {(r["source_site"], r["comic_id"], r["comic_source"]) for r in records}
+    assert ("hcomic", "12345", "MMCG_SHORT") in keys
+    assert ("hcomic", "67890", "NH") in keys
+
+
+def test_get_all_records_includes_output_path_and_metadata(db, sample_comic, tmp_path):
+    output_path = str(tmp_path / "Test.cbz")
+    db.record_download(sample_comic, output_path, "cbz")
+
+    records = db.get_all_records()
+    assert len(records) == 1
+    r = records[0]
+    assert r["output_path"] == output_path
+    assert r["output_format"] == "cbz"
+    assert r["title"] == "Test Comic"
+    assert r["author"] == "Test Author"
+
+
+def test_update_output_path_changes_stored_path(db, sample_comic, tmp_path):
+    old_path = str(tmp_path / "old.cbz")
+    new_path = str(tmp_path / "new.cbz")
+    db.record_download(sample_comic, old_path, "cbz")
+
+    db.update_output_path(("hcomic", "12345", "MMCG_SHORT"), new_path)
+
+    import sqlite3
+    conn = sqlite3.connect(db._db_path)
+    cursor = conn.execute(
+        "SELECT output_path FROM download_history "
+        "WHERE source_site=? AND comic_id=? AND comic_source=?",
+        ("hcomic", "12345", "MMCG_SHORT"),
+    )
+    assert cursor.fetchone()[0] == new_path
+    conn.close()
+
+
+def test_update_output_path_no_match_does_nothing(db):
+    db.update_output_path(("hcomic", "nonexist", "NH"), "/some/path.cbz")

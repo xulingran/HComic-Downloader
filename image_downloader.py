@@ -41,7 +41,6 @@ class ImageDownloader:
         self.url_validator = UrlValidator()
         self._pool_size = pool_size
         self._session_pool: queue.Queue[requests.Session] = queue.Queue()
-        self._auth_version = 0
         self._pending_cookie = ""
         self._pending_ua = ""
         self._checked_out: set[requests.Session] = set()
@@ -106,7 +105,6 @@ class ImageDownloader:
         认证头会在每次 _acquire_session 时延迟应用到取出的 Session，
         避免排空池导致的死锁风险。
         """
-        self._auth_version += 1
         self._pending_cookie = (cookie or "").strip()
         self._pending_ua = (user_agent or "").strip() or self.DEFAULT_UA
 
