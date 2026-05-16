@@ -205,47 +205,79 @@ export function SearchPage() {
           </button>
         </div>
 
-        {/* ── Query context hint ── */}
-        <div className="mt-2 text-xs text-[var(--text-secondary)]">
-          源: {sources.find(s => s.value === source)?.label} | 模式: {searchModes.find(m => m.value === mode)?.label}
-          {pagination && ` | 第 ${pagination.currentPage}/${pagination.totalPages} 页`}
-          {pagination && pagination.totalItems > 0 && ` | 共 ${pagination.totalItems} 条结果`}
-        </div>
-      </div>
-
-      {comics.length > 0 && (
-        <div className="flex items-center gap-3 bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
-          <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
-            <input
-              type="checkbox"
-              checked={batchMode}
-              onChange={(e) => {
-                setBatchMode(e.target.checked)
-                if (!e.target.checked) clearSelection()
-              }}
-              className="rounded"
-            />
-            批量选择模式
-          </label>
-          {batchMode && (
-            <>
-              <button onClick={() => selectAll(comics)} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
-                全选
-              </button>
-              <button onClick={clearSelection} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
-                取消
-              </button>
+        <div className="flex items-center justify-between mt-2">
+          <div className="flex items-center gap-3">
+            <span className="text-xs text-[var(--text-secondary)]">
+              源: {sources.find(s => s.value === source)?.label} | 模式: {searchModes.find(m => m.value === mode)?.label}
+              {pagination && pagination.totalItems > 0 && ` | 共 ${pagination.totalItems} 条结果`}
+            </span>
+            {comics.length > 0 && (
+              <>
+                <span className="text-[var(--border)]">|</span>
+                <label className="flex items-center gap-1.5 text-xs text-[var(--text-primary)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={batchMode}
+                    onChange={(e) => {
+                      setBatchMode(e.target.checked)
+                      if (!e.target.checked) clearSelection()
+                    }}
+                    className="rounded"
+                  />
+                  批量选择
+                </label>
+                {batchMode && (
+                  <>
+                    <button onClick={() => selectAll(comics)} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+                      全选
+                    </button>
+                    <button onClick={clearSelection} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+                      取消
+                    </button>
+                    <button
+                      onClick={handleBatchDownload}
+                      disabled={selectedIds.size === 0}
+                      className="px-2 py-0.5 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                    >
+                      批量下载({selectedIds.size})
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+          {pagination && pagination.totalPages > 1 && (
+            <div className="flex items-center gap-1.5">
               <button
-                onClick={handleBatchDownload}
-                disabled={selectedIds.size === 0}
-                className="px-3 py-1 text-sm rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                onClick={() => handleSearch(pagination.currentPage - 1)}
+                disabled={pagination.currentPage <= 1}
+                className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                           disabled:opacity-50"
               >
-                批量下载({selectedIds.size})
+                上一页
               </button>
-            </>
+              <span
+                onClick={() => {
+                  setJumpPage(String(pagination.currentPage))
+                  setShowJumpDialog(true)
+                }}
+                className="px-2 py-0.5 text-xs text-[var(--accent)] cursor-pointer hover:underline"
+                title="点击跳转到指定页"
+              >
+                {pagination.currentPage} / {pagination.totalPages}
+              </span>
+              <button
+                onClick={() => handleSearch(pagination.currentPage + 1)}
+                disabled={pagination.currentPage >= pagination.totalPages}
+                className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                           disabled:opacity-50"
+              >
+                下一页
+              </button>
+            </div>
           )}
         </div>
-      )}
+      </div>
 
       {error && (
         <div className="p-4 bg-[var(--error)]/10 text-[var(--error)] rounded-lg">
@@ -273,36 +305,7 @@ export function SearchPage() {
         </div>
       )}
 
-      {pagination && pagination.totalPages > 1 && (
-        <div className="flex justify-center items-center gap-2">
-          <button
-            onClick={() => handleSearch(pagination.currentPage - 1)}
-            disabled={pagination.currentPage <= 1}
-            className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
-                       disabled:opacity-50"
-          >
-            上一页
-          </button>
-          <span
-            onClick={() => {
-              setJumpPage(String(pagination.currentPage))
-              setShowJumpDialog(true)
-            }}
-            className="px-3 py-1 text-[var(--accent)] cursor-pointer hover:underline"
-            title="点击跳转到指定页"
-          >
-            {pagination.currentPage} / {pagination.totalPages}
-          </span>
-          <button
-            onClick={() => handleSearch(pagination.currentPage + 1)}
-            disabled={pagination.currentPage >= pagination.totalPages}
-            className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
-                       disabled:opacity-50"
-          >
-            下一页
-          </button>
-        </div>
-      )}
+
 
       {/* ── Page jump dialog ── */}
       {showJumpDialog && (

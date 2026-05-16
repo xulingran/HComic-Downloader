@@ -73,6 +73,7 @@ class DownloadMixin:
                 "downloadedPages": task.progress_current,
                 "error": task.error_message,
             })
+        tasks.reverse()
         return {"tasks": tasks}
 
     def handle_cancel_download(self, task_id: str) -> Dict:

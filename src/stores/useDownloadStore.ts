@@ -16,13 +16,13 @@ export const useDownloadStore = create<DownloadState>((set) => ({
   tasks: [],
   isGloballyPaused: false,
   setTasks: (tasks) => set({ tasks }),
-  addTask: (task) => set((state) => ({ tasks: [...state.tasks, task] })),
+  addTask: (task) => set((state) => ({ tasks: [task, ...state.tasks] })),
   upsertTask: (task) =>
     set((state) => {
       const exists = state.tasks.some((t) => t.id === task.id)
       return exists
         ? { tasks: state.tasks.map((t) => (t.id === task.id ? { ...t, ...task } : t)) }
-        : { tasks: [...state.tasks, task] }
+        : { tasks: [task, ...state.tasks] }
     }),
   updateTask: (id, updates) =>
     set((state) => ({

@@ -124,17 +124,76 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
-          收藏夹
-        </h2>
-        <button
-          onClick={() => loadFavourites(currentPage)}
-          className="px-3 py-1 text-sm bg-[var(--bg-primary)] border border-[var(--border)]
-                     rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
-        >
-          刷新
-        </button>
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+            收藏夹
+          </h2>
+          <button
+            onClick={() => loadFavourites(currentPage)}
+            className="px-3 py-1 text-sm bg-[var(--bg-primary)] border border-[var(--border)]
+                       rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
+          >
+            刷新
+          </button>
+          {!needsLogin && comics.length > 0 && (
+            <>
+              <span className="text-[var(--border)]">|</span>
+              <label className="flex items-center gap-1.5 text-xs text-[var(--text-primary)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={batchMode}
+                  onChange={(e) => {
+                    setBatchMode(e.target.checked)
+                    if (!e.target.checked) clearSelection()
+                  }}
+                  className="rounded"
+                />
+                批量选择
+              </label>
+              {batchMode && (
+                <>
+                  <button onClick={() => selectAll(comics)} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+                    全选
+                  </button>
+                  <button onClick={clearSelection} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+                    取消
+                  </button>
+                  <button
+                    onClick={handleBatchDownload}
+                    disabled={selectedIds.size === 0}
+                    className="px-2 py-0.5 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+                  >
+                    批量下载({selectedIds.size})
+                  </button>
+                </>
+              )}
+            </>
+          )}
+        </div>
+        {!needsLogin && pagination && pagination.totalPages > 1 && (
+          <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => loadFavourites(currentPage - 1)}
+              disabled={currentPage <= 1}
+              className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                         disabled:opacity-50"
+            >
+              上一页
+            </button>
+            <span className="px-2 py-0.5 text-xs text-[var(--text-primary)]">
+              {currentPage} / {pagination.totalPages}
+            </span>
+            <button
+              onClick={() => loadFavourites(currentPage + 1)}
+              disabled={currentPage >= pagination.totalPages}
+              className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                         disabled:opacity-50"
+            >
+              下一页
+            </button>
+          </div>
+        )}
       </div>
 
       {needsLogin ? (
@@ -157,38 +216,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         </div>
       ) : (
         <>
-          <div className="flex items-center gap-3 bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
-            <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
-              <input
-                type="checkbox"
-                checked={batchMode}
-                onChange={(e) => {
-                  setBatchMode(e.target.checked)
-                  if (!e.target.checked) clearSelection()
-                }}
-                className="rounded"
-              />
-              批量选择模式
-            </label>
-            {batchMode && (
-              <>
-                <button onClick={() => selectAll(comics)} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
-                  全选
-                </button>
-                <button onClick={clearSelection} className="px-3 py-1 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
-                  取消
-                </button>
-                <button
-                  onClick={handleBatchDownload}
-                  disabled={selectedIds.size === 0}
-                  className="px-3 py-1 text-sm rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-                >
-                  批量下载({selectedIds.size})
-                </button>
-              </>
-            )}
-          </div>
-
           <div className={cardStyle === 'detailed'
             ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
             : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
@@ -208,29 +235,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             ))}
           </div>
 
-          {pagination && pagination.totalPages > 1 && (
-            <div className="flex justify-center gap-2">
-              <button
-                onClick={() => loadFavourites(currentPage - 1)}
-                disabled={currentPage <= 1}
-                className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
-                           disabled:opacity-50"
-              >
-                上一页
-              </button>
-              <span className="px-3 py-1 text-[var(--text-primary)]">
-                {currentPage} / {pagination.totalPages}
-              </span>
-              <button
-                onClick={() => loadFavourites(currentPage + 1)}
-                disabled={currentPage >= pagination.totalPages}
-                className="px-3 py-1 rounded bg-[var(--bg-primary)] border border-[var(--border)]
-                           disabled:opacity-50"
-              >
-                下一页
-              </button>
-            </div>
-          )}
+
         </>
       )}
 

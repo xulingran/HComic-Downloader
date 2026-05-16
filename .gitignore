@@ -9,6 +9,7 @@ __pycache__/
 .Python
 venv/
 ENV/
+.mypy_cache/
 
 # Testing
 .pytest_cache/
@@ -18,9 +19,14 @@ htmlcov/
 .hypothesis/
 coverage/
 
-# IDE
+# IDE / AI Tools
 .vscode/
 .idea/
+.arts/
+.codeartsdoer/
+.codebuddy/
+.superpowers/
+.trae/
 *.swp
 *.swo
 *~
@@ -44,3 +50,8 @@ dist/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Temporary / Generated documents
+code review.txt
+docs/code-review-*.md
+docs/superpowers/
