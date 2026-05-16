@@ -68,7 +68,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       reset()
       clearCache()
     }
-  }, [open, comic, fetchUrls, reset, clearCache])
+  }, [open, comic.id, fetchUrls, reset, clearCache])
 
   // Keyboard handler
   useEffect(() => {

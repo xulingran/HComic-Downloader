@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
  * Manages serial preloading of reader page images around a jump target.
@@ -10,12 +10,11 @@ export function usePreloadManager(imageUrls: string[], loadingState: string) {
   const [cacheVersion, setCacheVersion] = useState(0)
   const [preloadTarget, setPreloadTarget] = useState<number | null>(null)
 
-  // Reset cache when URLs change
-  const clearCache = () => {
+  const clearCache = useCallback(() => {
     imageCacheRef.current.clear()
     setCacheVersion(0)
     setPreloadTarget(null)
-  }
+  }, [])
 
   // Serial preloading around jump target
   useEffect(() => {
