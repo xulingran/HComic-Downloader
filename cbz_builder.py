@@ -12,8 +12,8 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom import minidom
 
 from image_formats import PAGE_FILENAME_FORMAT, SUPPORTED_IMAGE_EXTENSIONS
-from models import ComicInfo
-from utils import sanitize_filename
+from models import ArchiveBuildOptions, ComicInfo
+from utils import sanitize_filename, sanitize_path_chars
 
 if TYPE_CHECKING:
     from config import Config
@@ -22,6 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 ALLOWED_FILENAME_PLACEHOLDERS = {"author", "title", "id"}
+
+# XML 1.0 不允许的字符：控制字符 (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F) + 代理对 (0xD800-0xDFFF)
+_XML_INVALID_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff]')
 
 
 class CBZBuilder:
@@ -78,7 +81,6 @@ class CBZBuilder:
             raise ValueError("Filename template must not contain positional placeholders")
 
         # Only allow whitelisted placeholders
-        import re
         parts = re.findall(r"\{[^{}]+\}", template)
         for part in parts:
             name = part[1:-1]  # strip { and }, keep original case
@@ -112,6 +114,54 @@ class CBZBuilder:
             )
         return real_path
 
+    def build_archive(self, options: ArchiveBuildOptions) -> str:
+        """创建压缩包的公共逻辑（CBZ / ZIP 共用）。
+
+        Args:
+            options: 构建选项
+
+        Returns:
+            压缩包路径
+        """
+        if options.download_dir is not None:
+            self._validate_path_in_dir(options.output_path, options.download_dir)
+
+        if not options.overwrite and os.path.exists(options.output_path):
+            raise FileExistsError(f"Output already exists: {options.output_path}")
+
+        output_dir_path = os.path.dirname(options.output_path)
+        if output_dir_path:
+            os.makedirs(output_dir_path, exist_ok=True)
+
+        image_files = self._collect_image_files(options.image_dir)
+        if not image_files:
+            raise ValueError(f"No images found in {options.image_dir}")
+
+        logger.info("Building %s: %s", options.log_label, options.output_path)
+
+        basename = os.path.basename(options.output_path)
+        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
+        os.close(fd)
+        try:
+            with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+                if options.include_comic_info_xml:
+                    comic_info_xml = self.generate_comic_info_xml(options.comic)
+                    zf.writestr('ComicInfo.xml', comic_info_xml)
+
+                for i, img_path in enumerate(image_files, 1):
+                    arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
+                    zf.write(img_path, arcname)
+                    logger.debug("Added: %s", arcname)
+
+            os.replace(tmp_path, options.output_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+        logger.info("%s created: %s", options.log_label, options.output_path)
+        return options.output_path
+
     def build_cbz(
         self,
         image_dir: str,
@@ -132,51 +182,18 @@ class CBZBuilder:
         Returns:
             CBZ 文件路径
         """
-        # 确定输出路径
         if output_path is None:
             output_path = self._generate_output_path(comic)
-        self._validate_path_in_dir(output_path, self._get_download_dir(download_dir))
-
-        if not overwrite and os.path.exists(output_path):
-            raise FileExistsError(f"Output already exists: {output_path}")
-
-        # 确保输出目录存在
-        output_dir = os.path.dirname(output_path)
-        if output_dir:
-            os.makedirs(output_dir, exist_ok=True)
-
-        # 收集图片文件
-        image_files = self._collect_image_files(image_dir)
-        if not image_files:
-            raise ValueError(f"No images found in {image_dir}")
-
-        logger.info(f"Building CBZ: {output_path}")
-
-        # 用唯一临时文件写入，成功后原子替换
-        basename = os.path.basename(output_path)
-        output_dir_path = os.path.dirname(output_path)
-        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
-        os.close(fd)
-        try:
-            with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                # 添加 ComicInfo.xml
-                comic_info_xml = self.generate_comic_info_xml(comic)
-                zf.writestr('ComicInfo.xml', comic_info_xml)
-
-                # 添加图片
-                for i, img_path in enumerate(image_files, 1):
-                    arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
-                    zf.write(img_path, arcname)
-                    logger.debug(f"Added: {arcname}")
-
-            os.replace(tmp_path, output_path)
-        except Exception:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            raise
-
-        logger.info(f"CBZ created: {output_path}")
-        return output_path
+        options = ArchiveBuildOptions(
+            image_dir=image_dir,
+            comic=comic,
+            output_path=output_path,
+            download_dir=self._get_download_dir(download_dir),
+            overwrite=overwrite,
+            include_comic_info_xml=True,
+            log_label="CBZ",
+        )
+        return self.build_archive(options)
 
     def generate_comic_info_xml(self, comic: ComicInfo) -> str:
         """生成 ComicInfo.xml
@@ -239,10 +256,15 @@ class CBZBuilder:
         lines = [line for line in pretty_xml.split('\n') if line.strip()]
         return '\n'.join(lines) + '\n'
 
+    @staticmethod
+    def _sanitize_xml_text(text: str) -> str:
+        """移除 XML 1.0 不允许的字符（控制字符和非法代理对）"""
+        return _XML_INVALID_CHARS_RE.sub('', text)
+
     def _add_element(self, parent: Element, tag: str, text: str):
         """添加子元素"""
         elem = SubElement(parent, tag)
-        elem.text = text
+        elem.text = self._sanitize_xml_text(text)
 
     def _parse_date(self, date_str: str) -> tuple:
         """解析日期字符串
@@ -339,44 +361,18 @@ class CBZBuilder:
         Returns:
             ZIP 文件路径
         """
-        # 确定输出路径
         if output_path is None:
             output_path = self._generate_output_path_for_format(comic, "zip")
-        self._validate_path_in_dir(output_path, self._get_download_dir(download_dir))
-
-        if not overwrite and os.path.exists(output_path):
-            raise FileExistsError(f"Output already exists: {output_path}")
-
-        # 确保输出目录存在
-        os.makedirs(os.path.dirname(output_path), exist_ok=True)
-
-        # 收集图片文件
-        image_files = self._collect_image_files(image_dir)
-        if not image_files:
-            raise ValueError(f"No images found in {image_dir}")
-
-        logger.info(f"Building ZIP: {output_path}")
-
-        # 用唯一临时文件写入，成功后原子替换
-        basename = os.path.basename(output_path)
-        output_dir_path = os.path.dirname(output_path)
-        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
-        os.close(fd)
-        try:
-            with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-                for i, img_path in enumerate(image_files, 1):
-                    arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
-                    zf.write(img_path, arcname)
-                    logger.debug(f"Added: {arcname}")
-
-            os.replace(tmp_path, output_path)
-        except Exception:
-            if os.path.exists(tmp_path):
-                os.unlink(tmp_path)
-            raise
-
-        logger.info(f"ZIP created: {output_path}")
-        return output_path
+        options = ArchiveBuildOptions(
+            image_dir=image_dir,
+            comic=comic,
+            output_path=output_path,
+            download_dir=self._get_download_dir(download_dir),
+            overwrite=overwrite,
+            include_comic_info_xml=False,
+            log_label="ZIP",
+        )
+        return self.build_archive(options)
 
     def save_as_folder(
         self,
@@ -413,10 +409,10 @@ class CBZBuilder:
             backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
             # mkdtemp 会创建目录，但我们需要 move 到它上面，所以先删掉空目录
             os.rmdir(backup_path)
-            logger.info(f"Target folder exists, backing up: {output_path} -> {backup_path}")
+            logger.info("Target folder exists, backing up: %s -> %s", output_path, backup_path)
             shutil.move(output_path, backup_path)
             try:
-                logger.info(f"Moving folder: {image_dir} -> {output_path}")
+                logger.info("Moving folder: %s -> %s", image_dir, output_path)
                 shutil.move(image_dir, output_path)
                 shutil.rmtree(backup_path)
             except Exception:
@@ -428,10 +424,10 @@ class CBZBuilder:
                 raise
         else:
             # 移动临时目录到目标位置
-            logger.info(f"Moving folder: {image_dir} -> {output_path}")
+            logger.info("Moving folder: %s -> %s", image_dir, output_path)
             shutil.move(image_dir, output_path)
 
-        logger.info(f"Folder saved: {output_path}")
+        logger.info("Folder saved: %s", output_path)
         return output_path
 
     def _generate_output_path_for_format(
@@ -457,18 +453,19 @@ class CBZBuilder:
         return os.path.join(download_dir, filename)
 
     def _generate_folder_name(self, comic: ComicInfo) -> str:
-        """生成文件夹名称
-
-        Args:
-            comic: 漫画信息
-
-        Returns:
-            文件夹名称
-        """
-        # 使用与 CBZ 模板类似的命名，但去掉扩展名
-        folder_name = f"{comic.safe_author}-{comic.safe_title}"
+        """生成文件夹名称"""
+        # 使用文件名模板生成文件夹名（去掉扩展名）
+        folder_name = self.filename_template.format(
+            author=comic.safe_author,
+            title=comic.safe_title,
+            id=comic.safe_id,
+        )
+        # 去掉 .cbz / .zip 扩展名
+        base, ext = os.path.splitext(folder_name)
+        if ext.lower() in ('.cbz', '.zip'):
+            folder_name = base
         # 清理非法字符
-        folder_name = re.sub(r'[<>"/\\|?*]', '_', folder_name)
+        folder_name = sanitize_path_chars(folder_name)
         folder_name = folder_name.strip('. ')
         if not folder_name:
             folder_name = f"comic_{comic.safe_id}"
@@ -516,12 +513,12 @@ def build_cbz_simple(
     comic_info: Optional[ComicInfo] = None,
     overwrite: bool = False,
 ) -> str:
-    """简单方式创建 CBZ（无 ComicInfo.xml）
+    """简单方式创建 CBZ
 
     Args:
         image_dir: 图片目录
         output_path: 输出路径
-        comic_info: 漫画信息（可选）
+        comic_info: 漫画信息（可选，为 None 时不写入 ComicInfo.xml）
         overwrite: 是否覆盖已有文件
 
     Returns:
@@ -531,32 +528,14 @@ def build_cbz_simple(
         raise FileExistsError(f"Output already exists: {output_path}")
 
     builder = CBZBuilder()
-    image_files = builder._collect_image_files(image_dir)
-
-    if not image_files:
-        raise ValueError(f"No images found in {image_dir}")
-
-    os.makedirs(os.path.dirname(output_path) or '.', exist_ok=True)
-
-    basename = os.path.basename(output_path)
-    out_dir = os.path.dirname(output_path) or '.'
-    fd, tmp_path = tempfile.mkstemp(dir=out_dir, prefix=f".{basename}.", suffix=".tmp")
-    os.close(fd)
-    try:
-        with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
-            # 如果提供了漫画信息，添加 ComicInfo.xml
-            if comic_info:
-                comic_info_xml = builder.generate_comic_info_xml(comic_info)
-                zf.writestr('ComicInfo.xml', comic_info_xml)
-
-            for i, img_path in enumerate(image_files, 1):
-                arcname = f"{i:03d}{os.path.splitext(img_path)[1]}"
-                zf.write(img_path, arcname)
-
-        os.replace(tmp_path, output_path)
-    except Exception:
-        if os.path.exists(tmp_path):
-            os.unlink(tmp_path)
-        raise
-
-    return output_path
+    comic = comic_info if comic_info else ComicInfo(id="", source_site="", title="")
+    options = ArchiveBuildOptions(
+        image_dir=image_dir,
+        comic=comic,
+        output_path=output_path,
+        download_dir=None,
+        overwrite=overwrite,
+        include_comic_info_xml=comic_info is not None,
+        log_label="CBZ",
+    )
+    return builder.build_archive(options)

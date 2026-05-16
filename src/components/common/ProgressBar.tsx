@@ -9,6 +9,7 @@ interface ProgressBarProps {
 const statusColors: Record<DownloadStatus, string> = {
   queued: 'var(--warning)',
   downloading: 'var(--accent)',
+  pausing: 'var(--warning)',
   paused: 'var(--warning)',
   completed: 'var(--success)',
   failed: 'var(--error)',
@@ -18,6 +19,7 @@ const statusColors: Record<DownloadStatus, string> = {
 const statusLabels: Record<DownloadStatus, string> = {
   queued: '排队中',
   downloading: '下载中',
+  pausing: '暂停中',
   paused: '已暂停',
   completed: '完成',
   failed: '失败',

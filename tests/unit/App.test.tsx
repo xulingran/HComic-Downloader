@@ -1,6 +1,20 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+
+const { mockGetConfig, mockSetConfig } = vi.hoisted(() => ({
+  mockGetConfig: vi.fn(),
+  mockSetConfig: vi.fn()
+}))
+
+vi.mock('@/hooks/useIpc', () => ({
+  useConfig: vi.fn().mockReturnValue({
+    getConfig: mockGetConfig,
+    setConfig: mockSetConfig,
+    openDownloadDir: vi.fn().mockResolvedValue({ success: true })
+  })
+}))
 
 vi.mock('@/hooks/useTheme', () => ({
   useTheme: vi.fn().mockReturnValue({ themeMode: 'auto', setThemeMode: vi.fn() })
@@ -14,7 +28,6 @@ vi.mock('@/components/Sidebar', () => ({
       <button onClick={() => onPageChange('downloads')}>Downloads</button>
       <button onClick={() => onPageChange('favourites')}>Favourites</button>
       <button onClick={() => onPageChange('settings')}>Settings</button>
-      <button onClick={() => onPageChange('statistics')}>Statistics</button>
     </div>
   )
 }))
@@ -35,14 +48,22 @@ vi.mock('@/pages/SettingsPage', () => ({
   SettingsPage: () => <div data-testid="settings-page">Settings Page</div>
 }))
 
-vi.mock('@/pages/StatisticsPage', () => ({
-  StatisticsPage: () => <div data-testid="statistics-page">Statistics Page</div>
-}))
-
 // Import App after all mocks
 import App from '@/App'
 
 describe('App', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    useSettingsStore.setState({
+      themeMode: 'auto',
+      cardStyle: 'cover',
+      sfwMode: false,
+      sfwToastDismissed: false
+    })
+    mockGetConfig.mockResolvedValue({ config: { themeMode: 'auto' } })
+    mockSetConfig.mockResolvedValue({ success: true })
+  })
+
   it('renders with sidebar', () => {
     render(<App />)
 
@@ -88,15 +109,6 @@ describe('App', () => {
     expect(screen.getByTestId('active-page')).toHaveTextContent('settings')
   })
 
-  it('switches to statistics page when Statistics button clicked', async () => {
-    render(<App />)
-
-    await userEvent.click(screen.getByText('Statistics'))
-
-    expect(screen.getByTestId('statistics-page')).toBeInTheDocument()
-    expect(screen.getByTestId('active-page')).toHaveTextContent('statistics')
-  })
-
   it('can switch back to search from another page', async () => {
     render(<App />)
 
@@ -106,5 +118,44 @@ describe('App', () => {
     await userEvent.click(screen.getByText('Search'))
     expect(screen.getByTestId('search-page')).toBeInTheDocument()
     expect(screen.getByTestId('active-page')).toHaveTextContent('search')
+  })
+
+  it('shows SFW toast on startup', async () => {
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('当前处于 SFW 模式，封面已隐藏')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('关闭 SFW')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '关闭' })).toBeInTheDocument()
+  })
+
+  it('disables SFW when close SFW button is clicked', async () => {
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('关闭 SFW')).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByText('关闭 SFW'))
+
+    await waitFor(() => {
+      expect(mockSetConfig).toHaveBeenCalledWith('sfwMode', false)
+    })
+  })
+
+  it('dismisses toast when close button is clicked', async () => {
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: '关闭' })).toBeInTheDocument()
+    })
+
+    await userEvent.click(screen.getByRole('button', { name: '关闭' }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('当前处于 SFW 模式，封面已隐藏')).toBeNull()
+    })
   })
 })

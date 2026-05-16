@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useFavourites } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
@@ -32,12 +32,26 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const { cardStyle } = useSettingsStore()
   const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
   const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
+  const latestPageRef = useRef(1)
 
   const getTaskId = (comic: ComicInfo) =>
     `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
 
   useEffect(() => {
     loadFavourites(1)
+  }, [])
+
+  useEffect(() => {
+    if (!window.hcomic?.onDownloadProgress) return
+    const unsubscribe = window.hcomic.onDownloadProgress((data: any) => {
+      if (data.status !== 'completed') return
+      setDownloadedStatus(prev => {
+        const taskId = data.taskId as string
+        if (!taskId) return prev
+        return { ...prev, [taskId]: 'downloaded' }
+      })
+    })
+    return unsubscribe
   }, [])
 
   const loadFavourites = async (page: number = 1) => {
@@ -52,9 +66,14 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       setNeedsLogin(result.needsLogin)
       setCurrentPage(page)
 
+      const pageSnapshot = page
+      latestPageRef.current = pageSnapshot
       checkDownloadedStatus(result.comics).then((statusResult) => {
+        if (latestPageRef.current !== pageSnapshot) return
         setDownloadedStatus(statusResult.statusMap)
-      }).catch(() => {})
+      }).catch((err) => {
+        console.error('Failed to check downloaded status:', err)
+      })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load favourites'
       if ((err as any)?.code === -32001 || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
@@ -80,10 +99,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   }
 
   const handleBatchDownload = async () => {
-    for (const key of selectedIds) {
-      const comic = comics.find(c => getComicKey(c) === key)
-      if (comic) await handleDownload(comic)
-    }
+    const comicsToDownload = [...selectedIds]
+      .map(key => comics.find(c => getComicKey(c) === key))
+      .filter((c): c is ComicInfo => c !== undefined)
+    await Promise.allSettled(comicsToDownload.map(comic => handleDownload(comic)))
     exitBatchMode()
   }
 

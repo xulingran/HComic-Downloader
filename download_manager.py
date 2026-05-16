@@ -426,12 +426,21 @@ class ComicDownloadManager(DownloadManager):
     @staticmethod
     def _safe_rmtree(path: str, parent_dir: str) -> None:
         """验证路径在 parent_dir 内后再执行删除。"""
-        real_path = os.path.realpath(path)
-        real_parent = os.path.realpath(parent_dir)
+        try:
+            real_path = os.path.realpath(path)
+            real_parent = os.path.realpath(parent_dir)
+        except (TypeError, ValueError, OSError):
+            logger.warning("Refusing to rmtree unresolvable path: %s", path)
+            return
         if real_path != real_parent and not real_path.startswith(real_parent + os.sep):
             logger.warning("Refusing to rmtree path outside output dir: %s", path)
             return
-        shutil.rmtree(path, ignore_errors=True)
+
+        def _onerror(func, path, exc_info):
+            """Log errors during rmtree and attempt to continue."""
+            logger.warning("Failed to remove %s during rmtree: %s", path, exc_info)
+
+        shutil.rmtree(path, ignore_errors=False, onerror=_onerror)
 
     def set_auto_retry_max_attempts(self, attempts: int):
         """设置自动重试次数

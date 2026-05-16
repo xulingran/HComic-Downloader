@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { ComicInfo } from '@shared/types'
 import { useComicReader } from '../hooks/useComicReader'
 import { useReaderSettings } from '../hooks/useReaderSettings'
+import { usePreloadManager } from '../hooks/usePreloadManager'
+import { usePageTracking } from '../hooks/usePageTracking'
 
 interface ComicReaderModalProps {
   comic: ComicInfo
@@ -28,20 +30,30 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const dragPageRef = useRef(0)
   const sliderRef = useRef<HTMLDivElement>(null)
 
-  const [preloadTarget, setPreloadTarget] = useState<number | null>(null)
-  const imageCacheRef = useRef(new Map<number, string>())
-  const [cacheVersion, setCacheVersion] = useState(0)
+  const {
+    imageCacheRef,
+    cacheVersion,
+    preloadTarget,
+    setPreloadTarget,
+    clearCache,
+  } = usePreloadManager(imageUrls, loadingState)
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
-  const observerRef = useRef<IntersectionObserver | null>(null)
   const settingsPanelRef = useRef<HTMLDivElement>(null)
+
+  usePageTracking(
+    pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
+    loadingState, imageUrls.length,
+  )
 
   // Close settings panel on outside click
   useEffect(() => {
     if (!settingsOpen) return
     const handler = (e: MouseEvent) => {
       if (settingsPanelRef.current?.contains(e.target as Node)) return
+      const btn = (e.target as Element).closest('[aria-label="阅读设置"]')
+      if (btn) return
       setSettingsOpen(false)
     }
     document.addEventListener('mousedown', handler)
@@ -54,92 +66,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       fetchUrls(comic)
     } else {
       reset()
-      setPreloadTarget(null)
-      imageCacheRef.current.clear()
+      clearCache()
     }
-  }, [open, comic, fetchUrls, reset])
-
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      observerRef.current?.disconnect()
-    }
-  }, [])
-
-  // Set up IntersectionObserver for page tracking
-  useEffect(() => {
-    if (loadingState !== 'loaded' || imageUrls.length === 0) return
-
-    observerRef.current?.disconnect()
-
-    observerRef.current = new IntersectionObserver(
-      (entries) => {
-        if (isDragging) return
-        let topPage = currentPage
-        let topY = Infinity
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            const idx = pageRefs.current.indexOf(entry.target as HTMLDivElement)
-            if (idx !== -1) {
-              const rect = entry.boundingClientRect
-              if (rect.top < topY) {
-                topY = rect.top
-                topPage = idx + 1
-              }
-            }
-          }
-        }
-        if (topPage !== currentPage && topPage > 0) {
-          setCurrentPage(topPage)
-        }
-      },
-      { root: scrollContainerRef.current, threshold: 0.1 }
-    )
-
-    for (const ref of pageRefs.current) {
-      if (ref) observerRef.current.observe(ref)
-    }
-
-    return () => { observerRef.current?.disconnect() }
-  }, [loadingState, imageUrls.length, isDragging, currentPage])
-
-  // Serial preloading around jump target
-  useEffect(() => {
-    if (preloadTarget == null || loadingState !== 'loaded') return
-    let cancelled = false
-    const cache = imageCacheRef.current
-    const FORWARD = 5
-    const BACKWARD = 2
-    const queue: number[] = []
-
-    for (let i = 0; i <= FORWARD; i++) {
-      const pg = preloadTarget + i
-      if (pg >= 1 && pg <= imageUrls.length && !cache.has(pg - 1)) queue.push(pg)
-    }
-    for (let i = 1; i <= BACKWARD; i++) {
-      const pg = preloadTarget - i
-      if (pg >= 1 && pg <= imageUrls.length && !cache.has(pg - 1)) queue.push(pg)
-    }
-
-    if (queue.length === 0) return
-
-    const loadNext = async (idx: number) => {
-      if (cancelled || idx >= queue.length) return
-      const pg = queue[idx]
-      try {
-        const result = await window.hcomic!.fetchPreviewImage(imageUrls[pg - 1])
-        if (cancelled) return
-        if (result?.dataUri) {
-          cache.set(pg - 1, result.dataUri)
-          setCacheVersion((v) => v + 1)
-        }
-      } catch {}
-      await loadNext(idx + 1)
-    }
-
-    loadNext(0)
-    return () => { cancelled = true }
-  }, [preloadTarget, loadingState, imageUrls])
+  }, [open, comic, fetchUrls, reset, clearCache])
 
   // Keyboard handler
   useEffect(() => {
@@ -260,7 +189,11 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
         {loadingState === 'loaded' && imageUrls.length > 0 && (
           <div className="flex flex-col items-center py-2" style={{ gap: pageGap + 'px' }}>
-            {imageUrls.map((url, idx) => (
+            {imageUrls.map((url, idx) => {
+              // cacheVersion forces React to re-read the cache ref when preload completes
+              void cacheVersion
+              const cachedDataUri = imageCacheRef.current.get(idx)
+              return (
               <div
                 key={idx}
                 ref={(el) => { pageRefs.current[idx] = el }}
@@ -270,10 +203,11 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                   url={url}
                   index={idx}
                   priority={preloadTarget != null && Math.abs(idx + 1 - preloadTarget) <= 5}
-                  cachedDataUri={imageCacheRef.current.get(idx)}
+                  cachedDataUri={cachedDataUri}
                 />
               </div>
-            ))}
+              )
+            })}
           </div>
         )}
       </div>
@@ -298,6 +232,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
             onPointerDown={handleSliderPointerDown}
             onPointerMove={handleSliderPointerMove}
             onPointerUp={handleSliderPointerUp}
+            onPointerCancel={() => setIsDragging(false)}
+            onLostPointerCapture={() => setIsDragging(false)}
           >
             <div className="w-full relative" style={{ height: '4px' }}>
               <div className="absolute inset-0 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }} />

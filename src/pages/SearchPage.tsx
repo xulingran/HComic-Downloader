@@ -4,8 +4,10 @@ import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
+import { ComicReaderModal } from '../components/ComicReaderModal'
 import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
+import { useSearchHistory } from '../hooks/useSearchHistory'
 
 const searchModes = [
   { value: 'keyword', label: '关键词' },
@@ -24,6 +26,7 @@ export function SearchPage() {
   const [source, setSource] = useState('hcomic')
   const [jumpPage, setJumpPage] = useState('')
   const [showJumpDialog, setShowJumpDialog] = useState(false)
+  const [showHistory, setShowHistory] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { downloadWithConflictCheck } = useDownloadHelper()
@@ -38,8 +41,12 @@ export function SearchPage() {
     exitBatchMode,
   } = useBatchSelect()
   const { cardStyle } = useSettingsStore()
+  const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
+  const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
 
   const searchGenRef = useRef(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const historyDropdownRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -71,16 +78,32 @@ export function SearchPage() {
     return () => { cancelled = true }
   }, [])
 
+  useEffect(() => {
+    if (!showHistory) return
+    const handler = (e: MouseEvent) => {
+      if (historyDropdownRef.current?.contains(e.target as Node)) return
+      if (inputRef.current?.contains(e.target as Node)) return
+      setShowHistory(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [showHistory])
+
   const handleSearch = async (page: number = 1) => {
     clearSelection()
+    setShowHistory(false)
 
     const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
 
+    if (query.trim()) {
+      addHistory(query.trim())
+    }
+
     try {
       const result = await search(query, mode, page, source)
-      if (gen !== searchGenRef.current) return  // 丢弃旧请求的响应
+      if (gen !== searchGenRef.current) return
       setComics(result.comics)
       setPagination(result.pagination)
     } catch (err) {
@@ -97,15 +120,19 @@ export function SearchPage() {
     console.log('Comic clicked:', comic)
   }
 
+  const handleOpenReader = (comic: ComicInfo) => {
+    setReaderComic(comic)
+  }
+
   const handleDownload = async (comic: ComicInfo) => {
     await downloadWithConflictCheck(comic)
   }
 
   const handleBatchDownload = async () => {
-    for (const key of selectedIds) {
-      const comic = comics.find(c => getComicKey(c) === key)
-      if (comic) await handleDownload(comic)
-    }
+    const comicsToDownload = Array.from(selectedIds)
+      .map(key => comics.find(c => getComicKey(c) === key))
+      .filter((c): c is ComicInfo => c !== undefined)
+    await Promise.allSettled(comicsToDownload.map(comic => handleDownload(comic)))
     exitBatchMode()
   }
 
@@ -139,16 +166,34 @@ export function SearchPage() {
             ))}
           </select>
 
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="输入搜索内容..."
-            className="flex-1 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                       text-[var(--text-primary)] placeholder-[var(--text-secondary)]
-                       focus:outline-none focus:border-[var(--accent)]"
-          />
+          <div className="flex-1 relative">
+            <input
+              ref={inputRef}
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onFocus={() => { if (history.length > 0) setShowHistory(true) }}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              placeholder="输入搜索内容..."
+              className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                         text-[var(--text-primary)] placeholder-[var(--text-secondary)]
+                         focus:outline-none focus:border-[var(--accent)]"
+            />
+            {showHistory && history.length > 0 && (
+              <div ref={historyDropdownRef} className="absolute top-full left-0 right-0 mt-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
+                <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)]">
+                  <span className="text-xs text-[var(--text-secondary)]">搜索历史</span>
+                  <button onClick={() => { clearHistory(); setShowHistory(false) }} className="text-xs text-[var(--text-secondary)] hover:text-[var(--error)]">清空</button>
+                </div>
+                {history.map((term) => (
+                  <div key={term} className="flex items-center justify-between px-3 py-2 hover:bg-[var(--bg-secondary)] cursor-pointer" onMouseDown={() => { setQuery(term); setShowHistory(false) }}>
+                    <span className="text-sm text-[var(--text-primary)] truncate">{term}</span>
+                    <button onClick={(e) => { e.stopPropagation(); removeHistory(term) }} className="text-xs text-[var(--text-secondary)] hover:text-[var(--error)] ml-2 flex-shrink-0">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           <button
             onClick={() => handleSearch()}
@@ -218,6 +263,7 @@ export function SearchPage() {
               key={getComicKey(comic)}
               comic={comic}
               onClick={handleComicClick}
+              onOpenReader={handleOpenReader}
               batchMode={batchMode}
               selected={selectedIds.has(getComicKey(comic))}
               onToggleSelect={toggleSelect}
@@ -311,6 +357,14 @@ export function SearchPage() {
         <div className="text-center text-[var(--text-secondary)] py-12">
           暂无搜索结果
         </div>
+      )}
+
+      {readerComic && (
+        <ComicReaderModal
+          comic={readerComic}
+          open={!!readerComic}
+          onClose={() => setReaderComic(null)}
+        />
       )}
     </div>
   )

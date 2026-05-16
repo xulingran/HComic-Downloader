@@ -4,6 +4,11 @@ const coverCache = new Map<string, string | null>()
 const pendingRequests = new Map<string, Promise<string | null>>()
 const MAX_CACHE_SIZE = 200
 
+/** 清除封面缓存（供测试使用） */
+export function clearCoverCache(): void {
+  coverCache.clear()
+}
+
 // Shared IntersectionObserver for all cover images
 let sharedObserver: IntersectionObserver | null = null
 const observedElements = new Map<Element, () => void>()
@@ -22,6 +27,11 @@ function getSharedObserver(): IntersectionObserver {
             }
           }
         }
+        // 当没有观察目标时自动 disconnect，下次需要时重建
+        if (observedElements.size === 0 && sharedObserver) {
+          sharedObserver.disconnect()
+          sharedObserver = null
+        }
       },
       { rootMargin: '200px' }
     )
@@ -29,9 +39,9 @@ function getSharedObserver(): IntersectionObserver {
   return sharedObserver
 }
 
-export function useCoverImage(coverUrl: string | undefined, containerRef?: React.RefObject<HTMLElement>): { coverSrc: string | null | undefined; retry: () => void } {
+export function useCoverImage(coverUrl: string | undefined, containerRef?: React.RefObject<HTMLElement>, disabled?: boolean): { coverSrc: string | null | undefined; retry: () => void } {
   const [dataUri, setDataUri] = useState<string | null | undefined>(() => {
-    if (!coverUrl) return null
+    if (disabled || !coverUrl) return null
     if (coverCache.has(coverUrl)) return coverCache.get(coverUrl)
     return undefined
   })
@@ -40,6 +50,13 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
   currentUrlRef.current = coverUrl
   const [retryTick, setRetryTick] = useState(0)
   const [isVisible, setIsVisible] = useState(!containerRef)
+
+  // ── Reset to null when disabled ──
+  useEffect(() => {
+    if (disabled) {
+      setDataUri(null)
+    }
+  }, [disabled])
 
   // ── IntersectionObserver for lazy loading ──
   useEffect(() => {
@@ -54,10 +71,16 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
     return () => {
       observedElements.delete(el)
       observer.unobserve(el)
+      // 所有观察目标已移除时 disconnect Observer
+      if (observedElements.size === 0 && sharedObserver) {
+        sharedObserver.disconnect()
+        sharedObserver = null
+      }
     }
   }, [containerRef])
 
   const fetchCover = useCallback(() => {
+    if (disabled) return
     if (!currentUrlRef.current) {
       setDataUri(null)
       return
@@ -104,7 +127,7 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
     })
 
     return () => { cancelled = true }
-  }, [])
+  }, [disabled])
 
   // Load only when visible (or immediately if no containerRef)
   useEffect(() => {

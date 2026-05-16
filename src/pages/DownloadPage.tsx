@@ -1,51 +1,61 @@
 import { useEffect, useState } from 'react'
 import { useDownloadStore } from '../stores/useDownloadStore'
-import { useDownload } from '../hooks/useIpc'
+import { useDownload, useStatistics } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
-import type { DownloadStatus, DownloadDetail } from '@shared/types'
+import type { DownloadStatus, DownloadDetail, StatisticsData } from '@shared/types'
+
+type StatusFilter = 'all' | 'active' | 'completed' | 'failed' | 'paused'
+
+const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
+  { value: 'all', label: '全部' },
+  { value: 'active', label: '进行中' },
+  { value: 'completed', label: '已完成' },
+  { value: 'failed', label: '失败' },
+  { value: 'paused', label: '已暂停' },
+]
+
+function matchStatusFilter(status: DownloadStatus, filter: StatusFilter): boolean {
+  if (filter === 'all') return true
+  if (filter === 'active') return status === 'downloading' || status === 'queued' || status === 'pausing'
+  return status === filter
+}
 
 export function DownloadPage() {
-  const { tasks, setTasks, addTask, updateTask, isGloballyPaused } = useDownloadStore()
+  const { tasks, setTasks, updateTask, isGloballyPaused } = useDownloadStore()
   const { getDownloads, cancelDownload, progress } = useDownload()
+  const { getStatistics } = useStatistics()
   const { handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause } = useDownloadHelper()
-  const [completedDialog, setCompletedDialog] = useState<DownloadDetail | null>(null)
   const [failedDialog, setFailedDialog] = useState<DownloadDetail | null>(null)
+  const [stats, setStats] = useState<StatisticsData | null>(null)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   useEffect(() => {
     loadDownloads()
+    loadStatistics()
   }, [])
 
   useEffect(() => {
     const currentTasks = useDownloadStore.getState().tasks
     for (const [taskId, data] of Object.entries(progress)) {
       const existingTask = currentTasks.find((t) => t.id === taskId)
-      if (existingTask) {
-        updateTask(taskId, {
-          status: data.status as DownloadStatus,
-          progress: data.progress,
-          totalPages: data.total,
-          downloadedPages: data.current,
-        })
-        // ── Detect completion / failure transitions ──
-        if (data.status === 'completed' && existingTask.status !== 'completed') {
-          window.hcomic?.getDownloadDetail(taskId).then((detail) => setCompletedDialog(detail)).catch(() => {})
-        }
-        if (data.status === 'failed' && existingTask.status !== 'failed') {
-          window.hcomic?.getDownloadDetail(taskId).then((detail) => setFailedDialog(detail)).catch(() => {})
-        }
-      } else {
-        addTask({
-          id: taskId,
-          comic: { id: taskId, title: data.title || '', url: '', coverUrl: '', source: '' },
-          status: data.status as DownloadStatus,
-          progress: data.progress,
-          totalPages: data.total,
-          downloadedPages: data.current,
-        })
+      if (!existingTask) {
+        // 任务不在当前列表中（可能在页面加载前就已启动），跳过
+        // 完整任务列表由 loadDownloads() 负责加载
+        continue
+      }
+      updateTask(taskId, {
+        status: data.status as DownloadStatus,
+        progress: data.progress,
+        totalPages: data.total,
+        downloadedPages: data.current,
+      })
+      // ── Detect failure transitions ──
+      if (data.status === 'failed' && existingTask.status !== 'failed') {
+        window.hcomic?.getDownloadDetail(taskId).then((detail) => setFailedDialog(detail)).catch(() => {})
       }
     }
-  }, [progress, addTask, updateTask])
+  }, [progress, updateTask])
 
   const loadDownloads = async () => {
     try {
@@ -54,6 +64,19 @@ export function DownloadPage() {
     } catch (err) {
       console.error('Failed to load downloads:', err)
     }
+  }
+
+  const loadStatistics = async () => {
+    try {
+      const result = await getStatistics()
+      setStats(result)
+    } catch (err) {
+      console.error('Failed to load statistics:', err)
+    }
+  }
+
+  const handleRefresh = async () => {
+    await Promise.all([loadDownloads(), loadStatistics()])
   }
 
   const handleCancel = async (taskId: string) => {
@@ -72,6 +95,18 @@ export function DownloadPage() {
           下载管理
         </h2>
         <div className="flex gap-2">
+          {tasks.length > 0 && (
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              className="px-2 py-1 text-sm rounded-lg bg-[var(--bg-primary)] border border-[var(--border)]
+                         text-[var(--text-primary)]"
+            >
+              {STATUS_FILTERS.map((f) => (
+                <option key={f.value} value={f.value}>{f.label}</option>
+              ))}
+            </select>
+          )}
           <button
             onClick={handleToggleGlobalPause}
             className={`px-3 py-1 text-sm rounded-lg transition-colors
@@ -82,8 +117,8 @@ export function DownloadPage() {
             {isGloballyPaused ? '▶ 恢复' : '⏸ 暂停'}
           </button>
           <button
-            onClick={loadDownloads}
-            className="px-3 py-1 text-sm bg-[var(--bg-primary)] border border-[var(--border)] 
+            onClick={handleRefresh}
+            className="px-3 py-1 text-sm bg-[var(--bg-primary)] border border-[var(--border)]
                        rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
           >
             刷新
@@ -91,13 +126,45 @@ export function DownloadPage() {
         </div>
       </div>
 
+
+
+      {stats && stats.downloadsByDay.length > 0 && (
+        <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm">
+          <h3 className="text-sm font-medium text-[var(--text-primary)] mb-4">
+            下载趋势
+          </h3>
+          <div className="h-48 flex items-end gap-2">
+            {stats.downloadsByDay.map((day) => {
+              const maxCount = Math.max(...stats.downloadsByDay.map(d => d.count))
+              const height = maxCount > 0 ? (day.count / maxCount) * 100 : 0
+              return (
+                <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
+                  <div
+                    className="w-full bg-[var(--accent)] rounded-t"
+                    style={{ height: `${height}%` }}
+                  />
+                  <span className="text-xs text-[var(--text-secondary)]">
+                    {day.date.slice(5)}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {tasks.length === 0 ? (
         <div className="text-center text-[var(--text-secondary)] py-12">
           暂无下载任务
         </div>
       ) : (
         <div className="space-y-3">
-          {tasks.map((task) => (
+          {statusFilter !== 'all' && (
+            <div className="text-xs text-[var(--text-secondary)]">
+              显示 {tasks.filter(t => matchStatusFilter(t.status, statusFilter)).length} / {tasks.length} 个任务
+            </div>
+          )}
+          {tasks.filter(t => matchStatusFilter(t.status, statusFilter)).map((task) => (
             <div
               key={task.id}
               className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm"
@@ -116,6 +183,20 @@ export function DownloadPage() {
                       >
                         暂停
                       </button>
+                      <button
+                        onClick={() => handleCancel(task.id)}
+                        className="text-xs px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                                   text-[var(--error)] hover:bg-[var(--bg-tertiary)]"
+                      >
+                        取消
+                      </button>
+                    </>
+                  )}
+                  {task.status === 'pausing' && (
+                    <>
+                      <span className="text-xs px-2 py-0.5 rounded bg-[var(--bg-secondary)] text-[var(--text-secondary)]">
+                        暂停中
+                      </span>
                       <button
                         onClick={() => handleCancel(task.id)}
                         className="text-xs px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
@@ -150,12 +231,6 @@ export function DownloadPage() {
                       重试
                     </button>
                   )}
-                  {task.status === 'downloading' && (
-                    <button
-                      onClick={() => handleCancel(task.id)}
-                      className="hidden"
-                    />
-                  )}
                 </div>
               </div>
               <ProgressBar progress={task.progress} status={task.status} />
@@ -164,34 +239,6 @@ export function DownloadPage() {
               )}
             </div>
           ))}
-        </div>
-      )}
-
-      {/* ── Completed dialog ── */}
-      {completedDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setCompletedDialog(null)}>
-          <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-md w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">下载完成</h3>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">
-              文件已保存至: {completedDialog.outputPath || completedDialog.tempDir}
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setCompletedDialog(null)}
-                className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
-              >
-                关闭
-              </button>
-              {completedDialog.outputPath && (
-                <button
-                  onClick={() => { window.hcomic?.openDownloadDir(); setCompletedDialog(null) }}
-                  className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white"
-                >
-                  打开文件夹
-                </button>
-              )}
-            </div>
-          </div>
         </div>
       )}
 
@@ -231,3 +278,5 @@ export function DownloadPage() {
     </div>
   )
 }
+
+

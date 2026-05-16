@@ -32,6 +32,7 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, any>
     verifyAuth: vi.fn().mockResolvedValue({ valid: false, message: '' }),
     shutdown: vi.fn().mockResolvedValue({ success: true, cancelledTasks: 0 }),
     fetchCover: vi.fn().mockResolvedValue({ dataUri: 'data:image/png;base64,mock' }),
+    fetchPreviewImage: vi.fn().mockResolvedValue({ dataUri: 'data:image/png;base64,mock' }),
     openUrl: vi.fn().mockResolvedValue(undefined),
     onDownloadProgress: vi.fn().mockReturnValue(vi.fn()),
     pauseTask: vi.fn().mockResolvedValue({ success: true }),
@@ -42,6 +43,7 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, any>
     getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }),
     openDownloadDir: vi.fn().mockResolvedValue({ success: true }),
     getDownloadDetail: vi.fn().mockResolvedValue({ taskId: '', tempDir: '', errorMessage: '', outputPath: '' }),
+    getPreviewUrls: vi.fn().mockResolvedValue({ imageUrls: [], totalPages: 0 }),
     ...overrides,
   }
 

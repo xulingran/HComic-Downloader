@@ -1,10 +1,12 @@
 """数据模型"""
 from dataclasses import dataclass, field
 from enum import Enum
+import threading
 import time
 from typing import List, Optional
 
 from constants import IMAGE_API_BASE
+from utils import sanitize_filename
 
 
 @dataclass
@@ -40,22 +42,25 @@ class ComicInfo:
     source_site: str = "hcomic"
     image_urls: List[str] = field(default_factory=list)
 
+    _IMAGE_URL_SUFFIX_MAP = {
+        "MMCG_SHORT": "mms",
+        "MMCG_LONG": "mml",
+    }
+    _DEFAULT_IMAGE_URL_SUFFIX = "nh"
+
     @property
     def safe_title(self) -> str:
         """获取安全的标题（用于文件名）"""
-        from utils import sanitize_filename
         return sanitize_filename(self.title)
 
     @property
     def safe_author(self) -> str:
         """获取安全的作者名（用于文件名）"""
-        from utils import sanitize_filename
         return sanitize_filename(self.author or "unknown")
 
     @property
     def safe_id(self) -> str:
         """获取安全的 ID（用于文件名）"""
-        from utils import sanitize_filename
         return sanitize_filename(str(self.id))
 
     def get_image_url(self, page: int) -> str:
@@ -67,11 +72,7 @@ class ComicInfo:
         Returns:
             图片 URL
         """
-        source_map = {
-            "MMCG_SHORT": "mms",
-            "MMCG_LONG": "mml",
-        }
-        suffix = source_map.get(self.comic_source.upper(), "nh")
+        suffix = self._IMAGE_URL_SUFFIX_MAP.get(self.comic_source.upper(), self._DEFAULT_IMAGE_URL_SUFFIX)
         return f"{IMAGE_API_BASE}/{suffix}/{self.media_id}/pages/{page}"
 
     def get_all_image_urls(self) -> List[str]:
@@ -81,11 +82,18 @@ class ComicInfo:
         return [self.get_image_url(page) for page in range(1, self.pages + 1)]
 
     def __hash__(self) -> int:
-        """使 ComicInfo 可哈希，用于存储在 set 中"""
+        """使 ComicInfo 可哈希，用于存储在 set 中。
+
+        Warning: hash 基于 (source_site, id, comic_source)。将 ComicInfo
+        加入 set 后修改这三个字段中的任何一个，会导致 set 查找失败。
+        """
         return hash((self.source_site, self.id, self.comic_source))
 
     def __eq__(self, other) -> bool:
-        """比较两个 ComicInfo 是否相等"""
+        """比较两个 ComicInfo 是否相等。
+
+        Warning: 与 __hash__ 保持一致，仅比较 (source_site, id, comic_source)。
+        """
         if not isinstance(other, ComicInfo):
             return False
         return (
@@ -137,6 +145,7 @@ class DownloadStatus(Enum):
     """下载任务状态"""
     QUEUED = "queued"           # 等待中
     DOWNLOADING = "downloading" # 下载中
+    PAUSING = "pausing"         # 暂停中（已请求暂停，等待当前批次完成）
     PAUSED = "paused"           # 已暂停
     COMPLETED = "completed"     # 已完成
     FAILED = "failed"          # 失败
@@ -187,4 +196,54 @@ class DownloadTask:
         """获取进度百分比"""
         if self.progress_total == 0:
             return 0.0
-        return (self.progress_current / self.progress_total) * 100
+        return float(round((self.progress_current / self.progress_total) * 100))
+
+    @property
+    def is_cancel_requested(self) -> bool:
+        return self._cancel_requested
+
+    @property
+    def is_pause_requested(self) -> bool:
+        return self._pause_requested
+
+    def request_cancel(self) -> None:
+        self._cancel_requested = True
+
+    def request_pause(self) -> None:
+        self._pause_requested = True
+
+    def clear_pause_request(self) -> None:
+        self._pause_requested = False
+
+
+@dataclass
+class AuthConfig:
+    """认证配置，封装 cookie 和 user_agent。"""
+    cookie: str = ""
+    user_agent: str = ""
+
+
+@dataclass
+class DownloadResumeOptions:
+    """断点续传下载选项，封装 download_comic_resume 的参数。"""
+    comic: ComicInfo
+    output_dir: str
+    progress_callback: Optional[object] = None
+    delay_after: int = 0
+    comic_info: Optional[dict] = None
+    completed_pages: Optional[List[int]] = None
+    failed_pages: Optional[List[int]] = None
+    cancel_event: Optional[threading.Event] = None
+    pause_event: Optional[threading.Event] = None
+
+
+@dataclass
+class ArchiveBuildOptions:
+    """压缩包构建选项，封装 build_archive 的所有参数。"""
+    image_dir: str
+    comic: "ComicInfo"
+    output_path: str
+    download_dir: Optional[str] = None
+    overwrite: bool = False
+    include_comic_info_xml: bool = True
+    log_label: str = "Archive"

@@ -18,7 +18,12 @@ vi.mock('electron', () => {
     show = vi.fn()
     webContents = {
       on: vi.fn(),
-      setWindowOpenHandler: vi.fn()
+      setWindowOpenHandler: vi.fn(),
+      session: {
+        webRequest: {
+          onBeforeSendHeaders: vi.fn(),
+        },
+      },
     }
     static getAllWindows = vi.fn().mockReturnValue([])
   }

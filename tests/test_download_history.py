@@ -153,3 +153,37 @@ def test_check_batch_multiple_keys(db, sample_comic, tmp_path):
     result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
     assert result[("hcomic", "99999", "MMCG_SHORT")] == "unknown"
+
+
+def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
+    """When no DB record exists, comic_data_map provides title/author for path computation."""
+    from cbz_builder import CBZBuilder
+
+    comic = ComicInfo(
+        id="67890",
+        title="Fallback Comic",
+        author="Fallback Author",
+        source_site="hcomic",
+        comic_source="MMCG_LONG",
+    )
+
+    builder = CBZBuilder(filename_template="{author}-{title}.cbz")
+    expected_path = builder.get_output_path(comic, str(tmp_path))
+    os.makedirs(os.path.dirname(expected_path), exist_ok=True)
+    with open(expected_path, 'w') as f:
+        f.write("fake cbz")
+
+    key = ("hcomic", "67890", "MMCG_LONG")
+    keys = [key]
+    comic_data_map = {key: {"title": "Fallback Comic", "author": "Fallback Author"}}
+
+    # Without comic_data_map, fallback uses empty title/author → wrong path → unknown
+    result_without = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result_without[key] == "unknown"
+
+    # With comic_data_map, fallback uses correct title/author → finds file → downloaded
+    result_with = db.check_downloaded_batch(
+        keys, str(tmp_path), "cbz", "{author}-{title}.cbz",
+        comic_data_map=comic_data_map,
+    )
+    assert result_with[key] == "downloaded"

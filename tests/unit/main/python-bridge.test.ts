@@ -77,10 +77,11 @@ describe('PythonBridge', () => {
       new PythonBridge()
 
       expect(mockSpawn).toHaveBeenCalledTimes(1)
-      expect(mockSpawn).toHaveBeenCalledWith('python', [expect.stringContaining('ipc_server.py')], {
+      expect(mockSpawn).toHaveBeenCalledWith('python', [expect.stringContaining('ipc_server.py')], expect.objectContaining({
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
-      })
+        env: expect.objectContaining({ PYTHONIOENCODING: 'utf-8' }),
+      }))
     })
 
     it('should set up stdout, stderr, exit and error listeners', () => {
@@ -418,8 +419,8 @@ describe('PythonBridge', () => {
       // Start a pending request first
       const callPromise = bridge.call('search', { query: 'test' })
 
-      // Send >1MB of garbage without newline to trigger overflow
-      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      // Send >20MB of garbage without newline to trigger overflow
+      const bigData = Buffer.from('x'.repeat(20 * 1024 * 1024 + 1))
       stdoutCallbacks.forEach(cb => cb(bigData))
 
       // The pending request should be rejected immediately, not after 30s timeout
@@ -429,7 +430,7 @@ describe('PythonBridge', () => {
     it('should kill old process on buffer overflow', () => {
       new PythonBridge()
 
-      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      const bigData = Buffer.from('x'.repeat(20 * 1024 * 1024 + 1))
       stdoutCallbacks.forEach(cb => cb(bigData))
 
       expect(mockProcess.kill).toHaveBeenCalled()
@@ -441,7 +442,7 @@ describe('PythonBridge', () => {
       expect(mockSpawn).toHaveBeenCalledTimes(1)
 
       // Trigger overflow - should call handleProcessFailure which schedules restart
-      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      const bigData = Buffer.from('x'.repeat(20 * 1024 * 1024 + 1))
       stdoutCallbacks.forEach(cb => cb(bigData))
 
       vi.advanceTimersByTime(2000)
@@ -454,7 +455,7 @@ describe('PythonBridge', () => {
       new PythonBridge()
 
       // Trigger overflow — kills old process and schedules restart
-      const bigData = Buffer.from('x'.repeat(1024 * 1024 + 1))
+      const bigData = Buffer.from('x'.repeat(20 * 1024 * 1024 + 1))
       stdoutCallbacks.forEach(cb => cb(bigData))
 
       expect(mockProcess.kill).toHaveBeenCalled()

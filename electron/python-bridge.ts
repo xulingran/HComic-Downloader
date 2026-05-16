@@ -4,7 +4,8 @@ import crypto from 'crypto'
 import { app } from 'electron'
 
 const REQUEST_TIMEOUT_MS = 30_000
-const MAX_BUFFER_SIZE = 1024 * 1024
+// 20MB: cover image data URIs (base64) and large URL lists can exceed 1MB
+const MAX_BUFFER_SIZE = 20 * 1024 * 1024
 const MAX_RESTARTS = 5
 
 interface PendingRequest {
@@ -52,6 +53,7 @@ export class PythonBridge {
     this.process = spawn(pythonPath, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
     })
     const proc = this.process
 

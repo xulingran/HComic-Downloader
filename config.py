@@ -1,4 +1,5 @@
 """配置管理模块"""
+import json
 import logging
 import os
 from pathlib import Path
@@ -10,6 +11,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Config:
     """应用配置"""
+    CONCURRENT_RANGE = (1, 10)
+    TIMEOUT_RANGE = (5, 300)
+    RETRY_RANGE = (0, 10)
+
     download_dir: str = field(default_factory=lambda: str(Path.home() / "Downloads" / "hcomic"))
     concurrent_downloads: int = 4
     timeout: int = 30
@@ -38,6 +43,7 @@ class Config:
     # 通知配置
     notify_on_complete: bool = True  # 是否发送系统通知
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
+    sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
@@ -55,22 +61,28 @@ class Config:
             and not hcomic_auth.get("user_agent")
             and (self.auth_cookie or self.auth_user_agent)
         ):
+            # 旧字段迁移：auth_cookie/auth_user_agent → source_auth["hcomic"]
             self.set_source_auth("hcomic", self.auth_cookie, self.auth_user_agent)
+            self.auth_cookie = ""
+            self.auth_user_agent = ""
             hcomic_auth = self.get_source_auth("hcomic")
-        # 兼容旧字段，始终保持与 hcomic 同步
+        # 保持 auth_cookie/auth_user_agent 与 source_auth["hcomic"] 同步
         self.auth_cookie = hcomic_auth.get("cookie", "")
         self.auth_user_agent = hcomic_auth.get("user_agent", "")
 
         try:
-            self.concurrent_downloads = max(1, min(10, int(self.concurrent_downloads)))
+            lo, hi = self.CONCURRENT_RANGE
+            self.concurrent_downloads = max(lo, min(hi, int(self.concurrent_downloads)))
         except (ValueError, TypeError):
             self.concurrent_downloads = 4
         try:
-            self.timeout = max(5, min(300, int(self.timeout)))
+            lo, hi = self.TIMEOUT_RANGE
+            self.timeout = max(lo, min(hi, int(self.timeout)))
         except (ValueError, TypeError):
             self.timeout = 30
         try:
-            self.retry_times = max(0, min(10, int(self.retry_times)))
+            lo, hi = self.RETRY_RANGE
+            self.retry_times = max(lo, min(hi, int(self.retry_times)))
         except (ValueError, TypeError):
             self.retry_times = 3
 
@@ -115,7 +127,6 @@ class Config:
     def load(cls, config_path: str = None) -> "Config":
         """从文件加载配置，如果不存在则返回默认配置"""
         if config_path and os.path.exists(config_path):
-            import json
             try:
                 with open(config_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
@@ -126,26 +137,40 @@ class Config:
                 )
                 try:
                     backup_path = config_path + ".corrupted"
-                    if not os.path.exists(backup_path):
-                        os.replace(config_path, backup_path)
-                        logger.info("Corrupted config backed up to %s", backup_path)
+                    if os.path.exists(backup_path):
+                        idx = 1
+                        # 最多尝试 1000 个序号，防止极端情况下磁盘被大量损坏配置占满
+                        while os.path.exists(f"{backup_path}.{idx}"):
+                            idx += 1
+                            if idx > 1000:
+                                import tempfile
+                                fd, backup_path = tempfile.mkstemp(
+                                    dir=os.path.dirname(config_path),
+                                    prefix=".config_corrupted_",
+                                    suffix=".json",
+                                )
+                                os.close(fd)
+                                break
+                        else:
+                            backup_path = f"{backup_path}.{idx}"
+                    os.replace(config_path, backup_path)
+                    logger.info("Corrupted config backed up to %s", backup_path)
                 except OSError:
                     pass
                 return cls()
             if not isinstance(data, dict):
                 return cls()
             # 迁移旧配置：auth_cookie/auth_user_agent -> source_auth.hcomic
-            if "source_auth" not in data:
-                data["source_auth"] = {
-                    "hcomic": {
-                        "cookie": str(data.get("auth_cookie", "") or "").strip(),
-                        "user_agent": str(data.get("auth_user_agent", "") or "").strip(),
-                    },
-                    "moeimg": {
-                        "cookie": "",
-                        "user_agent": "",
-                    },
-                }
+            data.setdefault("source_auth", {})
+            hcomic_auth = data["source_auth"].setdefault("hcomic", {"cookie": "", "user_agent": ""})
+            data["source_auth"].setdefault("moeimg", {"cookie": "", "user_agent": ""})
+            # 如果旧的顶层字段有值而 hcomic 条目缺失，则填充之
+            old_cookie = str(data.get("auth_cookie", "") or "").strip()
+            old_ua = str(data.get("auth_user_agent", "") or "").strip()
+            if old_cookie and not hcomic_auth.get("cookie"):
+                hcomic_auth["cookie"] = old_cookie
+            if old_ua and not hcomic_auth.get("user_agent"):
+                hcomic_auth["user_agent"] = old_ua
             if "default_source" not in data:
                 data["default_source"] = "hcomic"
             # 兼容旧配置：通知配置
@@ -162,7 +187,6 @@ class Config:
 
     def save(self, config_path: str):
         """保存配置到文件"""
-        import json
         import sys
         import tempfile
         from dataclasses import asdict

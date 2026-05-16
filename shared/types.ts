@@ -263,37 +263,6 @@ export const PYTHON_IPC_CHANNEL_MAP = {
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
 
-/** Positional parameter tuples matching how ipcMain.handle receives args for each python:* channel */
-export interface IPCChannelParamsMap {
-  'python:search': [query: string, mode: string, page: number, source?: string]
-  'python:download': [comicId: string, comicData: ComicInfo, overwrite?: boolean]
-  'python:check-download-conflict': [comicData: ComicInfo],
-  'python:get-favourites': [page?: number]
-  'python:get-config': []
-  'python:set-config': SetConfigArgs
-  'python:get-downloads': []
-  'python:cancel-download': [taskId: string]
-  'python:get-statistics': []
-  'python:apply-auth': [curlText: string]
-  'python:verify-auth': []
-  'python:shutdown': []
-  'python:fetch-cover': [url: string]
-  'python:pause-task': [taskId: string]
-  'python:resume-task': [taskId: string]
-  'python:retry-task': [taskId: string]
-  'python:toggle-global-pause': []
-  'python:get-proxy-status': []
-  'python:get-available-fonts': []
-  'python:open-download-dir': []
-  'python:get-download-detail': [taskId: string]
-  'python:get-preview-urls': [comicData: ComicInfo]
-  'python:fetch-preview-image': [imageUrl: string]
-  'python:check-downloaded-status': [comics: ComicInfo[]]
-}
-
-export type IPCChannelResult<C extends PythonIPCChannel> =
-  IPCMethods[typeof PYTHON_IPC_CHANNEL_MAP[C]]['result']
-
 /** Validated notification event for download progress (Python -> Main -> Renderer) */
 export interface DownloadProgressEvent {
   taskId: string

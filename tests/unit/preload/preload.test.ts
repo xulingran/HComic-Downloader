@@ -40,8 +40,12 @@ describe('preload.ts', () => {
 
     it('should reject invalid query', () => {
       expect(() => exposedApi.search(123, 'keyword', 1)).toThrow('Invalid query')
-      expect(() => exposedApi.search('', 'keyword', 1)).toThrow('Invalid query')
       expect(() => exposedApi.search('a'.repeat(513), 'keyword', 1)).toThrow('Invalid query')
+    })
+
+    it('should allow empty query for homepage search', async () => {
+      await exposedApi.search('', 'keyword', 1)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', '', 'keyword', 1)
     })
 
     it('should reject invalid mode', () => {
@@ -148,6 +152,19 @@ describe('preload.ts', () => {
 
     it('should reject overlong URL', () => {
       expect(() => exposedApi.openUrl('https://x.com/' + 'a'.repeat(2048))).toThrow('Invalid URL')
+    })
+  })
+
+  describe('fetchPreviewImage', () => {
+    it('should invoke python:fetch-preview-image with URL', async () => {
+      await exposedApi.fetchPreviewImage('https://h-comic.link/api/nh/media123/pages/1')
+      expect(mockInvoke).toHaveBeenCalledWith('python:fetch-preview-image', 'https://h-comic.link/api/nh/media123/pages/1')
+    })
+
+    it('should reject invalid preview image URL', () => {
+      expect(() => exposedApi.fetchPreviewImage('')).toThrow('Invalid preview image URL')
+      expect(() => exposedApi.fetchPreviewImage(123)).toThrow('Invalid preview image URL')
+      expect(() => exposedApi.fetchPreviewImage('https://x.com/' + 'a'.repeat(2048))).toThrow('Invalid preview image URL')
     })
   })
 

@@ -10,10 +10,13 @@ from urllib.parse import quote, urljoin
 import requests
 
 from constants import DEFAULT_USER_AGENT
-from models import ComicInfo, PaginationInfo
+from models import AuthConfig, ComicInfo, PaginationInfo
 from utils import apply_system_proxy_to_session, configure_session_auth
 
 logger = logging.getLogger(__name__)
+
+
+MAX_PAYLOAD_SIZE = 2_000_000
 
 
 class ParserResponseError(RuntimeError):
@@ -123,7 +126,7 @@ class HComicParser:
         try:
             return self.parse_search_page(self._request_text(url), requested_page=page)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error(f"Search failed: {e}")
+            logger.error("Search failed: %s", e)
             return [], None
 
     def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
@@ -140,7 +143,7 @@ class HComicParser:
         try:
             return self.parse_favourites_page(self._request_text(url), requested_page=page)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error(f"Load favourites failed: {e}")
+            logger.error("Load favourites failed: %s", e)
             if raise_errors:
                 raise
             return [], None, False
@@ -159,7 +162,7 @@ class HComicParser:
         try:
             return self.parse_comic_detail(self._request_text(url))
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error(f"Get comic detail failed: {e}")
+            logger.error("Get comic detail failed: %s", e)
             return None
 
     def parse_search_page(self, html: str, requested_page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
@@ -175,7 +178,7 @@ class HComicParser:
         try:
             data = self._extract_payload_data(html)
         except (ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.warning(f"Parse search payload error: {e}")
+            logger.warning("Parse search payload error: %s", e)
             return [], None
 
         # 解析分页信息
@@ -193,7 +196,7 @@ class HComicParser:
             try:
                 comics.append(self._parse_comic_item(target))
             except (KeyError, TypeError, ValueError) as e:
-                logger.debug(f"Parse search item skipped: {e}")
+                logger.debug("Parse search item skipped: %s", e)
                 continue
 
         return comics, pagination_info
@@ -209,7 +212,7 @@ class HComicParser:
         try:
             data = self._extract_payload_data(html)
         except (ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.warning(f"Parse favourites payload error: {e}")
+            logger.warning("Parse favourites payload error: %s", e)
             return [], None, False
 
         favourites_data = data.get("favourites")
@@ -251,7 +254,7 @@ class HComicParser:
             try:
                 comics.append(self._parse_comic_item(comic_data))
             except (KeyError, TypeError, ValueError) as e:
-                logger.debug(f"Parse favourites item skipped: {e}")
+                logger.debug("Parse favourites item skipped: %s", e)
                 continue
 
         return comics, pagination, False
@@ -432,7 +435,7 @@ class HComicParser:
     @classmethod
     def _extract_payload_data(cls, resp_text: str) -> dict:
         """从页面中提取 payload 数据"""
-        if len(resp_text) > 2_000_000:
+        if len(resp_text) > MAX_PAYLOAD_SIZE:
             raise ValueError(f"Response too large ({len(resp_text)} bytes), limit is 2MB")
         m = cls.PAYLOAD_REGEX.search(resp_text)
         if not m:
@@ -538,6 +541,7 @@ class MoeImgParser:
 
     BASE_URL = "https://moeimg.fan"
     _MAX_CACHE_SIZE = 500
+    _MAX_SEARCH_ITEMS = 5
     QUERY_MODE_REGEX = re.compile(r"^\s*(author|artist|tag)\s*:\s*(.*?)\s*$", re.IGNORECASE)
     ENTITY_ID_IN_TEXT_REGEX = re.compile(r"(?:^|/)(?:fa)?(\d+)(?:/|$)")
     HEADERS = {
@@ -721,7 +725,7 @@ class MoeImgParser:
             response.raise_for_status()
             return response.json()
         except (requests.RequestException, ValueError) as e:
-            logger.error(f"MoeImg request failed: {url} ({e})")
+            logger.error("MoeImg request failed: %s (%s)", url, e)
             raise ParserResponseError(f"MoeImg request failed: {url} ({e})") from e
 
     def _search_entity(self, mode: str, keyword: str, page: int) -> Optional[dict]:
@@ -781,8 +785,7 @@ class MoeImgParser:
         id_key = "author_id" if mode == "author" else "tag_id"
 
         # 限制搜索范围，避免对大量结果逐个请求详情
-        max_search_items = 5
-        for item in manga_list[:max_search_items]:
+        for item in manga_list[:self._MAX_SEARCH_ITEMS]:
             if not isinstance(item, dict):
                 continue
             manga_id = item.get("manga_id")
@@ -1029,16 +1032,17 @@ class MultiSourceParser:
         timeout: int = 30,
         default_source: str = "hcomic",
         source_auth: Optional[dict[str, dict[str, str]]] = None,
-        cookie: str = "",
-        user_agent: str = "",
+        auth: AuthConfig = None,
     ):
         self.timeout = timeout
         self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
-        # 兼容旧调用：若传了全局 cookie/user_agent，作为 hcomic 默认认证。
-        if cookie or user_agent:
+        # 兼容旧调用：若传了全局 auth，作为 hcomic 默认认证。
+        _cookie = auth.cookie if auth else ""
+        _user_agent = auth.user_agent if auth else ""
+        if _cookie or _user_agent:
             self.source_auth["hcomic"] = {
-                "cookie": (cookie or "").strip(),
-                "user_agent": (user_agent or "").strip(),
+                "cookie": (_cookie or "").strip(),
+                "user_agent": (_user_agent or "").strip(),
             }
 
         self.parsers = {

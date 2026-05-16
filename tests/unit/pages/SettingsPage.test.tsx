@@ -8,14 +8,16 @@ const {
   mockApplyAuth,
   mockVerifyAuth,
   mockSetThemeMode,
-  mockSetCardStyle
+  mockSetCardStyle,
+  mockSetSfwMode
 } = vi.hoisted(() => ({
   mockGetConfig: vi.fn(),
   mockSetConfig: vi.fn(),
   mockApplyAuth: vi.fn(),
   mockVerifyAuth: vi.fn(),
   mockSetThemeMode: vi.fn(),
-  mockSetCardStyle: vi.fn()
+  mockSetCardStyle: vi.fn(),
+  mockSetSfwMode: vi.fn()
 }))
 
 vi.mock('@/hooks/useIpc', () => ({
@@ -29,8 +31,10 @@ vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: vi.fn(() => ({
     themeMode: 'auto',
     cardStyle: 'cover',
+    sfwMode: false,
     setThemeMode: mockSetThemeMode,
-    setCardStyle: mockSetCardStyle
+    setCardStyle: mockSetCardStyle,
+    setSfwMode: mockSetSfwMode
   }))
 }))
 
@@ -510,6 +514,61 @@ describe('SettingsPage', () => {
       expect(screen.getByText('超时时间 (0秒)')).toBeInTheDocument()
       expect(screen.getByText('重试次数 (0)')).toBeInTheDocument()
       expect(screen.getByText('批量下载延迟 (0秒)')).toBeInTheDocument()
+    })
+  })
+
+  describe('SFW mode', () => {
+    it('renders SFW mode section with buttons', async () => {
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('SFW 模式')).toBeInTheDocument()
+        expect(screen.getByText('开启')).toBeInTheDocument()
+        expect(screen.getByText('关闭')).toBeInTheDocument()
+      })
+    })
+
+    it('toggles SFW mode on when "开启" clicked', async () => {
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('开启')).toBeInTheDocument()
+      })
+
+      await userEvent.click(screen.getByText('开启'))
+
+      expect(mockSetSfwMode).toHaveBeenCalledWith(true)
+      expect(mockSetConfig).toHaveBeenCalledWith('sfwMode', true)
+    })
+
+    it('toggles SFW mode off when "关闭" clicked', async () => {
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('关闭')).toBeInTheDocument()
+      })
+
+      await userEvent.click(screen.getByText('关闭'))
+
+      expect(mockSetSfwMode).toHaveBeenCalledWith(false)
+      expect(mockSetConfig).toHaveBeenCalledWith('sfwMode', false)
+    })
+
+    it('restores previous SFW mode on save failure', async () => {
+      mockSetConfig.mockRejectedValueOnce(new Error('Save failed'))
+      const prevSfwMode = false
+
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('开启')).toBeInTheDocument()
+      })
+
+      await userEvent.click(screen.getByText('开启'))
+
+      await waitFor(() => {
+        expect(mockSetSfwMode).toHaveBeenCalledWith(prevSfwMode)
+      })
     })
   })
 })

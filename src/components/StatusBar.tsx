@@ -6,7 +6,7 @@ interface StatusBarProps {
 
 export function StatusBar({ onNavigateToDownloads }: StatusBarProps) {
   const tasks = useDownloadStore((s) => s.tasks)
-  const activeTasks = tasks.filter((t) => t.status === 'downloading' || t.status === 'queued')
+  const activeTasks = tasks.filter((t) => t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing')
   const downloadingTask = tasks.find((t) => t.status === 'downloading')
   const totalActive = activeTasks.length
 

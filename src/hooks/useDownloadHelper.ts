@@ -47,7 +47,7 @@ export function useDownloadHelper() {
   const handlePauseTask = async (taskId: string) => {
     try {
       await pauseTask(taskId)
-      updateTask(taskId, { status: 'paused' as DownloadStatus })
+      updateTask(taskId, { status: 'pausing' as DownloadStatus })
     } catch (err) {
       console.error('Failed to pause task:', err)
     }
