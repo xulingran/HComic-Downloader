@@ -62,8 +62,10 @@ class DownloadMixin:
         }
 
     def handle_get_downloads(self) -> Dict:
+        sorted_tasks = self._download_manager.get_sorted_tasks()
         tasks = []
-        for task_id, task in self._download_manager.snapshot_tasks().items():
+        for task in sorted_tasks:
+            task_id = task.task_id
             tasks.append({
                 "id": task_id,
                 "comic": self._comic_to_dict(task.comic),
@@ -73,7 +75,6 @@ class DownloadMixin:
                 "downloadedPages": task.progress_current,
                 "error": task.error_message,
             })
-        tasks.reverse()
         return {"tasks": tasks}
 
     def handle_cancel_download(self, task_id: str) -> Dict:

@@ -15,6 +15,17 @@ from models import ComicInfo, DownloadCancelledError, DownloadTask, DownloadStat
 logger = logging.getLogger(__name__)
 
 
+_STATUS_SORT_PRIORITY: Dict[DownloadStatus, int] = {
+    DownloadStatus.DOWNLOADING: 0,
+    DownloadStatus.PAUSING: 1,
+    DownloadStatus.QUEUED: 2,
+    DownloadStatus.PAUSED: 3,
+    DownloadStatus.FAILED: 4,
+    DownloadStatus.COMPLETED: 5,
+    DownloadStatus.CANCELLED: 6,
+}
+
+
 class DownloadManager:
     """下载管理器 - 管理下载队列和任务状态"""
 
@@ -51,9 +62,10 @@ class DownloadManager:
                 logger.info("Task %s already active (%s), skipping duplicate", task_id, existing.status.value)
                 return task_id
             self.tasks[task_id] = task
-            self.queue.append(task_id)
+            insert_index = self._calculate_insert_index_locked()
+            self.queue.insert(insert_index, task_id)
 
-        logger.info("Added task %s: %s", task_id, comic.title)
+        logger.info("Added task %s: %s at queue index %d", task_id, comic.title, insert_index)
         self._notify_queue_changed()
         self._notify_task_update(task)
         return task_id
@@ -160,33 +172,24 @@ class DownloadManager:
             return self._get_next_task_locked()
 
     def _get_next_task_locked(self) -> Optional[str]:
-        """获取下一个可处理的任务（调用方需持有 _lock）。"""
-        seen: set[str] = set()
+        """获取下一个可处理的任务（调用方需持有 _lock）。
 
-        while self.queue:
-            task_id = self.queue[0]
-            if task_id in seen:
-                return None
-
+        遍历队列查找首个 QUEUED 任务，遇到不可执行任务（FAILED/PAUSED/PAUSING）
+        原地跳过而非轮转到队尾，以保持队列物理顺序与展示顺序一致。
+        COMPLETED/CANCELLED 任务从队列中移除（清理残留）。
+        """
+        for i, task_id in enumerate(self.queue):
             task = self.tasks.get(task_id)
-
             if not task:
-                self.queue.pop(0)
                 continue
-
-            # 跳过已完成的任务（取消/完成）- 从队列移除
             if task.status in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED):
-                self.queue.pop(0)
                 continue
-
-            # 跳过失败/暂停任务，轮转到队列尾部
             if task.status in (DownloadStatus.FAILED, DownloadStatus.PAUSED, DownloadStatus.PAUSING):
-                seen.add(task_id)
-                self.queue.append(self.queue.pop(0))
                 continue
-
-            return task_id
-
+            if task.status == DownloadStatus.QUEUED:
+                self._cleanup_finished_from_queue()
+                return task_id
+        self._cleanup_finished_from_queue()
         return None
 
     def _has_pending_tasks(self) -> bool:
@@ -216,6 +219,44 @@ class DownloadManager:
         """锁内返回所有任务的只读快照（任务 ID -> 任务深拷贝）。"""
         with self._lock:
             return {tid: copy.deepcopy(task) for tid, task in self.tasks.items()}
+
+    def get_sorted_tasks(self) -> List[DownloadTask]:
+        """返回按状态分组排序的任务列表（线程安全）。
+
+        排序规则：
+        1. 未完成任务在前（DOWNLOADING > PAUSING > QUEUED > PAUSED > FAILED）
+        2. 已完成任务在后（COMPLETED > CANCELLED）
+        3. 同组内按 created_at 升序
+        """
+        snapshot = self.snapshot_tasks()
+        return sorted(
+            snapshot.values(),
+            key=lambda t: (_STATUS_SORT_PRIORITY[t.status], t.created_at),
+        )
+
+    def _cleanup_finished_from_queue(self):
+        """从队列中移除所有 COMPLETED/CANCELLED 任务及无效 ID（调用方需持有 _lock）。"""
+        self.queue = [
+            tid for tid in self.queue
+            if tid in self.tasks
+            and self.tasks[tid].status not in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED)
+        ]
+
+    def _calculate_insert_index_locked(self) -> int:
+        """计算新任务在 self.queue 中的插入位置（调用方需持有 _lock）。
+
+        规则：新任务插入到所有未完成任务之后、所有已完成任务之前。
+        若无未完成任务，插入到队列头部（index 0）。
+        若无已完成任务，插入到队列末尾（index == len(queue)）。
+        """
+        insert_index = 0
+        for i, task_id in enumerate(self.queue):
+            task = self.tasks.get(task_id)
+            if task and task.status not in (
+                DownloadStatus.COMPLETED, DownloadStatus.CANCELLED
+            ):
+                insert_index = i + 1
+        return insert_index
 
     def _notify_queue_changed(self):
         """唤醒队列处理线程，响应任务状态变化。"""
