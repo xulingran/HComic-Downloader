@@ -83,14 +83,6 @@ export interface PreviewImageResult {
   dataUri: string
 }
 
-export interface StatisticsData {
-  totalDownloads: number
-  completedDownloads: number
-  failedDownloads: number
-  totalSize: number
-  downloadsByDay: { date: string; count: number }[]
-}
-
 /** Keys that can be persisted via set-config */
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
@@ -167,10 +159,6 @@ export interface IPCMethods {
     params: { task_id: string }
     result: { success: boolean }
   }
-  get_statistics: {
-    params: Record<string, never>
-    result: StatisticsData
-  }
   apply_auth: {
     params: { curl_text: string }
     result: { success: boolean }
@@ -243,7 +231,6 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:set-config': 'set_config',
   'python:get-downloads': 'get_downloads',
   'python:cancel-download': 'cancel_download',
-  'python:get-statistics': 'get_statistics',
   'python:apply-auth': 'apply_auth',
   'python:verify-auth': 'verify_auth',
   'python:shutdown': 'shutdown',
@@ -283,7 +270,6 @@ export interface HcomicAPI {
   setConfig(key: ConfigKey, value: ConfigValue): Promise<{ success: boolean }>
   getDownloads(): Promise<{ tasks: DownloadTask[] }>
   cancelDownload(taskId: string): Promise<{ success: boolean }>
-  getStatistics(): Promise<StatisticsData>
   applyAuth(curlText: string): Promise<{ success: boolean }>
   verifyAuth(): Promise<{ valid: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
@@ -328,7 +314,6 @@ export const IPC_CHANNELS = {
   SET_CONFIG: 'python:set-config',
   GET_DOWNLOADS: 'python:get-downloads',
   CANCEL_DOWNLOAD: 'python:cancel-download',
-  GET_STATISTICS: 'python:get-statistics',
   APPLY_AUTH: 'python:apply-auth',
   VERIFY_AUTH: 'python:verify-auth',
   SHUTDOWN: 'python:shutdown',

@@ -550,10 +550,6 @@ function registerIPCHandlers() {
     return bridge.call('cancel_download', { task_id: taskId })
   })
 
-  ipcMain.handle(IPC_CHANNELS.GET_STATISTICS, async () => {
-    return bridge.call('get_statistics')
-  })
-
   ipcMain.handle(IPC_CHANNELS.APPLY_AUTH, async (_, curlText) => {
     if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) {
       throw new Error('Invalid apply_auth curlText')

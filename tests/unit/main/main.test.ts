@@ -114,8 +114,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 14 original + 8 new + 1 preview URL + 1 preview image + 1 check downloaded = 25 total
-      expect(handleCalls.length).toBe(25)
+      // 14 original + 8 new + 1 preview URL + 1 preview image + 1 check downloaded - 1 statistics = 24 total
+      expect(handleCalls.length).toBe(24)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -131,7 +131,6 @@ describe('main.ts', () => {
       'python:set-config',
       'python:get-downloads',
       'python:cancel-download',
-      'python:get-statistics',
       'python:apply-auth',
       'python:verify-auth',
       'python:shutdown',
@@ -179,7 +178,7 @@ describe('main.ts', () => {
     it('PYTHON_IPC_CHANNEL_MAP values must match Python handler method names', () => {
       const validMethods = new Set([
         'search', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
-        'get_downloads', 'cancel_download', 'get_statistics', 'apply_auth', 'verify_auth', 'shutdown',
+        'get_downloads', 'cancel_download', 'apply_auth', 'verify_auth', 'shutdown',
         'fetch_cover', 'fetch_preview_image', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
         'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',
         'check_downloaded_status',
@@ -300,13 +299,6 @@ describe('main.ts', () => {
       expect(mockBridgeCall).toHaveBeenCalledWith('cancel_download', {
         task_id: 'task-456'
       })
-    })
-
-    it('python:get-statistics delegates with no params', async () => {
-      const handler = handleCalls.find(h => h.channel === 'python:get-statistics')!
-      await handler.handler({})
-
-      expect(mockBridgeCall).toHaveBeenCalledWith('get_statistics')
     })
 
     it('python:apply-auth delegates with curlText transformed to curl_text', async () => {

@@ -179,11 +179,6 @@ describe('preload.ts', () => {
       expect(mockInvoke).toHaveBeenCalledWith('python:get-downloads')
     })
 
-    it('getStatistics should invoke python:get-statistics', async () => {
-      await exposedApi.getStatistics()
-      expect(mockInvoke).toHaveBeenCalledWith('python:get-statistics')
-    })
-
     it('verifyAuth should invoke python:verify-auth', async () => {
       await exposedApi.verifyAuth()
       expect(mockInvoke).toHaveBeenCalledWith('python:verify-auth')

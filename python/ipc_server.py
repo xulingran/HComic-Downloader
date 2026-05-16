@@ -136,7 +136,6 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             "set_config": self.handle_set_config,
             "get_downloads": self.handle_get_downloads,
             "cancel_download": self.handle_cancel_download,
-            "get_statistics": self.handle_get_statistics,
             "shutdown": self.handle_shutdown,
             "pause_task": self.handle_pause_task,
             "resume_task": self.handle_resume_task,

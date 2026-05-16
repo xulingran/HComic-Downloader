@@ -134,37 +134,6 @@ class DownloadHistoryDB:
 
         return result
 
-    def get_statistics(self, days: int = 30) -> dict:
-        """Return download statistics from history."""
-        with self._lock:
-            cursor = self._conn.execute(
-                "SELECT COUNT(*) FROM download_history"
-            )
-            total = cursor.fetchone()[0]
-
-            cutoff = int(time.time()) - days * 86400
-            cursor = self._conn.execute(
-                """SELECT DATE(downloaded_at, 'unixepoch', 'localtime') as day, COUNT(*) as count
-                   FROM download_history
-                   WHERE downloaded_at >= ?
-                   GROUP BY day
-                   ORDER BY day DESC""",
-                (cutoff,),
-            )
-            downloads_by_day = [
-                {"date": row[0], "count": row[1]}
-                for row in cursor
-            ]
-
-            return {
-                "total": total,
-                "completed": total,
-                # TODO: 追踪下载失败计数和文件总大小
-                "failed": 0,
-                "totalSize": 0,
-                "downloadsByDay": downloads_by_day,
-            }
-
     def close(self):
         if self._conn:
             self._conn.close()

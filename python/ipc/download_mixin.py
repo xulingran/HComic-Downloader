@@ -80,27 +80,6 @@ class DownloadMixin:
         success = self._download_manager.cancel_task(task_id)
         return {"success": success}
 
-    def handle_get_statistics(self) -> Dict:
-        try:
-            history_stats = self._history_db.get_statistics()
-            return {
-                "totalDownloads": history_stats["total"],
-                "completedDownloads": history_stats["completed"],
-                "failedDownloads": history_stats["failed"],
-                "totalSize": history_stats["totalSize"],
-                "downloadsByDay": history_stats["downloadsByDay"],
-            }
-        except Exception:
-            logger.warning("Failed to query statistics from history DB", exc_info=True)
-            stats = self._download_manager.get_stats()
-            return {
-                "totalDownloads": stats.get("total", 0),
-                "completedDownloads": stats.get("completed", 0),
-                "failedDownloads": stats.get("failed", 0),
-                "totalSize": 0,
-                "downloadsByDay": [],
-            }
-
     def handle_shutdown(self) -> Dict:
         """Gracefully shut down: cancel active tasks, wait for completion, stop the queue."""
         active_statuses = {"queued", "downloading", "paused", "pausing"}

@@ -64,11 +64,11 @@ describe('useIpc', () => {
   it('应支持返回复杂对象', async () => {
     const complexResult = { data: [1, 2, 3], nested: { key: 'value' } }
     createMockHcomic({
-      getStatistics: vi.fn().mockResolvedValue(complexResult),
+      getConfig: vi.fn().mockResolvedValue(complexResult),
     })
 
     const { result } = renderHook(() => useIpc())
-    const response = await result.current.invoke(() => window.hcomic!.getStatistics())
+    const response = await result.current.invoke(() => window.hcomic!.getConfig())
 
     expect(response).toEqual(complexResult)
   })

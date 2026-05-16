@@ -58,8 +58,6 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_DOWNLOAD, taskId)
   },
 
-  getStatistics: () => ipcRenderer.invoke(IPC_CHANNELS.GET_STATISTICS),
-
   applyAuth: (curlText: unknown) => {
     if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) throw new Error('Invalid curlText')
     return ipcRenderer.invoke(IPC_CHANNELS.APPLY_AUTH, curlText)

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useDownloadStore } from '../stores/useDownloadStore'
-import { useDownload, useStatistics } from '../hooks/useIpc'
+import { useDownload } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
-import type { DownloadStatus, DownloadDetail, StatisticsData } from '@shared/types'
+import type { DownloadStatus, DownloadDetail } from '@shared/types'
 
 type StatusFilter = 'all' | 'active' | 'completed' | 'failed' | 'paused'
 
@@ -24,15 +24,12 @@ function matchStatusFilter(status: DownloadStatus, filter: StatusFilter): boolea
 export function DownloadPage() {
   const { tasks, setTasks, updateTask, isGloballyPaused } = useDownloadStore()
   const { getDownloads, cancelDownload, progress } = useDownload()
-  const { getStatistics } = useStatistics()
   const { handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause } = useDownloadHelper()
   const [failedDialog, setFailedDialog] = useState<DownloadDetail | null>(null)
-  const [stats, setStats] = useState<StatisticsData | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   useEffect(() => {
     loadDownloads()
-    loadStatistics()
   }, [])
 
   useEffect(() => {
@@ -66,17 +63,8 @@ export function DownloadPage() {
     }
   }
 
-  const loadStatistics = async () => {
-    try {
-      const result = await getStatistics()
-      setStats(result)
-    } catch (err) {
-      console.error('Failed to load statistics:', err)
-    }
-  }
-
   const handleRefresh = async () => {
-    await Promise.all([loadDownloads(), loadStatistics()])
+    await loadDownloads()
   }
 
   const handleCancel = async (taskId: string) => {
@@ -127,31 +115,6 @@ export function DownloadPage() {
       </div>
 
 
-
-      {stats && stats.downloadsByDay.length > 0 && (
-        <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm">
-          <h3 className="text-sm font-medium text-[var(--text-primary)] mb-4">
-            下载趋势
-          </h3>
-          <div className="h-48 flex items-end gap-2">
-            {stats.downloadsByDay.map((day) => {
-              const maxCount = Math.max(...stats.downloadsByDay.map(d => d.count))
-              const height = maxCount > 0 ? (day.count / maxCount) * 100 : 0
-              return (
-                <div key={day.date} className="flex-1 flex flex-col items-center gap-1">
-                  <div
-                    className="w-full bg-[var(--accent)] rounded-t"
-                    style={{ height: `${height}%` }}
-                  />
-                  <span className="text-xs text-[var(--text-secondary)]">
-                    {day.date.slice(5)}
-                  </span>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      )}
 
       {tasks.length === 0 ? (
         <div className="text-center text-[var(--text-secondary)] py-12">

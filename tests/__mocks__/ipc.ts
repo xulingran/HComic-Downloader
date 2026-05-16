@@ -27,7 +27,6 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, any>
     setConfig: vi.fn().mockResolvedValue({ success: true }),
     getDownloads: vi.fn().mockResolvedValue({ tasks: [] }),
     cancelDownload: vi.fn().mockResolvedValue({ success: true }),
-    getStatistics: vi.fn().mockResolvedValue({ totalDownloads: 0, completedDownloads: 0, failedDownloads: 0, totalSize: 0, downloadsByDay: [] }),
     applyAuth: vi.fn().mockResolvedValue({ success: true }),
     verifyAuth: vi.fn().mockResolvedValue({ valid: false, message: '' }),
     shutdown: vi.fn().mockResolvedValue({ success: true, cancelledTasks: 0 }),

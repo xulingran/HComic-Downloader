@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { DownloadTask, ComicInfo } from '@shared/types'
 
 // Hoist mock functions so they are available inside vi.mock factories
-const { mockGetDownloads, mockCancelDownload, mockGetStatistics, mockStoreState } = vi.hoisted(() => {
+const { mockGetDownloads, mockCancelDownload, mockStoreState } = vi.hoisted(() => {
   const state = {
     tasks: [] as DownloadTask[],
     setTasks: vi.fn(),
@@ -16,7 +16,6 @@ const { mockGetDownloads, mockCancelDownload, mockGetStatistics, mockStoreState 
   return {
     mockGetDownloads: vi.fn(),
     mockCancelDownload: vi.fn(),
-    mockGetStatistics: vi.fn(),
     mockStoreState: state
   }
 })
@@ -40,9 +39,6 @@ vi.mock('@/hooks/useIpc', () => ({
     startDownload: vi.fn(),
     checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
     progress: {},
-  }),
-  useStatistics: vi.fn().mockReturnValue({
-    getStatistics: mockGetStatistics,
   }),
 }))
 
@@ -81,18 +77,6 @@ const mockComic: ComicInfo = {
   source: 'test'
 }
 
-const mockStats = {
-  totalDownloads: 100,
-  completedDownloads: 80,
-  failedDownloads: 20,
-  totalSize: 1073741824, // 1 GB
-  downloadsByDay: [
-    { date: '2026-01-01', count: 10 },
-    { date: '2026-01-02', count: 20 },
-    { date: '2026-01-03', count: 5 },
-  ]
-}
-
 describe('DownloadPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -100,7 +84,6 @@ describe('DownloadPage', () => {
     mockStoreState.isGloballyPaused = false
     mockGetDownloads.mockResolvedValue({ tasks: [] })
     mockCancelDownload.mockResolvedValue({ success: true })
-    mockGetStatistics.mockResolvedValue(mockStats)
   })
 
   it('renders page content with title', () => {
@@ -201,12 +184,6 @@ describe('DownloadPage', () => {
     expect(mockGetDownloads).toHaveBeenCalled()
   })
 
-  it('calls getStatistics on mount', () => {
-    render(<DownloadPage />)
-
-    expect(mockGetStatistics).toHaveBeenCalled()
-  })
-
   it('can trigger refresh', async () => {
     render(<DownloadPage />)
 
@@ -214,64 +191,5 @@ describe('DownloadPage', () => {
     await userEvent.click(refreshButton)
 
     expect(mockGetDownloads).toHaveBeenCalledTimes(2)
-    expect(mockGetStatistics).toHaveBeenCalledTimes(2)
-  })
-
-  // ── Statistics tests ──
-
-  it('renders downloads trend chart when data exists', async () => {
-    mockGetStatistics.mockResolvedValue(mockStats)
-
-    render(<DownloadPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText('下载趋势')).toBeInTheDocument()
-    })
-    expect(screen.getByText('01-01')).toBeInTheDocument()
-    expect(screen.getByText('01-02')).toBeInTheDocument()
-    expect(screen.getByText('01-03')).toBeInTheDocument()
-  })
-
-  it('does not render trend chart when downloadsByDay is empty', async () => {
-    mockGetStatistics.mockResolvedValue({
-      ...mockStats,
-      downloadsByDay: [],
-    })
-
-    render(<DownloadPage />)
-
-    await waitFor(() => {
-      expect(screen.getByText('下载管理')).toBeInTheDocument()
-    })
-    expect(screen.queryByText('下载趋势')).not.toBeInTheDocument()
-  })
-
-  it('does not render stat cards after removal', async () => {
-    mockGetStatistics.mockResolvedValue(mockStats)
-    render(<DownloadPage />)
-    await waitFor(() => {
-      expect(screen.getByText('下载管理')).toBeInTheDocument()
-    })
-    expect(screen.queryByText('总下载')).not.toBeInTheDocument()
-    expect(screen.queryByText('已完成')).not.toBeInTheDocument()
-    expect(screen.queryByText('失败')).not.toBeInTheDocument()
-    expect(screen.queryByText('总大小')).not.toBeInTheDocument()
-  })
-
-  it('still renders trend chart after stat cards removal', async () => {
-    mockGetStatistics.mockResolvedValue(mockStats)
-    render(<DownloadPage />)
-    await waitFor(() => {
-      expect(screen.getByText('下载趋势')).toBeInTheDocument()
-    })
-  })
-
-  it('does not render statistics error message', async () => {
-    mockGetStatistics.mockRejectedValue(new Error('IPC error'))
-    render(<DownloadPage />)
-    await waitFor(() => {
-      expect(screen.getByText('下载管理')).toBeInTheDocument()
-    })
-    expect(screen.queryByText(/统计信息加载失败/)).not.toBeInTheDocument()
   })
 })

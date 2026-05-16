@@ -148,16 +148,6 @@ export function useAvailableFonts() {
   return { getAvailableFonts }
 }
 
-export function useStatistics() {
-  const { invoke } = useIpc()
-
-  const getStatistics = useCallback(async () => {
-    return invoke(() => window.hcomic!.getStatistics())
-  }, [invoke])
-
-  return { getStatistics }
-}
-
 export function useAuth() {
   const { invoke } = useIpc()
 
