@@ -82,3 +82,67 @@ describe('useReaderSettings', () => {
     expect(result.current.imageWidth).toBe(70)
   })
 })
+
+describe('displayMode', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('returns "scroll" as default displayMode', () => {
+    const { result } = renderHook(() => useReaderSettings())
+    expect(result.current.displayMode).toBe('scroll')
+  })
+
+  it('reads saved displayMode from localStorage', () => {
+    localStorage.setItem('hcomic-reader-display-mode', 'double')
+    const { result } = renderHook(() => useReaderSettings())
+    expect(result.current.displayMode).toBe('double')
+  })
+
+  it('writes updated displayMode to localStorage', () => {
+    const { result } = renderHook(() => useReaderSettings())
+    act(() => {
+      result.current.setDisplayMode('single')
+    })
+    expect(result.current.displayMode).toBe('single')
+    expect(localStorage.getItem('hcomic-reader-display-mode')).toBe('single')
+  })
+
+  it('falls back to "scroll" for invalid localStorage values', () => {
+    localStorage.setItem('hcomic-reader-display-mode', 'invalid')
+    const { result } = renderHook(() => useReaderSettings())
+    expect(result.current.displayMode).toBe('scroll')
+  })
+})
+
+describe('displayMode', () => {
+  beforeEach(() => {
+    localStorage.clear()
+  })
+
+  it('returns "scroll" as default displayMode', () => {
+    const { result } = renderHook(() => useReaderSettings())
+    expect(result.current.displayMode).toBe('scroll')
+  })
+
+  it('reads saved displayMode from localStorage', () => {
+    localStorage.setItem('hcomic-reader-display-mode', 'double')
+    const { result } = renderHook(() => useReaderSettings())
+    expect(result.current.displayMode).toBe('double')
+  })
+
+  it('writes updated displayMode to localStorage', () => {
+    const { result } = renderHook(() => useReaderSettings())
+    act(() => {
+      result.current.setDisplayMode('single')
+    })
+    expect(result.current.displayMode).toBe('single')
+    expect(localStorage.getItem('hcomic-reader-display-mode')).toBe('single')
+  })
+
+  it('falls back to "scroll" for invalid localStorage values', () => {
+    localStorage.setItem('hcomic-reader-display-mode', 'invalid')
+    const { result } = renderHook(() => useReaderSettings())
+    expect(result.current.displayMode).toBe('scroll')
+  })
+})

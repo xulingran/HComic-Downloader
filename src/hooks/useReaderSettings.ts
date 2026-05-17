@@ -11,6 +11,12 @@ const IMAGE_WIDTH_MIN = 30
 const IMAGE_WIDTH_MAX = 100
 const IMAGE_WIDTH_DEFAULT = 70
 
+const DISPLAY_MODE_KEY = 'hcomic-reader-display-mode'
+
+const VALID_DISPLAY_MODES = ['scroll', 'single', 'double'] as const
+export type DisplayMode = typeof VALID_DISPLAY_MODES[number]
+const DISPLAY_MODE_DEFAULT: DisplayMode = 'scroll'
+
 function readStoredValue(key: string, min: number, max: number, fallback: number): number {
   const raw = localStorage.getItem(key)
   if (raw === null) return fallback
@@ -28,6 +34,14 @@ export function useReaderSettings() {
     readStoredValue(IMAGE_WIDTH_KEY, IMAGE_WIDTH_MIN, IMAGE_WIDTH_MAX, IMAGE_WIDTH_DEFAULT)
   )
 
+  const [displayMode, setDisplayModeInternal] = useState<DisplayMode>(() => {
+    const raw = localStorage.getItem(DISPLAY_MODE_KEY)
+    if (raw && (VALID_DISPLAY_MODES as readonly string[]).includes(raw)) {
+      return raw as DisplayMode
+    }
+    return DISPLAY_MODE_DEFAULT
+  })
+
   const setPageGap = useCallback((value: number) => {
     const clamped = Math.max(PAGE_GAP_MIN, Math.min(PAGE_GAP_MAX, value))
     setPageGapInternal(clamped)
@@ -40,5 +54,12 @@ export function useReaderSettings() {
     localStorage.setItem(IMAGE_WIDTH_KEY, String(clamped))
   }, [])
 
-  return { pageGap, imageWidth, setPageGap, setImageWidth }
+  const setDisplayMode = useCallback((value: DisplayMode) => {
+    if ((VALID_DISPLAY_MODES as readonly string[]).includes(value)) {
+      setDisplayModeInternal(value)
+      localStorage.setItem(DISPLAY_MODE_KEY, value)
+    }
+  }, [])
+
+  return { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode }
 }
