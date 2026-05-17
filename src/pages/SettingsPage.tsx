@@ -37,7 +37,7 @@ interface SettingsPageProps {
 export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) {
   const { themeMode, cardStyle, sfwMode, setThemeMode, setCardStyle, setSfwMode } = useSettingsStore()
   const loginSectionRef = useRef<HTMLDivElement>(null!)
-  const { getConfig, setConfig, openDownloadDir } = useConfig()
+  const { getConfig, setConfig, openDownloadDir, selectDirectory } = useConfig()
   const { applyAuth, verifyAuth } = useAuth()
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
@@ -287,6 +287,13 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         onTextConfigChange={handleTextConfigChange}
         onTextConfigBlur={handleTextConfigBlur}
         openDownloadDir={openDownloadDir}
+        onSelectDirectory={async () => {
+          const result = await selectDirectory('选择下载目录', config.downloadDir || undefined)
+          if (!result.canceled && result.filePaths.length > 0) {
+            handleTextConfigChange('downloadDir', result.filePaths[0])
+            handleTextConfigBlur('downloadDir')
+          }
+        }}
         setSaveError={setSaveError}
         onOpenMigration={() => setIsMigrationOpen(true)}
       />
@@ -340,6 +347,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         isOpen={isMigrationOpen}
         onClose={() => setIsMigrationOpen(false)}
         currentDownloadDir={config.downloadDir}
+        onSelectDirectory={selectDirectory}
       />
     </div>
   )

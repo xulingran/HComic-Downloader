@@ -170,7 +170,8 @@ function validateDownloadProgress(params: unknown): DownloadProgressEvent {
     throw new Error('Invalid download progress: total')
   }
   if (typeof p.current === 'number' && typeof p.total === 'number' && p.current > p.total) {
-    throw new Error('Invalid download progress: current exceeds total')
+    console.warn(`Invalid download progress: current (${p.current}) exceeds total (${p.total}), clamping for task ${p.taskId}`)
+    p.current = p.total
   }
   if (typeof p.title !== 'string' || p.title.length === 0 || p.title.length > 256) {
     throw new Error('Invalid download progress: title')
@@ -448,16 +449,16 @@ function registerIPCHandlers() {
       const failCount = failedTasks.length
       if (successCount === 1 && failCount === 0) {
         sendNativeNotification(
-          '下载完成',
-          `${completedTasks[0].title} 已下载完成`
+          app.getName(),
+          `下载完成：${completedTasks[0].title}`
         )
       } else {
         const parts: string[] = []
         if (successCount > 0) parts.push(`成功 ${successCount} 本`)
         if (failCount > 0) parts.push(`失败 ${failCount} 本`)
         sendNativeNotification(
-          '批量下载完成',
-          parts.join('，')
+          app.getName(),
+          `批量下载完成：${parts.join('，')}`
         )
       }
       // Reset counters for next batch
@@ -619,6 +620,17 @@ function registerIPCHandlers() {
   // ── Phase 1: Download directory ──
   ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async () => {
     return bridge.call('open_download_dir')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (_, title: string, defaultPath?: string) => {
+    const win = mainWindow
+    if (!win) return { canceled: true, filePaths: [] }
+    const result = await dialog.showOpenDialog(win, {
+      title,
+      defaultPath,
+      properties: ['openDirectory', 'createDirectory'],
+    })
+    return { canceled: result.canceled, filePaths: result.filePaths }
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, async (_, taskId: string) => {

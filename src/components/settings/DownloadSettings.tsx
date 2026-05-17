@@ -17,6 +17,7 @@ interface DownloadSettingsProps {
   onTextConfigChange: (key: ConfigKey, value: string) => void
   onTextConfigBlur: (key: ConfigKey) => void
   openDownloadDir: () => Promise<{ success: boolean }>
+  onSelectDirectory: () => Promise<void>
   setSaveError: (err: string | null) => void
   onOpenMigration: () => void
 }
@@ -29,6 +30,7 @@ export function DownloadSettings({
   onTextConfigChange,
   onTextConfigBlur,
   openDownloadDir,
+  onSelectDirectory,
   setSaveError,
   onOpenMigration,
 }: DownloadSettingsProps) {
@@ -70,6 +72,13 @@ export function DownloadSettings({
               className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                          text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
             />
+            <button
+              onClick={onSelectDirectory}
+              className="px-3 py-2 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                         text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] whitespace-nowrap"
+            >
+              浏览
+            </button>
             <button
               onClick={async () => {
                 try { await openDownloadDir() } catch (err: any) {

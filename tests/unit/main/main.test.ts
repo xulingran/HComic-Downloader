@@ -55,6 +55,7 @@ vi.mock('electron', () => {
       whenReady: vi.fn().mockResolvedValue(undefined),
       on: vi.fn(),
       quit: vi.fn(),
+      getName: vi.fn().mockReturnValue('HComicDownloader'),
       setAsDefaultProtocolClient: vi.fn(),
     },
     BrowserWindow: MockBrowserWindow,
@@ -114,8 +115,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 14 original + 8 new + 1 preview URL + 1 preview image + 1 check downloaded - 1 statistics = 24 total
-      expect(handleCalls.length).toBe(24)
+      // 24 previous + 6 migration + 1 resolve-unmatched + 1 select-directory = 32 total
+      expect(handleCalls.length).toBe(32)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -147,6 +148,14 @@ describe('main.ts', () => {
       'python:get-download-detail',
       'python:get-preview-urls',
       'python:check-downloaded-status',
+      'python:start-migration',
+      'python:confirm-migration',
+      'python:pause-migration',
+      'python:resume-migration',
+      'python:cancel-migration',
+      'python:get-migration-status',
+      'python:resolve-unmatched',
+      'select-directory',
     ]
 
     expectedChannels.forEach(channel => {
@@ -181,7 +190,8 @@ describe('main.ts', () => {
         'get_downloads', 'cancel_download', 'apply_auth', 'verify_auth', 'shutdown',
         'fetch_cover', 'fetch_preview_image', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
         'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',
-        'check_downloaded_status',
+        'check_downloaded_status', 'start_migration', 'confirm_migration', 'pause_migration', 'resume_migration',
+        'cancel_migration', 'get_migration_status', 'resolve_unmatched',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),
@@ -774,8 +784,8 @@ describe('main.ts', () => {
 
       expect(MockNotification).toHaveBeenCalledTimes(1)
       expect(MockNotification).toHaveBeenCalledWith({
-        title: '下载完成',
-        body: 'Active Comic 已下载完成',
+        title: 'HComicDownloader',
+        body: '下载完成：Active Comic',
       })
     })
 

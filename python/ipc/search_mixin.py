@@ -1,16 +1,27 @@
 """Search, favourites, and preview URL mixin for IPCServer."""
 
+from __future__ import annotations
+
 import json
 import logging
-from typing import Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from .types import AuthRequiredError
+
+if TYPE_CHECKING:
+    from config import Config
+    from parser import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 
 
 class SearchMixin:
     """Mixin providing search, favourites, and preview URL handler methods."""
+
+    config: Config
+    parser: MultiSourceParser
+    _validate_preview_image_url: Callable[[str], bool]
+    _do_fetch_preview_image: Callable[..., Any]
 
     def _comic_to_dict(self, comic) -> Dict:
         cover_url = comic.cover_url or ""
@@ -33,7 +44,7 @@ class SearchMixin:
             "pages": comic.pages if hasattr(comic, 'pages') else None,
         }
 
-    def _build_and_prepare_comic(self, data: dict, comic_id: str = None):
+    def _build_and_prepare_comic(self, data: dict, comic_id: Optional[str] = None):
         """Build a ComicInfo from frontend data and prepare it for download.
 
         Ensures the comic has full metadata (author, title, pages, etc.)
@@ -62,7 +73,7 @@ class SearchMixin:
                 comic = prepared
         return comic
 
-    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str = None) -> Dict:
+    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: Optional[str] = None) -> Dict:
         effective_source = source if source in ("hcomic", "moeimg") else self.config.default_source
         effective_query = query
         if effective_source == "moeimg" and mode in ("author", "tag"):

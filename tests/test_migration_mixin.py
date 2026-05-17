@@ -6,6 +6,19 @@ from unittest.mock import MagicMock, PropertyMock, patch
 from python.ipc.migration_mixin import MigrationMixin
 
 
+def _make_migration_state(**overrides):
+    state = MagicMock()
+    state.completed_items = overrides.get("completed_items", 0)
+    state.failed_items = overrides.get("failed_items", [])
+    state.target_dir = overrides.get("target_dir", "/tmp")
+    state.status = overrides.get("status", "completed")
+    state.updated_at = overrides.get("updated_at", 2)
+    state.started_at = overrides.get("started_at", 1)
+    if "id" in overrides:
+        state.id = overrides["id"]
+    return state
+
+
 @pytest.fixture
 def mixin(tmp_path):
     m = MigrationMixin()
@@ -23,10 +36,7 @@ class TestDMRecovery:
         dm = MagicMock()
         mixin._download_manager = dm
         mixin._migration_engine = MagicMock()
-        state = MagicMock()
-        state.id = "test-id"
-        state.status = "ready"
-        mixin._migration_engine.state = state
+        mixin._migration_engine.state = _make_migration_state(id="test-id", status="ready")
 
         with patch.object(mixin, '_run_migration'):
             mixin.handle_confirm_migration("test-id")
@@ -40,6 +50,7 @@ class TestDMRecovery:
         mixin._download_manager = dm
         mixin._migration_engine = MagicMock()
         mixin._migration_engine.execute = MagicMock()
+        mixin._migration_engine.state = _make_migration_state(status="completed", completed_items=1)
 
         mixin._run_migration()
 
@@ -52,6 +63,7 @@ class TestDMRecovery:
         mixin._download_manager = dm
         mixin._migration_engine = MagicMock()
         mixin._migration_engine.execute = MagicMock(side_effect=RuntimeError("boom"))
+        mixin._migration_engine.state = _make_migration_state(status="error")
 
         mixin._run_migration()
 
@@ -63,9 +75,7 @@ class TestDMRecovery:
         dm = MagicMock()
         mixin._download_manager = dm
         mixin._migration_engine = MagicMock()
-        state = MagicMock()
-        state.status = "running"
-        mixin._migration_engine.state = state
+        mixin._migration_engine.state = _make_migration_state(status="running")
 
         mixin.handle_cancel_migration()
 
@@ -77,6 +87,7 @@ class TestDMRecovery:
             del mixin._download_manager
         mixin._migration_engine = MagicMock()
         mixin._migration_engine.execute = MagicMock()
+        mixin._migration_engine.state = _make_migration_state(status="completed")
 
         mixin._run_migration()
 
@@ -84,9 +95,7 @@ class TestDMRecovery:
         if hasattr(mixin, '_download_manager'):
             del mixin._download_manager
         mixin._migration_engine = MagicMock()
-        state = MagicMock()
-        state.status = "running"
-        mixin._migration_engine.state = state
+        mixin._migration_engine.state = _make_migration_state(status="running")
 
         result = mixin.handle_cancel_migration()
 
@@ -98,6 +107,7 @@ class TestDMRecovery:
         mixin._download_manager = dm
         mixin._migration_engine = MagicMock()
         mixin._migration_engine.execute = MagicMock()
+        mixin._migration_engine.state = _make_migration_state(status="completed")
 
         mixin._run_migration()
 
@@ -114,9 +124,7 @@ class TestLockProtection:
 
     def test_resume_migration_holds_lock(self, mixin):
         mixin._migration_engine = MagicMock()
-        state = MagicMock()
-        state.status = "paused"
-        mixin._migration_engine.state = state
+        mixin._migration_engine.state = _make_migration_state(status="paused")
 
         with patch.object(mixin, '_run_migration'):
             result = mixin.handle_resume_migration()
@@ -126,19 +134,14 @@ class TestLockProtection:
 
     def test_resume_migration_invalid_state(self, mixin):
         mixin._migration_engine = MagicMock()
-        state = MagicMock()
-        state.status = "running"
-        mixin._migration_engine.state = state
+        mixin._migration_engine.state = _make_migration_state(status="running")
 
         with pytest.raises(RuntimeError, match="No paused migration"):
             mixin.handle_resume_migration()
 
     def test_pause_and_confirm_are_serialized(self, mixin):
         mixin._migration_engine = MagicMock()
-        state = MagicMock()
-        state.id = "test-id"
-        state.status = "ready"
-        mixin._migration_engine.state = state
+        mixin._migration_engine.state = _make_migration_state(id="test-id", status="ready")
 
         pause_order = []
         original_pause = mixin._migration_engine.pause

@@ -1,17 +1,29 @@
 """Cover image fetching mixin for IPCServer."""
 
+from __future__ import annotations
+
 import base64
 import logging
+from typing import TYPE_CHECKING, Any, Callable, Dict
 from urllib.parse import urlparse
 
 from .image_utils import detect_image_type
-from utils import KB
+
+if TYPE_CHECKING:
+    from parser import MultiSourceParser
+    from ipc.cover_cache import CoverCacheDB
 
 logger = logging.getLogger(__name__)
+
+MAX_COVER_SIZE = 10 * 1024 * 1024  # 10MB — high-res manga covers
 
 
 class CoverMixin:
     """Mixin providing cover image fetch and cache methods."""
+
+    parser: MultiSourceParser
+    _cover_cache: CoverCacheDB
+    _write_response: Callable[[Dict], None]
 
     ALLOWED_COVER_DOMAINS = {
         "h-comic.link",
@@ -70,8 +82,8 @@ class CoverMixin:
         ):
             raise ValueError(f"Redirect target domain not allowed: {final_hostname}")
 
-        # Read up to 500KB + 1 byte - if we get more, the image is too large
-        max_size = 500 * KB
+        # Read up to MAX_COVER_SIZE + 1 byte - if we get more, the image is too large
+        max_size = MAX_COVER_SIZE
         chunks: list[bytes] = []
         total = 0
         for chunk in response.iter_content(chunk_size=8192):

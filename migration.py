@@ -350,6 +350,8 @@ class MigrationEngine:
 
     def _move_item(self, item: MigrationPlanItem):
         """Move a single file or directory."""
+        if self._state is None:
+            raise RuntimeError("Migration state not initialized")
         os.makedirs(os.path.dirname(item.target), exist_ok=True)
 
         if not os.path.exists(item.source):

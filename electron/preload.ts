@@ -107,6 +107,12 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   openDownloadDir: () => ipcRenderer.invoke(IPC_CHANNELS.OPEN_DOWNLOAD_DIR),
 
+  selectDirectory: (title: unknown, defaultPath?: unknown) => {
+    if (typeof title !== 'string' || title.length === 0 || title.length > 256) throw new Error('Invalid title')
+    if (defaultPath !== undefined && defaultPath !== null && typeof defaultPath !== 'string') throw new Error('Invalid defaultPath')
+    return ipcRenderer.invoke(IPC_CHANNELS.SELECT_DIRECTORY, title, defaultPath ?? undefined)
+  },
+
   getDownloadDetail: (taskId: unknown) => {
     if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
     return ipcRenderer.invoke(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, taskId)

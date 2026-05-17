@@ -135,7 +135,7 @@ class DownloadCancelledError(Exception):
         temp_dir: 下载时使用的临时目录，用于取消后清理
     """
 
-    def __init__(self, message: str = "Download cancelled", temp_dir: str = None):
+    def __init__(self, message: str = "Download cancelled", temp_dir: Optional[str] = None):
         super().__init__(message)
         self.temp_dir = temp_dir
 

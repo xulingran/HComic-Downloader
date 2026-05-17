@@ -125,7 +125,11 @@ export function useConfig() {
     return invoke(() => window.hcomic!.openDownloadDir())
   }, [invoke])
 
-  return { getConfig, setConfig, openDownloadDir }
+  const selectDirectory = useCallback(async (title: string, defaultPath?: string) => {
+    return invoke(() => window.hcomic!.selectDirectory(title, defaultPath))
+  }, [invoke])
+
+  return { getConfig, setConfig, openDownloadDir, selectDirectory }
 }
 
 export function useProxyStatus() {

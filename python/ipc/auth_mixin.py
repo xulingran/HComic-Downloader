@@ -1,15 +1,26 @@
 """Authentication and favourites mixin for IPCServer."""
 
+from __future__ import annotations
+
 import logging
-from typing import Dict
+from typing import TYPE_CHECKING, Any, Dict
 
 from .types import _get_config_path
+
+if TYPE_CHECKING:
+    from config import Config
+    from parser import MultiSourceParser
+    from downloader import ComicDownloader
 
 logger = logging.getLogger(__name__)
 
 
 class AuthMixin:
     """Mixin providing authentication handler methods."""
+
+    config: Config
+    parser: MultiSourceParser
+    downloader: ComicDownloader
 
     def handle_apply_auth(self, curl_text: str) -> Dict:
         if not curl_text or not curl_text.strip():

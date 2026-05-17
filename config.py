@@ -4,6 +4,7 @@ import logging
 import os
 from pathlib import Path
 from dataclasses import dataclass, field, fields as dc_fields
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -124,7 +125,7 @@ class Config:
             self.auth_user_agent = self.source_auth[source]["user_agent"]
 
     @classmethod
-    def load(cls, config_path: str = None) -> "Config":
+    def load(cls, config_path: Optional[str] = None) -> "Config":
         """从文件加载配置，如果不存在则返回默认配置"""
         if config_path and os.path.exists(config_path):
             try:

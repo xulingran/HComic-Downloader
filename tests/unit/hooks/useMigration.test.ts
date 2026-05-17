@@ -62,6 +62,7 @@ describe('useMigration', () => {
         completed: 3,
         total: 10,
         currentFile: '',
+        speed: 0,
         phase: 'moving',
       })
     })

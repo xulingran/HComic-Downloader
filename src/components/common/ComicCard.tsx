@@ -33,6 +33,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
     else onClick?.(comic)
   }
   const handleReaderClick = () => {
+    if (batchMode) { onToggleSelect?.(comic); return }
     if (!sfwMode && onOpenReader) {
       onOpenReader(comic)
     }
@@ -151,6 +152,7 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
     else onClick?.(comic)
   }
   const handleReaderClick = () => {
+    if (batchMode) { onToggleSelect?.(comic); return }
     if (!sfwMode && onOpenReader) {
       onOpenReader(comic)
     }

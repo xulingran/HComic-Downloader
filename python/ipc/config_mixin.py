@@ -1,15 +1,35 @@
 """Configuration management mixin for IPCServer."""
 
+from __future__ import annotations
+
 import logging
-from typing import Any, Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict
 
 from .types import CONFIG_KEY_MAP, _get_config_path
+
+if TYPE_CHECKING:
+    from config import Config
+    from downloader import ComicDownloader
+    from cbz_builder import CBZBuilder
+    from download_manager import ComicDownloadManager
+    from parser import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 
 
 class ConfigMixin:
     """Mixin providing all configuration management handler methods."""
+
+    config: Config
+    _download_manager: ComicDownloadManager
+    downloader: ComicDownloader
+    cbz_builder: CBZBuilder
+    parser: MultiSourceParser
+    _write_response: Callable[[Dict], None]
+
+    def _apply_retry_times(self, v: int) -> None:
+        self.downloader.retry_times = v
+        self.downloader.rebuild_session()
 
     def _apply_runtime(self, key: str, value: Any) -> None:
         """Apply a config value to the live runtime objects."""
@@ -20,7 +40,7 @@ class ConfigMixin:
             'autoRetryMaxAttempts': lambda v: self._download_manager.set_auto_retry_max_attempts(v),
             'concurrentDownloads': lambda v: setattr(self.downloader, 'concurrent_downloads', v),
             'timeout': lambda v: setattr(self.downloader, 'timeout', v),
-            'retryTimes': lambda v: (setattr(self.downloader, 'retry_times', v), self.downloader.rebuild_session()),
+            'retryTimes': self._apply_retry_times,
             'cbzFilenameTemplate': lambda v: setattr(self.cbz_builder, 'filename_template', v),
             'defaultSource': lambda v: self.parser.set_source(v),
         }

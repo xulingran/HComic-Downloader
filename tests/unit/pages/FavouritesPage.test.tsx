@@ -36,6 +36,18 @@ vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' })
 }))
 
+vi.mock('@/stores/useFavouritesStore', () => ({
+  useFavouritesStore: vi.fn().mockReturnValue({
+    comics: [],
+    pagination: null,
+    currentPage: 1,
+    downloadedStatus: {},
+    hasCache: false,
+    setCache: vi.fn(),
+    clearCache: vi.fn(),
+  }),
+}))
+
 vi.mock('@/components/common/ComicCard', () => ({
   ComicCard: ({ comic }: { comic: ComicInfo }) => (
     <div data-testid="comic-card">{comic.title}</div>

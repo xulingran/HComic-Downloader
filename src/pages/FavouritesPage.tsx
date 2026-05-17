@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useFavourites } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
@@ -6,9 +6,61 @@ import { ComicCard } from '../components/common/ComicCard'
 import { ComicReaderModal } from '../components/ComicReaderModal'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
+import { useFavouritesStore } from '../stores/useFavouritesStore'
 
 interface FavouritesPageProps {
   onNavigateToSettings?: () => void
+}
+
+function PageJumpDialog({
+  totalPages,
+  onJump,
+  onClose,
+}: {
+  totalPages: number
+  onJump: (page: number) => void
+  onClose: () => void
+}) {
+  const [jumpPage, setJumpPage] = useState('')
+  const handleJump = () => {
+    const page = parseInt(jumpPage, 10)
+    if (page >= 1 && page <= totalPages) {
+      onJump(page)
+    }
+  }
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-medium text-[var(--text-primary)] mb-4">跳转到指定页</h3>
+        <input
+          type="number"
+          value={jumpPage}
+          onChange={(e) => setJumpPage(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter') handleJump() }}
+          min={1}
+          max={totalPages}
+          placeholder={`1 - ${totalPages}`}
+          className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                     text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+          autoFocus
+        />
+        <div className="flex justify-end gap-2 mt-4">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+          >
+            取消
+          </button>
+          <button
+            onClick={handleJump}
+            className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white"
+          >
+            跳转
+          </button>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
@@ -30,15 +82,79 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     exitBatchMode,
   } = useBatchSelect()
   const { cardStyle } = useSettingsStore()
+  const cache = useFavouritesStore()
   const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
   const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
+  const [showJumpDialog, setShowJumpDialog] = useState(false)
   const latestPageRef = useRef(1)
+  const mountedRef = useRef(true)
 
   const getTaskId = (comic: ComicInfo) =>
     `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
 
+  const loadFavourites = useCallback(async (page: number = 1) => {
+    setIsLoading(true)
+    setError(null)
+    setNeedsLogin(false)
+
+    try {
+      const result = await getFavourites(page)
+      setComics(result.comics)
+      setPagination(result.pagination ?? null)
+      setNeedsLogin(result.needsLogin)
+      setCurrentPage(page)
+
+      const pageSnapshot = page
+      latestPageRef.current = pageSnapshot
+      const cacheData = {
+        comics: result.comics,
+        pagination: result.pagination ?? null,
+        currentPage: page,
+        downloadedStatus: {} as Record<string, 'downloaded' | 'unknown'>,
+      }
+      checkDownloadedStatus(result.comics).then((statusResult) => {
+        if (latestPageRef.current !== pageSnapshot) return
+        setDownloadedStatus(statusResult.statusMap)
+        cache.setCache({ ...cacheData, downloadedStatus: statusResult.statusMap })
+      }).catch((err) => {
+        console.error('Failed to check downloaded status:', err)
+        cache.setCache(cacheData)
+      })
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load favourites'
+      if ((err as any)?.code === -32001 || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
+        setNeedsLogin(true)
+      } else {
+        setError(msg)
+      }
+    } finally {
+      setIsLoading(false)
+    }
+  }, [getFavourites, checkDownloadedStatus, cache.setCache])
+
   useEffect(() => {
-    loadFavourites(1)
+    mountedRef.current = true
+    if (cache.hasCache) {
+      setComics(cache.comics)
+      setPagination(cache.pagination)
+      setCurrentPage(cache.currentPage)
+      setDownloadedStatus(cache.downloadedStatus)
+
+      // 后台静默刷新下载状态，不影响展示和页码
+      checkDownloadedStatus(cache.comics).then((statusResult) => {
+        if (!mountedRef.current) return
+        setDownloadedStatus(statusResult.statusMap)
+        cache.setCache({
+          comics: cache.comics,
+          pagination: cache.pagination,
+          currentPage: cache.currentPage,
+          downloadedStatus: statusResult.statusMap,
+        })
+      }).catch((err) => { console.debug('Background downloaded status refresh failed:', err) })
+    } else {
+      loadFavourites(1)
+    }
+    return () => { mountedRef.current = false }
   }, [])
 
   useEffect(() => {
@@ -53,38 +169,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     })
     return unsubscribe
   }, [])
-
-  const loadFavourites = async (page: number = 1) => {
-    setIsLoading(true)
-    setError(null)
-    setNeedsLogin(false)
-
-    try {
-      const result = await getFavourites(page)
-      setComics(result.comics)
-      setPagination(result.pagination ?? null)
-      setNeedsLogin(result.needsLogin)
-      setCurrentPage(page)
-
-      const pageSnapshot = page
-      latestPageRef.current = pageSnapshot
-      checkDownloadedStatus(result.comics).then((statusResult) => {
-        if (latestPageRef.current !== pageSnapshot) return
-        setDownloadedStatus(statusResult.statusMap)
-      }).catch((err) => {
-        console.error('Failed to check downloaded status:', err)
-      })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to load favourites'
-      if ((err as any)?.code === -32001 || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
-        setNeedsLogin(true)
-      } else {
-        setError(msg)
-      }
-    } finally {
-      setIsLoading(false)
-    }
-  }
 
   const handleComicClick = (comic: ComicInfo) => {
     console.log('Comic clicked:', comic)
@@ -130,7 +214,11 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             收藏夹
           </h2>
           <button
-            onClick={() => loadFavourites(currentPage)}
+            onClick={() => {
+              cache.clearCache()
+              setComics([])
+              loadFavourites(1)
+            }}
             className="px-3 py-1 text-sm bg-[var(--bg-primary)] border border-[var(--border)]
                        rounded-lg hover:bg-[var(--bg-secondary)] transition-colors"
           >
@@ -181,7 +269,11 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             >
               上一页
             </button>
-            <span className="px-2 py-0.5 text-xs text-[var(--text-primary)]">
+            <span
+              onClick={() => setShowJumpDialog(true)}
+              className="px-2 py-0.5 text-xs text-[var(--accent)] cursor-pointer hover:underline"
+              title="点击跳转到指定页"
+            >
               {currentPage} / {pagination.totalPages}
             </span>
             <button
@@ -237,6 +329,15 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
 
 
         </>
+      )}
+
+      {/* ── Page jump dialog ── */}
+      {showJumpDialog && (
+        <PageJumpDialog
+          totalPages={pagination?.totalPages || 1}
+          onJump={(page) => { loadFavourites(page); setShowJumpDialog(false) }}
+          onClose={() => setShowJumpDialog(false)}
+        />
       )}
 
       {readerComic && (

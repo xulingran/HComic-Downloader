@@ -1,45 +1,180 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+此文件为代码智能体（如 CodeArts）在本仓库中工作提供指导。
 
-## Project Overview
+## 项目概述
 
-HComic Downloader 是一个基于 tkinter 的 GUI 应用程序，用于从 h-comic.com 搜索、下载和打包漫画。漫画以 CBZ 格式（带 ComicInfo.xml 元数据）保存。
+HComic Downloader 是一个基于 Electron + React + TypeScript 的前端应用，搭配 Python 后端，用于从 h-comic.com 搜索、下载和打包漫画。漫画以 CBZ 格式（带 ComicInfo.xml 元数据）保存。
 
-## Development Commands
+## 开发命令
 
-### Running the Application
-
-```bash
-# 一键启动（推荐）
-./run.sh
-
-# 或手动启动
-source venv/bin/activate
-python main.py
-```
-
-### Environment Setup
+### 环境设置
 
 ```bash
 # 创建虚拟环境（首次）
 python3 -m venv venv
 
 # 激活并安装依赖
-source venv/bin/activate
+source venv/bin/activate        # Linux/macOS
+venv\Scripts\activate          # Windows
 pip install -r requirements.txt
+pip install -r requirements-dev.txt  # 开发依赖
 ```
 
-### Configuration Location
+### 运行应用
 
-配置文件保存在 `~/.hcomic_downloader/config.json`。应用首次运行时会自动创建。
+```bash
+# 一键启动（推荐）
+./run.sh            # Linux/macOS
+run.bat             # Windows
 
-## Architecture
+# 或手动启动
+source venv/bin/activate && python -m hcomic_downloader.main
+```
 
-### Core Modules
+### 构建/格式化和测试命令
 
-| Module | Responsibility |
-|--------|---------------|
+```bash
+# 运行所有 Python 测试
+pytest
+
+# 运行特定 Python 测试文件
+pytest tests/test_models.py
+
+# 运行特定 Python 测试类
+pytest tests/test_models.py::TestComicInfo
+
+# 运行单个 Python 测试方法
+pytest tests/test_models.py::TestComicInfo::test_default_values
+
+# 运行 Python 测试并生成覆盖率报告
+pytest --cov=. --cov-report=html
+
+# 运行所有 TypeScript/React 测试
+npm test
+
+# 运行 TypeScript 测试（监视模式）
+npm run test:watch
+
+# 运行 TypeScript 测试并生成覆盖率报告
+npm run test:coverage
+
+# TypeScript 类型检查
+npx tsc --noEmit
+
+# 检查类型注解（如果配置了 mypy）
+mypy .
+
+# 代码格式化（如果配置了 black）
+black .
+
+# 代码质量检查（如果配置了 ruff）
+ruff check . --fix
+```
+
+### 项目打包
+
+```bash
+# 使用 pyinstaller 打包为可执行文件
+pyinstaller --onefile --name "HComicDownloader" main.py
+```
+
+## 代码风格指南
+
+### Python 版本
+- Python 3.8+
+
+### 导入顺序
+1. 标准库导入
+2. 第三方库导入  
+3. 本地应用导入
+4. 使用绝对导入而非相对导入
+
+示例：
+```python
+import os
+import re
+from typing import List, Optional
+
+import requests
+from PIL import Image
+
+from models import ComicInfo
+from utils import sanitize_filename
+```
+
+### 命名约定
+- **类名**: 使用 PascalCase，如 `ComicInfo`, `HComicParser`
+- **函数/方法名**: 使用 snake_case，如 `sanitize_filename`, `get_image_url`
+- **变量名**: 使用 snake_case，如 `search_results`, `current_page`
+- **常量**: 使用 UPPER_SNAKE_CASE，如 `DEFAULT_USER_AGENT`, `IMAGE_API_BASE`
+- **私有方法**: 使用前导下划线，如 `_get_response_text`, `_extract_payload_data`
+
+### 类型注解
+- 所有函数和方法必须包含完整的类型注解
+- 使用 `Optional[T]` 表示可为 None 的值
+- 使用 `List[T]`, `Dict[K, V]`, `Set[T]` 等泛型类型
+
+示例：
+```python
+def sanitize_filename(name: str) -> str:
+    """清理文件名中的非法字符"""
+    
+@dataclass
+class ComicInfo:
+    id: str = ""
+    title: str = ""
+    author: Optional[str] = None
+    tags: List[str] = field(default_factory=list)
+```
+
+### 文档字符串
+- 所有公共函数、类和方法必须有文档字符串
+- 使用 Google 风格文档字符串格式
+- 包含 Args、Returns、Raises 等部分
+
+示例：
+```python
+def get_image_url(self, page: int) -> str:
+    """根据媒体 ID 和页数生成图片 URL
+    
+    Args:
+        page: 页数（从 1 开始）
+        
+    Returns:
+        完整的图片 URL
+    """
+```
+
+### 错误处理
+- 使用明确的异常类型（ValueError, TypeError, RuntimeError）
+- 异常消息应清晰描述问题
+- 网络请求使用 try/except 包装，并记录详细错误信息
+
+### 测试约定
+- 测试文件以 `test_` 开头，如 `test_models.py`
+- 测试类以 `Test` 开头，如 `TestComicInfo`
+- 测试方法以 `test_` 开头，如 `test_default_values`
+- 使用 pytest fixtures 共享测试数据
+- 每个测试都应包含适当的断言
+
+### 代码组织
+- 保持文件职责单一，每个文件专注于一个功能模块
+- 使用 dataclass 定义数据模型
+- 业务逻辑与 GUI 代码分离
+- 网络请求、文件操作等耗时操作应异步执行
+
+### 配置文件
+- 配置文件位置：`~/.hcomic_downloader/config.json`
+- 敏感信息（如 Cookie）不应硬编码在代码中
+- 支持环境变量和配置文件两种配置方式
+
+## 架构概览
+
+### 核心模块
+
+| 模块 | 职责 |
+|------|------|
 | `main.py` | 应用入口，初始化日志和 GUI |
 | `gui_app.py` | tkinter GUI 主窗口和组件组装 |
 | `gui.py` | GUI 模块导出（向后兼容入口） |
@@ -55,8 +190,14 @@ pip install -r requirements.txt
 | `auth_manager.py` | 登录状态管理和认证同步 |
 | `utils.py` | 工具函数（代理、文件名清理等） |
 | `font_config.py` | 跨平台字体检测 |
+| `electron/main.ts` | Electron 主进程入口 |
+| `electron/preload.ts` | 预加载脚本，暴露 IPC API |
+| `electron/python-bridge.ts` | Python 后端桥接 |
+| `src/` | React 前端组件和页面 |
+| `src/stores/` | Zustand 状态管理 |
+| `src/hooks/` | 自定义 React Hooks |
 
-### Data Flow
+### 数据流
 
 ```
 用户搜索 → parser.search() → ComicInfo 列表
@@ -66,7 +207,7 @@ pip install -r requirements.txt
 cbz_builder.build_cbz() → CBZ 文件（含 ComicInfo.xml）
 ```
 
-### Key Patterns
+### 关键模式
 
 1. **会话复用**: `parser.session` 和 `downloader.session` 共享认证和代理配置
 2. **编码处理**: 服务器可能返回错误的 Content-Type，`parser._get_response_text()` 强制 UTF-8
@@ -74,11 +215,10 @@ cbz_builder.build_cbz() → CBZ 文件（含 ComicInfo.xml）
 4. **跨平台滚动**: GUI 同时处理 MouseWheel、TouchpadScroll、Button-4/5 事件
 5. **异步图片加载**: 封面使用线程池加载，滚动期间缓存更新避免回调风暴
 
-### Important Implementation Details
+### 重要实现细节
 
 #### ComicInfo 哈希支持
 `ComicInfo` 实现了 `__hash__` 和 `__eq__`，可存储在 `set` 中用于批量选择：
-
 ```python
 selected_comics: set[ComicInfo] = set()
 ```
@@ -98,9 +238,9 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 #### 系统代理
 代理从系统设置自动检测，通过 `utils.get_system_proxies()` 获取并注入所有 requests 会话。
 
-### GUI State Management
+### GUI 状态管理
 
-重要的状态变量（定义在 `HComicDownloaderGUI.__init__`）：
+重要状态变量（定义在 `HComicDownloaderGUI.__init__`）：
 
 | 变量 | 用途 |
 |------|------|
@@ -111,9 +251,9 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 | `is_batch_downloading` | 批量下载进行标志 |
 | `batch_select_mode_var` | 批量选择模式开关 |
 
-### Testing Notes
+### 测试注意事项
 
-项目已包含自动化测试（pytest）。手动测试关键流程：
+项目包含 Python 后端测试（pytest，304 个）和 TypeScript 前端测试（vitest，398 个）。手动测试关键流程：
 1. 搜索/翻页
 2. 单个下载
 3. 批量下载
@@ -121,3 +261,26 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 5. 预览图开关
 6. 字体切换
 7. 代理切换
+
+### 代码质量工具
+
+项目使用以下工具确保代码质量：
+- **pytest**: Python 单元测试框架
+- **pytest-mock**: 模拟测试依赖
+- **pytest-cov**: 代码覆盖率
+- **pytest-timeout**: 测试超时控制
+- **vitest**: TypeScript/React 测试框架
+- **TypeScript**: 类型检查（`strict: true`, `noUnusedLocals`, `noUnusedParameters`）
+- **pyinstaller**: 应用打包
+
+虽然没有显式配置 ruff、black、mypy，但推荐在开发时使用这些工具。
+
+### 开发工作流
+
+1. **环境设置**: 创建虚拟环境并安装依赖
+2. **运行测试**: 确保现有功能正常
+3. **编写代码**: 遵循上述代码风格指南
+4. **添加测试**: 为新功能编写测试
+5. **运行测试**: 验证功能正确性
+6. **代码审查**: 检查代码质量和风格
+7. **提交代码**: 使用有意义的提交信息

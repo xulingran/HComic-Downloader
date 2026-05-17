@@ -1,10 +1,12 @@
 """下载历史数据库模块 — 使用 SQLite 持久化记录下载成功的漫画"""
+from __future__ import annotations
+
 import logging
 import os
 import sqlite3
 import threading
 import time
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from models import ComicInfo
 
@@ -64,7 +66,7 @@ class DownloadHistoryDB:
         output_dir: str,
         output_format: str,
         filename_template: str,
-        comic_data_map: Dict[Tuple[str, str, str], dict] = None,
+        comic_data_map: Optional[Dict[Tuple[str, str, str], dict]] = None,
     ) -> Dict[Tuple[str, str, str], str]:
         """Check download status for a batch of comics.
 
@@ -96,7 +98,7 @@ class DownloadHistoryDB:
         with self._lock:
             for batch in batches:
                 placeholders = ",".join(["(?, ?, ?)"] * len(batch))
-                flat_keys = []
+                flat_keys: list[str] = []
                 for k in batch:
                     flat_keys.extend(k)
 

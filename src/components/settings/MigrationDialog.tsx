@@ -6,6 +6,7 @@ interface MigrationDialogProps {
   isOpen: boolean
   onClose: () => void
   currentDownloadDir: string
+  onSelectDirectory: (title: string, defaultPath?: string) => Promise<{ canceled: boolean; filePaths: string[] }>
 }
 
 type MigrationMode = 'full' | 'repair'
@@ -16,7 +17,7 @@ function basename(p: string): string {
   return parts[parts.length - 1] || p
 }
 
-export function MigrationDialog({ isOpen, onClose, currentDownloadDir }: MigrationDialogProps) {
+export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectDirectory }: MigrationDialogProps) {
   const {
     startMigration, confirmMigration, pauseMigration,
     cancelMigration, progress, complete, errors,
@@ -175,14 +176,35 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir }: Migrati
                 <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">
                   {mode === 'full' ? '目标目录' : '新的下载目录'}
                 </label>
-                <input
-                  type="text"
-                  value={targetDir}
-                  onChange={(e) => setTargetDir(e.target.value)}
-                  placeholder="请输入绝对路径"
-                  className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                             text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={targetDir}
+                    onChange={(e) => setTargetDir(e.target.value)}
+                    placeholder="请输入绝对路径"
+                    className="flex-1 px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                               text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+                  />
+                  <button
+                    onClick={async () => {
+                      try {
+                        const result = await onSelectDirectory(
+                          mode === 'full' ? '选择目标目录' : '选择新的下载目录',
+                          targetDir || undefined
+                        )
+                        if (!result.canceled && result.filePaths.length > 0) {
+                          setTargetDir(result.filePaths[0])
+                        }
+                      } catch {
+                        setError('选择目录失败，请手动输入路径')
+                      }
+                    }}
+                    className="px-3 py-2 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                               text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] whitespace-nowrap"
+                  >
+                    浏览
+                  </button>
+                </div>
               </div>
 
               {mode === 'repair' && (

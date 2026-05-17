@@ -177,7 +177,8 @@ class ImageDownloader:
 
                 ensure_dir(os.path.dirname(path))
 
-                fd, tmp_path = tempfile.mkstemp(suffix='.tmp', dir=os.path.dirname(path))
+                fd, tmp_path_raw = tempfile.mkstemp(suffix='.tmp', dir=os.path.dirname(path))
+                tmp_path: Optional[str] = tmp_path_raw
                 try:
                     total = 0
                     with os.fdopen(fd, 'wb') as f:
@@ -196,8 +197,8 @@ class ImageDownloader:
 
                     if not ext:
                         try:
-                            with Image.open(tmp_path) as img:
-                                ext = PIL_FORMAT_TO_EXT.get(img.format, '.jpg')
+                            with Image.open(tmp_path) as img:  # type: ignore[arg-type]
+                                ext = PIL_FORMAT_TO_EXT.get(img.format or '', '.jpg')
                         except (IOError, SyntaxError, ValueError):
                             logger.debug("Image format detection failed for %s, defaulting to .jpg", url)
                             ext = '.jpg'
@@ -205,7 +206,7 @@ class ImageDownloader:
                     if not path.endswith(ext):
                         path = os.path.splitext(path)[0] + ext
 
-                    shutil.move(tmp_path, path)
+                    shutil.move(tmp_path, path)  # type: ignore[arg-type]
                     tmp_path = None
 
                 finally:

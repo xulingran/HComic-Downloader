@@ -1,4 +1,6 @@
 """漫画下载模块"""
+from __future__ import annotations
+
 import logging
 import os
 import shutil
@@ -49,8 +51,8 @@ class _DownloadRun:
     cancel_event: Optional[threading.Event]
     pause_event: Optional[threading.Event]
     downloaded_count: int = 0
-    new_completed: list = None
-    new_failed: list = None
+    new_completed: Optional[list] = None
+    new_failed: Optional[list] = None
     last_progress_ts: float = 0.0
 
     def __post_init__(self):
@@ -337,8 +339,8 @@ class ComicDownloader:
 
         logger.info("Resuming download: %s (%d/%d pages remaining)", comic.title, len(pages_to_download), total)
 
-        new_completed = []
-        new_failed = []
+        new_completed: list[int] = []
+        new_failed: list[int] = []
         downloaded_count = len(completed_pages)
         last_progress_ts = 0.0
 
@@ -371,8 +373,8 @@ class ComicDownloader:
                 )
                 self._collect_and_advance(executor, run)
                 downloaded_count = run.downloaded_count
-                new_completed = run.new_completed
-                new_failed = run.new_failed
+                new_completed = run.new_completed or []
+                new_failed = run.new_failed or []
 
         all_completed = completed_pages + new_completed
         all_failed = list(set(failed_pages + new_failed))

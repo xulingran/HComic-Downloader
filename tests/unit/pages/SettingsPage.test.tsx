@@ -21,7 +21,8 @@ const {
 }))
 
 vi.mock('@/hooks/useIpc', () => ({
-  useConfig: vi.fn().mockReturnValue({ getConfig: mockGetConfig, setConfig: mockSetConfig, openDownloadDir: vi.fn().mockResolvedValue({ success: true }) }),
+  useIpc: vi.fn().mockReturnValue({ invoke: vi.fn() }),
+  useConfig: vi.fn().mockReturnValue({ getConfig: mockGetConfig, setConfig: mockSetConfig, openDownloadDir: vi.fn().mockResolvedValue({ success: true }), selectDirectory: vi.fn().mockResolvedValue({ canceled: true, filePaths: [] }) }),
   useAuth: vi.fn().mockReturnValue({ applyAuth: mockApplyAuth, verifyAuth: mockVerifyAuth }),
   useProxyStatus: vi.fn().mockReturnValue({ getProxyStatus: vi.fn().mockResolvedValue({ http: '', https: '', noProxy: '' }) }),
   useAvailableFonts: vi.fn().mockReturnValue({ getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }) }),

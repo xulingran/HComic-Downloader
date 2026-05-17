@@ -1,4 +1,6 @@
 """h-comic 页面解析模块"""
+from __future__ import annotations
+
 import json
 import logging
 import re
@@ -408,7 +410,7 @@ class HComicParser:
         media_id = comic.get("media_id")
         if not media_id:
             return None
-        return f"{cls._get_image_prefix(comic.get('comic_source'))}/{media_id}"
+        return f"{cls._get_image_prefix(comic.get('comic_source') or '')}/{media_id}"
 
     @classmethod
     def _get_image_prefix(cls, comic_source: str) -> str:
@@ -578,6 +580,7 @@ class MoeImgParser:
             page_num = 1
 
         try:
+            data: Optional[dict] = None
             if mode == "keyword" and not keyword:
                 data = self._request_json("/spa/latest-manga", params={"page": page_num})
             elif mode == "keyword":
@@ -746,7 +749,7 @@ class MoeImgParser:
         if resolved:
             cache[normalized] = resolved
             if len(cache) > self._MAX_CACHE_SIZE:
-                cache.popitem(last=False)
+                cache.popitem(last=False)  # type: ignore[call-arg]
         return resolved
 
     def _lookup_entity_id_from_search(self, mode: str, keyword: str) -> Optional[str]:
@@ -884,7 +887,7 @@ class MoeImgParser:
         if isinstance(payload, dict):
             self._manga_detail_cache[key] = payload
             if len(self._manga_detail_cache) > self._MAX_CACHE_SIZE:
-                self._manga_detail_cache.popitem(last=False)
+                self._manga_detail_cache.popitem(last=False)  # type: ignore[call-arg]
             return payload
         return None
 
@@ -1021,7 +1024,7 @@ class MultiSourceParser:
         timeout: int = 30,
         default_source: str = "hcomic",
         source_auth: Optional[dict[str, dict[str, str]]] = None,
-        auth: AuthConfig = None,
+        auth: Optional[AuthConfig] = None,
     ):
         self.timeout = timeout
         self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
@@ -1034,7 +1037,7 @@ class MultiSourceParser:
                 "user_agent": (_user_agent or "").strip(),
             }
 
-        self.parsers = {
+        self.parsers: dict[str, HComicParser | MoeImgParser] = {
             "hcomic": HComicParser(
                 timeout=timeout,
                 cookie=self.source_auth["hcomic"]["cookie"],

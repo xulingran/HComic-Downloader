@@ -518,7 +518,11 @@ class ComicDownloadManager(DownloadManager):
         if completed_from_files:
             task.completed_pages = sorted(completed_from_files)
             task.progress_current = len(task.completed_pages)
-            all_pages = set(range(1, task.comic.pages + 1))
+            pages = task.comic.pages or 0
+            if pages == 0:
+                pages = max(completed_from_files)
+            task.progress_total = max(pages, task.progress_current)
+            all_pages = set(range(1, pages + 1))
             task.failed_pages = sorted(all_pages - set(task.completed_pages))
 
     def _build_staged_output(self, temp_dir: str, comic) -> tuple[str, str, Optional[str]]:
@@ -623,7 +627,7 @@ class ComicDownloadManager(DownloadManager):
             if task.is_cancel_requested:
                 cancel_event.set()
 
-        def progress_callback(current: int, total: int, status: str, comic_info: dict = None):
+        def progress_callback(current: int, total: int, status: str, comic_info: Optional[dict] = None):
             with self._lock:
                 if task.is_cancel_requested:
                     cancel_event.set()

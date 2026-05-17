@@ -111,6 +111,15 @@ export interface MigrationErrorEvent {
   file_path: string
 }
 
+export interface MigrationStatusResponse {
+  status: 'none' | 'running' | 'completed' | 'paused' | 'ready' | 'error' | 'cancelled'
+  completed_items: number
+  total_items: number
+  failed_items: Array<{ source: string; error: string }>
+  source_dir: string
+  target_dir: string
+}
+
 /** Keys that can be persisted via set-config */
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
@@ -269,7 +278,7 @@ export interface IPCMethods {
   }
   get_migration_status: {
     params: Record<string, never>
-    result: Record<string, unknown>
+    result: MigrationStatusResponse
   }
   resolve_unmatched: {
     params: { matches: Array<{ db_key: string[]; file_path: string }> }
@@ -346,6 +355,7 @@ export interface HcomicAPI {
   getProxyStatus(): Promise<ProxyStatus>
   getAvailableFonts(): Promise<{ fonts: FontInfo[] }>
   openDownloadDir(): Promise<{ success: boolean }>
+  selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
   fetchPreviewImage(imageUrl: string): Promise<PreviewImageResult>
@@ -355,7 +365,7 @@ export interface HcomicAPI {
   pauseMigration(): Promise<{ paused: boolean }>
   resumeMigration(): Promise<{ resumed: boolean }>
   cancelMigration(): Promise<{ cancelled: boolean }>
-  getMigrationStatus(): Promise<Record<string, unknown>>
+  getMigrationStatus(): Promise<MigrationStatusResponse>
   resolveUnmatched(matches: Array<{ dbKey: string[]; file_path: string }>): Promise<{ resolved: number }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
@@ -410,6 +420,7 @@ export const IPC_CHANNELS = {
   CANCEL_MIGRATION: 'python:cancel-migration',
   GET_MIGRATION_STATUS: 'python:get-migration-status',
   RESOLVE_UNMATCHED: 'python:resolve-unmatched',
+  SELECT_DIRECTORY: 'select-directory',
 } as const
 
 export const NOTIFICATION_CHANNELS = {

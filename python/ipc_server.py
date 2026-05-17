@@ -129,6 +129,9 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
         params = request.get("params", {})
         req_id = request.get("id")
 
+        if not method or not isinstance(method, str):
+            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32600, "message": "Missing or invalid method"}}
+
         handlers = {
             "search": self.handle_search,
             "download": self.handle_download,

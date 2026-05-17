@@ -1,8 +1,17 @@
 """Download management mixin for IPCServer."""
 
+from __future__ import annotations
+
 import logging
 import os
-from typing import Dict
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+
+if TYPE_CHECKING:
+    from config import Config
+    from cbz_builder import CBZBuilder
+    from download_manager import ComicDownloadManager
+    from download_history import DownloadHistoryDB
+    from concurrent.futures import ThreadPoolExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -10,8 +19,24 @@ logger = logging.getLogger(__name__)
 class DownloadMixin:
     """Mixin providing all download management handler methods."""
 
+    _history_db: DownloadHistoryDB
+    config: Config
+    _write_response: Callable[[Dict], None]
+    _download_manager: ComicDownloadManager
+    cbz_builder: CBZBuilder
+    _cover_executor: ThreadPoolExecutor
+    _preview_executor: ThreadPoolExecutor
+    _build_and_prepare_comic: Callable[[dict, Optional[str]], Any]
+    _comic_to_dict: Callable[[Any], Dict]
+
     def _on_download_update(self, task):
         """Send download progress as JSON-RPC notification to stdout."""
+        current = task.progress_current
+        total = task.progress_total
+        # Defensive: ensure current never exceeds total to avoid IPC validation errors
+        if total > 0 and current > total:
+            logger.warning("progress current (%d) exceeds total (%d) for task %s, clamping", current, total, task.task_id)
+            current = total
         notification = {
             "jsonrpc": "2.0",
             "method": "download_progress",
@@ -19,8 +44,8 @@ class DownloadMixin:
                 "taskId": task.task_id,
                 "status": task.status.value,
                 "progress": task.progress_percentage,
-                "current": task.progress_current,
-                "total": task.progress_total,
+                "current": current,
+                "total": total,
                 "title": task.comic.title,
             },
         }
@@ -34,7 +59,7 @@ class DownloadMixin:
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
 
-    def handle_download(self, comic_id: str, comic_data: dict = None, overwrite: bool = False) -> Dict:
+    def handle_download(self, comic_id: str, comic_data: Optional[dict] = None, overwrite: bool = False) -> Dict:
         comic = self._build_and_prepare_comic(comic_data or {}, comic_id=comic_id)
 
         if not overwrite:

@@ -1,17 +1,26 @@
 """Preview image fetching mixin for IPCServer."""
 
+from __future__ import annotations
+
 import base64
 import logging
+from typing import TYPE_CHECKING, Any, Callable, Dict
 from urllib.parse import urlparse
 
 from .image_utils import detect_image_type, referer_for_image_url
 from .types import _PREVIEW_IMAGE_MAX_SIZE
+
+if TYPE_CHECKING:
+    from downloader import ComicDownloader
 
 logger = logging.getLogger(__name__)
 
 
 class PreviewMixin:
     """Mixin providing preview page image fetch methods."""
+
+    downloader: ComicDownloader
+    _write_response: Callable[[Dict], None]
 
     ALLOWED_PREVIEW_IMAGE_DOMAINS = {
         "h-comic.com",

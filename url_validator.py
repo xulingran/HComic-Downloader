@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import ipaddress
 import logging
 import re
@@ -16,9 +18,9 @@ class DownloadError(Exception):
 
 class UrlValidator:
 
-    _HCOMIC_DOMAINS = {"h-comic.com", "h-comic.link"}
+    _HCOMIC_DOMAINS: set[str] = {"h-comic.com", "h-comic.link"}
 
-    _BLOCKED_IPV4 = [
+    _BLOCKED_IPV4: list[ipaddress.IPv4Network] = [
         ipaddress.ip_network("0.0.0.0/8"),
         ipaddress.ip_network("10.0.0.0/8"),
         ipaddress.ip_network("100.64.0.0/10"),
@@ -34,7 +36,7 @@ class UrlValidator:
         ipaddress.ip_network("224.0.0.0/4"),
         ipaddress.ip_network("240.0.0.0/4"),
     ]
-    _BLOCKED_IPV6 = [
+    _BLOCKED_IPV6: list[ipaddress.IPv6Network] = [
         ipaddress.ip_network("::1/128"),
         ipaddress.ip_network("fe80::/10"),
         ipaddress.ip_network("fc00::/7"),

@@ -1,17 +1,30 @@
 """Migration management mixin for IPCServer."""
+
+from __future__ import annotations
+
 import logging
 import os
 import threading
-from typing import Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
 
 from migration import MigrationEngine
 from .types import _get_config_path
+
+if TYPE_CHECKING:
+    from config import Config
+    from download_manager import ComicDownloadManager
+    from download_history import DownloadHistoryDB
 
 logger = logging.getLogger(__name__)
 
 
 class MigrationMixin:
     """Mixin providing migration handler methods for IPCServer."""
+
+    config: Config
+    _write_response: Callable[[Dict], None]
+    _download_manager: ComicDownloadManager
+    _history_db: DownloadHistoryDB
 
     def _init_migration(self):
         """Initialize migration state. Call from IPCServer.__init__."""

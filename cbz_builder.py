@@ -285,7 +285,7 @@ class CBZBuilder:
             pass
         return '', '', ''
 
-    def _generate_output_path(self, comic: ComicInfo, download_dir: str = None) -> str:
+    def _generate_output_path(self, comic: ComicInfo, download_dir: Optional[str] = None) -> str:
         """生成输出路径
 
         Args:
@@ -307,7 +307,7 @@ class CBZBuilder:
         download_dir = self._get_download_dir(download_dir)
         return os.path.join(download_dir, filename)
 
-    def get_output_path(self, comic: ComicInfo, download_dir: str = None) -> str:
+    def get_output_path(self, comic: ComicInfo, download_dir: Optional[str] = None) -> str:
         """获取漫画的输出路径（不创建文件）
 
         Args:
@@ -432,7 +432,7 @@ class CBZBuilder:
         self,
         comic: ComicInfo,
         format_type: str,
-        download_dir: str = None,
+        download_dir: Optional[str] = None,
     ) -> str:
         """根据格式生成输出路径
 
@@ -473,7 +473,7 @@ class CBZBuilder:
         self,
         comic: ComicInfo,
         output_format: str,
-        download_dir: str = None,
+        download_dir: Optional[str] = None,
     ) -> str:
         """获取漫画的输出路径（不创建文件/文件夹）
 

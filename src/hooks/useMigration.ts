@@ -4,6 +4,7 @@ import type {
   MigrationProgressEvent,
   MigrationCompleteEvent,
   MigrationErrorEvent,
+  MigrationStatusResponse,
 } from '@shared/types'
 
 export function useMigration() {
@@ -69,7 +70,7 @@ export function useMigration() {
 
   const syncFromBackend = useCallback(async () => {
     try {
-      const status = await invoke(() => window.hcomic!.getMigrationStatus())
+      const status: MigrationStatusResponse = await invoke(() => window.hcomic!.getMigrationStatus())
       if (!status || status.status === 'none') {
         resetState()
         return
@@ -80,13 +81,14 @@ export function useMigration() {
           completed: status.completed_items,
           total: status.total_items,
           currentFile: '',
+          speed: 0,
           phase: 'moving',
         })
       } else if (status.status === 'completed') {
         setComplete({
           total: status.total_items,
           succeeded: status.completed_items,
-          failed: status.failed_items?.length ?? 0,
+          failed: status.failed_items.length,
           elapsed: 0,
         })
         setIsActive(false)
@@ -96,6 +98,7 @@ export function useMigration() {
           completed: status.completed_items,
           total: status.total_items,
           currentFile: '',
+          speed: 0,
           phase: 'moving',
         })
       }
