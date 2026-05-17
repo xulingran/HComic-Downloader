@@ -31,6 +31,7 @@ const mockFetchPreviewImage = vi.fn()
 
 const mockSetPageGap = vi.fn()
 const mockSetImageWidth = vi.fn()
+const mockSetDisplayMode = vi.fn()
 
 vi.mock('@/hooks/useReaderSettings', () => ({
   useReaderSettings: vi.fn(() => ({
@@ -38,6 +39,8 @@ vi.mock('@/hooks/useReaderSettings', () => ({
     imageWidth: 70,
     setPageGap: mockSetPageGap,
     setImageWidth: mockSetImageWidth,
+    displayMode: 'scroll',
+    setDisplayMode: mockSetDisplayMode,
   })),
 }))
 
@@ -70,6 +73,7 @@ describe('ComicReaderModal', () => {
     vi.clearAllMocks()
     mockSetPageGap.mockClear()
     mockSetImageWidth.mockClear()
+    mockSetDisplayMode.mockClear()
     vi.mocked(useComicReader).mockReturnValue(createReaderState())
     mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,page' })
     Object.defineProperty(window, 'hcomic', {
@@ -363,6 +367,18 @@ describe('ComicReaderModal', () => {
 
       expect(gapSlider).toHaveValue('4')
       expect(widthSlider).toHaveValue('70')
+    })
+  })
+
+  describe('display mode switcher', () => {
+    it('shows three display mode buttons in settings panel', async () => {
+      render(
+        <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
+      )
+      await userEvent.click(screen.getByLabelText('阅读设置'))
+      expect(screen.getByLabelText('连续滚动')).toBeInTheDocument()
+      expect(screen.getByLabelText('单页显示')).toBeInTheDocument()
+      expect(screen.getByLabelText('双页显示')).toBeInTheDocument()
     })
   })
 })

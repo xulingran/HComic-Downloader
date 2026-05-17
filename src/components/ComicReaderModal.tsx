@@ -4,6 +4,7 @@ import { useComicReader } from '../hooks/useComicReader'
 import { useReaderSettings } from '../hooks/useReaderSettings'
 import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
+import { PageFlipView } from './PageFlipView'
 
 interface ComicReaderModalProps {
   comic: ComicInfo
@@ -23,7 +24,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     reset,
   } = useComicReader()
 
-  const { pageGap, imageWidth, setPageGap, setImageWidth } = useReaderSettings()
+  const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
 
   const [isDragging, setIsDragging] = useState(false)
@@ -76,17 +77,39 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose()
-      } else if (e.key === 'ArrowDown' || e.key === ' ') {
-        e.preventDefault()
-        scrollContainerRef.current?.scrollBy({ top: 300, behavior: 'smooth' })
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault()
-        scrollContainerRef.current?.scrollBy({ top: -300, behavior: 'smooth' })
+      } else if (displayMode === 'scroll') {
+        if (e.key === 'ArrowDown' || e.key === ' ') {
+          e.preventDefault()
+          scrollContainerRef.current?.scrollBy({ top: 300, behavior: 'smooth' })
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          scrollContainerRef.current?.scrollBy({ top: -300, behavior: 'smooth' })
+        }
+      } else {
+        const step = displayMode === 'double' ? 2 : 1
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
+          e.preventDefault()
+          if (currentPage < totalPages) {
+            setCurrentPage(Math.min(currentPage + step, totalPages))
+          }
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
+          e.preventDefault()
+          if (currentPage > 1) {
+            setCurrentPage(Math.max(currentPage - step, 1))
+          }
+        }
       }
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose])
+  }, [open, onClose, displayMode, currentPage, totalPages, setCurrentPage])
+
+  // Align currentPage to odd in double mode
+  useEffect(() => {
+    if (displayMode === 'double' && currentPage > 1 && currentPage % 2 === 0) {
+      setCurrentPage(currentPage - 1)
+    }
+  }, [displayMode])
 
   if (!open) return null
 
@@ -149,68 +172,116 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       </div>
 
       {/* Content */}
-      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
-        {(loadingState === 'loading' || loadingState === 'idle') && (
-          <div className="flex items-center justify-center h-full text-gray-400">
-            <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-            加载中...
-          </div>
-        )}
+      {displayMode === 'scroll' ? (
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
+          {(loadingState === 'loading' || loadingState === 'idle') && (
+            <div className="flex items-center justify-center h-full text-gray-400">
+              <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              加载中...
+            </div>
+          )}
 
-        {loadingState === 'error' && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
-            <span>无法加载漫画内容</span>
-            <span className="text-xs text-gray-500">{errorMessage}</span>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-white"
-              style={{ background: 'rgba(255,255,255,0.1)' }}
-            >
-              关闭
-            </button>
-          </div>
-        )}
-
-        {loadingState === 'loaded' && imageUrls.length === 0 && (
-          <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
-            <span>无可用图片</span>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 rounded-lg text-sm text-white"
-              style={{ background: 'rgba(255,255,255,0.1)' }}
-            >
-              关闭
-            </button>
-          </div>
-        )}
-
-        {loadingState === 'loaded' && imageUrls.length > 0 && (
-          <div className="flex flex-col items-center py-2" style={{ gap: pageGap + 'px' }}>
-            {imageUrls.map((url, idx) => {
-              // cacheVersion forces React to re-read the cache ref when preload completes
-              void cacheVersion
-              const cachedDataUri = imageCacheRef.current.get(idx)
-              return (
-              <div
-                key={idx}
-                ref={(el) => { pageRefs.current[idx] = el }}
-                style={{ width: imageWidth + '%' }}
+          {loadingState === 'error' && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
+              <span>无法加载漫画内容</span>
+              <span className="text-xs text-gray-500">{errorMessage}</span>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-sm text-white"
+                style={{ background: 'rgba(255,255,255,0.1)' }}
               >
-                <ReaderPage
-                  url={url}
-                  index={idx}
-                  priority={preloadTarget != null && Math.abs(idx + 1 - preloadTarget) <= 5}
-                  cachedDataUri={cachedDataUri}
-                />
-              </div>
-              )
-            })}
-          </div>
-        )}
-      </div>
+                关闭
+              </button>
+            </div>
+          )}
+
+          {loadingState === 'loaded' && imageUrls.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
+              <span>无可用图片</span>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-sm text-white"
+                style={{ background: 'rgba(255,255,255,0.1)' }}
+              >
+                关闭
+              </button>
+            </div>
+          )}
+
+          {loadingState === 'loaded' && imageUrls.length > 0 && (
+            <div className="flex flex-col items-center py-2" style={{ gap: pageGap + 'px' }}>
+              {imageUrls.map((url, idx) => {
+                void cacheVersion
+                const cachedDataUri = imageCacheRef.current.get(idx)
+                return (
+                <div
+                  key={idx}
+                  ref={(el) => { pageRefs.current[idx] = el }}
+                  style={{ width: imageWidth + '%' }}
+                >
+                  <ReaderPage
+                    url={url}
+                    index={idx}
+                    priority={preloadTarget != null && Math.abs(idx + 1 - preloadTarget) <= 5}
+                    cachedDataUri={cachedDataUri}
+                  />
+                </div>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {(loadingState === 'loading' || loadingState === 'idle') && (
+            <div className="flex-1 flex items-center justify-center text-gray-400">
+              <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              加载中...
+            </div>
+          )}
+          {loadingState === 'error' && (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
+              <span>无法加载漫画内容</span>
+              <span className="text-xs text-gray-500">{errorMessage}</span>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-sm text-white"
+                style={{ background: 'rgba(255,255,255,0.1)' }}
+              >
+                关闭
+              </button>
+            </div>
+          )}
+          {loadingState === 'loaded' && imageUrls.length === 0 && (
+            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
+              <span>无可用图片</span>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 rounded-lg text-sm text-white"
+                style={{ background: 'rgba(255,255,255,0.1)' }}
+              >
+                关闭
+              </button>
+            </div>
+          )}
+          {loadingState === 'loaded' && imageUrls.length > 0 && (
+            <PageFlipView
+              imageUrls={imageUrls}
+              totalPages={totalPages}
+              currentPage={currentPage}
+              setCurrentPage={setCurrentPage}
+              displayMode={displayMode}
+              imageWidth={imageWidth}
+            />
+          )}
+        </>
+      )}
 
       {/* Footer */}
       <div
@@ -264,7 +335,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               {currentPage} / {totalPages}
             </span>
           )}
-          <span className="text-xs text-gray-500">ESC 关闭 | ↑↓ 滚动</span>
+          <span className="text-xs text-gray-500">
+            {displayMode === 'scroll' ? 'ESC 关闭 | ↑↓ 滚动' : 'ESC 关闭 | ←→ 翻页'}
+          </span>
           <button
             aria-label="阅读设置"
             onClick={() => setSettingsOpen(!settingsOpen)}
@@ -290,20 +363,45 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
             }}
           >
             <div className="flex flex-col gap-3">
-              <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
-                <span>页面间距</span>
-                <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>{pageGap}px</span>
-              </label>
-              <input
-                aria-label="页面间距"
-                type="range"
-                min={0}
-                max={80}
-                step={2}
-                value={pageGap}
-                onChange={(e) => setPageGap(Number(e.target.value))}
-                className="w-full accent-[#6c8cff]"
-              />
+              {/* Display mode switcher */}
+              <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                <ModeButton
+                  label="连续滚动"
+                  icon={scrollIcon}
+                  active={displayMode === 'scroll'}
+                  onClick={() => setDisplayMode('scroll')}
+                />
+                <ModeButton
+                  label="单页显示"
+                  icon={singleIcon}
+                  active={displayMode === 'single'}
+                  onClick={() => setDisplayMode('single')}
+                />
+                <ModeButton
+                  label="双页显示"
+                  icon={doubleIcon}
+                  active={displayMode === 'double'}
+                  onClick={() => setDisplayMode('double')}
+                />
+              </div>
+              {displayMode === 'scroll' && (
+                <>
+                  <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
+                    <span>页面间距</span>
+                    <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>{pageGap}px</span>
+                  </label>
+                  <input
+                    aria-label="页面间距"
+                    type="range"
+                    min={0}
+                    max={80}
+                    step={2}
+                    value={pageGap}
+                    onChange={(e) => setPageGap(Number(e.target.value))}
+                    className="w-full accent-[#6c8cff]"
+                  />
+                </>
+              )}
               <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
                 <span>图片宽度</span>
                 <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>{imageWidth}%</span>
@@ -325,6 +423,48 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     </div>
   )
 }
+
+function ModeButton({ label, icon, active, onClick }: {
+  label: string
+  icon: React.ReactNode
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className="flex-1 flex items-center justify-center py-1.5 transition-colors"
+      style={{
+        background: active ? 'rgba(108,140,255,0.2)' : 'transparent',
+        color: active ? '#6c8cff' : 'rgba(255,255,255,0.4)',
+      }}
+    >
+      {icon}
+    </button>
+  )
+}
+
+const scrollIcon = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="4" y="1" width="8" height="14" rx="1" />
+    <path d="M8 11v2.5M6 12l2 1.5L10 12" />
+  </svg>
+)
+
+const singleIcon = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="1" width="10" height="14" rx="1" />
+  </svg>
+)
+
+const doubleIcon = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="1" width="6" height="14" rx="1" />
+    <rect x="9" y="1" width="6" height="14" rx="1" />
+  </svg>
+)
 
 function ReaderPage({ url, index, priority, cachedDataUri }: {
   url: string
