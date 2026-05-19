@@ -73,12 +73,18 @@ class SearchMixin:
                 comic = prepared
         return comic
 
-    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: Optional[str] = None) -> Dict:
+    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: Optional[str] = None, tag: str = "") -> Dict:
         effective_source = source if source in ("hcomic", "moeimg") else self.config.default_source
         effective_query = query
-        if effective_source == "moeimg" and mode in ("author", "tag"):
+        effective_tag = tag
+        if effective_source == "hcomic" and mode == "tag":
+            all_tags = [t for t in [query, tag] if t]
+            effective_tag = ",".join(all_tags)
+            effective_query = ""
+        elif effective_source == "moeimg" and mode in ("author", "tag"):
             effective_query = f"{mode}:{query}"
-        comics, pagination = self.parser.search(effective_query, page=page, source=effective_source)
+            effective_tag = ""
+        comics, pagination = self.parser.search(effective_query, page=page, source=effective_source, tag=effective_tag)
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": {

@@ -45,7 +45,8 @@ describe('useDrawerStore', () => {
     useDrawerStore.getState().setPendingSearch('test query', 'author')
     expect(useDrawerStore.getState().pendingSearch).toEqual({
       query: 'test query',
-      mode: 'author'
+      mode: 'author',
+      append: false
     })
   })
 
@@ -53,7 +54,17 @@ describe('useDrawerStore', () => {
     useDrawerStore.getState().setPendingSearch('tag1', 'tag')
     expect(useDrawerStore.getState().pendingSearch).toEqual({
       query: 'tag1',
-      mode: 'tag'
+      mode: 'tag',
+      append: false
+    })
+  })
+
+  it('应能设置 pendingSearch 为追加模式', () => {
+    useDrawerStore.getState().setPendingSearch('tag2', 'tag', true)
+    expect(useDrawerStore.getState().pendingSearch).toEqual({
+      query: 'tag2',
+      mode: 'tag',
+      append: true
     })
   })
 

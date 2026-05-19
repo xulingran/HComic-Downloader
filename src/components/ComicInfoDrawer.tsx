@@ -33,8 +33,8 @@ export function ComicInfoDrawer() {
 
   if (!mounted) return null
 
-  const handleSearch = (query: string, mode: SearchMode) => {
-    setPendingSearch(query, mode)
+  const handleSearch = (query: string, mode: SearchMode, append = false) => {
+    setPendingSearch(query, mode, append)
     closeDrawer()
   }
 
@@ -106,7 +106,7 @@ export function ComicInfoDrawer() {
                 {drawerComic.tags.map((tag, i) => (
                   <button
                     key={i}
-                    onClick={() => handleSearch(tag, 'tag')}
+                    onClick={() => handleSearch(tag, 'tag', true)}
                     className="text-xs px-2.5 py-1 rounded-full bg-[var(--accent)]/10
                                text-[var(--accent)] cursor-pointer
                                hover:bg-[var(--accent)]/20 transition-colors"

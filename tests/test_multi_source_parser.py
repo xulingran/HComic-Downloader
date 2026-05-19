@@ -21,14 +21,14 @@ def test_set_source_and_search_delegation(monkeypatch):
     parser = MultiSourceParser(timeout=5)
     called = []
 
-    def fake_search(keyword, page=1):
-        called.append((keyword, page))
+    def fake_search(keyword, page=1, *, tag=""):
+        called.append((keyword, page, tag))
         return [], None
 
     monkeypatch.setattr(parser.parsers["moeimg"], "search", fake_search)
     parser.set_source("moeimg")
     parser.search("abc", page=3)
-    assert called == [("abc", 3)]
+    assert called == [("abc", 3, "")]
 
 
 def test_prepare_for_download_uses_moeimg_detail(monkeypatch):
@@ -65,7 +65,7 @@ def test_prepare_for_download_keeps_ready_hcomic():
 def test_search_with_explicit_source_does_not_mutate_current_source(monkeypatch):
     """Calling search(source='moeimg') must not change current_source."""
     parser = MultiSourceParser(timeout=5, default_source="hcomic")
-    monkeypatch.setattr(parser.parsers["moeimg"], "search", lambda keyword, page=1: ([], None))
+    monkeypatch.setattr(parser.parsers["moeimg"], "search", lambda keyword, page=1, *, tag="": ([], None))
     parser.search("test", page=1, source="moeimg")
     assert parser.current_source == "hcomic"
 
@@ -95,4 +95,26 @@ def test_get_comic_detail_with_explicit_source(monkeypatch):
     monkeypatch.setattr(parser.parsers["moeimg"], "get_comic_detail", lambda comic_id, slug="": (called.append(comic_id) or None))
     parser.get_comic_detail("999", source="moeimg")
     assert called == ["999"]
+
+
+def test_search_passes_tag_to_hcomic(monkeypatch):
+    """tag kwarg must be forwarded to the underlying hcomic parser."""
+    parser = MultiSourceParser(timeout=5, default_source="hcomic")
+    called = []
+
+    def fake_search(keyword, page=1, *, tag=""):
+        called.append((keyword, page, tag))
+        return [], None
+
+    monkeypatch.setattr(parser.parsers["hcomic"], "search", fake_search)
+    parser.search("魔法少女", page=1, tag="触手")
+    assert called == [("魔法少女", 1, "触手")]
+
+
+def test_search_with_empty_tag_does_not_crash_moeimg(monkeypatch):
+    """MoeImgParser.search() accepts tag="" without TypeError."""
+    parser = MultiSourceParser(timeout=5, default_source="moeimg")
+    monkeypatch.setattr(parser.parsers["moeimg"], "search", lambda keyword, page=1, *, tag="": ([], None))
+    result = parser.search("test", page=1, source="moeimg", tag="")
+    assert result == ([], None)
 

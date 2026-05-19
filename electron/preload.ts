@@ -15,15 +15,16 @@ function validatePage(page: unknown): asserts page is number {
 }
 
 contextBridge.exposeInMainWorld('hcomic', {
-  search: (query: unknown, mode: unknown, page: unknown, source?: unknown) => {
+  search: (query: unknown, mode: unknown, page: unknown, source?: unknown, tag?: unknown) => {
     if (typeof query !== 'string' || query.length > 512) throw new Error('Invalid query')
     if (typeof mode !== 'string' || !VALID_SEARCH_MODES.has(mode)) throw new Error('Invalid mode')
     validatePage(page)
+    if (tag !== undefined && tag !== null && typeof tag !== 'string') throw new Error('Invalid tag')
     if (source !== undefined && source !== null) {
       if (typeof source !== 'string' || !VALID_SOURCES.has(source)) throw new Error('Invalid source')
-      return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, source)
+      return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, source, tag)
     }
-    return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page)
+    return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, undefined, tag)
   },
 
   download: (comicId: unknown, comicData: unknown, overwrite?: unknown) => {

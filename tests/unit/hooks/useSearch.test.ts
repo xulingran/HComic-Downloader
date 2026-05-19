@@ -26,7 +26,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch())
     const response = await result.current.search('test query', 'keyword', 1)
 
-    expect(hcomic.search).toHaveBeenCalledWith('test query', 'keyword', 1, undefined)
+    expect(hcomic.search).toHaveBeenCalledWith('test query', 'keyword', 1, undefined, undefined)
     expect(response).toEqual(searchResult)
   })
 
@@ -36,7 +36,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch())
     await result.current.search('test', 'keyword', 3)
 
-    expect(hcomic.search).toHaveBeenCalledWith('test', 'keyword', 3, undefined)
+    expect(hcomic.search).toHaveBeenCalledWith('test', 'keyword', 3, undefined, undefined)
   })
 
   it('应传递空查询和不同的搜索模式', async () => {
@@ -47,6 +47,6 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch())
     await result.current.search('', 'tag', 1)
 
-    expect(hcomic.search).toHaveBeenCalledWith('', 'tag', 1, undefined)
+    expect(hcomic.search).toHaveBeenCalledWith('', 'tag', 1, undefined, undefined)
   })
 })

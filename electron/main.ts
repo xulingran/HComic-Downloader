@@ -424,7 +424,7 @@ function registerIPCHandlers() {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_ERROR, params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source) => {
+  ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source, tag) => {
     if (typeof query !== 'string' || query.length > 512) {
       throw new Error('Invalid search query')
     }
@@ -440,6 +440,9 @@ function registerIPCHandlers() {
         throw new Error('Invalid search source')
       }
       params.source = source
+    }
+    if (tag !== undefined && tag !== null && tag !== '') {
+      params.tag = tag
     }
     return bridge.call('search', params)
   })

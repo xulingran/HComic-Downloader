@@ -141,7 +141,7 @@ describe('SearchPage', () => {
     await userEvent.type(input, 'test query')
     await userEvent.click(screen.getByText('搜索'))
 
-    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic')
+    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic', undefined)
   })
 
   it('auto-searches with empty keyword on mount', async () => {

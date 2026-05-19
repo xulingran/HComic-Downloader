@@ -4,6 +4,7 @@ import { ComicInfo, SearchMode } from '@shared/types'
 interface PendingSearch {
   query: string
   mode: SearchMode
+  append?: boolean
 }
 
 interface DrawerState {
@@ -12,7 +13,7 @@ interface DrawerState {
   isOpen: boolean
   openDrawer: (comic: ComicInfo) => void
   closeDrawer: () => void
-  setPendingSearch: (query: string, mode: SearchMode) => void
+  setPendingSearch: (query: string, mode: SearchMode, append?: boolean) => void
   clearPendingSearch: () => void
 }
 
@@ -22,6 +23,6 @@ export const useDrawerStore = create<DrawerState>((set) => ({
   isOpen: false,
   openDrawer: (comic) => set({ drawerComic: comic, isOpen: true }),
   closeDrawer: () => set({ isOpen: false }),
-  setPendingSearch: (query, mode) => set({ pendingSearch: { query, mode } }),
+  setPendingSearch: (query, mode, append = false) => set({ pendingSearch: { query, mode, append } }),
   clearPendingSearch: () => set({ pendingSearch: null }),
 }))

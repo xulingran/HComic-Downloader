@@ -35,7 +35,7 @@ describe('preload.ts', () => {
   describe('search', () => {
     it('should invoke python:search with correct args', async () => {
       await exposedApi.search('test', 'keyword', 1)
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined)
     })
 
     it('should reject invalid query', () => {
@@ -45,7 +45,7 @@ describe('preload.ts', () => {
 
     it('should allow empty query for homepage search', async () => {
       await exposedApi.search('', 'keyword', 1)
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', '', 'keyword', 1)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', '', 'keyword', 1, undefined, undefined)
     })
 
     it('should reject invalid mode', () => {
@@ -65,7 +65,7 @@ describe('preload.ts', () => {
 
     it('should pass source when valid', async () => {
       await exposedApi.search('test', 'keyword', 1, 'moeimg')
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'moeimg')
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'moeimg', undefined)
     })
   })
 

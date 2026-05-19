@@ -114,17 +114,18 @@ class HComicParser:
         except requests.RequestException as e:
             raise ParserResponseError(f"请求失败: {url} ({e})") from e
 
-    def search(self, keyword: str, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
         """搜索漫画
 
         Args:
             keyword: 搜索关键词
             page: 页码 (1-based)
+            tag: 标签搜索（逗号分隔多标签）
 
         Returns:
             (漫画信息列表, 分页信息)
         """
-        url = self._build_search_url(keyword, page)
+        url = self._build_search_url(keyword, page, tag=tag)
         try:
             return self.parse_search_page(self._request_text(url), requested_page=page)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
@@ -337,16 +338,20 @@ class HComicParser:
         )
 
     @classmethod
-    def _build_search_url(cls, keyword: str, page: int = 1) -> str:
+    def _build_search_url(cls, keyword: str, page: int = 1, *, tag: str = "") -> str:
         """构建搜索 URL
 
         Args:
             keyword: 搜索关键词
             page: 页码 (1-based)
+            tag: 标签搜索（逗号分隔多标签）
 
         Returns:
             搜索 URL
         """
+        if tag:
+            q = quote(keyword) if keyword else ""
+            return cls._build_paginated_url(f"{cls.INDEX}/?q={q}&tag={quote(tag)}", page)
         return cls._build_paginated_url(f"{cls.INDEX}/?q={quote(keyword)}", page)
 
     @classmethod
@@ -583,7 +588,7 @@ class MoeImgParser:
         """moeimg 当前接入范围不依赖登录。"""
         return True, "当前来源无需登录校验"
 
-    def search(self, keyword: str, page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
         """搜索漫画。"""
         mode, keyword = self._parse_query_mode(keyword)
         try:
@@ -1103,9 +1108,9 @@ class MultiSourceParser:
         src = source or self.current_source
         return self.parsers[src].verify_login_status()
 
-    def search(self, keyword: str, page: int = 1, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def search(self, keyword: str, page: int = 1, source: Optional[str] = None, *, tag: str = "") -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
         src = source or self.current_source
-        return self.parsers[src].search(keyword, page=page)
+        return self.parsers[src].search(keyword, page=page, tag=tag)
 
     def favourites(self, page: int = 1, raise_errors: bool = False, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
         src = source or self.current_source

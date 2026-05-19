@@ -25,6 +25,7 @@ export function SearchPage() {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState('keyword')
   const [source, setSource] = useState('hcomic')
+  const [searchTags, setSearchTags] = useState('')
   const [jumpPage, setJumpPage] = useState('')
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
@@ -93,14 +94,29 @@ export function SearchPage() {
 
   useEffect(() => {
     if (!pendingSearch) return
-    const { query: searchQuery, mode: searchMode } = pendingSearch
+    const { query: searchQuery, mode: searchMode, append } = pendingSearch
 
-    setQuery(searchQuery)
-    setMode(searchMode)
+    let finalQuery = query
+    let finalTags = searchTags
+
+    if (append && searchMode === 'tag') {
+      const existing = searchTags ? searchTags.split(',') : []
+      const deduped = [...new Set([...existing, searchQuery])]
+      finalTags = deduped.join(',')
+    } else if (append) {
+      finalQuery = [query, searchQuery].filter(Boolean).join(' ')
+    } else {
+      finalQuery = searchQuery
+      finalTags = ''
+      setMode(searchMode)
+    }
+
+    setQuery(finalQuery)
+    setSearchTags(finalTags)
     clearPendingSearch()
 
-    if (searchQuery.trim()) {
-      addHistory(searchQuery.trim())
+    if (finalQuery.trim() || finalTags) {
+      addHistory(finalTags ? `${finalQuery} [${finalTags}]` : finalQuery.trim())
     }
     clearSelection()
 
@@ -108,7 +124,7 @@ export function SearchPage() {
     setLoading(true)
     setError(null)
 
-    search(searchQuery, searchMode, 1, source).then(result => {
+    search(finalQuery, searchMode === 'tag' && !finalQuery ? 'tag' : searchMode, 1, source, finalTags).then(result => {
       if (gen !== searchGenRef.current) return
       setComics(result.comics)
       setPagination(result.pagination)
@@ -118,7 +134,7 @@ export function SearchPage() {
     }).finally(() => {
       if (gen === searchGenRef.current) setLoading(false)
     })
-  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode])
+  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, query, searchTags])
 
   const handleSearch = async (page: number = 1) => {
     clearSelection()
@@ -129,11 +145,11 @@ export function SearchPage() {
     setError(null)
 
     if (query.trim()) {
-      addHistory(query.trim())
+      addHistory(searchTags ? `${query} [${searchTags}]` : query.trim())
     }
 
     try {
-      const result = await search(query, mode, page, source)
+      const result = await search(query, mode, page, source, searchTags || undefined)
       if (gen !== searchGenRef.current) return
       setComics(result.comics)
       setPagination(result.pagination)
