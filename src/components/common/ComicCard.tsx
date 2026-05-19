@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react'
 import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { useDrawerStore } from '../../stores/useDrawerStore'
 import { useCoverImage } from '../../hooks/useCoverImage'
 
 interface ComicCardProps {
@@ -17,15 +18,15 @@ interface ComicCardProps {
 
 export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus }: ComicCardProps) {
   const { cardStyle, sfwMode } = useSettingsStore()
-  const [titleExpanded, setTitleExpanded] = useState(false)
+  const { openDrawer } = useDrawerStore()
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} downloadStatus={downloadStatus} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} sfwMode={sfwMode} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
   }
-  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} titleExpanded={titleExpanded} onToggleTitle={() => setTitleExpanded(!titleExpanded)} sfwMode={sfwMode} downloadStatus={downloadStatus} />
+  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} sfwMode={sfwMode} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
 }
 
-function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, titleExpanded, onToggleTitle, sfwMode, downloadStatus }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
+function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, sfwMode, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const handleClick = () => {
@@ -121,14 +122,13 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
         <h3
           onClick={(e) => {
             e.stopPropagation();
-            if (!sfwMode && onOpenReader) {
-              onOpenReader(comic)
+            if (batchMode) {
+              onToggleSelect?.(comic)
             } else {
-              onToggleTitle()
+              onOpenDrawer()
             }
           }}
-          className={`text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text
-                     ${titleExpanded ? '' : 'line-clamp-2'}`}
+          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text line-clamp-2"
           title={comic.title}
         >
           {comic.title}
@@ -143,7 +143,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, titleExpanded, onToggleTitle, sfwMode, downloadStatus }: ComicCardProps & { titleExpanded: boolean; onToggleTitle: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, sfwMode, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const [showAllTags, setShowAllTags] = useState(false)
@@ -228,14 +228,13 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
         <h3
           onClick={(e) => {
             e.stopPropagation();
-            if (!sfwMode && onOpenReader) {
-              onOpenReader(comic)
+            if (batchMode) {
+              onToggleSelect?.(comic)
             } else {
-              onToggleTitle()
+              onOpenDrawer()
             }
           }}
-          className={`text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text
-                     ${titleExpanded ? '' : 'truncate'}`}
+          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text truncate"
           title={comic.title}
         >
           {comic.title}

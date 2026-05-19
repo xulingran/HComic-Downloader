@@ -8,6 +8,7 @@ import { ComicReaderModal } from '../components/ComicReaderModal'
 import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
+import { useDrawerStore } from '../stores/useDrawerStore'
 
 const searchModes = [
   { value: 'keyword', label: '关键词' },
@@ -41,6 +42,7 @@ export function SearchPage() {
     exitBatchMode,
   } = useBatchSelect()
   const { cardStyle } = useSettingsStore()
+  const { pendingSearch, clearPendingSearch } = useDrawerStore()
   const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
 
@@ -88,6 +90,35 @@ export function SearchPage() {
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [showHistory])
+
+  useEffect(() => {
+    if (!pendingSearch) return
+    const { query: searchQuery, mode: searchMode } = pendingSearch
+
+    setQuery(searchQuery)
+    setMode(searchMode)
+    clearPendingSearch()
+
+    if (searchQuery.trim()) {
+      addHistory(searchQuery.trim())
+    }
+    clearSelection()
+
+    const gen = ++searchGenRef.current
+    setLoading(true)
+    setError(null)
+
+    search(searchQuery, searchMode, 1, source).then(result => {
+      if (gen !== searchGenRef.current) return
+      setComics(result.comics)
+      setPagination(result.pagination)
+    }).catch(err => {
+      if (gen !== searchGenRef.current) return
+      setError(err instanceof Error ? err.message : 'Search failed')
+    }).finally(() => {
+      if (gen === searchGenRef.current) setLoading(false)
+    })
+  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode])
 
   const handleSearch = async (page: number = 1) => {
     clearSelection()

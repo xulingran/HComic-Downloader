@@ -8,6 +8,8 @@ import { DownloadPage } from './pages/DownloadPage'
 import { FavouritesPage } from './pages/FavouritesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { Toast } from './components/common/Toast'
+import { ComicInfoDrawer } from './components/ComicInfoDrawer'
+import { useDrawerStore } from './stores/useDrawerStore'
 
 function App() {
   const {
@@ -54,6 +56,13 @@ function App() {
 
   const [activePage, setActivePage] = useState('search')
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
+  const { pendingSearch } = useDrawerStore()
+
+  useEffect(() => {
+    if (pendingSearch && activePage !== 'search') {
+      setActivePage('search')
+    }
+  }, [pendingSearch, activePage])
 
   const renderPage = () => {
     switch (activePage) {
@@ -85,6 +94,7 @@ function App() {
           {renderPage()}
         </main>
       </div>
+      <ComicInfoDrawer />
     </div>
   )
 }
