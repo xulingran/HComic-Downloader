@@ -95,7 +95,7 @@ describe('ComicReaderModal', () => {
       <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
     )
     expect(screen.getByText('テスト漫画')).toBeInTheDocument()
-    expect(screen.getByText('1 / 2')).toBeInTheDocument()
+    expect(screen.getAllByText('1 / 2').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders close button', () => {
@@ -226,7 +226,7 @@ describe('ComicReaderModal', () => {
     render(
       <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
     )
-    expect(screen.getByText('50%')).toBeInTheDocument()
+    expect(screen.getAllByText('1 / 2').length).toBeGreaterThanOrEqual(2)
   })
 
   describe('ReaderPage cache and priority', () => {

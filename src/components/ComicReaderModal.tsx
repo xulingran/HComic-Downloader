@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ComicInfo } from '@shared/types'
 import { useComicReader } from '../hooks/useComicReader'
 import { useReaderSettings } from '../hooks/useReaderSettings'
@@ -26,6 +26,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const ZOOM_MIN = 0.25
+  const ZOOM_MAX = 4.0
+  const ZOOM_STEP = 0.1
+  const [zoom, setZoom] = useState(1)
 
   const [isDragging, setIsDragging] = useState(false)
   const dragPageRef = useRef(0)
@@ -61,6 +65,32 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     return () => document.removeEventListener('mousedown', handler)
   }, [settingsOpen])
 
+  const zoomIn = useCallback(() => {
+    setZoom(z => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(1)))
+  }, [])
+
+  const zoomOut = useCallback(() => {
+    setZoom(z => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(1)))
+  }, [])
+
+  const resetZoom = useCallback(() => {
+    setZoom(1)
+  }, [])
+
+  // Ctrl+Wheel zoom
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault()
+        if (e.deltaY < 0) zoomIn()
+        else if (e.deltaY > 0) zoomOut()
+      }
+    }
+    window.addEventListener('wheel', handler, { passive: false })
+    return () => window.removeEventListener('wheel', handler)
+  }, [open, zoomIn, zoomOut])
+
   // Fetch URLs when modal opens
   useEffect(() => {
     if (open) {
@@ -77,6 +107,15 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         onClose()
+      } else if ((e.key === '=' || e.key === '+') && e.ctrlKey) {
+        e.preventDefault()
+        zoomIn()
+      } else if (e.key === '-' && e.ctrlKey) {
+        e.preventDefault()
+        zoomOut()
+      } else if (e.key === '0' && e.ctrlKey) {
+        e.preventDefault()
+        resetZoom()
       } else if (displayMode === 'scroll') {
         if (e.key === 'ArrowDown' || e.key === ' ') {
           e.preventDefault()
@@ -220,7 +259,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                 <div
                   key={idx}
                   ref={(el) => { pageRefs.current[idx] = el }}
-                  style={{ width: imageWidth + '%' }}
+                  style={{ width: Math.min(imageWidth * zoom, 100) + '%' }}
                 >
                   <ReaderPage
                     url={url}
@@ -278,6 +317,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               setCurrentPage={setCurrentPage}
               displayMode={displayMode}
               imageWidth={imageWidth}
+              zoom={zoom}
+              imageCacheRef={imageCacheRef}
+              cacheVersion={cacheVersion}
+              onPageChange={(page) => setPreloadTarget(page)}
             />
           )}
         </>
@@ -289,7 +332,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
       >
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">{progress}%</span>
+          <span className="text-xs text-gray-500">{currentPage} / {totalPages}</span>
           <div
             ref={sliderRef}
             data-track
@@ -327,14 +370,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               />
             </div>
           </div>
-          {isDragging && (
-            <span
-              className="text-xs px-2 py-0.5 rounded"
-              style={{ background: 'rgba(255,255,255,0.15)', color: 'white' }}
-            >
-              {currentPage} / {totalPages}
-            </span>
-          )}
           <span className="text-xs text-gray-500">
             {displayMode === 'scroll' ? 'ESC 关闭 | ↑↓ 滚动' : 'ESC 关闭 | ←→ 翻页'}
           </span>
@@ -416,6 +451,31 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                 onChange={(e) => setImageWidth(Number(e.target.value))}
                 className="w-full accent-[#6c8cff]"
               />
+              {/* Zoom controls */}
+              <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
+                <span>缩放</span>
+                <span className="text-gray-500" style={{ minWidth: '40px', textAlign: 'right' }}>{Math.round(zoom * 100)}%</span>
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={zoomOut}
+                  className="px-2 py-0.5 text-xs rounded bg-white/10 hover:bg-white/20 transition-colors text-white/70 hover:text-white"
+                >
+                  −
+                </button>
+                <button
+                  onClick={zoomIn}
+                  className="px-2 py-0.5 text-xs rounded bg-white/10 hover:bg-white/20 transition-colors text-white/70 hover:text-white"
+                >
+                  +
+                </button>
+                <button
+                  onClick={resetZoom}
+                  className="px-2 py-0.5 text-xs rounded bg-white/10 hover:bg-white/20 transition-colors text-white/70 hover:text-white ml-auto"
+                >
+                  重置
+                </button>
+              </div>
             </div>
           </div>
         )}

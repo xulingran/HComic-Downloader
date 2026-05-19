@@ -34,7 +34,7 @@ export function StatusBar({ onNavigateToDownloads }: StatusBarProps) {
             {downloadingTask.comic.title}
           </span>
           <span className="text-xs text-[var(--text-secondary)] flex-shrink-0">
-            {Math.round(downloadingTask.progress || 0)}%
+            {downloadingTask.downloadedPages || 0} / {downloadingTask.totalPages || 0}
           </span>
         </>
       )}

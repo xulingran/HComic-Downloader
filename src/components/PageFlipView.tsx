@@ -8,6 +8,10 @@ interface PageFlipViewProps {
   setCurrentPage: (page: number) => void
   displayMode: DisplayMode
   imageWidth: number
+  zoom: number
+  imageCacheRef: React.RefObject<Map<number, string>>
+  cacheVersion: number
+  onPageChange: (page: number) => void
 }
 
 export function PageFlipView({
@@ -17,6 +21,10 @@ export function PageFlipView({
   setCurrentPage,
   displayMode,
   imageWidth,
+  zoom,
+  imageCacheRef,
+  cacheVersion,
+  onPageChange,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [panOffset, setPanOffset] = useState(0)
@@ -45,6 +53,14 @@ export function PageFlipView({
     setPanOffset(0)
   }, [canGoPrev, currentPage, step, setCurrentPage])
 
+  const clampPanOffset = useCallback((offset: number) => {
+    const container = containerRef.current
+    if (!container) return offset
+    const visualWidth = container.scrollWidth * zoom
+    const panRange = Math.max(0, (visualWidth - container.offsetWidth) / 2)
+    return Math.max(-panRange, Math.min(panRange, offset))
+  }, [zoom])
+
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     isPanning.current = true
     panStart.current = { x: e.clientX, offset: panOffset }
@@ -53,14 +69,10 @@ export function PageFlipView({
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isPanning.current) return
-    const container = containerRef.current
-    if (!container) return
     const dx = e.clientX - panStart.current.x
     const newOffset = panStart.current.offset + dx
-    const maxPan = 0
-    const minPan = Math.min(container.offsetWidth - container.scrollWidth, 0)
-    setPanOffset(Math.max(minPan, Math.min(maxPan, newOffset)))
-  }, [])
+    setPanOffset(clampPanOffset(newOffset))
+  }, [clampPanOffset])
 
   const handlePointerUp = useCallback(() => {
     isPanning.current = false
@@ -82,34 +94,53 @@ export function PageFlipView({
     }
   }, [])
 
+  // Trigger preloading when currentPage changes or on initial render
+  const isFirstRender = useRef(true)
+  const prevPageRef = useRef(currentPage)
+  useEffect(() => {
+    if (isFirstRender.current || currentPage !== prevPageRef.current) {
+      isFirstRender.current = false
+      prevPageRef.current = currentPage
+      onPageChange(currentPage)
+    }
+  }, [currentPage, onPageChange])
+
   const leftPageIdx = currentPage - 1
   const rightPageIdx = isDoubleMode && currentPage < totalPages ? currentPage : null
+
+  // Track cacheVersion so re-renders pick up newly cached pages
+  void cacheVersion
+
+  // Clamp panOffset when zoom changes
+  useEffect(() => {
+    setPanOffset(prev => clampPanOffset(prev))
+  }, [clampPanOffset])
 
   return (
     <div
       ref={containerRef}
       className="flex-1 overflow-hidden relative flex items-center justify-center"
       onWheel={handleWheel}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       <div
         className="flex items-center justify-center h-full"
         style={{
           gap: isDoubleMode ? '4px' : undefined,
           width: `${imageWidth}%`,
-          transform: `translateX(${panOffset}px)`,
+          transform: `translateX(${panOffset}px) scale(${zoom})`,
           transition: isPanning.current ? 'none' : undefined,
         }}
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
       >
         <div className="h-full flex items-center justify-center">
-          <FlipPage url={imageUrls[leftPageIdx]} index={leftPageIdx} />
+          <FlipPage url={imageUrls[leftPageIdx]} index={leftPageIdx} cachedDataUri={imageCacheRef.current?.get(leftPageIdx)} />
         </div>
         {rightPageIdx !== null && (
           <div className="h-full flex items-center justify-center">
-            <FlipPage url={imageUrls[rightPageIdx]} index={rightPageIdx} />
+            <FlipPage url={imageUrls[rightPageIdx]} index={rightPageIdx} cachedDataUri={imageCacheRef.current?.get(rightPageIdx)} />
           </div>
         )}
       </div>
@@ -151,11 +182,22 @@ export function PageFlipView({
   )
 }
 
-function FlipPage({ url, index }: { url: string; index: number }) {
-  const [dataUri, setDataUri] = useState<string | null>(null)
+function FlipPage({ url, index, cachedDataUri }: { url: string; index: number; cachedDataUri?: string }) {
+  const [dataUri, setDataUri] = useState<string | null>(() => cachedDataUri ?? null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
+    // If cache provides the data, use it directly and skip IPC fetch
+    if (cachedDataUri) {
+      setDataUri(cachedDataUri)
+      setError(false)
+      return
+    }
+
+    // Reset state when url changes and no cache hit
+    setDataUri(null)
+    setError(false)
+
     let cancelled = false
     window.hcomic!.fetchPreviewImage(url)
       .then((result) => {
@@ -167,7 +209,7 @@ function FlipPage({ url, index }: { url: string; index: number }) {
         if (!cancelled) setError(true)
       })
     return () => { cancelled = true }
-  }, [url])
+  }, [url, cachedDataUri])
 
   if (error) {
     return (

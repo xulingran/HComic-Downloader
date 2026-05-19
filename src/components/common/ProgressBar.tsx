@@ -3,6 +3,8 @@ import type { DownloadStatus } from '@shared/types'
 interface ProgressBarProps {
   progress: number
   status: DownloadStatus
+  totalPages: number
+  downloadedPages: number
   className?: string
 }
 
@@ -26,7 +28,7 @@ const statusLabels: Record<DownloadStatus, string> = {
   cancelled: '已取消',
 }
 
-export function ProgressBar({ progress, status, className = '' }: ProgressBarProps) {
+export function ProgressBar({ progress, status, totalPages, downloadedPages, className = '' }: ProgressBarProps) {
   return (
     <div className={`flex items-center gap-3 ${className}`}>
       <div className="flex-1 h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
@@ -45,7 +47,7 @@ export function ProgressBar({ progress, status, className = '' }: ProgressBarPro
           color: statusColors[status]
         }}
       >
-        {status === 'downloading' ? `${progress}%` : statusLabels[status]}
+        {status === 'downloading' ? `${downloadedPages} / ${totalPages}` : statusLabels[status]}
       </span>
     </div>
   )

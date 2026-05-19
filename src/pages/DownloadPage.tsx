@@ -196,7 +196,7 @@ export function DownloadPage() {
                   )}
                 </div>
               </div>
-              <ProgressBar progress={task.progress} status={task.status} />
+              <ProgressBar progress={task.progress} status={task.status} totalPages={task.totalPages} downloadedPages={task.downloadedPages} />
               {task.error && (
                 <p className="text-xs text-[var(--error)] mt-2">{task.error}</p>
               )}

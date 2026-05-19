@@ -38,6 +38,9 @@ const defaultProps = {
   setCurrentPage: vi.fn(),
   displayMode: 'single' as DisplayMode,
   imageWidth: 70,
+  imageCacheRef: { current: new Map<number, string>() },
+  cacheVersion: 0,
+  onPageChange: vi.fn(),
 }
 
 describe('PageFlipView', () => {

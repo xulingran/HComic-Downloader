@@ -48,6 +48,6 @@ describe('StatusBar', () => {
     useDownloadStore.getState().setTasks([makeTask({ status: 'downloading', progress: 42 })])
     render(<StatusBar />)
     expect(screen.getByText('Test Comic')).toBeInTheDocument()
-    expect(screen.getByText('42%')).toBeInTheDocument()
+    expect(screen.getByText('5 / 10')).toBeInTheDocument()
   })
 })
