@@ -1,7 +1,7 @@
 """工具函数模块"""
 import os
 import re
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from urllib.request import getproxies
 
 KB = 1024
@@ -96,6 +96,29 @@ def sanitize_path_chars(name: str) -> str:
     if not name:
         return "unknown"
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
+
+
+def normalize_source_auth(source_auth: Optional[dict]) -> dict[str, dict[str, str]]:
+    """规范化多来源认证字典。
+
+    Args:
+        source_auth: 原始来源认证字典，可能为 None 或包含部分条目
+
+    Returns:
+        规范化的认证字典，至少包含 hcomic 和 moeimg 的默认条目
+    """
+    normalized: dict[str, dict[str, str]] = {
+        "hcomic": {"cookie": "", "user_agent": ""},
+        "moeimg": {"cookie": "", "user_agent": ""},
+    }
+    if not isinstance(source_auth, dict):
+        return normalized
+    for source, auth in source_auth.items():
+        if source not in normalized or not isinstance(auth, dict):
+            continue
+        normalized[source]["cookie"] = str(auth.get("cookie", "") or "").strip()
+        normalized[source]["user_agent"] = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
+    return normalized
 
 
 def configure_session_auth(

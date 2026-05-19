@@ -163,6 +163,16 @@ export interface DownloadConflictResult {
   path: string
 }
 
+/**
+ * Python IPC 契约（JSON-RPC 2.0）。
+ *
+ * 该接口定义了 Electron 主进程与 Python 后端之间的 IPC 方法签名。
+ * 参数名使用 snake_case，以便与 Python 后端保持一致。
+ *
+ * 对应的前端 API 类型为 `HcomicAPI`（使用 camelCase 参数名），
+ * 两者的映射由 `electron/main.ts` 中的 IPC 处理器负责。
+ * 一致性由 `ipc-channel-consistency.test.ts` 回归测试保护。
+ */
 export interface IPCMethods {
   search: {
     params: { query: string; mode: string; page: number; source?: string }
@@ -428,6 +438,13 @@ export const NOTIFICATION_CHANNELS = {
   MIGRATION_PROGRESS: 'migration:progress',
   MIGRATION_COMPLETE: 'migration:complete',
   MIGRATION_ERROR: 'migration:error',
+} as const
+
+export const PYTHON_NOTIFICATION_METHODS = {
+  DOWNLOAD_PROGRESS: 'download_progress',
+  MIGRATION_PROGRESS: 'migration_progress',
+  MIGRATION_COMPLETE: 'migration_complete',
+  MIGRATION_ERROR: 'migration_error',
 } as const
 
 export const CONFIG_KEYS = [

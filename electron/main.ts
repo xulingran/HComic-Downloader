@@ -1,25 +1,19 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, Notification } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
+import { NotificationManager } from './notification-manager'
 import {
   SEARCH_MODES, COMIC_SOURCES,
-  IPC_CHANNELS, NOTIFICATION_CHANNELS,
+  IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
   type DownloadProgressEvent,
 } from '../shared/types'
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
 let shutdownDone = false
-
-// ── Notification state ──
-const activeTaskSet = new Set<string>()
-let notifyOnComplete = true
-let notifyWhenForeground: 'inactive' | 'always' = 'inactive'
-const completedTasks: Array<{ title: string; outputPath?: string }> = []
-const failedTasks: Array<{ title: string; error?: string }> = []
+const notificationManager = new NotificationManager()
 
 const CLOSE_GET_DOWNLOADS_TIMEOUT_MS = 3_000
-const NOTIFICATION_BATCH_LIMIT = 100
 const DEV_SERVER_MAX_RETRIES = 5
 const DEV_SERVER_RETRY_DELAY_MS = 1_000
 const SHUTDOWN_TIMEOUT_MS = 5_000
@@ -231,8 +225,8 @@ function validateComicObject(data: unknown): asserts data is Record<string, unkn
 }
 
 function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
-  win.loadURL(url).catch(() => {})
   const onFail = () => {
+    if (win.isDestroyed()) return
     if (attempt >= DEV_SERVER_MAX_RETRIES) {
       console.error(`Dev server failed to load after ${DEV_SERVER_MAX_RETRIES} retries`)
       win.show()
@@ -249,6 +243,7 @@ function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
   win.webContents.once('did-finish-load', () => {
     win.webContents.removeListener('did-fail-load', onFail)
   })
+  win.loadURL(url).catch(() => {})
 }
 
 function createWindow() {
@@ -263,10 +258,13 @@ function createWindow() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true
+      sandbox: true,
+      webviewTag: false,
     },
     show: false
   })
+
+  notificationManager.setMainWindow(mainWindow)
 
   const devServerUrl = process.env.ELECTRON_RENDERER_URL
   if (devServerUrl) {
@@ -387,95 +385,42 @@ function createWindow() {
   })
 }
 
-function sendNativeNotification(title: string, body: string) {
-  if (!notifyOnComplete) return
-  if (notifyWhenForeground === 'inactive' && mainWindow?.isFocused()) return
-
-  if (!Notification.isSupported()) return
-
-  const notification = new Notification({ title, body })
-  notification.on('click', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
-      mainWindow.focus()
-    }
-  })
-  notification.show()
-}
-
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
   // Sync notification settings from saved config on startup
   bridge.call('get_config').then((result: any) => {
     if (result?.config) {
-      if (typeof result.config.notifyOnComplete === 'boolean') {
-        notifyOnComplete = result.config.notifyOnComplete
-      }
-      if (result.config.notifyWhenForeground === 'inactive' || result.config.notifyWhenForeground === 'always') {
-        notifyWhenForeground = result.config.notifyWhenForeground
+      if (typeof result.config.notifyOnComplete === 'boolean'
+        && (result.config.notifyWhenForeground === 'inactive' || result.config.notifyWhenForeground === 'always')) {
+        notificationManager.updateSettings(
+          result.config.notifyOnComplete,
+          result.config.notifyWhenForeground,
+        )
+      } else if (typeof result.config.notifyOnComplete === 'boolean') {
+        notificationManager.updateSettings(
+          result.config.notifyOnComplete,
+          'inactive',
+        )
       }
     }
   }).catch(() => {})
 
-  bridge.setNotificationHandler('download_progress', (params) => {
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.DOWNLOAD_PROGRESS, (params) => {
     const event = validateDownloadProgress(params)
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, event)
-
-    // ── Track active tasks ──
-    const activeStatuses = new Set(['queued', 'downloading', 'paused', 'pausing'])
-    if (activeStatuses.has(event.status)) {
-      activeTaskSet.add(event.taskId)
-    } else {
-      activeTaskSet.delete(event.taskId)
-    }
-
-    // ── Single task completion tracking ──
-    if (event.status === 'completed') {
-      completedTasks.push({ title: event.title })
-    }
-
-    // ── Single task failure tracking ──
-    if (event.status === 'failed') {
-      failedTasks.push({ title: event.title })
-    }
-
-    // ── Batch/completion notification ──
-    const shouldNotify = activeTaskSet.size === 0
-      || (completedTasks.length + failedTasks.length >= NOTIFICATION_BATCH_LIMIT)
-    if (shouldNotify && (completedTasks.length > 0 || failedTasks.length > 0)) {
-      const successCount = completedTasks.length
-      const failCount = failedTasks.length
-      if (successCount === 1 && failCount === 0) {
-        sendNativeNotification(
-          app.getName(),
-          `下载完成：${completedTasks[0].title}`
-        )
-      } else {
-        const parts: string[] = []
-        if (successCount > 0) parts.push(`成功 ${successCount} 本`)
-        if (failCount > 0) parts.push(`失败 ${failCount} 本`)
-        sendNativeNotification(
-          app.getName(),
-          `批量下载完成：${parts.join('，')}`
-        )
-      }
-      // Reset counters for next batch
-      completedTasks.length = 0
-      failedTasks.length = 0
-    }
+    notificationManager.handleProgress(event)
   })
 
-  bridge.setNotificationHandler('migration_progress', (params) => {
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.MIGRATION_PROGRESS, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, params)
   })
 
-  bridge.setNotificationHandler('migration_complete', (params) => {
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.MIGRATION_COMPLETE, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_COMPLETE, params)
   })
 
-  bridge.setNotificationHandler('migration_error', (params) => {
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.MIGRATION_ERROR, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_ERROR, params)
   })
 
@@ -541,15 +486,18 @@ function registerIPCHandlers() {
     if (validator.validate && !validator.validate(value)) {
       throw new Error(`Invalid value for ${key}: ${JSON.stringify(value)}`)
     }
-    const prevNotifyOnComplete = notifyOnComplete
-    const prevNotifyWhenForeground = notifyWhenForeground
+    const prevNotifyOnComplete = notificationManager.notifyOnCompleteValue
+    const prevNotifyWhenForeground = notificationManager.notifyWhenForegroundValue
     try {
-      if (key === 'notifyOnComplete') notifyOnComplete = value as boolean
-      if (key === 'notifyWhenForeground') notifyWhenForeground = value as 'inactive' | 'always'
+      if (key === 'notifyOnComplete' && typeof value === 'boolean') {
+        notificationManager.updateSettings(value, prevNotifyWhenForeground)
+      }
+      if (key === 'notifyWhenForeground' && (value === 'inactive' || value === 'always')) {
+        notificationManager.updateSettings(prevNotifyOnComplete, value)
+      }
       return await bridge.call('set_config', { key, value })
     } catch (err) {
-      if (key === 'notifyOnComplete') notifyOnComplete = prevNotifyOnComplete
-      if (key === 'notifyWhenForeground') notifyWhenForeground = prevNotifyWhenForeground
+      notificationManager.updateSettings(prevNotifyOnComplete, prevNotifyWhenForeground)
       throw err
     }
   })

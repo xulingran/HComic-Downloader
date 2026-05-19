@@ -436,6 +436,10 @@ class ComicDownloadManager(DownloadManager):
         self.on_download_success = None  # Optional callback: (comic, output_path, output_format) -> None
 
     @staticmethod
+    def _rmtree_onerror(func, path, exc_info):
+        logger.warning("Failed to remove %s during rmtree: %s", path, exc_info)
+
+    @staticmethod
     def _safe_rmtree(path: str, parent_dir: str) -> None:
         """验证路径在 parent_dir 内后再执行删除。"""
         try:
@@ -448,11 +452,7 @@ class ComicDownloadManager(DownloadManager):
             logger.warning("Refusing to rmtree path outside output dir: %s", path)
             return
 
-        def _onerror(func, path, exc_info):
-            """Log errors during rmtree and attempt to continue."""
-            logger.warning("Failed to remove %s during rmtree: %s", path, exc_info)
-
-        shutil.rmtree(path, ignore_errors=False, onerror=_onerror)
+        shutil.rmtree(path, ignore_errors=False, onerror=ComicDownloadManager._rmtree_onerror)
 
     def set_auto_retry_max_attempts(self, attempts: int):
         """设置自动重试次数
@@ -655,15 +655,18 @@ class ComicDownloadManager(DownloadManager):
 
         return result
 
+    def _cleanup_cancelled_task(self, task: DownloadTask, temp_dir: Optional[str], reason: str = "") -> None:
+        """清理已取消任务的临时目录和状态。"""
+        logger.info("Task %s cancelled (%s), discarding temp", task.task_id, reason)
+        if temp_dir and os.path.exists(temp_dir):
+            self.downloader.cleanup_temp_dir(temp_dir)
+        with self._lock:
+            task.temp_dir = None
+            task.status = DownloadStatus.CANCELLED
+
     def _check_cancel_before_packaging(self, task: DownloadTask, result: DownloadResult) -> bool:
-        """检查任务是否在打包前被取消。返回 True 表示已取消。"""
         if task.is_cancel_requested:
-            logger.info("Task %s cancelled before packaging, discarding temp", task.task_id)
-            if result.temp_dir and os.path.exists(result.temp_dir):
-                self.downloader.cleanup_temp_dir(result.temp_dir)
-            with self._lock:
-                task.temp_dir = None
-                task.status = DownloadStatus.CANCELLED
+            self._cleanup_cancelled_task(task, result.temp_dir, "before packaging")
             return True
         return False
 
@@ -702,13 +705,10 @@ class ComicDownloadManager(DownloadManager):
             staged_path, output_path, staging_root = self._build_staged_output(result.temp_dir, task.comic)
 
             if task.is_cancel_requested:
-                logger.info("Task %s cancelled during packaging, discarding staged output", task.task_id)
+                self._cleanup_cancelled_task(task, (
+                    result.temp_dir if self.output_format != "folder" else None
+                ), "during packaging")
                 self._cleanup_staged_output(staged_path, staging_root)
-                if self.output_format != "folder" and result.temp_dir and os.path.exists(result.temp_dir):
-                    self.downloader.cleanup_temp_dir(result.temp_dir)
-                with self._lock:
-                    task.temp_dir = None
-                    task.status = DownloadStatus.CANCELLED
                 return
 
             output_path = self._commit_staged_output(staged_path, output_path, overwrite=task.overwrite)
@@ -726,7 +726,7 @@ class ComicDownloadManager(DownloadManager):
             task.temp_dir = None
             task.status = DownloadStatus.COMPLETED
             task.current_downloading_page = 0
-        logger.info("Task %s completed: %s", task.task_id, output_path if 'output_path' in dir() else "")
+        logger.info("Task %s completed: %s", task.task_id, output_path)
 
         if self.on_download_success:
             try:
@@ -810,11 +810,7 @@ class ComicDownloadManager(DownloadManager):
         self._notify_task_update(task)
 
         if task.is_cancel_requested:
-            logger.info("Task %s cancelled after download returned, skipping success", task.task_id)
-            if result.temp_dir and os.path.exists(result.temp_dir):
-                self.downloader.cleanup_temp_dir(result.temp_dir)
-            with self._lock:
-                task.status = DownloadStatus.CANCELLED
+            self._cleanup_cancelled_task(task, result.temp_dir, "after download returned")
             self._notify_task_update(task)
             return
 

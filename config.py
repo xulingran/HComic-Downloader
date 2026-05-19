@@ -6,6 +6,8 @@ from pathlib import Path
 from dataclasses import dataclass, field, fields as dc_fields
 from typing import Optional
 
+from utils import normalize_source_auth
+
 logger = logging.getLogger(__name__)
 
 
@@ -89,20 +91,7 @@ class Config:
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
-        normalized: dict[str, dict[str, str]] = {}
-        if isinstance(source_auth, dict):
-            for source, auth in source_auth.items():
-                if not isinstance(source, str) or not isinstance(auth, dict):
-                    continue
-                cookie = str(auth.get("cookie", "") or "").strip()
-                user_agent = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
-                normalized[source] = {
-                    "cookie": cookie,
-                    "user_agent": user_agent,
-                }
-        normalized.setdefault("hcomic", {"cookie": "", "user_agent": ""})
-        normalized.setdefault("moeimg", {"cookie": "", "user_agent": ""})
-        return normalized
+        return normalize_source_auth(source_auth)
 
     def get_source_auth(self, source: str) -> dict[str, str]:
         """获取来源认证信息。"""

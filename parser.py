@@ -13,7 +13,7 @@ import requests
 
 from constants import DEFAULT_USER_AGENT
 from models import AuthConfig, ComicInfo, PaginationInfo
-from utils import apply_system_proxy_to_session, configure_session_auth
+from utils import apply_system_proxy_to_session, configure_session_auth, normalize_source_auth
 
 logger = logging.getLogger(__name__)
 
@@ -347,16 +347,28 @@ class HComicParser:
         Returns:
             搜索 URL
         """
-        if page <= 1:
-            return f"{cls.INDEX}/?q={quote(keyword)}"
-        return f"{cls.INDEX}/?q={quote(keyword)}&page={page}"
+        return cls._build_paginated_url(f"{cls.INDEX}/?q={quote(keyword)}", page)
 
     @classmethod
     def _build_favourites_url(cls, page: int = 1) -> str:
         """构建收藏夹 URL。"""
+        return cls._build_paginated_url(f"{cls.INDEX}/favourites", page)
+
+    @classmethod
+    def _build_paginated_url(cls, base: str, page: int = 1) -> str:
+        """为基 URL 附加分页查询参数。
+
+        Args:
+            base: 基础 URL（不带 ?page= 参数）
+            page: 页码 (1-based)，page <= 1 时不附加参数
+
+        Returns:
+            完整的分页 URL
+        """
         if page <= 1:
-            return f"{cls.INDEX}/favourites"
-        return f"{cls.INDEX}/favourites?page={page}"
+            return base
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}page={page}"
 
     @classmethod
     def _parse_pagination_info(cls, data: dict, requested_page: int = 1) -> Optional[PaginationInfo]:
@@ -1053,20 +1065,7 @@ class MultiSourceParser:
 
     @staticmethod
     def _normalize_source_auth(source_auth: Optional[dict]) -> dict[str, dict[str, str]]:
-        normalized = {
-            "hcomic": {"cookie": "", "user_agent": ""},
-            "moeimg": {"cookie": "", "user_agent": ""},
-        }
-        if not isinstance(source_auth, dict):
-            return normalized
-
-        for source, auth in source_auth.items():
-            if source not in normalized or not isinstance(auth, dict):
-                continue
-            normalized[source]["cookie"] = str(auth.get("cookie", "") or "").strip()
-            normalized[source]["user_agent"] = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
-
-        return normalized
+        return normalize_source_auth(source_auth)
 
     @property
     def session(self) -> requests.Session:
