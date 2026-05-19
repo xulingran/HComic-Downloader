@@ -108,7 +108,7 @@ export function PageFlipView({
   const leftPageIdx = currentPage - 1
   const rightPageIdx = isDoubleMode && currentPage < totalPages ? currentPage : null
 
-  // Track cacheVersion so re-renders pick up newly cached pages
+  // cacheVersion triggers re-render to pick up newly preloaded images from imageCacheRef
   void cacheVersion
 
   // Clamp panOffset when zoom changes

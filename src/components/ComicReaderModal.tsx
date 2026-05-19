@@ -6,6 +6,10 @@ import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { PageFlipView } from './PageFlipView'
 
+const ZOOM_MIN = 0.25
+const ZOOM_MAX = 4.0
+const ZOOM_STEP = 0.1
+
 interface ComicReaderModalProps {
   comic: ComicInfo
   open: boolean
@@ -26,9 +30,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const ZOOM_MIN = 0.25
-  const ZOOM_MAX = 4.0
-  const ZOOM_STEP = 0.1
   const [zoom, setZoom] = useState(1)
 
   const [isDragging, setIsDragging] = useState(false)
@@ -253,7 +254,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           {loadingState === 'loaded' && imageUrls.length > 0 && (
             <div className="flex flex-col items-center py-2" style={{ gap: pageGap + 'px' }}>
               {imageUrls.map((url, idx) => {
-                void cacheVersion
                 const cachedDataUri = imageCacheRef.current.get(idx)
                 return (
                 <div
