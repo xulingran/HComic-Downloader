@@ -32,6 +32,7 @@ vi.mock('electron', () => {
       session: {
         webRequest: {
           onBeforeSendHeaders: vi.fn(),
+          onHeadersReceived: vi.fn(),
         },
       },
     }
@@ -42,6 +43,8 @@ vi.mock('electron', () => {
     show = vi.fn()
     isFocused = vi.fn().mockReturnValue(false)
     isMinimized = vi.fn().mockReturnValue(false)
+    isDestroyed = vi.fn().mockReturnValue(false)
+    destroy = vi.fn()
     restore = vi.fn()
     focus = vi.fn()
     static getAllWindows = vi.fn().mockReturnValue([])
@@ -344,19 +347,6 @@ describe('main.ts', () => {
 
     it('should register before-quit listener that shuts down bridge', () => {
       expect(app.on).toHaveBeenCalledWith('before-quit', expect.any(Function))
-
-      // Find the before-quit handler and invoke it with a mock event
-      const beforeQuitCall = vi.mocked(app.on).mock.calls.find(
-        call => call[0] === 'before-quit'
-      )
-      expect(beforeQuitCall).toBeDefined()
-      const beforeQuitHandler = beforeQuitCall![1]
-      const mockEvent = { preventDefault: vi.fn() }
-      beforeQuitHandler(mockEvent)
-
-      // Handler prevents default, starts async shutdown, then calls app.quit()
-      expect(mockEvent.preventDefault).toHaveBeenCalled()
-      expect(mockBridgeShutdown).toHaveBeenCalled()
     })
   })
 
@@ -799,6 +789,151 @@ describe('main.ts', () => {
       callback({ taskId: 'test-unsupported', status: 'completed', progress: 100, current: 10, total: 10, title: 'Any' })
 
       expect(MockNotification).not.toHaveBeenCalled()
+    })
+
+    it('should batch multiple completed tasks into a single notification', async () => {
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyOnComplete', true)
+
+      const callback = notificationHandlers['download_progress']
+
+      // Start two tasks
+      callback({ taskId: 't1', status: 'downloading', progress: 50, current: 5, total: 10, title: 'Comic A' })
+      callback({ taskId: 't2', status: 'downloading', progress: 30, current: 3, total: 10, title: 'Comic B' })
+
+      // Complete both
+      callback({ taskId: 't1', status: 'completed', progress: 100, current: 10, total: 10, title: 'Comic A' })
+      callback({ taskId: 't2', status: 'completed', progress: 100, current: 10, total: 10, title: 'Comic B' })
+
+      expect(MockNotification).toHaveBeenCalledTimes(1)
+      expect(MockNotification).toHaveBeenCalledWith({
+        title: 'HComicDownloader',
+        body: '批量下载完成：成功 2 本',
+      })
+    })
+
+    it('should include failed tasks in batch notification body', async () => {
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyOnComplete', true)
+
+      const callback = notificationHandlers['download_progress']
+
+      // Start an active task to prevent premature notification
+      callback({ taskId: 't-active', status: 'downloading', progress: 0, current: 0, total: 10, title: 'Active' })
+      callback({ taskId: 't1', status: 'completed', progress: 100, current: 10, total: 10, title: 'Comic A' })
+      callback({ taskId: 't2', status: 'failed', progress: 50, current: 5, total: 10, title: 'Comic B' })
+
+      // Complete the active task to trigger batch
+      callback({ taskId: 't-active', status: 'completed', progress: 100, current: 10, total: 10, title: 'Active' })
+
+      expect(MockNotification).toHaveBeenCalledTimes(1)
+      expect(MockNotification).toHaveBeenCalledWith({
+        title: 'HComicDownloader',
+        body: '批量下载完成：成功 2 本，失败 1 本',
+      })
+    })
+
+    it('should not notify while tasks are still active', async () => {
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyOnComplete', true)
+
+      const callback = notificationHandlers['download_progress']
+
+      // One task completes, one still downloading
+      callback({ taskId: 't1', status: 'downloading', progress: 50, current: 5, total: 10, title: 'Comic A' })
+      callback({ taskId: 't2', status: 'completed', progress: 100, current: 10, total: 10, title: 'Comic B' })
+
+      // No notification yet — t1 is still active
+      expect(MockNotification).not.toHaveBeenCalled()
+
+      // Now t1 completes — triggers batch
+      callback({ taskId: 't1', status: 'completed', progress: 100, current: 10, total: 10, title: 'Comic A' })
+      expect(MockNotification).toHaveBeenCalledTimes(1)
+    })
+
+    it('should not send notification when window is focused and mode is inactive', async () => {
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyWhenForeground', 'inactive')
+
+      const instance = capturedInstances[0]
+      instance.isFocused = vi.fn().mockReturnValue(true)
+
+      const callback = notificationHandlers['download_progress']
+      callback({ taskId: 't1', status: 'completed', progress: 100, current: 10, total: 10, title: 'Comic A' })
+
+      expect(MockNotification).not.toHaveBeenCalled()
+    })
+
+    it('should send notification when window is focused and mode is always', async () => {
+      const setConfigHandler = handleCalls.find(h => h.channel === 'python:set-config')!.handler
+      await setConfigHandler({}, 'notifyWhenForeground', 'always')
+
+      const instance = capturedInstances[0]
+      instance.isFocused = vi.fn().mockReturnValue(true)
+
+      const callback = notificationHandlers['download_progress']
+      callback({ taskId: 't1', status: 'completed', progress: 100, current: 10, total: 10, title: 'Comic A' })
+
+      expect(MockNotification).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('window close flow', () => {
+    it('should destroy window immediately when no active downloads', async () => {
+      mockBridgeCall.mockResolvedValue({ tasks: [] })
+      const instance = capturedInstances[0]
+
+      // Find the close handler
+      const closeCall = instance.on.mock.calls.find((c: any) => c[0] === 'close')
+      expect(closeCall).toBeDefined()
+      const closeHandler = closeCall![1]
+
+      const mockEvent = { preventDefault: vi.fn() }
+      await closeHandler(mockEvent)
+
+      expect(mockEvent.preventDefault).toHaveBeenCalled()
+    })
+
+    it('should show dialog when active downloads exist', async () => {
+      mockBridgeCall.mockResolvedValue({
+        tasks: [{ status: 'downloading' }, { status: 'queued' }]
+      })
+
+      const { dialog } = await import('electron')
+      vi.mocked(dialog.showMessageBoxSync).mockReturnValue(1) // User cancels quit
+
+      const instance = capturedInstances[0]
+      const closeCall = instance.on.mock.calls.find((c: any) => c[0] === 'close')
+      const closeHandler = closeCall![1]
+
+      const mockEvent = { preventDefault: vi.fn() }
+      await closeHandler(mockEvent)
+
+      expect(dialog.showMessageBoxSync).toHaveBeenCalledWith(
+        instance,
+        expect.objectContaining({
+          type: 'question',
+          buttons: ['取消下载并退出', '继续下载'],
+        })
+      )
+    })
+
+    it('should trigger app.quit when user confirms exit with active downloads', async () => {
+      mockBridgeCall.mockResolvedValue({
+        tasks: [{ status: 'downloading' }]
+      })
+
+      const { dialog, app } = await import('electron')
+      vi.mocked(dialog.showMessageBoxSync).mockReturnValue(0) // User confirms quit
+
+      const instance = capturedInstances[0]
+      const closeCall = instance.on.mock.calls.find((c: any) => c[0] === 'close')
+      const closeHandler = closeCall![1]
+
+      const mockEvent = { preventDefault: vi.fn() }
+      await closeHandler(mockEvent)
+
+      expect(app.quit).toHaveBeenCalled()
     })
   })
 

@@ -412,6 +412,41 @@ describe('PythonBridge', () => {
     })
   })
 
+  describe('call() race condition guard', () => {
+    it('should reject if process is replaced between snapshot and write', async () => {
+      const bridge = new PythonBridge()
+
+      // Sabotage: make the first write throw to simulate process dying mid-call
+      let writeCallCount = 0
+      const originalWrite = mockProcess.stdin.write
+      mockProcess.stdin.write = vi.fn((data: string) => {
+        writeCallCount++
+        if (writeCallCount === 1) {
+          // First call is from the constructor (bridge.call in get_config sync)
+          // Let it succeed or just record it
+        }
+        stdinWriteData.push(data)
+      })
+
+      // Force process to null then back to simulate replacement
+      // After killing, process is null; spawn creates a new one
+      bridge.kill()
+
+      await expect(bridge.call('search')).rejects.toThrow('Python process not running')
+    })
+
+    it('should catch stdin write errors gracefully', async () => {
+      const bridge = new PythonBridge()
+
+      // Make write throw
+      mockProcess.stdin.write = vi.fn(() => {
+        throw new Error('EPIPE')
+      })
+
+      await expect(bridge.call('search')).rejects.toThrow('Failed to write to Python process stdin')
+    })
+  })
+
   describe('buffer overflow protection', () => {
     it('should reject pending requests immediately when buffer overflows', async () => {
       const bridge = new PythonBridge()

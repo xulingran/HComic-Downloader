@@ -386,6 +386,10 @@ class ComicDownloader:
             logger.info("Download completed: %s", comic.title)
             if progress_callback:
                 progress_callback(downloaded_count, total, "下载完成", comic_info)
+        elif pause_event and pause_event.is_set():
+            logger.info("Download paused: %s (%d/%d pages)", comic.title, len(all_completed), total)
+            if progress_callback:
+                progress_callback(downloaded_count, total, f"已暂停 ({len(all_completed)}/{total} 页)", comic_info)
         else:
             logger.warning("Download completed with %d failures", len(all_failed))
             if progress_callback:

@@ -237,7 +237,7 @@ class ImageDownloader:
             session = self._acquire_session()
             self.download(url, output_path, referer=referer, session=session)
             return True
-        except Exception as e:
+        except (requests.RequestException, DownloadError, OSError) as e:
             logger.error("Failed to download %s: %s", url, e)
             return False
         finally:

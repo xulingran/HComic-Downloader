@@ -454,8 +454,9 @@ class HComicParser:
     @classmethod
     def _extract_payload_data(cls, resp_text: str) -> dict:
         """从页面中提取 payload 数据"""
-        if len(resp_text) > MAX_PAYLOAD_SIZE:
-            raise ValueError(f"Response too large ({len(resp_text)} bytes), limit is 2MB")
+        resp_bytes = len(resp_text.encode('utf-8'))
+        if resp_bytes > MAX_PAYLOAD_SIZE:
+            raise ValueError(f"Response too large ({resp_bytes} bytes), limit is 2MB")
         m = cls.PAYLOAD_REGEX.search(resp_text)
         if not m:
             for fallback in cls.PAYLOAD_FALLBACK_REGEXES:

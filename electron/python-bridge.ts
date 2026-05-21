@@ -182,6 +182,11 @@ export class PythonBridge {
       throw new Error('Python process stdin not writable')
     }
 
+    // Guard: reject if process was replaced between the snapshot and here
+    if (this.process !== proc) {
+      throw new Error('Python process was replaced during call')
+    }
+
     const id = crypto.randomUUID()
     const request = { jsonrpc: '2.0', id, method, params }
 
@@ -194,7 +199,13 @@ export class PythonBridge {
       }, REQUEST_TIMEOUT_MS)
 
       this.pendingRequests.set(id, { resolve, reject, timer })
-      proc.stdin?.write(JSON.stringify(request) + '\n')
+      try {
+        proc.stdin!.write(JSON.stringify(request) + '\n')
+      } catch (err) {
+        clearTimeout(timer)
+        this.pendingRequests.delete(id)
+        reject(new Error('Failed to write to Python process stdin'))
+      }
     })
   }
 

@@ -1,0 +1,62 @@
+appId: com.hcomic.downloader
+productName: HComic Downloader
+copyright: Copyright © 2024 HComic
+
+directories:
+  output: dist
+  buildResources: assets
+
+files:
+  - out/**/*
+  - "!out/**/*.map"
+  - shared/**/*
+  - "!node_modules/**/*"
+
+extraResources:
+  - from: python/dist/python
+    to: python
+    filter:
+      - "**/*"
+
+asar: true
+
+win:
+  icon: assets/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+  requestedExecutionLevel: asInvoker
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  deleteAppDataOnUninstall: false
+
+mac:
+  icon: assets/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  category: public.app-category.utilities
+  hardenedRuntime: true
+
+dmg:
+  contents:
+    - x: 130
+      y: 220
+    - x: 410
+      y: 220
+      type: link
+      path: /Applications
+
+linux:
+  icon: assets
+  target:
+    - target: AppImage
+      arch:
+        - x64
+  category: Utility

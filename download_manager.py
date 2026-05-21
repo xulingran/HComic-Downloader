@@ -332,11 +332,12 @@ class DownloadManager:
             if not task:
                 return False
 
-            if task.status not in (
+            if task.status in (
                 DownloadStatus.COMPLETED, DownloadStatus.CANCELLED, DownloadStatus.FAILED
             ):
-                task.request_cancel()
+                return False
 
+            task.request_cancel()
             task.status = DownloadStatus.CANCELLED
 
             # 从队列移除

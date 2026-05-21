@@ -30,6 +30,12 @@ const ALLOWED_COVER_DOMAINS = [
   'moeimg.net',
 ]
 
+/** Image server domains that need Referer injection, mapped to their Referer origin. */
+const REFERER_OVERRIDES: Record<string, string> = {
+  'h-comic.link': 'https://h-comic.com/',
+  'moeimg.fan': 'https://moeimg.fan/',
+}
+
 const CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS = ['{author}', '{title}', '{id}']
 
 function logPreviewDebug(message: string, details?: Record<string, unknown>) {
@@ -286,7 +292,9 @@ function createWindow() {
   }
 
   mainWindow.once('ready-to-show', () => {
-    mainWindow?.show()
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+    }
   })
 
   mainWindow.webContents.on('will-navigate', (event) => {
@@ -295,19 +303,39 @@ function createWindow() {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
+  // Content Security Policy — defense-in-depth against injection
+  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [
+          "default-src 'self'; " +
+          "script-src 'self'; " +
+          "style-src 'self' 'unsafe-inline'; " +
+          "img-src 'self' data: https:; " +
+          "font-src 'self' data:; " +
+          "connect-src 'self' https:; " +
+          "media-src 'self' data: blob:; " +
+          "object-src 'none'; " +
+          "base-uri 'self'",
+        ],
+      },
+    })
+  })
+
   // Inject correct Referer for comic page image requests
+  const refererFilterUrls = Object.keys(REFERER_OVERRIDES).flatMap(d => [
+    `https://${d}/*`, `https://*.${d}/*`,
+  ])
   mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: ['https://h-comic.link/*', 'https://*.h-comic.link/*', 'https://moeimg.fan/*', 'https://*.moeimg.fan/*'] },
+    { urls: refererFilterUrls },
     (details, callback) => {
       const url = new URL(details.url)
-      let referer = ''
-      if (url.hostname === 'h-comic.link' || url.hostname.endsWith('.h-comic.link')) {
-        referer = 'https://h-comic.com/'
-      } else if (url.hostname === 'moeimg.fan' || url.hostname.endsWith('.moeimg.fan')) {
-        referer = 'https://moeimg.fan/'
-      }
-      if (referer) {
-        details.requestHeaders['Referer'] = referer
+      for (const [domain, referer] of Object.entries(REFERER_OVERRIDES)) {
+        if (url.hostname === domain || url.hostname.endsWith('.' + domain)) {
+          details.requestHeaders['Referer'] = referer
+          break
+        }
       }
       callback(details)
     }

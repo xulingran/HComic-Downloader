@@ -22,6 +22,7 @@ vi.mock('electron', () => {
       session: {
         webRequest: {
           onBeforeSendHeaders: vi.fn(),
+          onHeadersReceived: vi.fn(),
         },
       },
     }
