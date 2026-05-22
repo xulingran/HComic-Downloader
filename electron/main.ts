@@ -405,6 +405,89 @@ function createWindow() {
   })
 }
 
+const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
+const LOGIN_COOKIE_SETTLE_MS = 1_000
+
+function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
+  const parent = mainWindow
+  if (!parent) {
+    return Promise.resolve({ success: false, message: '主窗口不存在' })
+  }
+
+  return new Promise((resolve) => {
+    let settled = false
+    let hasVisitedAuth0 = false
+
+    const loginWin = new BrowserWindow({
+      width: 500,
+      height: 700,
+      title: '登录 H-Comic',
+      parent: parent,
+      modal: true,
+      webPreferences: {
+        contextIsolation: true,
+        nodeIntegration: false,
+        sandbox: true,
+      },
+    })
+
+    const done = (result: { success: boolean; message?: string }) => {
+      if (settled) return
+      settled = true
+      if (!loginWin.isDestroyed()) {
+        loginWin.close()
+      }
+      resolve(result)
+    }
+
+    // Timeout after 5 minutes
+    const timeout = setTimeout(() => {
+      done({ success: false, message: '登录超时，请重试' })
+    }, LOGIN_WINDOW_TIMEOUT_MS)
+
+    loginWin.on('closed', () => {
+      clearTimeout(timeout)
+      if (!settled) {
+        done({ success: false, message: '已取消' })
+      }
+    })
+
+    loginWin.webContents.on('did-navigate', (_event, url) => {
+      if (url.includes('auth0.com')) {
+        hasVisitedAuth0 = true
+      }
+      if (hasVisitedAuth0 && (url.startsWith('https://h-comic.com') || url.startsWith('https://www.h-comic.com'))) {
+        hasVisitedAuth0 = false
+        setTimeout(async () => {
+          clearTimeout(timeout)
+          try {
+            const cookies = await loginWin.webContents.session.cookies.get({ url: 'https://h-comic.com' })
+            if (cookies.length === 0) {
+              done({ success: false, message: '未获取到登录信息' })
+              return
+            }
+            const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+            const userAgent = loginWin.webContents.userAgent
+
+            const bridge = getPythonBridge()
+            await bridge.call('apply_auth', {
+              curl_text: `curl 'https://h-comic.com' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
+            })
+            const verifyResult = await bridge.call('verify_auth') as { valid: boolean; message: string }
+            done({ success: verifyResult.valid, message: verifyResult.message })
+          } catch (err: any) {
+            done({ success: false, message: err?.message || '登录处理失败' })
+          }
+        }, LOGIN_COOKIE_SETTLE_MS)
+      }
+    })
+
+    loginWin.loadURL('https://h-comic.com').catch(() => {
+      done({ success: false, message: '无法打开登录页面' })
+    })
+  })
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
@@ -535,6 +618,10 @@ function registerIPCHandlers() {
 
   ipcMain.handle(IPC_CHANNELS.VERIFY_AUTH, async () => {
     return bridge.call('verify_auth')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async () => {
+    return openLoginWindow()
   })
 
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
