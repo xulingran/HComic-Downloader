@@ -73,6 +73,8 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url)
   },
 
+  openLoginWindow: () => ipcRenderer.invoke(IPC_CHANNELS.OPEN_LOGIN_WINDOW),
+
   fetchCover: (url: unknown) => {
     if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid cover URL')
     return ipcRenderer.invoke(IPC_CHANNELS.FETCH_COVER, url)
