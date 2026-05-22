@@ -216,6 +216,33 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
+  const handleOpenLoginWindow = async () => {
+    const prevStatus = loginStatus
+    setLoginStatus('verifying')
+    setLoginMessage('')
+    try {
+      const result = await window.hcomic?.openLoginWindow()
+      if (!result) {
+        setLoginStatus(prevStatus)
+        return
+      }
+      if (result.success) {
+        setLoginStatus('valid')
+        setLoginMessage(result.message || '登录成功')
+      } else {
+        if (result.message === '已取消') {
+          setLoginStatus(prevStatus)
+        } else {
+          setLoginStatus('error')
+          setLoginMessage(result.message || '登录失败')
+        }
+      }
+    } catch (err: any) {
+      setLoginStatus('error')
+      setLoginMessage(err?.message || '登录失败')
+    }
+  }
+
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-center justify-between">
@@ -329,6 +356,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         loginMessage={loginMessage}
         onApplyAuth={handleApplyAuth}
         onTestAuth={handleTestAuth}
+        onOpenLoginWindow={handleOpenLoginWindow}
       />
 
       <ProxySettings
