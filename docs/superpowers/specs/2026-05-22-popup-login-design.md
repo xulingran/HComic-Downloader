@@ -77,7 +77,7 @@ h-comic.com 使用 **Auth0** 作为身份认证提供商。登录流程为：点
    - URL 包含 `auth0.com` → 设 `_hasVisitedAuth0 = true`
    - `_hasVisitedAuth0` 为 true 且 URL 为 `h-comic.com` → 判定登录成功
 3. 登录成功后等待 1 秒让 Cookie 写入完成
-4. 调用 `win.webContents.session.cookies.get({ domain: '.h-comic.com' })` 提取 Cookie
+4. 调用 `win.webContents.session.cookies.get({ url: 'https://h-comic.com' })` 提取 Cookie（使用 URL 过滤，比 domain 过滤更可靠，能匹配 `h-comic.com` 和 `.h-comic.com` 两种域名的 Cookie）
 5. 将 Cookie 数组拼接为标准 Cookie 字符串：`name1=value1; name2=value2`
 6. 获取 `win.webContents.userAgent` 作为 User-Agent
 7. 构造 cURL 文本：`curl https://h-comic.com -b 'cookie_string' -H 'User-Agent: ua_string'`
@@ -100,6 +100,7 @@ h-comic.com 使用 **Auth0** 作为身份认证提供商。登录流程为：点
 ### `shared/types.ts`
 
 - 新增 `IPC_CHANNELS.OPEN_LOGIN_WINDOW = 'open-login-window'`
+- **注意**：此通道是纯 Electron 侧处理（不经过 Python bridge），不应加入 `PYTHON_IPC_CHANNEL_MAP`
 - 在 `HcomicAPI` 接口中新增 `openLoginWindow(): Promise<{ success: boolean; message?: string }>`
 
 ### `electron/preload.ts`
