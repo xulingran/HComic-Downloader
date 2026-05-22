@@ -6,6 +6,7 @@ interface AuthSettingsProps {
   loginMessage: string
   onApplyAuth: (curlText: string) => Promise<void>
   onTestAuth: () => Promise<void>
+  onOpenLoginWindow: () => Promise<void>
 }
 
 export function AuthSettings({
@@ -14,6 +15,7 @@ export function AuthSettings({
   loginMessage,
   onApplyAuth,
   onTestAuth,
+  onOpenLoginWindow,
 }: AuthSettingsProps) {
   const [curlText, setCurlText] = useState('')
 
@@ -38,6 +40,19 @@ export function AuthSettings({
              loginStatus === 'verifying' ? '验证中...' :
              loginStatus === 'error' ? '错误' : '未配置'}
           </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onOpenLoginWindow}
+            disabled={loginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--accent)] text-white hover:opacity-90
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
+          </button>
+          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 H-Comic 账号</span>
         </div>
 
         <div>
