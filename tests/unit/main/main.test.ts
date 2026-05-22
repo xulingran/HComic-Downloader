@@ -604,7 +604,7 @@ describe('main.ts', () => {
     it('should reject wrong value type for config', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:set-config')!
       await expect(handler.handler({}, 'concurrentDownloads', 'not-a-number'))
-        .rejects.toThrow('Invalid value type for concurrentDownloads')
+        .rejects.toThrow('Invalid value for concurrentDownloads')
     })
 
     it('should reject value outside valid range', async () => {
