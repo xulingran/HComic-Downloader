@@ -137,12 +137,16 @@ export function SearchPage() {
   }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, query, searchTags])
 
   const filteredComics = useMemo(() => {
-    if (!filterEnabled) return comics
     const key = (source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
     const blocked = new Set(tagBlacklist[key].map(t => t.toLowerCase()))
-    if (blocked.size === 0) return comics
-    return comics.filter(c => !c.tags?.some(t => blocked.has(t.toLowerCase())))
+    const hasBlockedTags = blocked.size > 0
+    return comics.map(c => ({
+      comic: c,
+      isBlocked: filterEnabled && hasBlockedTags && (c.tags?.some(t => blocked.has(t.toLowerCase())) ?? false)
+    }))
   }, [comics, filterEnabled, tagBlacklist, source])
+
+  const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
   const handleSearch = async (page: number = 1) => {
     clearSelection()
@@ -349,9 +353,9 @@ export function SearchPage() {
         </div>
       )}
 
-      {filterEnabled && filteredComics.length < comics.length && (
+      {blockedCount > 0 && (
         <div className="text-sm text-[var(--text-secondary)]">
-          已过滤 {comics.length - filteredComics.length} 条结果
+          已过滤 {blockedCount} 条结果
         </div>
       )}
 
@@ -360,16 +364,20 @@ export function SearchPage() {
           ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
           : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
         }>
-          {filteredComics.map((comic) => (
-            <ComicCard
-              key={getComicKey(comic)}
-              comic={comic}
-              onOpenReader={handleOpenReader}
-              batchMode={batchMode}
-              selected={selectedIds.has(getComicKey(comic))}
-              onToggleSelect={toggleSelect}
-              onDownload={handleDownload}
-            />
+          {filteredComics.map(({ comic, isBlocked }) => (
+            isBlocked ? (
+              <BlockedPlaceholder key={getComicKey(comic)} comic={comic} cardStyle={cardStyle} />
+            ) : (
+              <ComicCard
+                key={getComicKey(comic)}
+                comic={comic}
+                onOpenReader={handleOpenReader}
+                batchMode={batchMode}
+                selected={selectedIds.has(getComicKey(comic))}
+                onToggleSelect={toggleSelect}
+                onDownload={handleDownload}
+              />
+            )
           ))}
         </div>
       )}
@@ -425,13 +433,13 @@ export function SearchPage() {
         </div>
       )}
 
-      {!isLoading && filteredComics.length === 0 && comics.length === 0 && (
+      {!isLoading && comics.length === 0 && (
         <div className="text-center text-[var(--text-secondary)] py-12">
           暂无搜索结果
         </div>
       )}
 
-      {!isLoading && comics.length > 0 && filteredComics.length === 0 && (
+      {!isLoading && comics.length > 0 && blockedCount === comics.length && (
         <div className="text-center text-[var(--text-secondary)] py-12">
           所有结果均已被标签过滤
         </div>
@@ -444,6 +452,49 @@ export function SearchPage() {
           onClose={() => setReaderComic(null)}
         />
       )}
+    </div>
+  )
+}
+
+function BlockedPlaceholder({ comic, cardStyle }: { comic: ComicInfo; cardStyle: string }) {
+  const { openDrawer } = useDrawerStore()
+
+  if (cardStyle === 'detailed') {
+    return (
+      <div className="flex items-center px-4 py-2.5 border-b border-[var(--border)] opacity-50">
+        <div className="w-14 h-14 bg-[var(--bg-secondary)] flex-shrink-0 rounded-md flex items-center justify-center text-[var(--text-secondary)]">
+          🚫
+        </div>
+        <div className="flex-1 min-w-0 ml-3">
+          <h3
+            onClick={(e) => { e.stopPropagation(); openDrawer(comic) }}
+            className="text-sm font-medium text-[var(--text-secondary)] cursor-pointer line-through truncate"
+            title={comic.title}
+          >
+            {comic.title}
+          </h3>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden opacity-50">
+      <div className="aspect-[3/4] bg-[var(--bg-secondary)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-1 text-[var(--text-secondary)]">
+          <span className="text-2xl">🚫</span>
+          <span className="text-xs">已屏蔽</span>
+        </div>
+      </div>
+      <div className="p-3">
+        <h3
+          onClick={(e) => { e.stopPropagation(); openDrawer(comic) }}
+          className="text-sm font-medium text-[var(--text-secondary)] cursor-pointer line-clamp-2 line-through"
+          title={comic.title}
+        >
+          {comic.title}
+        </h3>
+      </div>
     </div>
   )
 }
