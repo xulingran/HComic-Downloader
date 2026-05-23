@@ -52,7 +52,7 @@ export function AuthSettings({
           >
             {loginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
           </button>
-          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 H-Comic 账号</span>
+          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 H-Comic 账号，登录完成后关闭弹窗即可自动识别 Cookie</span>
         </div>
 
         <div>

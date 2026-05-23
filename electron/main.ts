@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 import { NotificationManager } from './notification-manager'
@@ -296,21 +296,32 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
   // Content Security Policy — defense-in-depth against injection
+  const isDev = !!process.env.ELECTRON_RENDERER_URL
   mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    const csp = isDev
+      ? "default-src 'self'; " +
+        "script-src 'self' 'unsafe-inline'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data: https:; " +
+        "font-src 'self' data:; " +
+        "connect-src 'self' https: ws:; " +
+        "media-src 'self' data: blob:; " +
+        "object-src 'none'; " +
+        "base-uri 'self'"
+      : "default-src 'self'; " +
+        "script-src 'self'; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "img-src 'self' data: https:; " +
+        "font-src 'self' data:; " +
+        "connect-src 'self' https:; " +
+        "media-src 'self' data: blob:; " +
+        "object-src 'none'; " +
+        "base-uri 'self'"
+
     callback({
       responseHeaders: {
         ...details.responseHeaders,
-        'Content-Security-Policy': [
-          "default-src 'self'; " +
-          "script-src 'self'; " +
-          "style-src 'self' 'unsafe-inline'; " +
-          "img-src 'self' data: https:; " +
-          "font-src 'self' data:; " +
-          "connect-src 'self' https:; " +
-          "media-src 'self' data: blob:; " +
-          "object-src 'none'; " +
-          "base-uri 'self'",
-        ],
+        'Content-Security-Policy': [csp],
       },
     })
   })
@@ -408,6 +419,27 @@ function createWindow() {
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
 const LOGIN_COOKIE_SETTLE_MS = 1_000
 
+async function extractAndApplyCookies(
+  userAgent: string,
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const cookies = await session.defaultSession.cookies.get({ url: 'https://h-comic.com' })
+    if (cookies.length === 0) {
+      return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口' }
+    }
+    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+
+    const bridge = getPythonBridge()
+    await bridge.call('apply_auth', {
+      curl_text: `curl 'https://h-comic.com' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
+    })
+    const verifyResult = await bridge.call('verify_auth') as { valid: boolean; message: string }
+    return { success: verifyResult.valid, message: verifyResult.message }
+  } catch (err: any) {
+    return { success: false, message: err?.message || '登录处理失败' }
+  }
+}
+
 function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
   const parent = mainWindow
   if (!parent) {
@@ -417,6 +449,7 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
   return new Promise((resolve) => {
     let settled = false
     let hasVisitedAuth0 = false
+    let savedUserAgent = ''
 
     const loginWin = new BrowserWindow({
       width: 500,
@@ -440,15 +473,24 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
       resolve(result)
     }
 
-    // Timeout after 5 minutes
     const timeout = setTimeout(() => {
       done({ success: false, message: '登录超时，请重试' })
     }, LOGIN_WINDOW_TIMEOUT_MS)
 
+    loginWin.webContents.on('did-finish-load', () => {
+      if (!savedUserAgent) {
+        savedUserAgent = loginWin.webContents.userAgent
+      }
+    })
+
     loginWin.on('closed', () => {
       clearTimeout(timeout)
       if (!settled) {
-        done({ success: false, message: '已取消' })
+        extractAndApplyCookies(savedUserAgent || loginWin.webContents.userAgent).then((result) => {
+          done(result)
+        }).catch(() => {
+          done({ success: false, message: '已取消' })
+        })
       }
     })
 
@@ -460,24 +502,8 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
         hasVisitedAuth0 = false
         setTimeout(async () => {
           clearTimeout(timeout)
-          try {
-            const cookies = await loginWin.webContents.session.cookies.get({ url: 'https://h-comic.com' })
-            if (cookies.length === 0) {
-              done({ success: false, message: '未获取到登录信息' })
-              return
-            }
-            const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
-            const userAgent = loginWin.webContents.userAgent
-
-            const bridge = getPythonBridge()
-            await bridge.call('apply_auth', {
-              curl_text: `curl 'https://h-comic.com' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
-            })
-            const verifyResult = await bridge.call('verify_auth') as { valid: boolean; message: string }
-            done({ success: verifyResult.valid, message: verifyResult.message })
-          } catch (err: any) {
-            done({ success: false, message: err?.message || '登录处理失败' })
-          }
+          const result = await extractAndApplyCookies(savedUserAgent || loginWin.webContents.userAgent)
+          done(result)
         }, LOGIN_COOKIE_SETTLE_MS)
       }
     })
