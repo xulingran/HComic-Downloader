@@ -163,10 +163,6 @@ export function SearchPage() {
     }
   }
 
-  const handleComicClick = (comic: ComicInfo) => {
-    console.log('Comic clicked:', comic)
-  }
-
   const handleOpenReader = (comic: ComicInfo) => {
     setReaderComic(comic)
   }
@@ -341,7 +337,6 @@ export function SearchPage() {
             <ComicCard
               key={getComicKey(comic)}
               comic={comic}
-              onClick={handleComicClick}
               onOpenReader={handleOpenReader}
               batchMode={batchMode}
               selected={selectedIds.has(getComicKey(comic))}
