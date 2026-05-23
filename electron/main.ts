@@ -58,12 +58,6 @@ const REFERER_OVERRIDES: Record<string, string> = {
 
 const CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS = ['{author}', '{title}', '{id}']
 
-function logPreviewDebug(message: string, details?: Record<string, unknown>) {
-  if (!app.isPackaged) {
-    console.log(message, details)
-  }
-}
-
 function validateBraces(template: string): boolean {
   let depth = 0
   for (let i = 0; i < template.length; i++) {
@@ -721,19 +715,7 @@ function registerIPCHandlers() {
     if (data.sourceSite !== undefined && data.sourceSite !== null) {
       assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), data.sourceSite, 'comicData.sourceSite')
     }
-    logPreviewDebug('[preview] get-preview-urls request', {
-      id: data.id,
-      sourceSite: data.sourceSite ?? 'hcomic',
-      pages: data.pages,
-      mediaId: data.mediaId,
-      source: data.source,
-    })
     const result = await bridge.call('get_preview_urls', { comic_data: comicData }) as { imageUrls?: unknown[]; totalPages?: unknown }
-    logPreviewDebug('[preview] get-preview-urls result', {
-      id: data.id,
-      urls: Array.isArray(result?.imageUrls) ? result.imageUrls.length : 0,
-      totalPages: result?.totalPages,
-    })
     return result
   })
 
@@ -750,7 +732,6 @@ function registerIPCHandlers() {
       }
       throw e
     }
-    logPreviewDebug('[preview] fetch-preview-image request', { imageUrl })
     return bridge.call('fetch_preview_image', { image_url: imageUrl })
   })
 
