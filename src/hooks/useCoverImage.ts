@@ -4,11 +4,6 @@ const coverCache = new Map<string, string | null>()
 const pendingRequests = new Map<string, Promise<string | null>>()
 const MAX_CACHE_SIZE = 200
 
-/** 清除封面缓存（供测试使用） */
-export function clearCoverCache(): void {
-  coverCache.clear()
-}
-
 // Shared IntersectionObserver for all cover images
 let sharedObserver: IntersectionObserver | null = null
 const observedElements = new Map<Element, () => void>()
