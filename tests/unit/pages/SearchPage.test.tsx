@@ -56,7 +56,7 @@ vi.mock('@/stores/useComicStore', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
 }))
 
 vi.mock('@/components/common/ComicCard', () => ({
@@ -201,7 +201,7 @@ describe('SearchPage', () => {
     ]
 
     it('uses grid layout for cover mode', () => {
-      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
       mockStoreState.comics = comicsWithResults
 
       render(<SearchPage />)
@@ -210,7 +210,7 @@ describe('SearchPage', () => {
     })
 
     it('uses flex-col layout for detailed mode', () => {
-      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
       mockStoreState.comics = comicsWithResults
 
       render(<SearchPage />)

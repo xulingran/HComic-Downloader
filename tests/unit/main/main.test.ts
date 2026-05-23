@@ -118,8 +118,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 24 previous + 6 migration + 1 resolve-unmatched + 1 select-directory = 32 total
-      expect(handleCalls.length).toBe(32)
+      // 24 previous + 6 migration + 1 resolve-unmatched + 1 select-directory + 1 open-login-window = 33 total
+      expect(handleCalls.length).toBe(33)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -159,6 +159,7 @@ describe('main.ts', () => {
       'python:get-migration-status',
       'python:resolve-unmatched',
       'select-directory',
+      'open-login-window',
     ]
 
     expectedChannels.forEach(channel => {

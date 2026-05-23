@@ -33,7 +33,7 @@ vi.mock('@/hooks/useIpc', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', tagBlacklist: { hcomic: [], moeimg: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), addTag: vi.fn(), removeTag: vi.fn() })
 }))
 
 vi.mock('@/stores/useFavouritesStore', () => ({

@@ -33,9 +33,12 @@ vi.mock('@/stores/useSettingsStore', () => ({
     themeMode: 'auto',
     cardStyle: 'cover',
     sfwMode: false,
+    tagBlacklist: { hcomic: [], moeimg: [] },
     setThemeMode: mockSetThemeMode,
     setCardStyle: mockSetCardStyle,
-    setSfwMode: mockSetSfwMode
+    setSfwMode: mockSetSfwMode,
+    addTag: vi.fn(),
+    removeTag: vi.fn(),
   }))
 }))
 
@@ -136,9 +139,9 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('Moeimg')).toBeInTheDocument()
+      expect(screen.getAllByText('Moeimg').length).toBeGreaterThanOrEqual(1)
     })
-    // HComic appears in both source section and login section, so use getAllByText
+    // HComic appears in source section, tag filter section, and login section
     expect(screen.getAllByText('HComic').length).toBeGreaterThanOrEqual(2)
   })
 
@@ -214,10 +217,11 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('Moeimg')).toBeInTheDocument()
+      expect(screen.getAllByText('Moeimg').length).toBeGreaterThanOrEqual(1)
     })
 
-    await userEvent.click(screen.getByText('Moeimg'))
+    // Click the first Moeimg button (in the default source section)
+    await userEvent.click(screen.getAllByText('Moeimg')[0])
 
     expect(mockSetConfig).toHaveBeenCalledWith('defaultSource', 'moeimg')
   })
