@@ -26,6 +26,7 @@ import {
   noPathTraversal,
   absolutePath,
   assert,
+  tagBlacklist as tagBlacklistValidator,
 } from './validators'
 
 let mainWindow: BrowserWindow | null = null
@@ -181,6 +182,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   fontName: and(string(), maxLength(128)),
   fontSize: and(number(), integer(), range(12, 20)),
   sfwMode: boolean(),
+  tagBlacklist: tagBlacklistValidator(),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────

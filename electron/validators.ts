@@ -181,6 +181,38 @@ export function absolutePath(): Validator<string> {
   )
 }
 
+// ── Tag blacklist validator ──────────────────────────────────────────────
+
+export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[] }> {
+  return (value): value is { hcomic: string[]; moeimg: string[] } => {
+    if (typeof value !== 'object' || value === null) {
+      throw new ValidationError('tagBlacklist must be an object')
+    }
+    const obj = value as Record<string, unknown>
+    for (const key of ['hcomic', 'moeimg']) {
+      const arr = obj[key]
+      if (!Array.isArray(arr)) {
+        throw new ValidationError(`tagBlacklist.${key} must be an array`)
+      }
+      if (arr.length > 500) {
+        throw new ValidationError(`tagBlacklist.${key} must not exceed 500 items`)
+      }
+      const seen = new Set<string>()
+      for (const item of arr) {
+        if (typeof item !== 'string' || item.length === 0 || item.length > 64) {
+          throw new ValidationError(`tagBlacklist.${key} items must be non-empty strings, max 64 chars`)
+        }
+        const lower = item.toLowerCase()
+        if (seen.has(lower)) {
+          throw new ValidationError(`tagBlacklist.${key} contains duplicate: ${item}`)
+        }
+        seen.add(lower)
+      }
+    }
+    return true
+  }
+}
+
 // ── Assertion helper ─────────────────────────────────────────────────────
 
 export function assert<T>(
