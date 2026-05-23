@@ -67,10 +67,11 @@ export const useSettingsStore = create<SettingsState>((set) => ({
 
 /** Subscribe to tagBlacklist changes and persist via setConfig. */
 export function subscribeToBlacklistChanges(setConfig: (key: 'tagBlacklist', value: TagBlacklist) => Promise<unknown>) {
-  return useSettingsStore.subscribe(
-    (state) => state.tagBlacklist,
-    (tagBlacklist) => {
-      setConfig('tagBlacklist', tagBlacklist).catch(() => {})
-    },
-  )
+  let prev = useSettingsStore.getState().tagBlacklist
+  return useSettingsStore.subscribe((state) => {
+    if (state.tagBlacklist !== prev) {
+      prev = state.tagBlacklist
+      setConfig('tagBlacklist', state.tagBlacklist).catch(() => {})
+    }
+  })
 }

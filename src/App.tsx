@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTheme } from './hooks/useTheme'
-import { useSettingsStore } from './stores/useSettingsStore'
+import { useSettingsStore, subscribeToBlacklistChanges } from './stores/useSettingsStore'
 import { useConfig } from './hooks/useIpc'
 import { Sidebar } from './components/Sidebar'
 import { SearchPage } from './pages/SearchPage'
@@ -14,12 +14,13 @@ import { useDrawerStore } from './stores/useDrawerStore'
 function App() {
   const {
     sfwToastDismissed,
-    setThemeMode, setSfwMode, dismissSfwToast
+    setThemeMode, setSfwMode, dismissSfwToast, setTagBlacklist,
   } = useSettingsStore()
   const { getConfig, setConfig } = useConfig()
   useTheme()
 
   const [showSfwToast, setShowSfwToast] = useState(false)
+  const subscribedRef = useRef(false)
 
   useEffect(() => {
     getConfig().then((result) => {
@@ -35,12 +36,26 @@ function App() {
       setSfwMode(true)
       setConfig('sfwMode', true).catch(() => {})
       setShowSfwToast(true)
+      // Load tag blacklist from config
+      const rawBlacklist = result.config?.tagBlacklist
+      if (rawBlacklist && typeof rawBlacklist === 'object') {
+        const normalized: { hcomic: string[]; moeimg: string[] } = {
+          hcomic: Array.isArray((rawBlacklist as Record<string, unknown>).hcomic) ? (rawBlacklist as Record<string, unknown>).hcomic as string[] : [],
+          moeimg: Array.isArray((rawBlacklist as Record<string, unknown>).moeimg) ? (rawBlacklist as Record<string, unknown>).moeimg as string[] : [],
+        }
+        setTagBlacklist(normalized)
+      }
+      // Subscribe to blacklist changes for persistence
+      if (!subscribedRef.current) {
+        subscribedRef.current = true
+        subscribeToBlacklistChanges(setConfig)
+      }
     }).catch(() => {
       // 配置加载失败时使用默认值
       setSfwMode(true)
       setShowSfwToast(true)
     })
-  }, [setThemeMode, setSfwMode, setConfig, getConfig])
+  }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist])
 
   const handleDisableSfw = useCallback(() => {
     setSfwMode(false)
