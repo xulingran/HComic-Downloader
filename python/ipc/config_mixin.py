@@ -66,6 +66,7 @@ class ConfigMixin:
             'font_name': getattr(self.config, 'font_name', ''),
             'font_size': getattr(self.config, 'font_size', 14),
             'sfw_mode': getattr(self.config, 'sfw_mode', True),
+            'tag_blacklist': getattr(self.config, 'tag_blacklist', {"hcomic": [], "moeimg": []}),
         }
         config = {}
         for snake_key, value in raw.items():
