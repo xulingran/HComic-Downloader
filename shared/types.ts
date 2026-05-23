@@ -50,11 +50,14 @@ export interface AppConfig {
   fontName: string
   fontSize: number
   sfwMode: boolean
+  tagBlacklist: { hcomic: string[]; moeimg: string[] }
   proxy?: string
   cookie?: string
   userAgent?: string
   hasAuth?: boolean
 }
+
+export type TagBlacklist = { hcomic: string[]; moeimg: string[] }
 
 export interface ProxyStatus {
   http: string
@@ -124,7 +127,7 @@ export interface MigrationStatusResponse {
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
-  | 'fontName' | 'fontSize' | 'sfwMode'
+  | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -142,6 +145,7 @@ export type ConfigValueMap = {
   fontName: string
   fontSize: number
   sfwMode: boolean
+  tagBlacklist: { hcomic: string[]; moeimg: string[] }
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -453,5 +457,5 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
-  'fontName', 'fontSize', 'sfwMode',
+  'fontName', 'fontSize', 'sfwMode', 'tagBlacklist',
 ] as const
