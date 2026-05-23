@@ -9,6 +9,7 @@ import { DownloadSettings } from '../components/settings/DownloadSettings'
 import { AuthSettings } from '../components/settings/AuthSettings'
 import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
+import { TagFilterSettings } from '../components/settings/TagFilterSettings'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
 import { useMigration } from '../hooks/useMigration'
 
@@ -35,7 +36,7 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) {
-  const { themeMode, cardStyle, sfwMode, setThemeMode, setCardStyle, setSfwMode } = useSettingsStore()
+  const { themeMode, cardStyle, sfwMode, setThemeMode, setCardStyle, setSfwMode, tagBlacklist, addTag, removeTag } = useSettingsStore()
   const loginSectionRef = useRef<HTMLDivElement>(null!)
   const { getConfig, setConfig, openDownloadDir, selectDirectory } = useConfig()
   const { applyAuth, verifyAuth } = useAuth()
@@ -349,6 +350,12 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           </div>
         </div>
       </div>
+
+      <TagFilterSettings
+        tagBlacklist={tagBlacklist}
+        addTag={addTag}
+        removeTag={removeTag}
+      />
 
       <AuthSettings
         loginSectionRef={loginSectionRef}
