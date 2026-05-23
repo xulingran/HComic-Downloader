@@ -5,7 +5,6 @@ interface DownloadState {
   tasks: DownloadTask[]
   isGloballyPaused: boolean
   setTasks: (tasks: DownloadTask[]) => void
-  addTask: (task: DownloadTask) => void
   upsertTask: (task: DownloadTask) => void
   updateTask: (id: string, updates: Partial<DownloadTask>) => void
   removeTask: (id: string) => void
@@ -33,7 +32,6 @@ export const useDownloadStore = create<DownloadState>((set) => ({
   tasks: [],
   isGloballyPaused: false,
   setTasks: (tasks) => set({ tasks }),
-  addTask: (task) => set((state) => ({ tasks: insertTaskByStatus(state.tasks, task) })),
   upsertTask: (task) =>
     set((state) => {
       const exists = state.tasks.some((t) => t.id === task.id)

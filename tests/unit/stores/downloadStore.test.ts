@@ -31,21 +31,23 @@ describe('useDownloadStore', () => {
     expect(useDownloadStore.getState().tasks).toEqual([mockTask])
   })
 
-  it('应能添加单个任务', () => {
-    useDownloadStore.getState().addTask(mockTask)
+  it('应能通过 upsertTask 添加新任务', () => {
+    useDownloadStore.getState().upsertTask(mockTask)
     expect(useDownloadStore.getState().tasks).toHaveLength(1)
     expect(useDownloadStore.getState().tasks[0].id).toBe('task-1')
   })
 
-  it('应能追加多个任务', () => {
-    const task2 = { ...mockTask, id: 'task-2' }
-    useDownloadStore.getState().addTask(mockTask)
-    useDownloadStore.getState().addTask(task2)
-    expect(useDownloadStore.getState().tasks).toHaveLength(2)
+  it('upsertTask 应能更新已存在的任务', () => {
+    useDownloadStore.getState().upsertTask(mockTask)
+    useDownloadStore.getState().upsertTask({ ...mockTask, progress: 80, downloadedPages: 8 })
+    const tasks = useDownloadStore.getState().tasks
+    expect(tasks).toHaveLength(1)
+    expect(tasks[0].progress).toBe(80)
+    expect(tasks[0].downloadedPages).toBe(8)
   })
 
   it('应能更新指定任务', () => {
-    useDownloadStore.getState().addTask(mockTask)
+    useDownloadStore.getState().upsertTask(mockTask)
     useDownloadStore.getState().updateTask('task-1', { progress: 80, downloadedPages: 8 })
     const task = useDownloadStore.getState().tasks[0]
     expect(task.progress).toBe(80)
@@ -53,31 +55,31 @@ describe('useDownloadStore', () => {
   })
 
   it('更新不存在的任务应无效果', () => {
-    useDownloadStore.getState().addTask(mockTask)
+    useDownloadStore.getState().upsertTask(mockTask)
     useDownloadStore.getState().updateTask('non-existent', { progress: 100 })
     expect(useDownloadStore.getState().tasks[0].progress).toBe(50)
   })
 
   it('应能移除任务', () => {
-    useDownloadStore.getState().addTask(mockTask)
+    useDownloadStore.getState().upsertTask(mockTask)
     useDownloadStore.getState().removeTask('task-1')
     expect(useDownloadStore.getState().tasks).toHaveLength(0)
   })
 
   it('移除不存在的任务应无效果', () => {
-    useDownloadStore.getState().addTask(mockTask)
+    useDownloadStore.getState().upsertTask(mockTask)
     useDownloadStore.getState().removeTask('non-existent')
     expect(useDownloadStore.getState().tasks).toHaveLength(1)
   })
 
   it('应能更新任务状态为 completed', () => {
-    useDownloadStore.getState().addTask(mockTask)
+    useDownloadStore.getState().upsertTask(mockTask)
     useDownloadStore.getState().updateTask('task-1', { status: 'completed', progress: 100 })
     expect(useDownloadStore.getState().tasks[0].status).toBe('completed')
   })
 
   it('应能更新任务状态为 failed', () => {
-    useDownloadStore.getState().addTask(mockTask)
+    useDownloadStore.getState().upsertTask(mockTask)
     useDownloadStore.getState().updateTask('task-1', { status: 'failed', error: 'Network timeout' })
     const task = useDownloadStore.getState().tasks[0]
     expect(task.status).toBe('failed')
