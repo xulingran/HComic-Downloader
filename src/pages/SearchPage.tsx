@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
@@ -42,7 +42,7 @@ export function SearchPage() {
     clearSelection,
     exitBatchMode,
   } = useBatchSelect()
-  const { cardStyle } = useSettingsStore()
+  const { cardStyle, tagBlacklist, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
   const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
@@ -135,6 +135,14 @@ export function SearchPage() {
       if (gen === searchGenRef.current) setLoading(false)
     })
   }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, query, searchTags])
+
+  const filteredComics = useMemo(() => {
+    if (!filterEnabled) return comics
+    const key = (source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
+    const blocked = new Set(tagBlacklist[key].map(t => t.toLowerCase()))
+    if (blocked.size === 0) return comics
+    return comics.filter(c => !c.tags?.some(t => blocked.has(t.toLowerCase())))
+  }, [comics, filterEnabled, tagBlacklist, source])
 
   const handleSearch = async (page: number = 1) => {
     clearSelection()
@@ -246,6 +254,19 @@ export function SearchPage() {
           >
             {isLoading ? '搜索中...' : '搜索'}
           </button>
+          {tagBlacklist[(source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'].length > 0 && (
+            <button
+              onClick={() => setFilterEnabled(!filterEnabled)}
+              className={`px-3 py-2 rounded-lg text-sm transition-colors border ${
+                filterEnabled
+                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
+                  : 'border-[var(--border)] text-[var(--text-secondary)] bg-[var(--bg-secondary)]'
+              }`}
+              title={filterEnabled ? '点击显示被过滤的结果' : '点击启用标签过滤'}
+            >
+              🚫 过滤
+            </button>
+          )}
         </div>
 
         <div className="flex items-center justify-between mt-2">
@@ -328,12 +349,18 @@ export function SearchPage() {
         </div>
       )}
 
-      {comics.length > 0 && (
+      {filterEnabled && filteredComics.length < comics.length && (
+        <div className="text-sm text-[var(--text-secondary)]">
+          已过滤 {comics.length - filteredComics.length} 条结果
+        </div>
+      )}
+
+      {filteredComics.length > 0 && (
         <div className={cardStyle === 'detailed'
           ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
           : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
         }>
-          {comics.map((comic) => (
+          {filteredComics.map((comic) => (
             <ComicCard
               key={getComicKey(comic)}
               comic={comic}
@@ -398,9 +425,15 @@ export function SearchPage() {
         </div>
       )}
 
-      {!isLoading && comics.length === 0 && (
+      {!isLoading && filteredComics.length === 0 && comics.length === 0 && (
         <div className="text-center text-[var(--text-secondary)] py-12">
           暂无搜索结果
+        </div>
+      )}
+
+      {!isLoading && comics.length > 0 && filteredComics.length === 0 && (
+        <div className="text-center text-[var(--text-secondary)] py-12">
+          所有结果均已被标签过滤
         </div>
       )}
 
