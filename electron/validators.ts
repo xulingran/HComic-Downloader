@@ -142,15 +142,6 @@ export function and<T>(...validators: Validator<T>[]): Validator<T> {
   }
 }
 
-export function optional<T>(
-  v: Validator<T>,
-): Validator<T | undefined | null> {
-  return (value): value is T | undefined | null => {
-    if (value === undefined || value === null) return true
-    return v(value)
-  }
-}
-
 // ── Security validators ──────────────────────────────────────────────────
 
 export function noControlChars(): Validator<string> {
@@ -188,20 +179,6 @@ export function absolutePath(): Validator<string> {
     /^[a-zA-Z]:\\|^\\\\|^\//,
     'Path must be absolute (Windows drive, UNC, or Unix root)',
   )
-}
-
-// ── Array validators ─────────────────────────────────────────────────────
-
-export function array(maxLength?: number): Validator<unknown[]> {
-  return (value): value is unknown[] => {
-    if (!Array.isArray(value)) {
-      throw new ValidationError(`Expected array, got ${typeof value}`)
-    }
-    if (maxLength !== undefined && value.length > maxLength) {
-      throw new ValidationError(`Array length must be at most ${maxLength}, got ${value.length}`)
-    }
-    return true
-  }
 }
 
 // ── Assertion helper ─────────────────────────────────────────────────────
