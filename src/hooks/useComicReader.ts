@@ -14,14 +14,6 @@ interface UseComicReaderReturn {
   reset: () => void
 }
 
-type ImportMetaWithEnv = ImportMeta & { env?: { DEV?: boolean } }
-
-function logPreviewDebug(message: string, details: Record<string, unknown>) {
-  if ((import.meta as ImportMetaWithEnv).env?.DEV) {
-    console.log(message, details)
-  }
-}
-
 export function useComicReader(): UseComicReaderReturn {
   const [imageUrls, setImageUrls] = useState<string[]>([])
   const [totalPages, setTotalPages] = useState(0)
@@ -32,20 +24,8 @@ export function useComicReader(): UseComicReaderReturn {
   const fetchUrls = useCallback(async (comic: ComicInfo) => {
     setLoadingState('loading')
     setErrorMessage('')
-    logPreviewDebug('[preview] fetchUrls start', {
-      id: comic.id,
-      sourceSite: comic.sourceSite ?? 'hcomic',
-      pages: comic.pages,
-      mediaId: comic.mediaId,
-      source: comic.source,
-    })
     try {
       const result = await window.hcomic!.getPreviewUrls(comic)
-      logPreviewDebug('[preview] fetchUrls success', {
-        id: comic.id,
-        urls: result.imageUrls.length,
-        totalPages: result.totalPages,
-      })
       setImageUrls(result.imageUrls)
       setTotalPages(result.totalPages)
       setCurrentPage(result.imageUrls.length > 0 ? 1 : 0)
