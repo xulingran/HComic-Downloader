@@ -5,6 +5,7 @@ import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
+import { BatchControls } from '../components/common/BatchControls'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
@@ -172,38 +173,14 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             刷新
           </button>
           {!needsLogin && comics.length > 0 && (
-            <>
-              <span className="text-[var(--border)]">|</span>
-              <label className="flex items-center gap-1.5 text-xs text-[var(--text-primary)] cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={batchMode}
-                  onChange={(e) => {
-                    setBatchMode(e.target.checked)
-                    if (!e.target.checked) clearSelection()
-                  }}
-                  className="rounded"
-                />
-                批量选择
-              </label>
-              {batchMode && (
-                <>
-                  <button onClick={() => selectAll(comics)} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
-                    全选
-                  </button>
-                  <button onClick={clearSelection} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
-                    取消
-                  </button>
-                  <button
-                    onClick={handleBatchDownload}
-                    disabled={selectedIds.size === 0}
-                    className="px-2 py-0.5 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-                  >
-                    批量下载({selectedIds.size})
-                  </button>
-                </>
-              )}
-            </>
+            <BatchControls
+              batchMode={batchMode}
+              selectedCount={selectedIds.size}
+              onToggleBatchMode={setBatchMode}
+              onSelectAll={() => selectAll(comics)}
+              onClearSelection={clearSelection}
+              onBatchDownload={handleBatchDownload}
+            />
           )}
         </div>
         {!needsLogin && pagination && pagination.totalPages > 1 && (
