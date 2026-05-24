@@ -12,22 +12,22 @@ interface ComicCardProps {
   onToggleSelect?: (comic: ComicInfo) => void
   onDownload?: (comic: ComicInfo) => void
   onOpenReader?: (comic: ComicInfo) => void
-  sfwMode?: boolean
   downloadStatus?: 'downloaded' | 'unknown'
 }
 
 export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus }: ComicCardProps) {
-  const { cardStyle, sfwMode } = useSettingsStore()
+  const { cardStyle } = useSettingsStore()
   const { openDrawer } = useDrawerStore()
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} sfwMode={sfwMode} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
   }
-  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} sfwMode={sfwMode} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
+  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
 }
 
-function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, sfwMode, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
+function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const handleClick = () => {
     if (batchMode) onToggleSelect?.(comic)
@@ -143,8 +143,9 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, sfwMode, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
+  const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const [showAllTags, setShowAllTags] = useState(false)
   const handleClick = () => {
