@@ -80,12 +80,12 @@ export interface DownloadDetail {
   outputPath: string
 }
 
-export interface PreviewUrlsResult {
+interface PreviewUrlsResult {
   imageUrls: string[]
   totalPages: number
 }
 
-export interface PreviewImageResult {
+interface PreviewImageResult {
   dataUri: string
 }
 
@@ -163,16 +163,16 @@ export type SetConfigArgs = {
   [K in ConfigKey]: [key: K, value: ConfigValueMap[K]]
 }[ConfigKey]
 
-export interface DownloadStartResult {
+interface DownloadStartResult {
   taskId: string
   status: string
 }
 
-export type DownloadResult =
+type DownloadResult =
   | DownloadStartResult
   | { taskId: null; status: 'conflict'; conflictPath: string }
 
-export interface DownloadConflictResult {
+interface DownloadConflictResult {
   hasConflict: boolean
   path: string
 }
@@ -428,7 +428,6 @@ export type ComicSource = typeof COMIC_SOURCES[number]
 export const IPC_ERROR_CODES = {
   AUTH_REQUIRED: -32001,
 } as const
-export type IpcErrorCode = typeof IPC_ERROR_CODES[keyof typeof IPC_ERROR_CODES]
 
 /** Config keys accepted by set-config — shared between preload and main */
 /** Typed IPC channel constants — use instead of hardcoded strings */
