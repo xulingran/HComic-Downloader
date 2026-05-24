@@ -47,7 +47,7 @@ class Config:
     notify_on_complete: bool = True  # 是否发送系统通知
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
-    tag_blacklist: dict[str, dict[str, list[str]]] = field(default_factory=lambda: {"hcomic": [], "moeimg": []})
+    tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": []})
     # 预览页面缓存大小上限（MB）
     preview_cache_size_limit_mb: int = 500
 

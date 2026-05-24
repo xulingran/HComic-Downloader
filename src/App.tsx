@@ -23,6 +23,7 @@ function App() {
 
   const [showSfwToast, setShowSfwToast] = useState(false)
   const subscribedRef = useRef(false)
+  const unsubRef = useRef<(() => void) | null>(null)
 
   useEffect(() => {
     getConfig().then((result) => {
@@ -50,13 +51,17 @@ function App() {
       // Subscribe to blacklist changes for persistence
       if (!subscribedRef.current) {
         subscribedRef.current = true
-        subscribeToBlacklistChanges(setConfig)
+        unsubRef.current = subscribeToBlacklistChanges(setConfig)
       }
     }).catch(() => {
-      // 配置加载失败时使用默认值
       setSfwMode(true)
       setShowSfwToast(true)
     })
+    return () => {
+      unsubRef.current?.()
+      unsubRef.current = null
+      subscribedRef.current = false
+    }
   }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist])
 
   const handleDisableSfw = useCallback(() => {
@@ -113,13 +118,11 @@ function App() {
         </main>
       </div>
       <ComicInfoDrawer />
-      {readerComic && (
-        <ComicReaderModal
-          comic={readerComic}
-          open={!!readerComic}
-          onClose={closeReader}
-        />
-      )}
+      <ComicReaderModal
+        comic={readerComic}
+        open={!!readerComic}
+        onClose={closeReader}
+      />
     </div>
   )
 }

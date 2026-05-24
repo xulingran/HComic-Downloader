@@ -11,7 +11,7 @@ const ZOOM_MAX = 4.0
 const ZOOM_STEP = 0.1
 
 interface ComicReaderModalProps {
-  comic: ComicInfo
+  comic: ComicInfo | null
   open: boolean
   onClose: () => void
 }
@@ -37,7 +37,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   useEffect(() => {
     if (open) {
       setMounted(true)
-      requestAnimationFrame(() => setVisible(true))
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => setVisible(true))
+      })
     } else {
       setVisible(false)
     }
@@ -111,13 +113,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   // Fetch URLs when modal opens
   useEffect(() => {
-    if (open) {
+    if (open && comic) {
       fetchUrls(comic)
     } else {
       reset()
       clearCache()
     }
-  }, [open, comic.id, fetchUrls, reset, clearCache])
+  }, [open, comic?.id, fetchUrls, reset, clearCache])
 
   // Keyboard handler
   useEffect(() => {
@@ -232,7 +234,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           >
             关闭
           </button>
-          <span className="text-sm text-gray-400 truncate max-w-[300px]">{comic.title}</span>
+          <span className="text-sm text-gray-400 truncate max-w-[300px]">{comic?.title}</span>
         </div>
         <span
           className="px-2.5 py-1 rounded-full text-xs text-white"
