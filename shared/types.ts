@@ -51,6 +51,7 @@ export interface AppConfig {
   fontSize: number
   sfwMode: boolean
   tagBlacklist: { hcomic: string[]; moeimg: string[] }
+  previewCacheSizeLimitMB: number
   proxy?: string
   cookie?: string
   userAgent?: string
@@ -84,6 +85,12 @@ export interface PreviewUrlsResult {
 
 export interface PreviewImageResult {
   dataUri: string
+}
+
+export interface CacheStats {
+  cover: { file_count: number; total_size_bytes: number }
+  preview: { file_count: number; total_size_bytes: number; max_size_bytes?: number }
+  total: { file_count: number; total_size_bytes: number }
 }
 
 export interface MigrationPlanPreview {
@@ -127,7 +134,7 @@ export interface MigrationStatusResponse {
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
-  | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist'
+  | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -146,6 +153,7 @@ export type ConfigValueMap = {
   fontSize: number
   sfwMode: boolean
   tagBlacklist: { hcomic: string[]; moeimg: string[] }
+  previewCacheSizeLimitMB: number
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -298,6 +306,18 @@ export interface IPCMethods {
     params: { matches: Array<{ db_key: string[]; file_path: string }> }
     result: { resolved: number }
   }
+  get_cache_stats: {
+    params: Record<string, never>
+    result: CacheStats
+  }
+  clear_preview_cache: {
+    params: Record<string, never>
+    result: { success: boolean }
+  }
+  clear_all_cache: {
+    params: Record<string, never>
+    result: { success: boolean }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -332,6 +352,9 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:cancel-migration': 'cancel_migration',
   'python:get-migration-status': 'get_migration_status',
   'python:resolve-unmatched': 'resolve_unmatched',
+  'python:get-cache-stats': 'get_cache_stats',
+  'python:clear-preview-cache': 'clear_preview_cache',
+  'python:clear-all-cache': 'clear_all_cache',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -382,6 +405,9 @@ export interface HcomicAPI {
   cancelMigration(): Promise<{ cancelled: boolean }>
   getMigrationStatus(): Promise<MigrationStatusResponse>
   resolveUnmatched(matches: Array<{ dbKey: string[]; file_path: string }>): Promise<{ resolved: number }>
+  getCacheStats(): Promise<CacheStats>
+  clearPreviewCache(): Promise<{ success: boolean }>
+  clearAllCache(): Promise<{ success: boolean }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
   onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
@@ -437,6 +463,9 @@ export const IPC_CHANNELS = {
   CANCEL_MIGRATION: 'python:cancel-migration',
   GET_MIGRATION_STATUS: 'python:get-migration-status',
   RESOLVE_UNMATCHED: 'python:resolve-unmatched',
+  GET_CACHE_STATS: 'python:get-cache-stats',
+  CLEAR_PREVIEW_CACHE: 'python:clear-preview-cache',
+  CLEAR_ALL_CACHE: 'python:clear-all-cache',
   SELECT_DIRECTORY: 'select-directory',
 } as const
 
@@ -459,5 +488,5 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
-  'fontName', 'fontSize', 'sfwMode', 'tagBlacklist',
+  'fontName', 'fontSize', 'sfwMode', 'tagBlacklist', 'previewCacheSizeLimitMB',
 ] as const
