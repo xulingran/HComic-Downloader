@@ -142,7 +142,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('来源')).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: '来源' })).toBeInTheDocument()
     })
   })
 
