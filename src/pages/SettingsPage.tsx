@@ -11,6 +11,7 @@ import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
 import { TagFilterSettings } from '../components/settings/TagFilterSettings'
 import { Toast } from '../components/common/Toast'
+import { CacheSettings } from '../components/settings/CacheSettings'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
 import { useMigration } from '../hooks/useMigration'
 
@@ -29,6 +30,7 @@ interface ConfigState {
   notifyOnComplete: boolean
   notifyWhenForeground: NotifyWhenForeground
   defaultSource: string
+  previewCacheSizeLimitMB: number
 }
 
 interface SettingsPageProps {
@@ -56,7 +58,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     autoRetryMaxAttempts: 2,
     notifyOnComplete: true,
     notifyWhenForeground: 'inactive',
-    defaultSource: 'hcomic'
+    defaultSource: 'hcomic',
+    previewCacheSizeLimitMB: 500,
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -145,6 +148,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         }
         if (result.config.fontName) setFontName(result.config.fontName)
         if (result.config.fontSize) setFontSize(result.config.fontSize)
+        if (typeof result.config.previewCacheSizeLimitMB === 'number') {
+          setConfigState(prev => ({ ...prev, previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB }))
+        }
       }
     } catch (err) {
       console.error('Failed to load config:', err)
@@ -391,6 +397,11 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         notifyOnComplete={config.notifyOnComplete}
         notifyWhenForeground={config.notifyWhenForeground}
         onConfigChange={handleConfigChange}
+      />
+
+      <CacheSettings
+        sizeLimitMB={config.previewCacheSizeLimitMB}
+        onSizeLimitChange={(mb) => handleConfigChange('previewCacheSizeLimitMB', mb)}
       />
 
       <MigrationDialog
