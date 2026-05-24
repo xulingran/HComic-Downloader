@@ -97,6 +97,25 @@ class CoverCacheDB:
                 )
                 self._conn.commit()
 
+    def get_stats(self):
+        """Return ``{file_count, total_size_bytes}`` for this cache."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(*), COALESCE(SUM(LENGTH(data_uri)), 0) FROM cover_cache"
+            ).fetchone()
+            return {
+                "file_count": row[0],
+                "total_size_bytes": row[1],
+            }
+
+    def clear_all(self) -> None:
+        """Delete all cached cover entries from memory and disk."""
+        with self._lock:
+            self._memory.clear()
+            self._conn.execute("DELETE FROM cover_cache")
+            self._conn.commit()
+            logger.info("Cover cache cleared")
+
     def close(self) -> None:
         self._conn.close()
 
