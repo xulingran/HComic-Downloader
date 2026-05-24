@@ -161,6 +161,12 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.RESOLVE_UNMATCHED, matches)
   },
 
+  getCacheStats: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CACHE_STATS),
+
+  clearPreviewCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_PREVIEW_CACHE),
+
+  clearAllCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ALL_CACHE),
+
   onMigrationProgress: (callback: unknown) => {
     if (typeof callback !== 'function') throw new Error('Invalid callback')
     const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)

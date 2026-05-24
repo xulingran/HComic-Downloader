@@ -183,6 +183,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   fontSize: and(number(), integer(), range(12, 20)),
   sfwMode: boolean(),
   tagBlacklist: tagBlacklistValidator(),
+  previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────
@@ -811,6 +812,18 @@ function registerIPCHandlers() {
       })),
     }
     return bridge.call('resolve_unmatched', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_CACHE_STATS, async () => {
+    return bridge.call('get_cache_stats')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLEAR_PREVIEW_CACHE, async () => {
+    return bridge.call('clear_preview_cache')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLEAR_ALL_CACHE, async () => {
+    return bridge.call('clear_all_cache')
   })
 }
 
