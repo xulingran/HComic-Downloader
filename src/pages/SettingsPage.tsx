@@ -334,8 +334,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         onSelectDirectory={async () => {
           const result = await selectDirectory('选择下载目录', config.downloadDir || undefined)
           if (!result.canceled && result.filePaths.length > 0) {
-            handleTextConfigChange('downloadDir', result.filePaths[0])
-            handleTextConfigBlur('downloadDir')
+            handleConfigChange('downloadDir', result.filePaths[0])
           }
         }}
         setSaveError={setSaveError}

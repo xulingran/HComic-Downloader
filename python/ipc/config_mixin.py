@@ -27,8 +27,22 @@ class ConfigMixin:
     parser: MultiSourceParser
     _write_response: Callable[[Dict], None]
 
+    def _apply_timeout(self, v: int) -> None:
+        self.downloader.timeout = v
+        self.downloader.image_downloader.timeout = v
+
+    def _apply_concurrent_downloads(self, v: int) -> None:
+        self.downloader.concurrent_downloads = v
+        self.downloader.image_downloader._pool_size = v
+        self.downloader.image_downloader.rebuild_pool()
+        self.downloader.image_downloader.configure_auth(
+            cookie=self.downloader.session.headers.get("Cookie", ""),
+            user_agent=self.downloader.session.headers.get("User-Agent", ""),
+        )
+
     def _apply_retry_times(self, v: int) -> None:
         self.downloader.retry_times = v
+        self.downloader.image_downloader.retry_times = v
         self.downloader.rebuild_session()
 
     def _apply_runtime(self, key: str, value: Any) -> None:
@@ -38,8 +52,8 @@ class ConfigMixin:
             'outputFormat': lambda v: self._download_manager.set_output_format(v),
             'batchDownloadDelay': lambda v: self._download_manager.set_delay_after(v),
             'autoRetryMaxAttempts': lambda v: self._download_manager.set_auto_retry_max_attempts(v),
-            'concurrentDownloads': lambda v: setattr(self.downloader, 'concurrent_downloads', v),
-            'timeout': lambda v: setattr(self.downloader, 'timeout', v),
+            'concurrentDownloads': self._apply_concurrent_downloads,
+            'timeout': self._apply_timeout,
             'retryTimes': self._apply_retry_times,
             'cbzFilenameTemplate': lambda v: setattr(self.cbz_builder, 'filename_template', v),
             'defaultSource': lambda v: self.parser.set_source(v),
