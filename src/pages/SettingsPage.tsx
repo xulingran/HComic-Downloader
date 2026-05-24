@@ -128,7 +128,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           autoRetryMaxAttempts: result.config.autoRetryMaxAttempts ?? 2,
           notifyOnComplete: result.config.notifyOnComplete !== false,
           notifyWhenForeground: result.config.notifyWhenForeground ?? 'inactive',
-          defaultSource: result.config.defaultSource ?? 'hcomic'
+          defaultSource: result.config.defaultSource ?? 'hcomic',
+          previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
         })
         if (result.config.outputFormat) {
           setOutputFormat(result.config.outputFormat as OutputFormat)
