@@ -192,6 +192,10 @@ export interface IPCMethods {
     params: { query: string; mode: string; page: number; source?: string; tag?: string }
     result: SearchResult
   }
+  random: {
+    params: Record<string, never>
+    result: SearchResult
+  }
   download: {
     params: { comic_id: string; comic_data: ComicInfo; overwrite?: boolean }
     result: DownloadStartResult | { taskId: null; status: 'conflict'; conflictPath: string }
@@ -325,6 +329,7 @@ export interface IPCMethods {
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
 export const PYTHON_IPC_CHANNEL_MAP = {
   'python:search': 'search',
+  'python:random': 'random',
   'python:download': 'download',
   'python:check-download-conflict': 'check_download_conflict',
   'python:get-favourites': 'get_favourites',
@@ -374,6 +379,7 @@ export interface DownloadProgressEvent {
 /** Narrow API exposed by preload via window.hcomic */
 export interface HcomicAPI {
   search(query: string, mode: string, page: number, source?: string, tag?: string): Promise<SearchResult>
+  random(): Promise<SearchResult>
   download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
   getFavourites(page?: number): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
@@ -433,6 +439,7 @@ export const IPC_ERROR_CODES = {
 /** Typed IPC channel constants — use instead of hardcoded strings */
 export const IPC_CHANNELS = {
   SEARCH: 'python:search',
+  RANDOM: 'python:random',
   DOWNLOAD: 'python:download',
   CHECK_DOWNLOAD_CONFLICT: 'python:check-download-conflict',
   GET_FAVOURITES: 'python:get-favourites',

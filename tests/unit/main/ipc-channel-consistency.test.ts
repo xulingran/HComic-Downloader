@@ -35,7 +35,7 @@ describe('IPC Channel Consistency', () => {
 
   it('every PYTHON_IPC_CHANNEL_MAP method should exist in IPCMethods', () => {
     const ipcMethodKeys: ReadonlyArray<keyof IPCMethods> = [
-      'search', 'download', 'check_download_conflict', 'get_favourites',
+      'search', 'random', 'download', 'check_download_conflict', 'get_favourites',
       'get_config', 'set_config', 'get_downloads', 'cancel_download',
       'apply_auth', 'verify_auth', 'shutdown', 'fetch_cover',
       'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
