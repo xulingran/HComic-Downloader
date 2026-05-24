@@ -576,6 +576,10 @@ function registerIPCHandlers() {
     return bridge.call('search', params)
   })
 
+  ipcMain.handle(IPC_CHANNELS.RANDOM, async () => {
+    return bridge.call('random', {})
+  })
+
   ipcMain.handle(IPC_CHANNELS.DOWNLOAD, async (_, comicId, comicData, overwrite?: unknown) => {
     validateDownloadPayload(comicId, comicData)
     const params: Record<string, unknown> = { comic_id: comicId, comic_data: comicData }

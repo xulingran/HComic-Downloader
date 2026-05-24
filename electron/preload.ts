@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, undefined, tag)
   },
 
+  random: () => ipcRenderer.invoke(IPC_CHANNELS.RANDOM),
+
   download: (comicId: unknown, comicData: unknown, overwrite?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0) throw new Error('Invalid comicId')
     if (typeof comicData !== 'object' || comicData === null) throw new Error('Invalid comicData')
