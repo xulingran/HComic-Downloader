@@ -132,6 +132,14 @@ class HComicParser:
             logger.error("Search failed: %s", e)
             return [], None
 
+    def random(self) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+        url = self._build_random_url()
+        try:
+            return self.parse_search_page(self._request_text(url))
+        except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
+            logger.error("Random failed: %s", e)
+            return [], None
+
     def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
         """获取收藏夹漫画。
 
@@ -353,6 +361,10 @@ class HComicParser:
             q = quote(keyword) if keyword else ""
             return cls._build_paginated_url(f"{cls.INDEX}/?q={q}&tag={quote(tag)}", page)
         return cls._build_paginated_url(f"{cls.INDEX}/?q={quote(keyword)}", page)
+
+    @classmethod
+    def _build_random_url(cls) -> str:
+        return f"{cls.INDEX}/random?q=&tag="
 
     @classmethod
     def _build_favourites_url(cls, page: int = 1) -> str:
@@ -1112,6 +1124,12 @@ class MultiSourceParser:
     def search(self, keyword: str, page: int = 1, source: Optional[str] = None, *, tag: str = "") -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
         src = source or self.current_source
         return self.parsers[src].search(keyword, page=page, tag=tag)
+
+    def random(self, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+        src = source or self.current_source
+        if src != "hcomic":
+            raise ValueError(f"Random is not supported for source: {src}")
+        return self.parsers[src].random()
 
     def favourites(self, page: int = 1, raise_errors: bool = False, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
         src = source or self.current_source
