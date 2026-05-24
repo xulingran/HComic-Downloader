@@ -4,6 +4,7 @@ import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
+import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
@@ -26,7 +27,6 @@ export function SearchPage() {
   const [mode, setMode] = useState('keyword')
   const [source, setSource] = useState('hcomic')
   const [searchTags, setSearchTags] = useState('')
-  const [jumpPage, setJumpPage] = useState('')
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
@@ -50,6 +50,10 @@ export function SearchPage() {
   const searchGenRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const historyDropdownRef = useRef<HTMLDivElement>(null)
+  const queryRef = useRef(query)
+  queryRef.current = query
+  const searchTagsRef = useRef(searchTags)
+  searchTagsRef.current = searchTags
 
   useEffect(() => {
     let cancelled = false
@@ -96,15 +100,15 @@ export function SearchPage() {
     if (!pendingSearch) return
     const { query: searchQuery, mode: searchMode, append } = pendingSearch
 
-    let finalQuery = query
-    let finalTags = searchTags
+    let finalQuery = queryRef.current
+    let finalTags = searchTagsRef.current
 
     if (append && searchMode === 'tag') {
-      const existing = searchTags ? searchTags.split(',') : []
+      const existing = finalTags ? finalTags.split(',') : []
       const deduped = [...new Set([...existing, searchQuery])]
       finalTags = deduped.join(',')
     } else if (append) {
-      finalQuery = [query, searchQuery].filter(Boolean).join(' ')
+      finalQuery = [finalQuery, searchQuery].filter(Boolean).join(' ')
     } else {
       finalQuery = searchQuery
       finalTags = ''
@@ -134,7 +138,7 @@ export function SearchPage() {
     }).finally(() => {
       if (gen === searchGenRef.current) setLoading(false)
     })
-  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, query, searchTags])
+  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode])
 
   const filteredComics = useMemo(() => {
     const key = (source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
@@ -326,7 +330,6 @@ export function SearchPage() {
               </button>
               <span
                 onClick={() => {
-                  setJumpPage(String(pagination.currentPage))
                   setShowJumpDialog(true)
                 }}
                 className="px-2 py-0.5 text-xs text-[var(--accent)] cursor-pointer hover:underline"
@@ -386,51 +389,11 @@ export function SearchPage() {
 
       {/* ── Page jump dialog ── */}
       {showJumpDialog && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setShowJumpDialog(false)}>
-          <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-medium text-[var(--text-primary)] mb-4">跳转到指定页</h3>
-            <input
-              type="number"
-              value={jumpPage}
-              onChange={(e) => setJumpPage(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  const page = parseInt(jumpPage, 10)
-                  if (page >= 1 && page <= (pagination?.totalPages || 1)) {
-                    handleSearch(page)
-                    setShowJumpDialog(false)
-                  }
-                }
-              }}
-              min={1}
-              max={pagination?.totalPages || 1}
-              placeholder={`1 - ${pagination?.totalPages || 1}`}
-              className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                         text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-              autoFocus
-            />
-            <div className="flex justify-end gap-2 mt-4">
-              <button
-                onClick={() => setShowJumpDialog(false)}
-                className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  const page = parseInt(jumpPage, 10)
-                  if (page >= 1 && page <= (pagination?.totalPages || 1)) {
-                    handleSearch(page)
-                    setShowJumpDialog(false)
-                  }
-                }}
-                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white"
-              >
-                跳转
-              </button>
-            </div>
-          </div>
-        </div>
+        <PageJumpDialog
+          totalPages={pagination?.totalPages || 1}
+          onJump={(page) => { handleSearch(page); setShowJumpDialog(false) }}
+          onClose={() => setShowJumpDialog(false)}
+        />
       )}
 
       {!isLoading && comics.length === 0 && (
