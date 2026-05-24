@@ -4,6 +4,7 @@ import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
+import { PaginationControls } from '../components/common/PaginationControls'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
@@ -206,31 +207,12 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           )}
         </div>
         {!needsLogin && pagination && pagination.totalPages > 1 && (
-          <div className="flex items-center gap-1.5">
-            <button
-              onClick={() => loadFavourites(currentPage - 1)}
-              disabled={currentPage <= 1}
-              className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
-                         disabled:opacity-50"
-            >
-              上一页
-            </button>
-            <span
-              onClick={() => setShowJumpDialog(true)}
-              className="px-2 py-0.5 text-xs text-[var(--accent)] cursor-pointer hover:underline"
-              title="点击跳转到指定页"
-            >
-              {currentPage} / {pagination.totalPages}
-            </span>
-            <button
-              onClick={() => loadFavourites(currentPage + 1)}
-              disabled={currentPage >= pagination.totalPages}
-              className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
-                         disabled:opacity-50"
-            >
-              下一页
-            </button>
-          </div>
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            onNavigate={loadFavourites}
+            onJumpClick={() => setShowJumpDialog(true)}
+          />
         )}
       </div>
 

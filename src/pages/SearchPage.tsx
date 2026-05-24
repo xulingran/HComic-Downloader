@@ -5,6 +5,7 @@ import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
+import { PaginationControls } from '../components/common/PaginationControls'
 import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
@@ -319,33 +320,12 @@ export function SearchPage() {
             )}
           </div>
           {pagination && pagination.totalPages > 1 && (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => handleSearch(pagination.currentPage - 1)}
-                disabled={pagination.currentPage <= 1}
-                className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
-                           disabled:opacity-50"
-              >
-                上一页
-              </button>
-              <span
-                onClick={() => {
-                  setShowJumpDialog(true)
-                }}
-                className="px-2 py-0.5 text-xs text-[var(--accent)] cursor-pointer hover:underline"
-                title="点击跳转到指定页"
-              >
-                {pagination.currentPage} / {pagination.totalPages}
-              </span>
-              <button
-                onClick={() => handleSearch(pagination.currentPage + 1)}
-                disabled={pagination.currentPage >= pagination.totalPages}
-                className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)]
-                           disabled:opacity-50"
-              >
-                下一页
-              </button>
-            </div>
+            <PaginationControls
+              currentPage={pagination.currentPage}
+              totalPages={pagination.totalPages}
+              onNavigate={handleSearch}
+              onJumpClick={() => setShowJumpDialog(true)}
+            />
           )}
         </div>
       </div>
