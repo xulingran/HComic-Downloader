@@ -103,35 +103,43 @@ export function TagFilterSettings({ tagBlacklist, addTag, removeTag }: TagFilter
         )}
       </div>
 
-      {confirmTag !== null && (() => {
-        const tag = confirmTag
-        return (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setConfirmTag(null)}>
-          <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-medium text-[var(--text-primary)] mb-4">
-              移除屏蔽标签「{tag}」？
-            </h3>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">
-              包含该标签的漫画将恢复显示在搜索结果中。
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirmTag(null)}
-                className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => handleRemove(tag)}
-                className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-              >
-                确认
-              </button>
-            </div>
-          </div>
+      {confirmTag !== null && (
+        <ConfirmDialog
+          key={confirmTag}
+          tag={confirmTag}
+          onCancel={() => setConfirmTag(null)}
+          onConfirm={(tag) => handleRemove(tag)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ConfirmDialog({ tag, onCancel, onConfirm }: { tag: string; onCancel: () => void; onConfirm: (tag: string) => void }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={onCancel}>
+      <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-base font-medium text-[var(--text-primary)] mb-4">
+          移除屏蔽标签「{tag}」？
+        </h3>
+        <p className="text-sm text-[var(--text-secondary)] mb-4">
+          包含该标签的漫画将恢复显示在搜索结果中。
+        </p>
+        <div className="flex justify-end gap-2">
+          <button
+            onClick={onCancel}
+            className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+          >
+            取消
+          </button>
+          <button
+            onClick={() => onConfirm(tag)}
+            className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+          >
+            确认
+          </button>
         </div>
-        )
-      })()}
+      </div>
     </div>
   )
 }
