@@ -118,8 +118,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 24 previous + 6 migration + 1 resolve-unmatched + 1 select-directory + 1 open-login-window = 33 total
-      expect(handleCalls.length).toBe(33)
+      // 33 previous + 1 random + 3 cache = 37 total
+      expect(handleCalls.length).toBe(37)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -128,6 +128,7 @@ describe('main.ts', () => {
 
     const expectedChannels = [
       'python:search',
+      'python:random',
       'python:download',
       'python:check-download-conflict',
       'python:get-favourites',
@@ -158,6 +159,9 @@ describe('main.ts', () => {
       'python:cancel-migration',
       'python:get-migration-status',
       'python:resolve-unmatched',
+      'python:get-cache-stats',
+      'python:clear-preview-cache',
+      'python:clear-all-cache',
       'select-directory',
       'open-login-window',
     ]
@@ -190,12 +194,13 @@ describe('main.ts', () => {
 
     it('PYTHON_IPC_CHANNEL_MAP values must match Python handler method names', () => {
       const validMethods = new Set([
-        'search', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
+        'search', 'random', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
         'get_downloads', 'cancel_download', 'apply_auth', 'verify_auth', 'shutdown',
         'fetch_cover', 'fetch_preview_image', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
         'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',
         'check_downloaded_status', 'start_migration', 'confirm_migration', 'pause_migration', 'resume_migration',
         'cancel_migration', 'get_migration_status', 'resolve_unmatched',
+        'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),

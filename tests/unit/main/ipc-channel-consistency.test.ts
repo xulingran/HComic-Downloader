@@ -44,6 +44,7 @@ describe('IPC Channel Consistency', () => {
       'check_downloaded_status', 'start_migration', 'confirm_migration',
       'pause_migration', 'resume_migration', 'cancel_migration',
       'get_migration_status', 'resolve_unmatched',
+      'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
     ]
 
     for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {

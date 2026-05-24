@@ -29,6 +29,7 @@ const { mockGetConfig } = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useIpc', () => ({
   useSearch: vi.fn().mockReturnValue({ search: mockSearch }),
+  useRandom: vi.fn().mockReturnValue({ random: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }) }),
   useDownloadCommands: vi.fn().mockReturnValue({
     startDownload: mockStartDownload,
     cancelDownload: vi.fn(),

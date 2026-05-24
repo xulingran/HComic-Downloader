@@ -20,6 +20,7 @@ export function createMockIpcInvoke(responses: Record<string, any> = {}) {
 export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, any>> = {}) {
   const mockMethods: HcomicAPI = {
     search: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }),
+    random: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }),
     download: vi.fn().mockResolvedValue({ taskId: 'mock-task', status: 'queued' }),
     checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
     getFavourites: vi.fn().mockResolvedValue({ comics: [], pagination: null, needsLogin: false }),
