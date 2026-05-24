@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useFavourites } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
-import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
+import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
@@ -33,8 +33,8 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     toggleSelect,
     selectAll,
     clearSelection,
-    exitBatchMode,
-  } = useBatchSelect()
+    handleBatchDownload,
+  } = useBatchDownload(comics)
   const { cardStyle } = useSettingsStore()
   const cache = useFavouritesStore()
   const { openReader } = useReaderStore()
@@ -130,14 +130,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
 
   const handleDownload = async (comic: ComicInfo) => {
     await downloadWithConflictCheck(comic)
-  }
-
-  const handleBatchDownload = async () => {
-    const comicsToDownload = [...selectedIds]
-      .map(key => comics.find(c => getComicKey(c) === key))
-      .filter((c): c is ComicInfo => c !== undefined)
-    await Promise.allSettled(comicsToDownload.map(comic => handleDownload(comic)))
-    exitBatchMode()
   }
 
   if (isLoading) {

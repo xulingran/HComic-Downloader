@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
-import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
+import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
@@ -44,8 +44,8 @@ export function SearchPage() {
     toggleSelect,
     selectAll,
     clearSelection,
-    exitBatchMode,
-  } = useBatchSelect()
+    handleBatchDownload,
+  } = useBatchDownload(comics)
   const { cardStyle, tagBlacklist, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
   const { openReader } = useReaderStore()
@@ -189,14 +189,6 @@ export function SearchPage() {
 
   const handleDownload = async (comic: ComicInfo) => {
     await downloadWithConflictCheck(comic)
-  }
-
-  const handleBatchDownload = async () => {
-    const comicsToDownload = Array.from(selectedIds)
-      .map(key => comics.find(c => getComicKey(c) === key))
-      .filter((c): c is ComicInfo => c !== undefined)
-    await Promise.allSettled(comicsToDownload.map(comic => handleDownload(comic)))
-    exitBatchMode()
   }
 
   return (
