@@ -73,6 +73,19 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const [isMigrationOpen, setIsMigrationOpen] = useState(false)
   const migrationHook = useMigration()
 
+  const SECTIONS = [
+    { id: 'appearance', label: '外观设置', icon: '🎨' },
+    { id: 'download',   label: '下载设置', icon: '📥' },
+    { id: 'source',     label: '来源',     icon: '🌐' },
+    { id: 'tag-filter', label: '标签过滤', icon: '🏷️' },
+    { id: 'auth',       label: '认证设置', icon: '🔑' },
+    { id: 'proxy',      label: '代理设置', icon: '🔌' },
+    { id: 'notification', label: '通知设置', icon: '🔔' },
+    { id: 'cache',      label: '缓存管理', icon: '💾' },
+  ] as const
+
+  const [activeSection, setActiveSection] = useState<string | null>(null)
+
   useEffect(() => {
     loadConfig()
   }, [])
@@ -266,8 +279,39 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
+  const handleSectionClick = (sectionId: string) => {
+    setActiveSection(sectionId)
+    document.getElementById(`section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    setTimeout(() => setActiveSection(null), 1500)
+  }
+
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="flex gap-0 max-w-5xl">
+      {/* Sidebar */}
+      <div className="w-[150px] shrink-0">
+        <nav className="sticky top-6 space-y-0.5 pr-3">
+          <div className="px-3 py-2 text-xs font-semibold text-[var(--text-secondary)] tracking-wide">
+            设置区域
+          </div>
+          {SECTIONS.map((section) => (
+            <button
+              key={section.id}
+              onClick={() => handleSectionClick(section.id)}
+              className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors
+                ${activeSection === section.id
+                  ? 'bg-[var(--accent)] text-white'
+                  : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+                }`}
+            >
+              <span className="mr-2">{section.icon}</span>
+              {section.label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 min-w-0 space-y-6">
       <Toast message="已成功获取" visible={showLoginToast} />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">设置</h2>
@@ -306,111 +350,128 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         </div>
       )}
 
-      <AppearanceSettings
-        themeMode={themeMode}
-        cardStyle={cardStyle}
-        sfwMode={sfwMode}
-        availableFonts={availableFonts}
-        fontName={fontName}
-        fontSize={fontSize}
-        onThemeChange={handleThemeChange}
-        onCardStyleChange={handleCardStyleChange}
-        onSfwModeChange={handleSfwModeChange}
-        onFontNameChange={setFontName}
-        onFontSizeChange={setFontSize}
-        setConfig={setConfig}
-        setSaveError={setSaveError}
-        setIsSaving={setIsSaving}
-      />
+      <div id="section-appearance">
+        <AppearanceSettings
+          themeMode={themeMode}
+          cardStyle={cardStyle}
+          sfwMode={sfwMode}
+          availableFonts={availableFonts}
+          fontName={fontName}
+          fontSize={fontSize}
+          onThemeChange={handleThemeChange}
+          onCardStyleChange={handleCardStyleChange}
+          onSfwModeChange={handleSfwModeChange}
+          onFontNameChange={setFontName}
+          onFontSizeChange={setFontSize}
+          setConfig={setConfig}
+          setSaveError={setSaveError}
+          setIsSaving={setIsSaving}
+        />
+      </div>
 
-      <DownloadSettings
-        outputFormat={outputFormat}
-        config={{
-          downloadDir: config.downloadDir,
-          concurrentDownloads: config.concurrentDownloads,
-          timeout: config.timeout,
-          retryTimes: config.retryTimes,
-          cbzFilenameTemplate: config.cbzFilenameTemplate,
-          batchDownloadDelay: config.batchDownloadDelay,
-        }}
-        onOutputFormatChange={handleOutputFormatChange}
-        onConfigChange={handleConfigChange}
-        onTextConfigChange={handleTextConfigChange}
-        onTextConfigBlur={handleTextConfigBlur}
-        openDownloadDir={openDownloadDir}
-        onSelectDirectory={async () => {
-          const result = await selectDirectory('选择下载目录', config.downloadDir || undefined)
-          if (!result.canceled && result.filePaths.length > 0) {
-            handleConfigChange('downloadDir', result.filePaths[0])
-          }
-        }}
-        setSaveError={setSaveError}
-        onOpenMigration={() => setIsMigrationOpen(true)}
-      />
+      <div id="section-download">
+        <DownloadSettings
+          outputFormat={outputFormat}
+          config={{
+            downloadDir: config.downloadDir,
+            concurrentDownloads: config.concurrentDownloads,
+            timeout: config.timeout,
+            retryTimes: config.retryTimes,
+            cbzFilenameTemplate: config.cbzFilenameTemplate,
+            batchDownloadDelay: config.batchDownloadDelay,
+          }}
+          onOutputFormatChange={handleOutputFormatChange}
+          onConfigChange={handleConfigChange}
+          onTextConfigChange={handleTextConfigChange}
+          onTextConfigBlur={handleTextConfigBlur}
+          openDownloadDir={openDownloadDir}
+          onSelectDirectory={async () => {
+            const result = await selectDirectory('选择下载目录', config.downloadDir || undefined)
+            if (!result.canceled && result.filePaths.length > 0) {
+              handleConfigChange('downloadDir', result.filePaths[0])
+            }
+          }}
+          setSaveError={setSaveError}
+          onOpenMigration={() => setIsMigrationOpen(true)}
+        />
+      </div>
 
-      <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
-        <h3 className="text-base font-medium text-[var(--text-primary)] border-b border-[var(--border)] pb-3">
-          来源
-        </h3>
+      <div id="section-source">
+        <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
+          <h3 className="text-base font-medium text-[var(--text-primary)] border-b border-[var(--border)] pb-3">
+            来源
+          </h3>
 
-        <div>
-          <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">默认来源</label>
-          <div className="flex gap-3">
-            {['hcomic', 'moeimg'].map((source) => (
-              <button
-                key={source}
-                onClick={() => handleConfigChange('defaultSource', source)}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  config.defaultSource === source
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
-                }`}
-              >
-                {source === 'hcomic' ? 'HComic' : 'Moeimg'}
-              </button>
-            ))}
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">默认来源</label>
+            <div className="flex gap-3">
+              {['hcomic', 'moeimg'].map((source) => (
+                <button
+                  key={source}
+                  onClick={() => handleConfigChange('defaultSource', source)}
+                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                    config.defaultSource === source
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
+                  }`}
+                >
+                  {source === 'hcomic' ? 'HComic' : 'Moeimg'}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
 
-      <TagFilterSettings
-        tagBlacklist={tagBlacklist}
-        addTag={addTag}
-        removeTag={removeTag}
-      />
+      <div id="section-tag-filter">
+        <TagFilterSettings
+          tagBlacklist={tagBlacklist}
+          addTag={addTag}
+          removeTag={removeTag}
+        />
+      </div>
 
-      <AuthSettings
-        loginSectionRef={loginSectionRef}
-        loginStatus={loginStatus}
-        loginMessage={loginMessage}
-        onApplyAuth={handleApplyAuth}
-        onTestAuth={handleTestAuth}
-        onOpenLoginWindow={handleOpenLoginWindow}
-      />
+      <div id="section-auth">
+        <AuthSettings
+          loginSectionRef={loginSectionRef}
+          loginStatus={loginStatus}
+          loginMessage={loginMessage}
+          onApplyAuth={handleApplyAuth}
+          onTestAuth={handleTestAuth}
+          onOpenLoginWindow={handleOpenLoginWindow}
+        />
+      </div>
 
-      <ProxySettings
-        proxyStatus={proxyStatus}
-        proxyLoading={proxyLoading}
-        onRefresh={loadProxyStatus}
-      />
+      <div id="section-proxy">
+        <ProxySettings
+          proxyStatus={proxyStatus}
+          proxyLoading={proxyLoading}
+          onRefresh={loadProxyStatus}
+        />
+      </div>
 
-      <NotificationSettings
-        notifyOnComplete={config.notifyOnComplete}
-        notifyWhenForeground={config.notifyWhenForeground}
-        onConfigChange={handleConfigChange}
-      />
+      <div id="section-notification">
+        <NotificationSettings
+          notifyOnComplete={config.notifyOnComplete}
+          notifyWhenForeground={config.notifyWhenForeground}
+          onConfigChange={handleConfigChange}
+        />
+      </div>
 
-      <CacheSettings
-        sizeLimitMB={config.previewCacheSizeLimitMB}
-        onSizeLimitChange={(mb) => handleConfigChange('previewCacheSizeLimitMB', mb)}
-      />
+      <div id="section-cache">
+        <CacheSettings
+          sizeLimitMB={config.previewCacheSizeLimitMB}
+          onSizeLimitChange={(mb) => handleConfigChange('previewCacheSizeLimitMB', mb)}
+        />
+      </div>
 
-      <MigrationDialog
-        isOpen={isMigrationOpen}
-        onClose={() => setIsMigrationOpen(false)}
-        currentDownloadDir={config.downloadDir}
-        onSelectDirectory={selectDirectory}
-      />
+        <MigrationDialog
+          isOpen={isMigrationOpen}
+          onClose={() => setIsMigrationOpen(false)}
+          currentDownloadDir={config.downloadDir}
+          onSelectDirectory={selectDirectory}
+        />
+      </div>
     </div>
   )
 }
