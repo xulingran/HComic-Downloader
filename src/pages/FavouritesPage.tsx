@@ -6,6 +6,8 @@ import { ComicCard } from '../components/common/ComicCard'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
+import { ErrorDisplay } from '../components/common/ErrorDisplay'
+import { EmptyState } from '../components/common/EmptyState'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
@@ -147,11 +149,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   }
 
   if (error) {
-    return (
-      <div className="p-4 bg-[var(--error)]/10 text-[var(--error)] rounded-lg">
-        {error}
-      </div>
-    )
+    return <ErrorDisplay message={error} />
   }
 
   return (
@@ -208,9 +206,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           </div>
         </div>
       ) : comics.length === 0 ? (
-        <div className="text-center text-[var(--text-secondary)] py-12">
-          暂无收藏
-        </div>
+        <EmptyState message="暂无收藏" />
       ) : (
         <>
           <div className={cardStyle === 'detailed'

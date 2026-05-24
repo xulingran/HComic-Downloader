@@ -7,6 +7,8 @@ import { ComicCard } from '../components/common/ComicCard'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
+import { ErrorDisplay } from '../components/common/ErrorDisplay'
+import { EmptyState } from '../components/common/EmptyState'
 import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
@@ -307,11 +309,7 @@ export function SearchPage() {
         </div>
       </div>
 
-      {error && (
-        <div className="p-4 bg-[var(--error)]/10 text-[var(--error)] rounded-lg">
-          {error}
-        </div>
-      )}
+      <ErrorDisplay message={error} />
 
       {blockedCount > 0 && (
         <div className="text-sm text-[var(--text-secondary)]">
@@ -353,17 +351,9 @@ export function SearchPage() {
         />
       )}
 
-      {!isLoading && comics.length === 0 && (
-        <div className="text-center text-[var(--text-secondary)] py-12">
-          暂无搜索结果
-        </div>
-      )}
+      {!isLoading && comics.length === 0 && <EmptyState message="暂无搜索结果" />}
 
-      {!isLoading && comics.length > 0 && blockedCount === comics.length && (
-        <div className="text-center text-[var(--text-secondary)] py-12">
-          所有结果均已被标签过滤
-        </div>
-      )}
+      {!isLoading && comics.length > 0 && blockedCount === comics.length && <EmptyState message="所有结果均已被标签过滤" />}
     </div>
   )
 }
