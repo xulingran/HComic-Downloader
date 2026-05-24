@@ -60,6 +60,8 @@ export interface AppConfig {
 
 export type TagBlacklist = AppConfig['tagBlacklist']
 
+export type CardStyle = 'cover' | 'detailed'
+
 export interface ProxyStatus {
   http: string
   https: string

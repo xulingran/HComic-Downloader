@@ -1,8 +1,7 @@
 import { create } from 'zustand'
-import type { TagBlacklist } from '@shared/types'
+import type { TagBlacklist, CardStyle } from '@shared/types'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
-type CardStyle = 'cover' | 'detailed'
 
 interface SettingsState {
   themeMode: ThemeMode
