@@ -58,7 +58,7 @@ export interface AppConfig {
   hasAuth?: boolean
 }
 
-export type TagBlacklist = { hcomic: string[]; moeimg: string[] }
+export type TagBlacklist = AppConfig['tagBlacklist']
 
 export interface ProxyStatus {
   http: string
