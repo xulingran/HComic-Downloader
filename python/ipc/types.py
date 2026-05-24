@@ -30,6 +30,7 @@ CONFIG_KEY_MAP = {
     'sfwMode': 'sfw_mode',
     'tagBlacklist': 'tag_blacklist',
     'showPreview': 'show_preview',
+    'previewCacheSizeLimitMB': 'preview_cache_size_limit_mb',
 }
 
 _COVER_CACHE_MAX_SIZE = 200

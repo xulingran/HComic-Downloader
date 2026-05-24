@@ -57,6 +57,7 @@ class ConfigMixin:
             'retryTimes': self._apply_retry_times,
             'cbzFilenameTemplate': lambda v: setattr(self.cbz_builder, 'filename_template', v),
             'defaultSource': lambda v: self.parser.set_source(v),
+            'previewCacheSizeLimitMB': lambda v: self._preview_cache.update_max_size(v) if hasattr(self, '_preview_cache') else None,
         }
         applier = _RUNTIME_APPLIERS.get(key)
         if applier:
@@ -81,6 +82,7 @@ class ConfigMixin:
             'font_size': getattr(self.config, 'font_size', 14),
             'sfw_mode': getattr(self.config, 'sfw_mode', True),
             'tag_blacklist': getattr(self.config, 'tag_blacklist', {"hcomic": [], "moeimg": []}),
+            'preview_cache_size_limit_mb': getattr(self.config, 'preview_cache_size_limit_mb', 500),
         }
         config = {}
         for snake_key, value in raw.items():

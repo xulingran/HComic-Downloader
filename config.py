@@ -48,6 +48,8 @@ class Config:
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
     tag_blacklist: dict[str, dict[str, list[str]]] = field(default_factory=lambda: {"hcomic": [], "moeimg": []})
+    # 预览页面缓存大小上限（MB）
+    preview_cache_size_limit_mb: int = 500
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
@@ -89,6 +91,11 @@ class Config:
             self.retry_times = max(lo, min(hi, int(self.retry_times)))
         except (ValueError, TypeError):
             self.retry_times = 3
+        # 验证缓存上限范围
+        try:
+            self.preview_cache_size_limit_mb = max(100, min(2048, int(self.preview_cache_size_limit_mb)))
+        except (ValueError, TypeError):
+            self.preview_cache_size_limit_mb = 500
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
