@@ -31,6 +31,23 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
+  const [mounted, setMounted] = useState(false)
+  const [visible, setVisible] = useState(false)
+
+  useEffect(() => {
+    if (open) {
+      setMounted(true)
+      requestAnimationFrame(() => setVisible(true))
+    } else {
+      setVisible(false)
+    }
+  }, [open])
+
+  const handleTransitionEnd = useCallback(() => {
+    if (!visible) {
+      setMounted(false)
+    }
+  }, [visible])
 
   const [isDragging, setIsDragging] = useState(false)
   const dragPageRef = useRef(0)
@@ -151,7 +168,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     }
   }, [displayMode])
 
-  if (!open) return null
+  if (!mounted) return null
 
   const progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0
 
