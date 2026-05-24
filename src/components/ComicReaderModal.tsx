@@ -5,6 +5,7 @@ import { useReaderSettings } from '../hooks/useReaderSettings'
 import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { PageFlipView } from './PageFlipView'
+import { ReaderPage } from './ReaderPage'
 
 const ZOOM_MIN = 0.25
 const ZOOM_MAX = 4.0
@@ -37,6 +38,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   useEffect(() => {
     if (open) {
       setMounted(true)
+      // 双层 RAF：等待 DOM mount + 浏览器完成样式计算后再触发 CSS transition
       requestAnimationFrame(() => {
         requestAnimationFrame(() => setVisible(true))
       })
@@ -164,10 +166,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   }, [open, onClose, displayMode, currentPage, totalPages, setCurrentPage])
 
   // Align currentPage to odd in double mode
+  // Intentionally reads currentPage from closure without listing it as a dependency.
+  // Only align on displayMode change; adding currentPage would cause infinite re-runs.
   useEffect(() => {
     if (displayMode === 'double' && currentPage > 1 && currentPage % 2 === 0) {
       setCurrentPage(currentPage - 1)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayMode])
 
   if (!mounted) return null
@@ -248,42 +253,14 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       {displayMode === 'scroll' ? (
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
           {(loadingState === 'loading' || loadingState === 'idle') && (
-            <div className="flex items-center justify-center h-full text-gray-400">
-              <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              加载中...
-            </div>
+            <ReaderLoadingState className="h-full" />
           )}
-
           {loadingState === 'error' && (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
-              <span>无法加载漫画内容</span>
-              <span className="text-xs text-gray-500">{errorMessage}</span>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg text-sm text-white"
-                style={{ background: 'rgba(255,255,255,0.1)' }}
-              >
-                关闭
-              </button>
-            </div>
+            <ReaderErrorState message={errorMessage} onClose={onClose} className="h-full" />
           )}
-
           {loadingState === 'loaded' && imageUrls.length === 0 && (
-            <div className="flex flex-col items-center justify-center h-full text-gray-400 gap-3">
-              <span>无可用图片</span>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg text-sm text-white"
-                style={{ background: 'rgba(255,255,255,0.1)' }}
-              >
-                关闭
-              </button>
-            </div>
+            <ReaderEmptyState onClose={onClose} className="h-full" />
           )}
-
           {loadingState === 'loaded' && imageUrls.length > 0 && (
             <div className="flex flex-col items-center py-2" style={{ gap: pageGap + 'px' }}>
               {imageUrls.map((url, idx) => {
@@ -309,38 +286,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       ) : (
         <>
           {(loadingState === 'loading' || loadingState === 'idle') && (
-            <div className="flex-1 flex items-center justify-center text-gray-400">
-              <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-              加载中...
-            </div>
+            <ReaderLoadingState className="flex-1" />
           )}
           {loadingState === 'error' && (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
-              <span>无法加载漫画内容</span>
-              <span className="text-xs text-gray-500">{errorMessage}</span>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg text-sm text-white"
-                style={{ background: 'rgba(255,255,255,0.1)' }}
-              >
-                关闭
-              </button>
-            </div>
+            <ReaderErrorState message={errorMessage} onClose={onClose} className="flex-1" />
           )}
           {loadingState === 'loaded' && imageUrls.length === 0 && (
-            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 gap-3">
-              <span>无可用图片</span>
-              <button
-                onClick={onClose}
-                className="px-4 py-2 rounded-lg text-sm text-white"
-                style={{ background: 'rgba(255,255,255,0.1)' }}
-              >
-                关闭
-              </button>
-            </div>
+            <ReaderEmptyState onClose={onClose} className="flex-1" />
           )}
           {loadingState === 'loaded' && imageUrls.length > 0 && (
             <PageFlipView
@@ -560,121 +512,45 @@ const doubleIcon = (
   </svg>
 )
 
-function ReaderPage({ url, index, priority, cachedDataUri }: {
-  url: string
-  index: number
-  priority?: boolean
-  cachedDataUri?: string
-}) {
-  const [error, setError] = useState(false)
-  const [errorMessage, setErrorMessage] = useState('')
-  const [dataUri, setDataUri] = useState<string | null>(null)
-  const [retryTick, setRetryTick] = useState(0)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const [isVisible, setIsVisible] = useState(false)
-
-  useEffect(() => {
-    setError(false)
-    setErrorMessage('')
-    setDataUri(null)
-    setRetryTick(0)
-  }, [url])
-
-  useEffect(() => {
-    const el = containerRef.current
-    if (!el) return
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) setIsVisible(true) },
-      { rootMargin: '400px' }
-    )
-    observer.observe(el)
-    return () => observer.disconnect()
-  }, [])
-
-  useEffect(() => {
-    if (cachedDataUri && !dataUri) {
-      setDataUri(cachedDataUri)
-      return
-    }
-    if (dataUri || error) return
-    if (!isVisible && !priority) return
-    let cancelled = false
-
-    Promise.resolve()
-      .then(() => window.hcomic!.fetchPreviewImage(url))
-      .then((result) => {
-        if (cancelled) return
-        if (!result?.dataUri) {
-          throw new Error('Empty preview image response')
-        }
-        setDataUri(result.dataUri)
-      })
-      .catch((err) => {
-        if (cancelled) return
-        console.error('[preview] fetchPreviewImage failed', { url, err })
-        setErrorMessage(err instanceof Error ? err.message : '图片加载失败')
-        setError(true)
-      })
-    return () => { cancelled = true }
-  }, [cachedDataUri, dataUri, error, isVisible, priority, retryTick, url])
-
-  const retry = () => {
-    setError(false)
-    setErrorMessage('')
-    setDataUri(null)
-    setRetryTick(t => t + 1)
-  }
-
-  if (error) {
-    return (
-      <div
-        className="flex flex-col items-center justify-center gap-2 text-gray-400"
-        style={{ aspectRatio: '3/4' }}
-      >
-        <span className="text-xs">第 {index + 1} 页加载失败</span>
-        {errorMessage && <span className="max-w-full truncate px-3 text-[10px] text-gray-500">{errorMessage}</span>}
-        <button
-          onClick={retry}
-          className="text-xs px-3 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors"
-        >
-          重试
-        </button>
-      </div>
-    )
-  }
-
+function ReaderLoadingState({ className }: { className: string }) {
   return (
-    <div ref={containerRef} style={dataUri ? undefined : { aspectRatio: '3/4' }} className="relative flex items-center justify-center">
-      {(isVisible || priority || dataUri) ? (
-        <>
-          {!dataUri && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <svg className="animate-spin h-6 w-6 text-gray-600" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
-            </div>
-          )}
-          {dataUri && (
-            <img
-              src={dataUri}
-              alt={`第 ${index + 1} 页`}
-              onError={() => {
-                setErrorMessage('浏览器无法解码后端返回的图片')
-                setError(true)
-              }}
-              className="w-full h-auto"
-            />
-          )}
-        </>
-      ) : (
-        <div
-          className="w-full h-full"
-          style={{
-            background: 'repeating-linear-gradient(0deg, transparent, transparent 8px, rgba(255,255,255,0.03) 8px, rgba(255,255,255,0.03) 16px)',
-          }}
-        />
-      )}
+    <div className={`flex items-center justify-center ${className} text-gray-400`}>
+      <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+      加载中...
+    </div>
+  )
+}
+
+function ReaderErrorState({ message, onClose, className }: { message: string; onClose: () => void; className: string }) {
+  return (
+    <div className={`flex flex-col items-center justify-center ${className} text-gray-400 gap-3`}>
+      <span>无法加载漫画内容</span>
+      <span className="text-xs text-gray-500">{message}</span>
+      <button
+        onClick={onClose}
+        className="px-4 py-2 rounded-lg text-sm text-white"
+        style={{ background: 'rgba(255,255,255,0.1)' }}
+      >
+        关闭
+      </button>
+    </div>
+  )
+}
+
+function ReaderEmptyState({ onClose, className }: { onClose: () => void; className: string }) {
+  return (
+    <div className={`flex flex-col items-center justify-center ${className} text-gray-400 gap-3`}>
+      <span>无可用图片</span>
+      <button
+        onClick={onClose}
+        className="px-4 py-2 rounded-lg text-sm text-white"
+        style={{ background: 'rgba(255,255,255,0.1)' }}
+      >
+        关闭
+      </button>
     </div>
   )
 }

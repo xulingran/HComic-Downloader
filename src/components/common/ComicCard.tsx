@@ -4,6 +4,105 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useDrawerStore } from '../../stores/useDrawerStore'
 import { useCoverImage } from '../../hooks/useCoverImage'
 
+interface CoverImageProps {
+  coverUrl: string
+  coverSrc: string | null | undefined
+  sfwMode: boolean
+  title: string
+  retry: () => void
+  downloadStatus?: 'downloaded' | 'unknown'
+  variant: 'cover' | 'detailed'
+  onClick: (e: React.MouseEvent) => void
+}
+
+const COVER_STYLES = {
+  cover: {
+    wrapper: '',
+    sfwIcon: 'text-3xl',
+    sfwShowLabel: true,
+    spinner: 'h-6 w-6',
+    imgClass: 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300',
+    errorText: 'text-xs',
+    errorBtn: 'text-xs px-2 py-0.5',
+    errorGap: 'gap-1',
+    badge: {
+      pos: 'top-[3%] right-[3%]',
+      rounded: 'rounded-lg',
+      padding: 'p-[3px] sm:p-[4px] md:p-[5px] lg:p-[6px]',
+      outer: 'w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] md:w-[28px] md:h-[28px] lg:w-[32px] lg:h-[32px]',
+      icon: 'w-[12px] h-[12px] sm:w-[14px] sm:h-[14px] md:w-[17px] md:h-[17px] lg:w-[19px] lg:h-[19px]',
+    },
+  },
+  detailed: {
+    wrapper: 'w-14 h-14',
+    sfwIcon: 'text-xl',
+    sfwShowLabel: false,
+    spinner: 'h-5 w-5',
+    imgClass: 'w-full h-full object-cover',
+    errorText: 'text-[10px]',
+    errorBtn: 'text-[10px] px-1.5 py-0.5',
+    errorGap: 'gap-0.5',
+    badge: {
+      pos: 'top-[5%] right-[5%]',
+      rounded: 'rounded-md',
+      padding: 'p-[2px]',
+      outer: 'w-[16px] h-[16px] sm:w-[18px] sm:h-[18px]',
+      icon: 'w-[10px] h-[10px] sm:w-[11px] sm:h-[11px]',
+    },
+  },
+} as const
+
+function CoverImage({ coverUrl, coverSrc, sfwMode, title, retry, downloadStatus, variant, onClick }: CoverImageProps) {
+  const s = COVER_STYLES[variant]
+  return (
+    <div
+      className={`bg-[var(--bg-secondary)] relative overflow-hidden ${s.wrapper}`}
+      onClick={onClick}
+    >
+      {sfwMode ? (
+        <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
+          <div className="flex flex-col items-center gap-1">
+            <span className={s.sfwIcon}>📖</span>
+            {s.sfwShowLabel && <span className="text-xs font-medium">SFW</span>}
+          </div>
+        </div>
+      ) : coverSrc === undefined && coverUrl ? (
+        <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
+          <svg className={`animate-spin ${s.spinner}`} viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        </div>
+      ) : coverSrc ? (
+        <img src={coverSrc} alt={title} className={s.imgClass} />
+      ) : coverUrl ? (
+        <div className={`w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)] ${s.errorGap}`}>
+          <span className={s.errorText}>加载失败</span>
+          <button
+            onClick={(e) => { e.stopPropagation(); retry() }}
+            className={`${s.errorBtn} rounded bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20`}
+          >
+            重试
+          </button>
+        </div>
+      ) : (
+        <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
+          📖
+        </div>
+      )}
+      {downloadStatus === 'downloaded' && (
+        <div className={`absolute ${s.badge.pos} z-[5] ${s.badge.rounded} bg-gray-800/60 backdrop-blur-sm ${s.badge.padding} flex items-center justify-center`}>
+          <div className={`${s.badge.outer} rounded-full bg-green-500 flex items-center justify-center`}>
+            <svg className={`${s.badge.icon} text-white`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 interface ComicCardProps {
   comic: ComicInfo
   onClick?: (comic: ComicInfo) => void
@@ -69,54 +168,12 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
           </svg>
         </button>
       )}
-      <div className="aspect-[3/4] bg-[var(--bg-secondary)] relative overflow-hidden" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
-        {sfwMode ? (
-          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)] flex-col gap-1">
-            <span className="text-3xl">📖</span>
-            <span className="text-xs font-medium">SFW</span>
-          </div>
-        ) : coverSrc === undefined && comic.coverUrl ? (
-          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
-            <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          </div>
-        ) : coverSrc ? (
-          <img
-            src={coverSrc}
-            alt={comic.title}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          />
-        ) : comic.coverUrl ? (
-          <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)] gap-1">
-            <span className="text-xs">加载失败</span>
-            <button
-              onClick={(e) => { e.stopPropagation(); retry() }}
-              className="text-xs px-2 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-            >
-              重试
-            </button>
-          </div>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
-            📖
-          </div>
-        )}
-        {downloadStatus === 'downloaded' && (
-          <div className="absolute top-[3%] right-[3%] z-[5]
-                          rounded-lg bg-gray-800/60 backdrop-blur-sm
-                          p-[3px] sm:p-[4px] md:p-[5px] lg:p-[6px]
-                          flex items-center justify-center">
-            <div className="w-[20px] h-[20px] sm:w-[24px] sm:h-[24px] md:w-[28px] md:h-[28px] lg:w-[32px] lg:h-[32px]
-                            rounded-full bg-green-500 flex items-center justify-center">
-              <svg className="w-[12px] h-[12px] sm:w-[14px] sm:h-[14px] md:w-[17px] md:h-[17px] lg:w-[19px] lg:h-[19px]
-                              text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-          </div>
-        )}
+      <div className="aspect-[3/4]" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
+        <CoverImage
+          coverUrl={comic.coverUrl} coverSrc={coverSrc} sfwMode={sfwMode}
+          title={comic.title} retry={retry} downloadStatus={downloadStatus}
+          variant="cover" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}
+        />
       </div>
       <div className="p-3">
         <h3
@@ -177,53 +234,12 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
           )}
         </div>
       )}
-      <div className="w-14 h-14 bg-[var(--bg-secondary)] flex-shrink-0 rounded-md overflow-hidden cursor-pointer relative" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
-        {sfwMode ? (
-          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
-            <span className="text-xl">📖</span>
-          </div>
-        ) : coverSrc === undefined && comic.coverUrl ? (
-          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
-          </div>
-        ) : coverSrc ? (
-          <img
-            src={coverSrc}
-            alt={comic.title}
-            className="w-full h-full object-cover"
-          />
-        ) : comic.coverUrl ? (
-          <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-secondary)] gap-0.5">
-            <span className="text-[10px]">加载失败</span>
-            <button
-              onClick={(e) => { e.stopPropagation(); retry() }}
-              className="text-[10px] px-1.5 py-0.5 rounded bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20"
-            >
-              重试
-            </button>
-          </div>
-        ) : (
-          <div className="w-full h-full flex items-center justify-center text-[var(--text-secondary)]">
-            📖
-          </div>
-        )}
-        {downloadStatus === 'downloaded' && (
-          <div className="absolute top-[5%] right-[5%] z-[5]
-                          rounded-md bg-gray-800/60 backdrop-blur-sm
-                          p-[2px]
-                          flex items-center justify-center">
-            <div className="w-[16px] h-[16px] sm:w-[18px] sm:h-[18px]
-                            rounded-full bg-green-500 flex items-center justify-center">
-              <svg className="w-[10px] h-[10px] sm:w-[11px] sm:h-[11px]
-                              text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-            </div>
-          </div>
-        )}
+      <div className="flex-shrink-0 rounded-md cursor-pointer" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
+        <CoverImage
+          coverUrl={comic.coverUrl} coverSrc={coverSrc} sfwMode={sfwMode}
+          title={comic.title} retry={retry} downloadStatus={downloadStatus}
+          variant="detailed" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}
+        />
       </div>
       <div className="flex-1 min-w-0 ml-3">
         <h3

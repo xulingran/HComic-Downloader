@@ -9,7 +9,7 @@ import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
-import { ComicInfo } from '@shared/types'
+import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -25,6 +25,10 @@ const sources = [
   { value: 'hcomic', label: 'HComic' },
   { value: 'moeimg', label: 'Moeimg' }
 ]
+
+function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' {
+  return (source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
+}
 
 export function SearchPage() {
   const [query, setQuery] = useState('')
@@ -49,6 +53,7 @@ export function SearchPage() {
   } = useBatchDownload(comics)
   const { cardStyle, tagBlacklist, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
+  // clearPendingSearch also used by handleRandom below
   const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
 
@@ -146,7 +151,7 @@ export function SearchPage() {
   }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode])
 
   const filteredComics = useMemo(() => {
-    const key = (source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
+    const key = effectiveSourceKey(source)
     const blocked = new Set(tagBlacklist[key].map(t => t.toLowerCase()))
     const hasBlockedTags = blocked.size > 0
     return comics.map(c => ({
@@ -157,56 +162,39 @@ export function SearchPage() {
 
   const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
-  const handleSearch = async (page: number = 1) => {
-    clearSelection()
-    setShowHistory(false)
-
+  const withLoading = async (fn: () => Promise<{ comics: ComicInfo[]; pagination: PaginationInfo | null }>) => {
     const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
+    try {
+      const result = await fn()
+      if (gen !== searchGenRef.current) return
+      setComics(result.comics)
+      if (result.pagination) setPagination(result.pagination)
+    } catch (err) {
+      if (gen !== searchGenRef.current) return
+      setError(err instanceof Error ? err.message : 'Request failed')
+    } finally {
+      if (gen === searchGenRef.current) setLoading(false)
+    }
+  }
 
+  const handleSearch = async (page: number = 1) => {
+    clearSelection()
+    setShowHistory(false)
     if (query.trim()) {
       addHistory(searchTags ? `${query} [${searchTags}]` : query.trim())
     }
-
-    try {
-      const result = await search(query, mode, page, source, searchTags || undefined)
-      if (gen !== searchGenRef.current) return
-      setComics(result.comics)
-      setPagination(result.pagination)
-    } catch (err) {
-      if (gen !== searchGenRef.current) return
-      setError(err instanceof Error ? err.message : 'Search failed')
-    } finally {
-      if (gen === searchGenRef.current) {
-        setLoading(false)
-      }
-    }
+    await withLoading(() => search(query, mode, page, source, searchTags || undefined))
   }
 
   const handleRandom = async () => {
     clearSelection()
+    clearPendingSearch()
     setQuery('')
     setSearchTags('')
     setShowHistory(false)
-
-    const gen = ++searchGenRef.current
-    setLoading(true)
-    setError(null)
-
-    try {
-      const result = await random()
-      if (gen !== searchGenRef.current) return
-      setComics(result.comics)
-      setPagination(result.pagination)
-    } catch (err) {
-      if (gen !== searchGenRef.current) return
-      setError(err instanceof Error ? err.message : 'Random failed')
-    } finally {
-      if (gen === searchGenRef.current) {
-        setLoading(false)
-      }
-    }
+    await withLoading(() => random())
   }
 
   const handleOpenReader = (comic: ComicInfo) => {
@@ -296,7 +284,7 @@ export function SearchPage() {
           >
             {isLoading ? '搜索中...' : '搜索'}
           </button>
-          {tagBlacklist[(source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'].length > 0 && (
+          {tagBlacklist[effectiveSourceKey(source)].length > 0 && (
             <button
               onClick={() => setFilterEnabled(!filterEnabled)}
               className={`px-3 py-2 rounded-lg text-sm transition-colors border ${
