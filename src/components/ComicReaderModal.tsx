@@ -204,7 +204,21 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col bg-[#1a1a2e]">
+    <div className="fixed inset-0 z-50">
+      {/* 半透明遮罩层，点击可关闭 */}
+      <div
+        className={`absolute inset-0 bg-black transition-opacity duration-300 ${
+          visible ? 'opacity-50' : 'opacity-0'
+        }`}
+        onClick={onClose}
+      />
+      {/* 模态内容层，垂直方向滑入滑出 */}
+      <div
+        onTransitionEnd={handleTransitionEnd}
+        className={`absolute inset-0 flex flex-col bg-[#1a1a2e] transition-transform duration-300 ease-out ${
+          visible ? 'translate-y-0' : 'translate-y-full'
+        }`}
+      >
       {/* Header */}
       <div
         className="flex items-center justify-between px-5 py-3 shrink-0"
@@ -498,6 +512,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         )}
       </div>
     </div>
+  </div>
   )
 }
 
