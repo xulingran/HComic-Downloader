@@ -34,6 +34,16 @@ export function useSearch() {
   return { search }
 }
 
+export function useRandom() {
+  const { invoke } = useIpc()
+
+  const random = useCallback(async () => {
+    return invoke(() => window.hcomic!.random())
+  }, [invoke])
+
+  return { random }
+}
+
 export function useDownloadCommands() {
   const { invoke } = useIpc()
 

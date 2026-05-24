@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch, useConfig } from '../hooks/useIpc'
+import { useSearch, useRandom, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
@@ -35,6 +35,7 @@ export function SearchPage() {
   const [showHistory, setShowHistory] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
+  const { random } = useRandom()
   const { downloadWithConflictCheck } = useDownloadHelper()
   const { getConfig } = useConfig()
   const {
@@ -183,6 +184,31 @@ export function SearchPage() {
     }
   }
 
+  const handleRandom = async () => {
+    clearSelection()
+    setQuery('')
+    setSearchTags('')
+    setShowHistory(false)
+
+    const gen = ++searchGenRef.current
+    setLoading(true)
+    setError(null)
+
+    try {
+      const result = await random()
+      if (gen !== searchGenRef.current) return
+      setComics(result.comics)
+      setPagination(result.pagination)
+    } catch (err) {
+      if (gen !== searchGenRef.current) return
+      setError(err instanceof Error ? err.message : 'Random failed')
+    } finally {
+      if (gen === searchGenRef.current) {
+        setLoading(false)
+      }
+    }
+  }
+
   const handleOpenReader = (comic: ComicInfo) => {
     openReader(comic)
   }
@@ -249,6 +275,18 @@ export function SearchPage() {
               </div>
             )}
           </div>
+
+          {source === 'hcomic' && (
+            <button
+              onClick={handleRandom}
+              disabled={isLoading}
+              className="px-4 py-2 rounded-lg border border-[var(--border)]
+                         text-[var(--text-primary)] bg-[var(--bg-secondary)]
+                         hover:bg-[var(--bg-primary)] disabled:opacity-50 transition-colors"
+            >
+              🎲 随机
+            </button>
+          )}
 
           <button
             onClick={() => handleSearch()}
