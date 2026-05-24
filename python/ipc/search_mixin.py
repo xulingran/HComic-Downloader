@@ -94,6 +94,17 @@ class SearchMixin:
             },
         }
 
+    def handle_random(self) -> Dict:
+        comics, pagination = self.parser.random(source="hcomic")
+        return {
+            "comics": [self._comic_to_dict(c) for c in comics],
+            "pagination": {
+                "currentPage": pagination.current_page if pagination else 1,
+                "totalPages": pagination.total_pages if pagination else 1,
+                "totalItems": pagination.total_items if pagination else 0,
+            },
+        }
+
     def handle_get_favourites(self, page: int = 1) -> Dict:
         from parser import ParserResponseError
         try:

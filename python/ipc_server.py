@@ -139,6 +139,7 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
 
         handlers = {
             "search": self.handle_search,
+            "random": self.handle_random,
             "download": self.handle_download,
             "check_download_conflict": self.handle_check_download_conflict,
             "get_favourites": self.handle_get_favourites,
