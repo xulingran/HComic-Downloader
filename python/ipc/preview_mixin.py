@@ -99,9 +99,39 @@ class PreviewMixin:
         return f"data:{content_type};base64,{b64}"
 
     def _do_fetch_preview_image(self, url: str) -> str:
-        """Fetch a preview page image through the authenticated Python session."""
+        """Fetch a preview page image, using cache when available."""
+        import base64 as _base64
+        from .image_utils import detect_image_type as _detect
+
         self._validate_preview_image_url(url)
-        return self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE)
+
+        # Check persistent cache
+        if hasattr(self, '_preview_cache'):
+            cached_path = self._preview_cache.get(url)
+            if cached_path:
+                try:
+                    with open(cached_path, 'rb') as f:
+                        content = f.read()
+                    content_type = _detect(content)
+                    if content_type:
+                        b64 = _base64.b64encode(content).decode('ascii')
+                        logger.debug("Preview cache hit for %s", url)
+                        return f"data:{content_type};base64,{b64}"
+                except Exception:
+                    logger.debug("Preview cache read failed for %s, re-fetching", url, exc_info=True)
+
+        data_uri = self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE)
+
+        # Save to persistent cache
+        if hasattr(self, '_preview_cache'):
+            try:
+                b64_part = data_uri.split(",", 1)[1]
+                raw_bytes = _base64.b64decode(b64_part)
+                self._preview_cache.put(url, raw_bytes)
+            except Exception:
+                logger.debug("Failed to write preview cache for %s", url, exc_info=True)
+
+        return data_uri
 
     def _async_fetch_preview_image(self, url: str, req_id: str) -> None:
         """Thread-pool target: fetch a reader page image and write response."""

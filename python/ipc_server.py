@@ -102,6 +102,11 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             max_disk=_COVER_CACHE_MAX_SIZE * 2 + 100,
         )
 
+        from ipc.preview_cache import PreviewCacheDB
+        self._preview_cache = PreviewCacheDB(
+            max_size_mb=getattr(self.config, 'preview_cache_size_limit_mb', 500),
+        )
+
         # Migration engine
         self._init_migration()
 
@@ -162,6 +167,9 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             "cancel_migration": self.handle_cancel_migration,
             "get_migration_status": self.handle_get_migration_status,
             "resolve_unmatched": self.handle_resolve_unmatched,
+            "get_cache_stats": self.handle_get_cache_stats,
+            "clear_preview_cache": self.handle_clear_preview_cache,
+            "clear_all_cache": self.handle_clear_all_cache,
         }
 
         handler = handlers.get(method)
@@ -176,6 +184,32 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
                 return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
         else:
             return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Method not found: {method}"}}
+
+    def handle_get_cache_stats(self) -> dict:
+        """Return combined cache statistics for cover and preview caches."""
+        cover_stats = self._cover_cache.get_stats()
+        preview_stats = self._preview_cache.get_stats()
+        total_file_count = cover_stats["file_count"] + preview_stats["file_count"]
+        total_size_bytes = cover_stats["total_size_bytes"] + preview_stats["total_size_bytes"]
+        return {
+            "cover": cover_stats,
+            "preview": preview_stats,
+            "total": {
+                "file_count": total_file_count,
+                "total_size_bytes": total_size_bytes,
+            },
+        }
+
+    def handle_clear_preview_cache(self) -> dict:
+        """Clear only the preview image cache (keep cover cache)."""
+        self._preview_cache.clear_all()
+        return {"success": True}
+
+    def handle_clear_all_cache(self) -> dict:
+        """Clear both cover and preview caches."""
+        self._cover_cache.clear_all()
+        self._preview_cache.clear_all()
+        return {"success": True}
 
     def run(self):
         logger.info(
