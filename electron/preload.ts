@@ -181,4 +181,11 @@ contextBridge.exposeInMainWorld('hcomic', {
     ipcRenderer.on(NOTIFICATION_CHANNELS.MIGRATION_ERROR, handler)
     return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.MIGRATION_ERROR, handler) }
   },
+
+  onLoginCookieSuccess: (callback: unknown) => {
+    if (typeof callback !== 'function') throw new Error('Invalid callback')
+    const handler = () => callback()
+    ipcRenderer.on(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, handler)
+    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, handler) }
+  },
 })

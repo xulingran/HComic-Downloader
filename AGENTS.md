@@ -176,8 +176,6 @@ def get_image_url(self, page: int) -> str:
 | 模块 | 职责 |
 |------|------|
 | `main.py` | 应用入口，初始化日志和 GUI |
-| `gui_app.py` | tkinter GUI 主窗口和组件组装 |
-| `gui.py` | GUI 模块导出（向后兼容入口） |
 | `search_controller.py` | 搜索/翻页/收藏夹逻辑控制器 |
 | `download_controller.py` | 下载/批量下载逻辑控制器 |
 | `parser.py` | h-comic.com / moeimg.fan 页面解析，搜索/收藏/详情 |

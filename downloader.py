@@ -6,8 +6,7 @@ import os
 import shutil
 import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
-import concurrent.futures
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -234,9 +233,9 @@ class ComicDownloader:
         """从 future pool 收集完成的任务并按需提交下一页。"""
         future_to_page = run.future_to_page
         while future_to_page:
-            done, _ = concurrent.futures.wait(
+            done, _ = wait(
                 future_to_page.keys(),
-                return_when=concurrent.futures.FIRST_COMPLETED,
+                return_when=FIRST_COMPLETED,
             )
 
             if run.cancel_event and run.cancel_event.is_set():

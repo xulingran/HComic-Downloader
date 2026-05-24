@@ -3,10 +3,10 @@ import { useFavourites } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
-import { ComicReaderModal } from '../components/ComicReaderModal'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
+import { useReaderStore } from '../stores/useReaderStore'
 
 interface FavouritesPageProps {
   onNavigateToSettings?: () => void
@@ -83,7 +83,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   } = useBatchSelect()
   const { cardStyle } = useSettingsStore()
   const cache = useFavouritesStore()
-  const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
+  const { openReader } = useReaderStore()
   const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const latestPageRef = useRef(1)
@@ -171,7 +171,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   }, [])
 
   const handleOpenReader = (comic: ComicInfo) => {
-    setReaderComic(comic)
+    openReader(comic)
   }
 
   const handleDownload = async (comic: ComicInfo) => {
@@ -332,14 +332,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           totalPages={pagination?.totalPages || 1}
           onJump={(page) => { loadFavourites(page); setShowJumpDialog(false) }}
           onClose={() => setShowJumpDialog(false)}
-        />
-      )}
-
-      {readerComic && (
-        <ComicReaderModal
-          comic={readerComic}
-          open={!!readerComic}
-          onClose={() => setReaderComic(null)}
         />
       )}
     </div>

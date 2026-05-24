@@ -4,11 +4,11 @@ import { useSearch, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchSelect, getComicKey } from '../hooks/useBatchSelect'
 import { ComicCard } from '../components/common/ComicCard'
-import { ComicReaderModal } from '../components/ComicReaderModal'
 import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
+import { useReaderStore } from '../stores/useReaderStore'
 
 const searchModes = [
   { value: 'keyword', label: '关键词' },
@@ -44,7 +44,7 @@ export function SearchPage() {
   } = useBatchSelect()
   const { cardStyle, tagBlacklist, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
-  const [readerComic, setReaderComic] = useState<ComicInfo | null>(null)
+  const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
 
   const searchGenRef = useRef(0)
@@ -176,7 +176,7 @@ export function SearchPage() {
   }
 
   const handleOpenReader = (comic: ComicInfo) => {
-    setReaderComic(comic)
+    openReader(comic)
   }
 
   const handleDownload = async (comic: ComicInfo) => {
@@ -443,14 +443,6 @@ export function SearchPage() {
         <div className="text-center text-[var(--text-secondary)] py-12">
           所有结果均已被标签过滤
         </div>
-      )}
-
-      {readerComic && (
-        <ComicReaderModal
-          comic={readerComic}
-          open={!!readerComic}
-          onClose={() => setReaderComic(null)}
-        />
       )}
     </div>
   )

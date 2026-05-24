@@ -54,8 +54,9 @@ describe('IPC Channel Consistency', () => {
     }
   })
 
-  it('NOTIFICATION_CHANNELS and PYTHON_NOTIFICATION_METHODS should have matching keys', () => {
-    const notifKeys = Object.keys(NOTIFICATION_CHANNELS)
+  it('NOTIFICATION_CHANNELS and PYTHON_NOTIFICATION_METHODS should have matching keys (excluding Electron-only channels)', () => {
+    const electronOnlyNotifications = new Set(['LOGIN_COOKIE_SUCCESS'])
+    const notifKeys = Object.keys(NOTIFICATION_CHANNELS).filter(k => !electronOnlyNotifications.has(k))
     const pyNotifKeys = Object.keys(PYTHON_NOTIFICATION_METHODS)
     expect(notifKeys.sort()).toEqual(pyNotifKeys.sort())
   })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const {
@@ -43,6 +43,17 @@ vi.mock('@/stores/useSettingsStore', () => ({
 }))
 
 import { SettingsPage } from '@/pages/SettingsPage'
+
+const mockOnLoginCookieSuccess = vi.fn()
+
+Object.defineProperty(window, 'hcomic', {
+  value: {
+    openLoginWindow: vi.fn().mockResolvedValue({ success: true, message: '登录成功' }),
+    onLoginCookieSuccess: mockOnLoginCookieSuccess.mockReturnValue(vi.fn()),
+    openUrl: vi.fn(),
+  },
+  writable: true,
+})
 
 const defaultConfig = {
   downloadDir: '/downloads',
@@ -573,6 +584,47 @@ describe('SettingsPage', () => {
 
       await waitFor(() => {
         expect(mockSetSfwMode).toHaveBeenCalledWith(prevSfwMode)
+      })
+    })
+  })
+
+  describe('Login toast', () => {
+    beforeEach(() => {
+      vi.clearAllMocks()
+      mockGetConfig.mockResolvedValue({ config: defaultConfig })
+      mockSetConfig.mockResolvedValue({ success: true })
+    })
+
+    it('does not show login toast initially', async () => {
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('设置')).toBeInTheDocument()
+      })
+
+      expect(screen.queryByText('已成功获取')).not.toBeInTheDocument()
+    })
+
+    it('shows login toast when onLoginCookieSuccess fires', async () => {
+      let storedCallback: (() => void) | null = null
+      mockOnLoginCookieSuccess.mockImplementation((callback: () => void) => {
+        storedCallback = callback
+        return vi.fn()
+      })
+
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('设置')).toBeInTheDocument()
+      })
+
+      expect(storedCallback).not.toBeNull()
+      act(() => {
+        storedCallback!()
+      })
+
+      await waitFor(() => {
+        expect(screen.getByText('已成功获取')).toBeInTheDocument()
       })
     })
   })

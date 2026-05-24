@@ -10,6 +10,7 @@ import { AuthSettings } from '../components/settings/AuthSettings'
 import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
 import { TagFilterSettings } from '../components/settings/TagFilterSettings'
+import { Toast } from '../components/common/Toast'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
 import { useMigration } from '../hooks/useMigration'
 
@@ -64,6 +65,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const [fontSize, setFontSize] = useState(14)
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus | null>(null)
   const [proxyLoading, setProxyLoading] = useState(false)
+  const [showLoginToast, setShowLoginToast] = useState(false)
   const { createHandler } = useOptimisticConfig(setConfig, setSaveError, setIsSaving)
   const [isMigrationOpen, setIsMigrationOpen] = useState(false)
   const migrationHook = useMigration()
@@ -82,6 +84,19 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   useEffect(() => {
     getAvailableFonts().then((result) => setAvailableFonts(result.fonts)).catch(() => {})
     loadProxyStatus()
+  }, [])
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribe = window.hcomic?.onLoginCookieSuccess(() => {
+      setShowLoginToast(true)
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setShowLoginToast(false), 3000)
+    })
+    return () => {
+      unsubscribe?.()
+      if (timer) clearTimeout(timer)
+    }
   }, [])
 
   const loadProxyStatus = async () => {
@@ -246,6 +261,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   return (
     <div className="max-w-3xl space-y-6">
+      <Toast message="已成功获取" visible={showLoginToast} />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">设置</h2>
         <div className="flex items-center gap-2">

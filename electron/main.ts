@@ -414,6 +414,7 @@ function createWindow() {
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
 const LOGIN_COOKIE_SETTLE_MS = 1_000
+const LOGIN_COOKIE_SUCCESS_DELAY_MS = 3_000
 
 async function extractAndApplyCookies(
   userAgent: string,
@@ -483,6 +484,9 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
       clearTimeout(timeout)
       if (!settled) {
         extractAndApplyCookies(savedUserAgent || loginWin.webContents.userAgent).then((result) => {
+          if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
+          }
           done(result)
         }).catch(() => {
           done({ success: false, message: '已取消' })
@@ -499,7 +503,14 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
         setTimeout(async () => {
           clearTimeout(timeout)
           const result = await extractAndApplyCookies(savedUserAgent || loginWin.webContents.userAgent)
-          done(result)
+          if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
+            setTimeout(() => {
+              done(result)
+            }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
+          } else {
+            done(result)
+          }
         }, LOGIN_COOKIE_SETTLE_MS)
       }
     })

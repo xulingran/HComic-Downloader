@@ -9,7 +9,9 @@ import { FavouritesPage } from './pages/FavouritesPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { Toast } from './components/common/Toast'
 import { ComicInfoDrawer } from './components/ComicInfoDrawer'
+import { ComicReaderModal } from './components/ComicReaderModal'
 import { useDrawerStore } from './stores/useDrawerStore'
+import { useReaderStore } from './stores/useReaderStore'
 
 function App() {
   const {
@@ -72,6 +74,7 @@ function App() {
   const [activePage, setActivePage] = useState('search')
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
   const { pendingSearch } = useDrawerStore()
+  const { readerComic, closeReader } = useReaderStore()
 
   useEffect(() => {
     if (pendingSearch && activePage !== 'search') {
@@ -110,6 +113,13 @@ function App() {
         </main>
       </div>
       <ComicInfoDrawer />
+      {readerComic && (
+        <ComicReaderModal
+          comic={readerComic}
+          open={!!readerComic}
+          onClose={closeReader}
+        />
+      )}
     </div>
   )
 }
