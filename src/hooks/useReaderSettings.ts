@@ -15,6 +15,7 @@ const DISPLAY_MODE_KEY = 'hcomic-reader-display-mode'
 
 const VALID_DISPLAY_MODES = ['scroll', 'single', 'double'] as const
 export type DisplayMode = typeof VALID_DISPLAY_MODES[number]
+export type BlankPosition = 'none' | 'front' | 'end'
 const DISPLAY_MODE_DEFAULT: DisplayMode = 'scroll'
 
 function readStoredValue(key: string, min: number, max: number, fallback: number): number {
