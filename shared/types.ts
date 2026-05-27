@@ -34,6 +34,19 @@ export interface DownloadTask {
 
 export type DownloadStatus = 'queued' | 'downloading' | 'pausing' | 'paused' | 'completed' | 'failed' | 'cancelled'
 
+export interface HistoryItem {
+  id: number
+  comicId: string
+  title: string
+  coverUrl: string
+  source: string
+  sourceUrl: string
+  lastPage: number
+  totalPages: number
+  lastReadAt: string
+  createdAt: string
+}
+
 export interface AppConfig {
   themeMode: 'light' | 'dark' | 'auto'
   outputFormat: 'folder' | 'zip' | 'cbz'
@@ -336,6 +349,22 @@ export interface IPCMethods {
     params: Record<string, never>
     result: { success: boolean }
   }
+  get_history: {
+    params: { page?: number }
+    result: { items: HistoryItem[]; pagination: PaginationInfo }
+  }
+  add_history: {
+    params: { comic_id: string; title: string; cover_url: string; source: string; source_url: string; last_page: number; total_pages: number }
+    result: { success: boolean }
+  }
+  delete_history: {
+    params: { comic_id: string; source: string }
+    result: { success: boolean }
+  }
+  clear_history: {
+    params: Record<string, never>
+    result: { success: boolean }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -377,6 +406,10 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-cache-stats': 'get_cache_stats',
   'python:clear-preview-cache': 'clear_preview_cache',
   'python:clear-all-cache': 'clear_all_cache',
+  'python:get-history': 'get_history',
+  'python:add-history': 'add_history',
+  'python:delete-history': 'delete_history',
+  'python:clear-history': 'clear_history',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -434,6 +467,10 @@ export interface HcomicAPI {
   getCacheStats(): Promise<CacheStats>
   clearPreviewCache(): Promise<{ success: boolean }>
   clearAllCache(): Promise<{ success: boolean }>
+  getHistory(page?: number): Promise<{ items: HistoryItem[]; pagination: PaginationInfo }>
+  addHistory(comicId: string, title: string, coverUrl: string, source: string, sourceUrl: string, lastPage: number, totalPages: number): Promise<{ success: boolean }>
+  deleteHistory(comicId: string, source: string): Promise<{ success: boolean }>
+  clearHistory(): Promise<{ success: boolean }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
   onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
@@ -495,6 +532,10 @@ export const IPC_CHANNELS = {
   GET_CACHE_STATS: 'python:get-cache-stats',
   CLEAR_PREVIEW_CACHE: 'python:clear-preview-cache',
   CLEAR_ALL_CACHE: 'python:clear-all-cache',
+  GET_HISTORY: 'python:get-history',
+  ADD_HISTORY: 'python:add-history',
+  DELETE_HISTORY: 'python:delete-history',
+  CLEAR_HISTORY: 'python:clear-history',
   SELECT_DIRECTORY: 'select-directory',
 } as const
 
