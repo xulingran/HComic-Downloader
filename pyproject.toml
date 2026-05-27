@@ -1,2 +1,31 @@
 [tool.pytest.ini_options]
 timeout = 60
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort (import sorting)
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+]
+ignore = [
+    "E501",  # 行过长 — 由 formatter 处理
+]
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "auth_parser", "cbz_builder", "config", "constants",
+    "download_history", "download_manager", "downloader",
+    "image_downloader", "image_formats", "migration",
+    "models", "parser", "theme_manager", "url_validator", "utils",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B"]
