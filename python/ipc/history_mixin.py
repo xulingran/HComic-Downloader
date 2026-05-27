@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +104,7 @@ class ReadingHistoryDB:
         last_page: int,
         total_pages: int,
     ) -> None:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(datetime.UTC).isoformat()
         self._conn.execute(
             """
             INSERT INTO reading_history (comic_id, title, cover_url, source, source_url, last_page, total_pages, last_read_at, created_at)

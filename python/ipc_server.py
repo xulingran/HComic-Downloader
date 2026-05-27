@@ -22,8 +22,8 @@ from ipc.config_mixin import ConfigMixin  # noqa: E402
 from ipc.cover_cache import CoverCacheDB  # noqa: E402
 from ipc.cover_mixin import CoverMixin  # noqa: E402
 from ipc.download_mixin import DownloadMixin  # noqa: E402
-from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: E402,F401
 from ipc.history_mixin import HistoryMixin  # noqa: E402
+from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: E402,F401
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
 from ipc.search_mixin import SearchMixin  # noqa: E402
