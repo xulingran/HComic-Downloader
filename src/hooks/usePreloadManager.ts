@@ -46,7 +46,9 @@ export function usePreloadManager(imageUrls: string[], loadingState: string) {
             cache.set(pg - 1, result.dataUri)
             setCacheVersion((v) => v + 1)
           }
-        } catch {}
+        } catch {
+          // Individual page preload failures are non-critical
+        }
       }
     })()
 

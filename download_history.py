@@ -145,7 +145,7 @@ class DownloadHistoryDB:
             )
             columns = ["source_site", "comic_id", "comic_source", "title",
                         "author", "output_path", "output_format", "downloaded_at"]
-            return [dict(zip(columns, row)) for row in cursor]
+            return [dict(zip(columns, row, strict=True)) for row in cursor]
 
     def update_output_path(self, key: tuple[str, str, str], new_path: str):
         """Update the output_path for a specific record."""

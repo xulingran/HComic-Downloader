@@ -150,7 +150,7 @@ describe('validators.ts', () => {
     })
 
     it('returns false when a validator returns false', () => {
-      const alwaysFalse: (v: unknown) => v is string = (_v): _v is string => false
+      const alwaysFalse: (v: unknown) => v is string = (_v: unknown): _v is string => false
       const v = and(string(), alwaysFalse)
       expect(v('test')).toBe(false)
     })
@@ -251,7 +251,7 @@ describe('validators.ts', () => {
     })
 
     it('re-throws non-ValidationError exceptions', () => {
-      const throws: (v: unknown) => v is string = (_v): _v is string => { throw new Error('custom') }
+      const throws: (v: unknown) => v is string = (_v: unknown): _v is string => { throw new Error('custom') }
       expect(() => assert(throws, 'x', 'test')).toThrow('custom')
     })
   })

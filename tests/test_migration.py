@@ -354,7 +354,6 @@ def test_cross_drive_source_removal_failure_keeps_db_path(tmp_path):
     os.makedirs(target_dir, exist_ok=True)
 
     src_file = os.path.join(source_dir, "comic.cbz")
-    tgt_file = os.path.join(target_dir, "comic.cbz")
     with open(src_file, "w") as f:
         f.write("content")
 
@@ -457,7 +456,7 @@ def test_resume_preserves_log(tmp_path):
     ]
 
     engine = MigrationEngine(history_db=mock_db)
-    state = engine.plan_full_migration(source_dir, target_dir)
+    engine.plan_full_migration(source_dir, target_dir)
     engine._state.started_at = 1000.0
 
     log_path = engine._get_log_path()
@@ -497,7 +496,7 @@ def test_first_execution_clears_log(tmp_path):
     ]
 
     engine = MigrationEngine(history_db=mock_db)
-    state = engine.plan_full_migration(source_dir, target_dir)
+    engine.plan_full_migration(source_dir, target_dir)
 
     log_path = engine._get_log_path()
     os.makedirs(os.path.dirname(log_path), exist_ok=True)

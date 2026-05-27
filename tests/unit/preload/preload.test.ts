@@ -17,6 +17,7 @@ vi.mock('electron', () => ({
 
 import '../../../electron/preload'
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const exposedApi = mockExposeInMainWorld.mock.calls[0]?.[1] as any
 
 describe('preload.ts', () => {

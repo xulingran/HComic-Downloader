@@ -6,7 +6,7 @@ import { createMockHcomic } from '../../__mocks__/ipc'
 describe('useMigration', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    delete (window as any).hcomic
+    delete (window as unknown as Record<string, unknown>).hcomic
   })
 
   describe('startMigration', () => {

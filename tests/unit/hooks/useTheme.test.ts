@@ -7,7 +7,7 @@ const mockSetThemeMode = vi.fn()
 let storeState = { themeMode: 'auto' as string, setThemeMode: mockSetThemeMode }
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: (selector?: Function) => selector ? selector(storeState) : storeState
+  useSettingsStore: (selector?: (state: typeof storeState) => unknown) => selector ? selector(storeState) : storeState
 }))
 
 describe('useTheme', () => {

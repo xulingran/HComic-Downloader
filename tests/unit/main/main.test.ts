@@ -10,16 +10,16 @@ const { mockBridgeCall, mockBridgeKill, mockBridgeShutdown, handleCalls, capture
     mockBridgeCall: vi.fn().mockResolvedValue({ success: true }),
     mockBridgeKill: vi.fn(),
     mockBridgeShutdown: vi.fn().mockResolvedValue(undefined),
-    handleCalls: [] as Array<{ channel: string; handler: Function }>,
-    capturedInstances: [] as any[],
-    notificationHandlers: {} as Record<string, Function>,
+    handleCalls: [] as Array<{ channel: string; handler: (...args: unknown[]) => unknown }>,
+    capturedInstances: [] as unknown[],
+    notificationHandlers: {} as Record<string, (...args: unknown[]) => unknown>,
     MockNotification: mockNotify,
   }
 })
 
 // Mock electron module
 vi.mock('electron', () => {
-  const mockHandle = vi.fn((channel: string, handler: Function) => {
+  const mockHandle = vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
     handleCalls.push({ channel, handler })
   })
 
@@ -48,7 +48,7 @@ vi.mock('electron', () => {
     restore = vi.fn()
     focus = vi.fn()
     static getAllWindows = vi.fn().mockReturnValue([])
-    constructor(public options?: any) {
+    constructor(public options?: unknown) {
       capturedInstances.push(this)
     }
   }
@@ -82,7 +82,7 @@ vi.mock('../../../electron/python-bridge', () => ({
     call: mockBridgeCall,
     kill: mockBridgeKill,
     shutdown: mockBridgeShutdown,
-    setNotificationHandler: (method: string, handler: Function) => {
+    setNotificationHandler: (method: string, handler: (...args: unknown[]) => unknown) => {
       notificationHandlers[method] = handler
     }
   })
@@ -111,7 +111,7 @@ describe('main.ts', () => {
   })
 
   describe('IPC handler registration', () => {
-    let initBridgeCalls: any[][] = []
+    let initBridgeCalls: unknown[][] = []
 
     beforeAll(() => {
       initBridgeCalls = [...mockBridgeCall.mock.calls]
@@ -571,7 +571,7 @@ describe('main.ts', () => {
       const instance = capturedInstances[0]
       expect(instance).toBeDefined()
       const wcOnCalls = instance.webContents.on.mock.calls
-      const willNavigateCall = wcOnCalls.find((c: any) => c[0] === 'will-navigate')
+      const willNavigateCall = wcOnCalls.find((c: unknown[]) => c[0] === 'will-navigate')
       expect(willNavigateCall).toBeDefined()
     })
 
@@ -579,7 +579,7 @@ describe('main.ts', () => {
       await flushMicrotasks()
       const instance = capturedInstances[0]
       const wcOnCalls = instance.webContents.on.mock.calls
-      const didFailLoadCall = wcOnCalls.find((c: any) => c[0] === 'did-fail-load')
+      const didFailLoadCall = wcOnCalls.find((c: unknown[]) => c[0] === 'did-fail-load')
       expect(didFailLoadCall).toBeDefined()
     })
 
@@ -595,7 +595,7 @@ describe('main.ts', () => {
       await flushMicrotasks()
       const instance = capturedInstances[0]
       const wcOnCalls = instance.webContents.on.mock.calls
-      const willNavigateCall = wcOnCalls.find((c: any) => c[0] === 'will-navigate')
+      const willNavigateCall = wcOnCalls.find((c: unknown[]) => c[0] === 'will-navigate')
       const event = { preventDefault: vi.fn() }
       willNavigateCall[1](event, 'https://evil.com')
       expect(event.preventDefault).toHaveBeenCalled()
@@ -892,6 +892,7 @@ describe('main.ts', () => {
       const instance = capturedInstances[0]
 
       // Find the close handler
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const closeCall = instance.on.mock.calls.find((c: any) => c[0] === 'close')
       expect(closeCall).toBeDefined()
       const closeHandler = closeCall![1]
@@ -911,6 +912,7 @@ describe('main.ts', () => {
       vi.mocked(dialog.showMessageBoxSync).mockReturnValue(1) // User cancels quit
 
       const instance = capturedInstances[0]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const closeCall = instance.on.mock.calls.find((c: any) => c[0] === 'close')
       const closeHandler = closeCall![1]
 
@@ -935,6 +937,7 @@ describe('main.ts', () => {
       vi.mocked(dialog.showMessageBoxSync).mockReturnValue(0) // User confirms quit
 
       const instance = capturedInstances[0]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const closeCall = instance.on.mock.calls.find((c: any) => c[0] === 'close')
       const closeHandler = closeCall![1]
 

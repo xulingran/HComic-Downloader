@@ -7,7 +7,7 @@ export { getComicKey }
 
 export function useBatchDownload(comics: ComicInfo[]) {
   const comicsRef = useRef(comics)
-  comicsRef.current = comics
+  comicsRef.current = comics // eslint-disable-line react-hooks/refs
   const { downloadWithConflictCheck } = useDownloadHelper()
   const batch = useBatchSelect()
 
@@ -17,6 +17,7 @@ export function useBatchDownload(comics: ComicInfo[]) {
       .filter((c): c is ComicInfo => c !== undefined)
     await Promise.allSettled(comicsToDownload.map(comic => downloadWithConflictCheck(comic)))
     batch.exitBatchMode()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [batch.selectedIds, batch.exitBatchMode, downloadWithConflictCheck])
 
   return {

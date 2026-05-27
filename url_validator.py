@@ -91,7 +91,7 @@ class UrlValidator:
         try:
             addrs = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
         except socket.gaierror:
-            raise DownloadError(f"Cannot resolve hostname: {hostname}")
+            raise DownloadError(f"Cannot resolve hostname: {hostname}") from None
         for _family, _type, _proto, _canon, sockaddr in addrs:
             ip = ipaddress.ip_address(sockaddr[0])
             if UrlValidator.is_blocked_ip(ip):

@@ -6,7 +6,7 @@ import { createMockHcomic } from '../../__mocks__/ipc'
 describe('useAuth', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    delete (window as any).hcomic
+    delete (window as unknown as Record<string, unknown>).hcomic
   })
 
   it('应返回 applyAuth 和 verifyAuth 函数', () => {

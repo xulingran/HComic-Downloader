@@ -42,13 +42,14 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
   })
 
   const currentUrlRef = useRef(coverUrl)
-  currentUrlRef.current = coverUrl
+  currentUrlRef.current = coverUrl // eslint-disable-line react-hooks/refs
   const [retryTick, setRetryTick] = useState(0)
   const [isVisible, setIsVisible] = useState(!containerRef)
 
   // ── Reset to null when disabled ──
   useEffect(() => {
     if (disabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDataUri(null)
     }
   }, [disabled])

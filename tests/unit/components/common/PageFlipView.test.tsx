@@ -29,6 +29,7 @@ class MockIntersectionObserver {
   disconnect() {}
   takeRecords(): IntersectionObserverEntry[] { return [] }
 }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 ;(globalThis as any).IntersectionObserver = MockIntersectionObserver
 
 const defaultProps = {

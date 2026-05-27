@@ -22,6 +22,7 @@ export function Toast({ message, actionLabel, onAction, onDismiss, visible }: To
   useEffect(() => {
     if (visible) {
       cancelAnimationFrame(rafRef.current)
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setShow(true)
       rafRef.current = requestAnimationFrame(() => setAnimate(true))
     } else {

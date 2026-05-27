@@ -1,4 +1,5 @@
 """下载管理器核心模块"""
+import contextlib
 import copy
 import logging
 import os
@@ -173,7 +174,7 @@ class DownloadManager:
         原地跳过而非轮转到队尾，以保持队列物理顺序与展示顺序一致。
         COMPLETED/CANCELLED 任务从队列中移除（清理残留）。
         """
-        for i, task_id in enumerate(self.queue):
+        for task_id in self.queue:
             task = self.tasks.get(task_id)
             if not task:
                 continue
@@ -575,10 +576,8 @@ class ComicDownloadManager(DownloadManager):
         if os.path.isdir(staged_path):
             self._safe_rmtree(staged_path, self.output_dir)
         else:
-            try:
+            with contextlib.suppress(FileNotFoundError):
                 os.remove(staged_path)
-            except FileNotFoundError:
-                pass
 
     def _commit_staged_output(
         self,
@@ -588,7 +587,7 @@ class ComicDownloadManager(DownloadManager):
     ) -> str:
         """Atomically commit staged output to the final destination when possible."""
         if os.path.exists(final_path) and not overwrite:
-            raise FileExistsError("Output already exists: %s" % final_path)
+            raise FileExistsError(f"Output already exists: {final_path}")
 
         if not os.path.isdir(staged_path):
             os.replace(staged_path, final_path)
@@ -683,7 +682,7 @@ class ComicDownloadManager(DownloadManager):
         logger.warning("Conflict detected at build time for %s, skipping", output_path)
         with self._lock:
             task.status = DownloadStatus.FAILED
-            task.error_message = "File already exists: %s" % output_path
+            task.error_message = f"File already exists: {output_path}"
         if task.temp_dir and os.path.exists(task.temp_dir):
             self.downloader.cleanup_temp_dir(task.temp_dir)
         task.temp_dir = None

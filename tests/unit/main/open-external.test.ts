@@ -2,11 +2,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 const { handleCalls } = vi.hoisted(() => ({
-  handleCalls: [] as Array<{ channel: string; handler: Function }>
+  handleCalls: [] as Array<{ channel: string; handler: (...args: unknown[]) => unknown }>
 }))
 
 vi.mock('electron', () => {
-  const mockHandle = vi.fn((channel: string, handler: Function) => {
+  const mockHandle = vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
     handleCalls.push({ channel, handler })
   })
 

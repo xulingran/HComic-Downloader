@@ -124,11 +124,11 @@ class SearchMixin:
         except ParserResponseError as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "login", "auth")):
-                raise AuthRequiredError(msg)
-            raise RuntimeError(msg)
+                raise AuthRequiredError(msg) from e
+            raise RuntimeError(msg) from e
         except (ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error("Get favourites parse error: %s", e)
-            raise RuntimeError(f"Parse error: {e}")
+            raise RuntimeError(f"Parse error: {e}") from e
         except Exception as e:
             logger.error("Get favourites unexpected error: %s", e)
             raise
@@ -141,8 +141,8 @@ class SearchMixin:
         except ParserResponseError as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
-                raise AuthRequiredError(msg)
-            raise RuntimeError(msg)
+                raise AuthRequiredError(msg) from e
+            raise RuntimeError(msg) from e
 
     def handle_check_favourite(self, comic_id: str) -> dict:
         from parser import ParserResponseError
@@ -152,8 +152,8 @@ class SearchMixin:
         except ParserResponseError as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
-                raise AuthRequiredError(msg)
-            raise RuntimeError(msg)
+                raise AuthRequiredError(msg) from e
+            raise RuntimeError(msg) from e
 
     def handle_remove_from_favourites(self, comic_id: str) -> dict:
         from parser import ParserResponseError
@@ -163,8 +163,8 @@ class SearchMixin:
         except ParserResponseError as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
-                raise AuthRequiredError(msg)
-            raise RuntimeError(msg)
+                raise AuthRequiredError(msg) from e
+            raise RuntimeError(msg) from e
 
     def handle_get_preview_urls(self, comic_data: dict) -> dict:
         """Return all image URLs after applying the same metadata preparation as downloads."""

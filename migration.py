@@ -1,4 +1,5 @@
 """漫画库迁移引擎"""
+import contextlib
 import json
 import logging
 import os
@@ -294,10 +295,8 @@ class MigrationEngine:
                 self._migration_logger.removeHandler(self._log_handler)
                 self._log_handler.close()
             if os.path.exists(log_path):
-                try:
+                with contextlib.suppress(OSError):
                     os.unlink(log_path)
-                except OSError:
-                    pass
             self._reinit_log_handler()
 
         self._save_state_if_needed()
@@ -365,7 +364,7 @@ class MigrationEngine:
             except FileExistsError:
                 raise FileExistsError(
                     f"目标文件已存在: {item.target} (源: {item.source})"
-                )
+                ) from None
         else:
             if os.path.isdir(item.source):
                 shutil.copytree(item.source, item.target)

@@ -123,8 +123,8 @@ export function AppearanceSettings({
               try {
                 await setConfig('fontName', name)
                 document.documentElement.style.setProperty('--app-font-family', name)
-              } catch (err: any) {
-                setSaveError(err?.message || '保存失败')
+              } catch (err: unknown) {
+                setSaveError((err instanceof Error ? err.message : '') || '保存失败')
               } finally {
                 setIsSaving(false)
               }
@@ -155,8 +155,8 @@ export function AppearanceSettings({
               try {
                 await setConfig('fontSize', size)
                 document.documentElement.style.setProperty('--app-font-size', `${size}px`)
-              } catch (err: any) {
-                setSaveError(err?.message || '保存失败')
+              } catch (err: unknown) {
+                setSaveError((err instanceof Error ? err.message : '') || '保存失败')
               } finally {
                 setIsSaving(false)
               }

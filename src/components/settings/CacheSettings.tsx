@@ -32,10 +32,12 @@ export function CacheSettings({ onSizeLimitChange, sizeLimitMB }: CacheSettingsP
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStats()
   }, [loadStats])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setInputValue(String(sizeLimitMB))
   }, [sizeLimitMB])
 

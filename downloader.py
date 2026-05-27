@@ -189,7 +189,7 @@ class ComicDownloader:
             return
         logger.info("Waiting %ds before next download", delay_after)
         if progress_callback:
-            progress_callback(downloaded_count, total, "等待 %d 秒..." % delay_after, comic_info)
+            progress_callback(downloaded_count, total, f"等待 {delay_after} 秒...", comic_info)
         if cancel_event is not None:
             if cancel_event.wait(delay_after):
                 logger.info("Cancel requested during delay after")

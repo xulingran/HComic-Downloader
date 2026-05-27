@@ -7,7 +7,7 @@ const { mockSpawn } = vi.hoisted(() => ({
 }))
 
 vi.mock('child_process', async (importOriginal) => {
-  const actual = await importOriginal() as any
+  const actual = await importOriginal() as Record<string, unknown>
   return {
     ...actual,
     spawn: mockSpawn
@@ -27,11 +27,11 @@ vi.mock('electron', () => ({
 import { PythonBridge, getPythonBridge } from '../../../electron/python-bridge'
 
 describe('PythonBridge', () => {
-  let mockProcess: any
-  let stdoutCallbacks: Function[]
-  let stderrCallbacks: Function[]
-  let exitCallbacks: Function[]
-  let errorCallbacks: Function[]
+  let mockProcess: Record<string, unknown>
+  let stdoutCallbacks: ((...args: unknown[]) => unknown)[]
+  let stderrCallbacks: ((...args: unknown[]) => unknown)[]
+  let exitCallbacks: ((...args: unknown[]) => unknown)[]
+  let errorCallbacks: ((...args: unknown[]) => unknown)[]
   let stdinWriteData: string[]
 
   beforeEach(() => {
@@ -50,18 +50,18 @@ describe('PythonBridge', () => {
         writable: true
       },
       stdout: {
-        on: vi.fn((event: string, cb: Function) => {
+        on: vi.fn((event: string, cb: (...args: unknown[]) => unknown) => {
           if (event === 'data') stdoutCallbacks.push(cb)
         }),
         removeAllListeners: vi.fn()
       },
       stderr: {
-        on: vi.fn((event: string, cb: Function) => {
+        on: vi.fn((event: string, cb: (...args: unknown[]) => unknown) => {
           if (event === 'data') stderrCallbacks.push(cb)
         }),
         removeAllListeners: vi.fn()
       },
-      on: vi.fn((event: string, cb: Function) => {
+      on: vi.fn((event: string, cb: (...args: unknown[]) => unknown) => {
         if (event === 'exit') exitCallbacks.push(cb)
         if (event === 'error') errorCallbacks.push(cb)
       }),
@@ -325,7 +325,7 @@ describe('PythonBridge', () => {
 
     it('should null out process reference on error and not restart immediately', async () => {
       vi.useFakeTimers()
-      const bridge = new PythonBridge()
+      const _bridge = new PythonBridge()
       errorCallbacks[errorCallbacks.length - 1](new Error('spawn ENOENT'))
 
       // Process should be null until restart timer fires
@@ -418,7 +418,7 @@ describe('PythonBridge', () => {
 
       // Sabotage: make the first write throw to simulate process dying mid-call
       let writeCallCount = 0
-      const originalWrite = mockProcess.stdin.write
+      const _originalWrite = mockProcess.stdin.write
       mockProcess.stdin.write = vi.fn((data: string) => {
         writeCallCount++
         if (writeCallCount === 1) {

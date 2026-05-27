@@ -6,7 +6,7 @@ import { createMockHcomic } from '../../__mocks__/ipc'
 describe('useIpc', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    delete (window as any).hcomic
+    delete (window as unknown as Record<string, unknown>).hcomic
   })
 
   it('应返回 invoke 函数', () => {
@@ -29,11 +29,11 @@ describe('useIpc', () => {
   })
 
   it('当 hcomic API 不存在时应抛出错误', async () => {
-    delete (window as any).hcomic
+    delete (window as unknown as Record<string, unknown>).hcomic
 
     const { result } = renderHook(() => useIpc())
 
-    await expect(result.current.invoke(() => (window as any).hcomic?.getConfig?.())).rejects.toThrow(
+    await expect(result.current.invoke(() => (window as unknown as Record<string, unknown>).hcomic?.getConfig?.())).rejects.toThrow(
       'Electron IPC not available'
     )
   })
@@ -48,7 +48,7 @@ describe('useIpc', () => {
     const { result } = renderHook(() => useIpc())
 
     // hcomic exists but has no methods - the fn should throw
-    await expect(result.current.invoke(() => (window.hcomic as any).getConfig())).rejects.toThrow()
+    await expect(result.current.invoke(() => (window.hcomic as unknown as Record<string, () => unknown>).getConfig())).rejects.toThrow()
   })
 
   it('IPC 调用失败时应重新抛出错误', async () => {

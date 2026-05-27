@@ -148,6 +148,7 @@ export function and<T>(...validators: Validator<T>[]): Validator<T> {
 export function noControlChars(): Validator<string> {
   return (value): value is string => {
     const s = value as string
+    // eslint-disable-next-line no-control-regex
     if (/[\x00-\x1f\x7f]/.test(s)) {
       throw new ValidationError('String contains control characters')
     }

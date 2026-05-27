@@ -29,7 +29,9 @@ export function DownloadPage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability
     loadDownloads()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {

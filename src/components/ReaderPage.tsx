@@ -14,6 +14,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri }: {
   const [isVisible, setIsVisible] = useState(false)
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(false)
     setErrorMessage('')
     setDataUri(null)
@@ -33,6 +34,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri }: {
 
   useEffect(() => {
     if (cachedDataUri && !dataUri) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDataUri(cachedDataUri)
       return
     }

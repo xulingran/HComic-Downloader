@@ -86,35 +86,6 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   const [activeSection, setActiveSection] = useState<string | null>(null)
 
-  useEffect(() => {
-    loadConfig()
-  }, [])
-
-  useEffect(() => {
-    if (scrollTarget === 'login' && loginSectionRef.current) {
-      loginSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
-      onScrollDone?.()
-    }
-  }, [scrollTarget])
-
-  useEffect(() => {
-    getAvailableFonts().then((result) => setAvailableFonts(result.fonts)).catch(() => {})
-    loadProxyStatus()
-  }, [])
-
-  useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
-    const unsubscribe = window.hcomic?.onLoginCookieSuccess(() => {
-      setShowLoginToast(true)
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => setShowLoginToast(false), 3000)
-    })
-    return () => {
-      unsubscribe?.()
-      if (timer) clearTimeout(timer)
-    }
-  }, [])
-
   const loadProxyStatus = async () => {
     setProxyLoading(true)
     try {
@@ -171,6 +142,38 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadConfig()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    if (scrollTarget === 'login' && loginSectionRef.current) {
+      loginSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      onScrollDone?.()
+    }
+  }, [scrollTarget, onScrollDone])
+
+  useEffect(() => {
+    getAvailableFonts().then((result) => setAvailableFonts(result.fonts)).catch(() => {})
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadProxyStatus()
+  }, [getAvailableFonts, loadProxyStatus])
+
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const unsubscribe = window.hcomic?.onLoginCookieSuccess(() => {
+      setShowLoginToast(true)
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => setShowLoginToast(false), 3000)
+    })
+    return () => {
+      unsubscribe?.()
+      if (timer) clearTimeout(timer)
+    }
+  }, [])
+
   const handleThemeChange = createHandler('themeMode', () => themeMode, setThemeMode, (prev) => setThemeMode(prev))
 
   const handleCardStyleChange = (style: CardStyle) => {
@@ -183,14 +186,14 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   const handleConfigChange = async (key: ConfigKey, value: unknown) => {
     setSaveError(null)
-    const prevValue = (config as any)[key]
+    const prevValue = (config as Record<string, unknown>)[key]
     setConfigState(prev => ({ ...prev, [key]: value }))
     setIsSaving(true)
     try {
       await setConfig(key, value as ConfigValueMap[ConfigKey])
-    } catch (err: any) {
+    } catch (err: unknown) {
       setConfigState(prev => ({ ...prev, [key]: prevValue }))
-      setSaveError(err?.message || '保存失败')
+      setSaveError((err instanceof Error ? err.message : String(err)) || '保存失败')
       setTimeout(() => setSaveError(null), 5000)
     } finally {
       setIsSaving(false)
@@ -203,21 +206,21 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   }
 
   const handleTextConfigBlur = async (key: ConfigKey) => {
-    const value = (config as any)[key]
+    const value = (config as Record<string, unknown>)[key]
     setIsSaving(true)
     try {
-      await setConfig(key, value)
-    } catch (err: any) {
+      await setConfig(key, value as ConfigValueMap[ConfigKey])
+    } catch (err: unknown) {
       try {
         const result = await getConfig()
         if (result.config) {
-          const restored = (result.config as any)[key]
+          const restored = (result.config as Record<string, unknown>)[key]
           if (restored !== undefined) {
             setConfigState(prev => ({ ...prev, [key]: restored }))
           }
         }
       } catch { /* reload 也失败则只显示错误 */ }
-      setSaveError(err?.message || '保存失败')
+      setSaveError((err instanceof Error ? err.message : String(err)) || '保存失败')
       setTimeout(() => setSaveError(null), 5000)
     } finally {
       setIsSaving(false)
@@ -233,9 +236,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
       const verifyResult = await verifyAuth()
       setLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
       setLoginMessage(verifyResult.message || '')
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoginStatus('error')
-      setLoginMessage(err.message || '操作失败')
+      setLoginMessage((err instanceof Error ? err.message : String(err)) || '操作失败')
     }
   }
 
@@ -246,9 +249,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
       const verifyResult = await verifyAuth()
       setLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
       setLoginMessage(verifyResult.message || '')
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoginStatus('error')
-      setLoginMessage(err.message || '验证失败')
+      setLoginMessage((err instanceof Error ? err.message : String(err)) || '验证失败')
     }
   }
 
@@ -273,9 +276,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           setLoginMessage(result.message || '登录失败')
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       setLoginStatus('error')
-      setLoginMessage(err?.message || '登录失败')
+      setLoginMessage((err instanceof Error ? err.message : '') || '登录失败')
     }
   }
 

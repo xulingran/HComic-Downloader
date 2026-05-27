@@ -8,7 +8,7 @@ import { useEffect, useRef } from 'react'
 export function useResizeDebounce(callback: () => void, delayMs = 100) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const callbackRef = useRef(callback)
-  callbackRef.current = callback
+  callbackRef.current = callback // eslint-disable-line react-hooks/refs
 
   useEffect(() => {
     const handleResize = () => {

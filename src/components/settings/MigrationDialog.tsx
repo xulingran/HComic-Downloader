@@ -33,6 +33,7 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
 
   useEffect(() => {
     if (phase === 'executing' && complete) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPhase('done')
     }
   }, [complete, phase])
@@ -61,8 +62,8 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
       const result = await startMigration(targetDir, mode)
       setPreview(result)
       setPhase('preview')
-    } catch (err: any) {
-      setError(err?.message || '生成迁移计划失败')
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || '生成迁移计划失败')
     }
   }
 
@@ -72,16 +73,16 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
     try {
       await confirmMigration(preview.migrationId)
       setPhase('executing')
-    } catch (err: any) {
-      setError(err?.message || '启动迁移失败')
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || '启动迁移失败')
     }
   }
 
   const handlePause = async () => {
     try {
       await pauseMigration()
-    } catch (err: any) {
-      setError(err?.message || '暂停失败')
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || '暂停失败')
     }
   }
 
@@ -91,8 +92,8 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
       resetState()
       setPhase('select')
       onClose()
-    } catch (err: any) {
-      setError(err?.message || '取消失败')
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || '取消失败')
     }
   }
 

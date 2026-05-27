@@ -76,7 +76,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load favourites'
-      if ((err as any)?.code === IPC_ERROR_CODES.AUTH_REQUIRED || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
+      if ((err as Record<string, unknown>)?.code === IPC_ERROR_CODES.AUTH_REQUIRED || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
         setNeedsLogin(true)
       } else {
         setError(msg)
@@ -84,11 +84,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     } finally {
       setIsLoading(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [getFavourites, checkDownloadedStatus, cache.setCache])
 
   useEffect(() => {
     mountedRef.current = true
     if (cache.hasCache) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setComics(cache.comics)
       setPagination(cache.pagination)
       setCurrentPage(cache.currentPage)
@@ -109,14 +111,16 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       loadFavourites(1)
     }
     return () => { mountedRef.current = false }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
     if (!window.hcomic?.onDownloadProgress) return
-    const unsubscribe = window.hcomic.onDownloadProgress((data: any) => {
-      if (data.status !== 'completed') return
+    const unsubscribe = window.hcomic.onDownloadProgress((data: unknown) => {
+      const d = data as { status?: string; taskId?: string }
+      if (d.status !== 'completed') return
       setDownloadedStatus(prev => {
-        const taskId = data.taskId as string
+        const taskId = d.taskId
         if (!taskId) return prev
         return { ...prev, [taskId]: 'downloaded' }
       })

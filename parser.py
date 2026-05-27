@@ -1,6 +1,7 @@
 """h-comic 页面解析模块"""
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import re
@@ -194,10 +195,8 @@ class HComicParser:
             if status in (401, 403):
                 raise ParserResponseError("认证已失效，请重新登录") from e
             body = ""
-            try:
+            with contextlib.suppress(Exception):
                 body = e.response.text[:500] if e.response is not None else ""
-            except Exception:
-                pass
             logger.error("add_to_favourites HTTP %s: %s", status, body)
             raise ParserResponseError(f"加入收藏夹失败 (HTTP {status})") from e
         except requests.RequestException as e:
@@ -276,10 +275,8 @@ class HComicParser:
             if status in (401, 403):
                 raise ParserResponseError("认证已失效，请重新登录") from e
             body = ""
-            try:
+            with contextlib.suppress(Exception):
                 body = e.response.text[:500] if e.response is not None else ""
-            except Exception:
-                pass
             logger.error("remove_from_favourites HTTP %s: %s", status, body)
             raise ParserResponseError(f"移除收藏夹失败 (HTTP {status})") from e
         except requests.RequestException as e:

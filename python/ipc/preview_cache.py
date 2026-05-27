@@ -6,6 +6,7 @@ access time) in SQLite for efficient LRU eviction and statistics.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import logging
 import os
@@ -127,10 +128,8 @@ class PreviewCacheDB:
             if old:
                 old_path = os.path.join(self._files_dir, old[0])
                 if os.path.exists(old_path) and old_path != file_path:
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(old_path)
-                    except OSError:
-                        pass
 
             # Write new file
             with open(file_path, "wb") as f:

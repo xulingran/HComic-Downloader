@@ -61,9 +61,9 @@ export function SearchPage() {
   const inputRef = useRef<HTMLInputElement>(null)
   const historyDropdownRef = useRef<HTMLDivElement>(null)
   const queryRef = useRef(query)
-  queryRef.current = query
+  queryRef.current = query // eslint-disable-line react-hooks/refs
   const searchTagsRef = useRef(searchTags)
-  searchTagsRef.current = searchTags
+  searchTagsRef.current = searchTags // eslint-disable-line react-hooks/refs
 
   useEffect(() => {
     let cancelled = false
@@ -93,6 +93,7 @@ export function SearchPage() {
     })
 
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -122,6 +123,7 @@ export function SearchPage() {
     } else {
       finalQuery = searchQuery
       finalTags = ''
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMode(searchMode)
     }
 

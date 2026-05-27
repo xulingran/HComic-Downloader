@@ -186,7 +186,7 @@ class ImageDownloader:
                                 total += len(chunk)
                                 if total > self.MAX_IMAGE_SIZE:
                                     raise DownloadError(
-                                        "Image too large (exceeded 100MB): %s" % url
+                                        f"Image too large (exceeded 100MB): {url}"
                                     )
                                 f.write(chunk)
 
@@ -215,7 +215,7 @@ class ImageDownloader:
             logger.debug("Downloaded: %s -> %s", url, path)
 
         except requests.RequestException as e:
-            raise DownloadError(f"Failed to download {url}: {e}")
+            raise DownloadError(f"Failed to download {url}: {e}") from e
         finally:
             if pooled_session is not None:
                 self._release_session(pooled_session)

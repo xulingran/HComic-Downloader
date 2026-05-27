@@ -39,6 +39,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMounted(true)
       // 双层 RAF：等待 DOM mount + 浏览器完成样式计算后再触发 CSS transition
       requestAnimationFrame(() => {
@@ -128,6 +129,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       reset()
       clearCache()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, comic?.id, fetchUrls, reset, clearCache])
 
   // Keyboard handler
@@ -171,6 +173,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose, displayMode, blankPosition, currentPage, totalPages, setCurrentPage])
 
   // Align currentPage to odd in double mode
@@ -271,6 +274,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           )}
           {loadingState === 'loaded' && imageUrls.length > 0 && (
             <div className="flex flex-col items-center py-2" style={{ gap: pageGap + 'px' }}>
+              {/* eslint-disable-next-line react-hooks/refs */}
               {imageUrls.map((url, idx) => {
                 const cachedDataUri = imageCacheRef.current.get(idx)
                 return (

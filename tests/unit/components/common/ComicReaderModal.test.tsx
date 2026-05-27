@@ -17,14 +17,15 @@ class MockIntersectionObserver {
   }
   observe(target: Element) {
     this.callback(
-      [{ isIntersecting: true, target, boundingClientRect: { top: 0 } } as any],
-      this as any
+      [{ isIntersecting: true, target, boundingClientRect: { top: 0 } }] as unknown as IntersectionObserverEntry[],
+      this as unknown as IntersectionObserver
     )
   }
   unobserve() {}
   disconnect() {}
   takeRecords(): IntersectionObserverEntry[] { return [] }
 }
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 (globalThis as any).IntersectionObserver = MockIntersectionObserver
 
 const mockFetchPreviewImage = vi.fn()

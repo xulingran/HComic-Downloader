@@ -81,8 +81,8 @@ export function DownloadSettings({
             </button>
             <button
               onClick={async () => {
-                try { await openDownloadDir() } catch (err: any) {
-                  setSaveError(err?.message || '打开目录失败')
+                try { await openDownloadDir() } catch (err: unknown) {
+                  setSaveError((err instanceof Error ? err.message : '') || '打开目录失败')
                 }
               }}
               className="px-3 py-2 text-sm rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]

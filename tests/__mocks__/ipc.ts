@@ -1,8 +1,8 @@
 import { vi } from 'vitest'
 import type { HcomicAPI } from '../../shared/types'
 
-export function createMockIpcInvoke(responses: Record<string, any> = {}) {
-  return vi.fn().mockImplementation((channel: string, ...args: any[]) => {
+export function createMockIpcInvoke(responses: Record<string, unknown> = {}) {
+  return vi.fn().mockImplementation((channel: string, ...args: unknown[]) => {
     if (responses[channel] !== undefined) {
       if (typeof responses[channel] === 'function') {
         return Promise.resolve(responses[channel](...args))
@@ -17,7 +17,7 @@ export function createMockIpcInvoke(responses: Record<string, any> = {}) {
  * Create a mock window.hcomic API with individual method mocks.
  * Each method is a vi.fn that you can assert against.
  */
-export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, any>> = {}) {
+export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, unknown>> = {}) {
   const mockMethods: HcomicAPI = {
     search: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }),
     random: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }),

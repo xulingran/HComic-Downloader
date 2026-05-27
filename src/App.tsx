@@ -83,6 +83,7 @@ function App() {
 
   useEffect(() => {
     if (pendingSearch && activePage !== 'search') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setActivePage('search')
     }
   }, [pendingSearch, activePage])

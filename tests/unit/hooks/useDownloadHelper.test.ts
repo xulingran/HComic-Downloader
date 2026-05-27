@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { renderHook, act } from '@testing-library/react'
+import { renderHook } from '@testing-library/react'
 import { useDownloadHelper } from '@/hooks/useDownloadHelper'
 import { createMockHcomic } from '../../__mocks__/ipc'
 import type { ComicInfo } from '@shared/types'
@@ -15,7 +15,7 @@ const mockComic: ComicInfo = {
 describe('useDownloadHelper', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    delete (window as any).hcomic
+    delete (window as unknown as Record<string, unknown>).hcomic
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
 

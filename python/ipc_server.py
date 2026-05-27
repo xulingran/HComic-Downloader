@@ -17,16 +17,16 @@ logger = logging.getLogger(__name__)
 #   tests/test_ipc_config_mapping.py -> CONFIG_KEY_MAP
 #   tests/test_ipc_download_conflict.py -> _get_config_path
 #   tests/test_ipc_preview.py -> IPCServer._detect_image_type
-from ipc.auth_mixin import AuthMixin
-from ipc.config_mixin import ConfigMixin
-from ipc.cover_cache import CoverCacheDB
-from ipc.cover_mixin import CoverMixin
-from ipc.download_mixin import DownloadMixin
-from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: F401
-from ipc.migration_mixin import MigrationMixin
-from ipc.preview_mixin import PreviewMixin
-from ipc.search_mixin import SearchMixin
-from ipc.types import (  # noqa: F401  # noqa: F401
+from ipc.auth_mixin import AuthMixin  # noqa: E402
+from ipc.config_mixin import ConfigMixin  # noqa: E402
+from ipc.cover_cache import CoverCacheDB  # noqa: E402
+from ipc.cover_mixin import CoverMixin  # noqa: E402
+from ipc.download_mixin import DownloadMixin  # noqa: E402
+from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: E402,F401
+from ipc.migration_mixin import MigrationMixin  # noqa: E402
+from ipc.preview_mixin import PreviewMixin  # noqa: E402
+from ipc.search_mixin import SearchMixin  # noqa: E402
+from ipc.types import (  # noqa: E402,F401
     _COVER_CACHE_MAX_SIZE,
     _COVER_POOL_MAX_WORKERS,
     _PREVIEW_IMAGE_MAX_SIZE,

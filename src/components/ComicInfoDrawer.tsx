@@ -27,6 +27,7 @@ export function ComicInfoDrawer() {
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setMounted(true)
       requestAnimationFrame(() => setVisible(true))
     } else {
@@ -36,6 +37,7 @@ export function ComicInfoDrawer() {
 
   useEffect(() => {
     if (!isOpen || !drawerComic?.id || comicSource !== 'hcomic') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFavouritesState('idle')
       return
     }
@@ -53,6 +55,7 @@ export function ComicInfoDrawer() {
         }
       })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, drawerComic?.id, comicSource])
 
   const handleTransitionEnd = useCallback(() => {

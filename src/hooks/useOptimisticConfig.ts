@@ -24,9 +24,9 @@ export function useOptimisticConfig(
       setIsSaving(true)
       try {
         await setConfig(key, value)
-      } catch (err: any) {
+      } catch (err: unknown) {
         onRevert(prev)
-        setSaveError(err?.message || '保存失败')
+        setSaveError((err instanceof Error ? err.message : String(err)) || '保存失败')
         setTimeout(() => setSaveError(null), 5000)
       } finally {
         setIsSaving(false)

@@ -553,7 +553,7 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
 type Bridge = ReturnType<typeof getPythonBridge>
 
 function syncNotificationSettings(bridge: Bridge) {
-  bridge.call('get_config').then((result: any) => {
+  bridge.call('get_config').then((result: unknown) => {
     const config = result?.config
     if (!config) return
     if (typeof config.notifyOnComplete === 'boolean'
@@ -690,7 +690,7 @@ function registerConfigHandlers(bridge: Bridge) {
       }
     } catch (err) {
       if (err instanceof ValidationError) {
-        throw new Error(`Invalid value for ${key}: ${JSON.stringify(value)}`)
+        throw new Error(`Invalid value for ${key}: ${JSON.stringify(value)}`, { cause: err })
       }
       throw err
     }
@@ -898,9 +898,9 @@ app.whenReady().then(() => {
 })
 
 // ── Handle URI protocol activation (Windows/macOS) ──
-app.on('open-url', (event, _url) => {
+app.on('open-url', (_event, _url: string) => {
   // hcomic://bring-to-front or similar
-  event.preventDefault()
+  _event.preventDefault()
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()

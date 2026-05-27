@@ -15,7 +15,7 @@ const mockComic: ComicInfo = {
 describe('useDownload', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    delete (window as any).hcomic
+    delete (window as unknown as Record<string, unknown>).hcomic
   })
 
   it('应返回 startDownload, cancelDownload, getDownloads', () => {

@@ -110,7 +110,7 @@ export function PageFlipView({
   }, [currentPage, onPageChange])
 
   let leftRealIdx: number
-  let rightRealIdx: number | null = null
+  let rightRealIdx: number | null
   let leftIsBlank = false
   let rightIsBlank = false
 
@@ -133,6 +133,7 @@ export function PageFlipView({
 
   // Clamp panOffset when zoom changes
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPanOffset(prev => clampPanOffset(prev))
   }, [clampPanOffset])
 
@@ -152,17 +153,19 @@ export function PageFlipView({
           gap: isDoubleMode ? '4px' : undefined,
           width: `${imageWidth}%`,
           transform: `translateX(${panOffset}px) scale(${zoom})`,
-          transition: isPanning.current ? 'none' : undefined,
+          transition: isPanning.current ? 'none' : undefined, // eslint-disable-line react-hooks/refs
         }}
       >
         <div className="h-full flex items-center justify-center">
           {leftIsBlank ? <BlankPage /> : (
+            // eslint-disable-next-line react-hooks/refs
             <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} />
           )}
         </div>
         {(rightRealIdx !== null || rightIsBlank) && (
           <div className="h-full flex items-center justify-center">
             {rightIsBlank ? <BlankPage /> : (
+              // eslint-disable-next-line react-hooks/refs
               <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedDataUri={imageCacheRef.current?.get(rightRealIdx!)} />
             )}
           </div>
@@ -229,6 +232,7 @@ function FlipPage({ url, index, cachedDataUri }: { url: string; index: number; c
   useEffect(() => {
     // If cache provides the data, use it directly and skip IPC fetch
     if (cachedDataUri) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDataUri(cachedDataUri)
       setError(false)
       return

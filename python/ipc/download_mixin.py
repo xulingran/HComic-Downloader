@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from collections.abc import Callable
@@ -166,12 +167,10 @@ class DownloadMixin:
         if not task:
             raise ValueError(f"Task not found: {task_id}")
         output_path = ""
-        try:
+        with contextlib.suppress(Exception):
             output_path = self.cbz_builder.get_output_path_for_format(
                 task.comic, self.config.output_format, self.config.download_dir
             )
-        except Exception:
-            pass
         return {
             "taskId": task_id,
             "tempDir": getattr(task, 'temp_dir', ''),
@@ -233,4 +232,4 @@ class DownloadMixin:
             return {"success": True}
         except Exception as e:
             logger.error("Open download dir error: %s", e)
-            raise RuntimeError(f"Failed to open directory: {e}")
+            raise RuntimeError(f"Failed to open directory: {e}") from e

@@ -21,7 +21,7 @@ export class PythonBridge {
   private restartTimer: NodeJS.Timeout | null = null
   private isShuttingDown = false
   private restartCount = 0
-  private notificationHandlers = new Map<string, (params: any) => void>()
+  private notificationHandlers = new Map<string, (params: unknown) => void>()
 
   constructor() {
     this.start()
@@ -161,14 +161,14 @@ export class PythonBridge {
     }
   }
 
-  onNotification(method: string, params: any) {
+  onNotification(method: string, params: unknown) {
     const handler = this.notificationHandlers.get(method)
     if (handler) {
       handler(params)
     }
   }
 
-  setNotificationHandler(method: string, handler: (params: any) => void) {
+  setNotificationHandler(method: string, handler: (params: unknown) => void) {
     this.notificationHandlers.set(method, handler)
   }
 
@@ -201,7 +201,7 @@ export class PythonBridge {
       this.pendingRequests.set(id, { resolve, reject, timer })
       try {
         proc.stdin!.write(JSON.stringify(request) + '\n')
-      } catch (err) {
+      } catch (_err) {
         clearTimeout(timer)
         this.pendingRequests.delete(id)
         reject(new Error('Failed to write to Python process stdin'))

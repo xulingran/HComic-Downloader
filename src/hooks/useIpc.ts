@@ -87,11 +87,11 @@ export function useDownloadCommands() {
 }
 
 export function useDownloadProgress() {
-  const [progress, setProgress] = useState<Record<string, any>>({})
+  const [progress, setProgress] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
     if (!window.hcomic?.onDownloadProgress) return
-    const unsubscribe = window.hcomic.onDownloadProgress((data: any) => {
+    const unsubscribe = window.hcomic.onDownloadProgress((data: unknown) => {
       setProgress(prev => ({ ...prev, [data.taskId]: data }))
     })
     return unsubscribe
@@ -128,7 +128,7 @@ export function useConfig() {
   }, [invoke])
 
   const setConfig = useCallback(async <K extends ConfigKey>(key: K, value: ConfigValueMap[K]) => {
-    return invoke(() => window.hcomic!.setConfig(key, value as any))
+    return invoke(() => window.hcomic!.setConfig(key, value as ConfigValueMap[K]))
   }, [invoke])
 
   const openDownloadDir = useCallback(async () => {

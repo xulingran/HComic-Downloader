@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 
 const { mockNotification } = vi.hoisted(() => {
-  const mockNotify = vi.fn().mockImplementation(function (this: any, opts: any) {
+  const mockNotify = vi.fn().mockImplementation(function (this: unknown, _opts: unknown) {
     return { on: vi.fn(), show: vi.fn() }
   })
   mockNotify.isSupported = vi.fn().mockReturnValue(true)
@@ -23,7 +23,7 @@ describe('NotificationManager', () => {
 
   beforeEach(() => {
     vi.clearAllMocks()
-    mockNotification.mockImplementation(function (this: any, opts: any) {
+    mockNotification.mockImplementation(function (this: unknown, _opts: unknown) {
       return { on: vi.fn(), show: vi.fn() }
     })
     mockNotification.isSupported.mockReturnValue(true)
@@ -35,7 +35,7 @@ describe('NotificationManager', () => {
       show: vi.fn(),
       focus: vi.fn(),
     }
-    manager.setMainWindow(mockMainWindow as any)
+    manager.setMainWindow(mockMainWindow as unknown as Parameters<typeof manager.setMainWindow>[0])
     manager.updateSettings(true, 'inactive')
   })
 

@@ -15,9 +15,9 @@ export function usePageTracking(
 ) {
   const observerRef = useRef<IntersectionObserver | null>(null)
   const isDraggingRef = useRef(isDragging)
-  isDraggingRef.current = isDragging
+  isDraggingRef.current = isDragging // eslint-disable-line react-hooks/refs
   const currentPageRef = useRef(currentPage)
-  currentPageRef.current = currentPage
+  currentPageRef.current = currentPage // eslint-disable-line react-hooks/refs
 
   useEffect(() => {
     return () => {
@@ -59,6 +59,7 @@ export function usePageTracking(
     }
 
     return () => { observerRef.current?.disconnect() }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loadingState, imageCount])
 
   return observerRef
