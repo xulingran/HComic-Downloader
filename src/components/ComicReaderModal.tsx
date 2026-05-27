@@ -413,6 +413,28 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                   onClick={() => handleSetDisplayMode('double')}
                 />
               </div>
+              {displayMode === 'double' && (
+                <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                  <ModeButton
+                    label="无补白"
+                    icon={blankNoneIcon}
+                    active={blankPosition === 'none'}
+                    onClick={() => setBlankPosition('none')}
+                  />
+                  <ModeButton
+                    label="前补白"
+                    icon={blankFrontIcon}
+                    active={blankPosition === 'front'}
+                    onClick={() => setBlankPosition('front')}
+                  />
+                  <ModeButton
+                    label="后补白"
+                    icon={blankEndIcon}
+                    active={blankPosition === 'end'}
+                    onClick={() => setBlankPosition('end')}
+                  />
+                </div>
+              )}
               {displayMode === 'scroll' && (
                 <>
                   <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
@@ -518,6 +540,27 @@ const doubleIcon = (
   <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <rect x="1" y="1" width="6" height="14" rx="1" />
     <rect x="9" y="1" width="6" height="14" rx="1" />
+  </svg>
+)
+
+const blankNoneIcon = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="1" width="6" height="14" rx="1" />
+    <rect x="9" y="1" width="6" height="14" rx="1" />
+  </svg>
+)
+
+const blankFrontIcon = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="1" width="6" height="14" rx="1" strokeDasharray="2 2" />
+    <rect x="9" y="1" width="6" height="14" rx="1" />
+  </svg>
+)
+
+const blankEndIcon = (
+  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="1" y="1" width="6" height="14" rx="1" />
+    <rect x="9" y="1" width="6" height="14" rx="1" strokeDasharray="2 2" />
   </svg>
 )
 
