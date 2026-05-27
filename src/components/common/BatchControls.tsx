@@ -4,10 +4,11 @@ interface BatchControlsProps {
   onToggleBatchMode: (enabled: boolean) => void
   onSelectAll: () => void
   onClearSelection: () => void
+  onSelectNotDownloaded?: () => void
   onBatchDownload: () => void
 }
 
-export function BatchControls({ batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onBatchDownload }: BatchControlsProps) {
+export function BatchControls({ batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onSelectNotDownloaded, onBatchDownload }: BatchControlsProps) {
   return (
     <>
       <span className="text-[var(--border)]">|</span>
@@ -31,6 +32,11 @@ export function BatchControls({ batchMode, selectedCount, onToggleBatchMode, onS
           <button onClick={onClearSelection} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
             取消
           </button>
+          {onSelectNotDownloaded && (
+            <button onClick={onSelectNotDownloaded} className="px-2 py-0.5 text-xs rounded bg-[var(--bg-secondary)] border border-[var(--border)] hover:bg-[var(--bg-tertiary)]">
+              选中未下载
+            </button>
+          )}
           <button
             onClick={onBatchDownload}
             disabled={selectedCount === 0}

@@ -132,6 +132,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     openReader(comic)
   }
 
+  const handleSelectNotDownloaded = useCallback(() => {
+    const notDownloaded = comics.filter(
+      comic => downloadedStatus[getTaskId(comic)] !== 'downloaded'
+    )
+    selectAll(notDownloaded)
+  }, [comics, downloadedStatus, selectAll])
+
   const handleDownload = async (comic: ComicInfo) => {
     await downloadWithConflictCheck(comic)
   }
@@ -173,6 +180,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
               onToggleBatchMode={setBatchMode}
               onSelectAll={() => selectAll(comics)}
               onClearSelection={clearSelection}
+              onSelectNotDownloaded={handleSelectNotDownloaded}
               onBatchDownload={handleBatchDownload}
             />
           )}
