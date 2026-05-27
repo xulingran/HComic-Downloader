@@ -33,6 +33,8 @@ function historyItemToComicInfo(item: HistoryItem) {
     url: item.sourceUrl,
     coverUrl: item.coverUrl,
     source: item.source,
+    sourceSite: item.sourceSite || undefined,
+    mediaId: item.mediaId || undefined,
     pages: item.totalPages || undefined,
   }
 }

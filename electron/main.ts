@@ -874,11 +874,13 @@ function registerHistoryHandlers(bridge: Bridge) {
     return bridge.call('get_history', { page: p })
   })
 
-  ipcMain.handle(IPC_CHANNELS.ADD_HISTORY, async (_, comicId: unknown, title: unknown, coverUrl: unknown, source: unknown, sourceUrl: unknown, lastPage: unknown, totalPages: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.ADD_HISTORY, async (_, comicId: unknown, title: unknown, coverUrl: unknown, source: unknown, sourceSite: unknown, mediaId: unknown, sourceUrl: unknown, lastPage: unknown, totalPages: unknown) => {
     assert(comicIdValidator, comicId, 'add_history comicId')
     assert(and(string(), length(1, 256)), title, 'add_history title')
     assert(and(string(), maxLength(2048)), coverUrl, 'add_history coverUrl')
     assert(and(string(), length(1, 64), noControlChars()), source, 'add_history source')
+    assert(and(string(), maxLength(64), noControlChars()), sourceSite, 'add_history sourceSite')
+    assert(and(string(), maxLength(256)), mediaId, 'add_history mediaId')
     assert(and(string(), maxLength(2048)), sourceUrl, 'add_history sourceUrl')
     assert(and(number(), integer(), minValue(0)), lastPage, 'add_history lastPage')
     assert(and(number(), integer(), minValue(0)), totalPages, 'add_history totalPages')
@@ -887,6 +889,8 @@ function registerHistoryHandlers(bridge: Bridge) {
       title,
       cover_url: coverUrl,
       source,
+      source_site: sourceSite,
+      media_id: mediaId,
       source_url: sourceUrl,
       last_page: lastPage,
       total_pages: totalPages,

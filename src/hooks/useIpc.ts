@@ -213,8 +213,8 @@ export function useHistory() {
     return invoke(() => window.hcomic!.getHistory(page))
   }, [invoke])
 
-  const addHistory = useCallback(async (comicId: string, title: string, coverUrl: string, source: string, sourceUrl: string, lastPage: number, totalPages: number) => {
-    return invoke(() => window.hcomic!.addHistory(comicId, title, coverUrl, source, sourceUrl, lastPage, totalPages))
+  const addHistory = useCallback(async (comicId: string, title: string, coverUrl: string, source: string, sourceSite: string, mediaId: string, sourceUrl: string, lastPage: number, totalPages: number) => {
+    return invoke(() => window.hcomic!.addHistory(comicId, title, coverUrl, source, sourceSite, mediaId, sourceUrl, lastPage, totalPages))
   }, [invoke])
 
   const deleteHistory = useCallback(async (comicId: string, source: string) => {
