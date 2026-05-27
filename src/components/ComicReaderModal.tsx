@@ -6,6 +6,7 @@ import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { useHistory } from '../hooks/useIpc'
 import { useHistoryStore } from '../stores/useHistoryStore'
+import { useReaderStore } from '../stores/useReaderStore'
 import { PageFlipView } from './PageFlipView'
 import { ReaderPage } from './ReaderPage'
 
@@ -72,6 +73,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const { addHistory } = useHistory()
   const historyStore = useHistoryStore()
+  const { initialPage } = useReaderStore()
   const lastRecordedPageRef = useRef<number>(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -101,6 +103,15 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
     loadingState, imageUrls.length,
   )
+
+  // Jump to initial page when opening from history
+  useEffect(() => {
+    if (!open || !initialPage || loadingState !== 'loaded') return
+    if (initialPage > 0 && initialPage <= totalPages) {
+      setCurrentPage(initialPage)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, initialPage, loadingState])
 
   // Close settings panel on outside click
   useEffect(() => {

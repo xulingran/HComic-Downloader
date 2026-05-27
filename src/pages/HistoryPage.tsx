@@ -88,7 +88,7 @@ export function HistoryPage() {
   }, [])
 
   const handleOpenReader = (item: HistoryItem) => {
-    openReader(historyItemToComicInfo(item))
+    openReader(historyItemToComicInfo(item), item.lastPage > 0 ? item.lastPage : undefined)
   }
 
   const handleDelete = async (item: HistoryItem) => {
