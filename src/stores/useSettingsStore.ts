@@ -20,7 +20,7 @@ interface SettingsState {
   setFilterEnabled: (enabled: boolean) => void
 }
 
-const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [] }
+const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [] }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   themeMode: 'auto',

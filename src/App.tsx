@@ -43,9 +43,11 @@ function App() {
       // Load tag blacklist from config
       const rawBlacklist = result.config?.tagBlacklist
       if (rawBlacklist && typeof rawBlacklist === 'object') {
-        const normalized: { hcomic: string[]; moeimg: string[] } = {
-          hcomic: Array.isArray((rawBlacklist as Record<string, unknown>).hcomic) ? (rawBlacklist as Record<string, unknown>).hcomic as string[] : [],
-          moeimg: Array.isArray((rawBlacklist as Record<string, unknown>).moeimg) ? (rawBlacklist as Record<string, unknown>).moeimg as string[] : [],
+        const raw = rawBlacklist as Record<string, unknown>
+        const normalized: { hcomic: string[]; moeimg: string[]; jmcomic: string[] } = {
+          hcomic: Array.isArray(raw.hcomic) ? raw.hcomic as string[] : [],
+          moeimg: Array.isArray(raw.moeimg) ? raw.moeimg as string[] : [],
+          jmcomic: Array.isArray(raw.jmcomic) ? raw.jmcomic as string[] : [],
         }
         setTagBlacklist(normalized)
       }

@@ -6,7 +6,6 @@ import {
 
 const VALID_SEARCH_MODES = new Set<string>(SEARCH_MODES)
 const VALID_SOURCES = new Set<string>(COMIC_SOURCES)
-const VALID_LOGIN_SOURCES = new Set<string>(['hcomic', 'jmcomic'])
 const VALID_CONFIG_KEYS = new Set<string>(CONFIG_KEYS)
 
 function validatePage(page: unknown): asserts page is number {

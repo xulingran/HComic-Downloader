@@ -593,7 +593,7 @@ type Bridge = ReturnType<typeof getPythonBridge>
 
 function syncNotificationSettings(bridge: Bridge) {
   bridge.call('get_config').then((result: unknown) => {
-    const config = result?.config
+    const config = (result as Record<string, unknown>)?.config as Record<string, unknown> | undefined
     if (!config) return
     if (typeof config.notifyOnComplete === 'boolean'
       && (config.notifyWhenForeground === 'inactive' || config.notifyWhenForeground === 'always')) {
