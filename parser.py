@@ -183,7 +183,6 @@ class HComicParser:
                 headers={
                     "Origin": "https://h-comic.com",
                     "Referer": "https://h-comic.com/",
-                    "Cookie": None,
                 },
             )
             response.raise_for_status()
@@ -222,11 +221,14 @@ class HComicParser:
                 headers={
                     "Origin": "https://h-comic.com",
                     "Referer": "https://h-comic.com/",
-                    "Cookie": None,
                 },
             )
             if response.status_code == 200:
-                return True
+                try:
+                    data = response.json()
+                    return data is not None
+                except ValueError:
+                    return False
             if response.status_code == 404:
                 return False
             response.raise_for_status()
@@ -263,7 +265,6 @@ class HComicParser:
                 headers={
                     "Origin": "https://h-comic.com",
                     "Referer": "https://h-comic.com/",
-                    "Cookie": None,
                 },
             )
             response.raise_for_status()
