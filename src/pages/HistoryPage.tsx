@@ -79,9 +79,7 @@ export function HistoryPage() {
     if (cache.hasCache) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setItems(cache.items)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPagination(cache.pagination)
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCurrentPage(cache.currentPage)
     } else {
       loadHistory(1)
