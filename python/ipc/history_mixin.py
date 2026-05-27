@@ -98,6 +98,12 @@ class ReadingHistoryDB:
                 UNIQUE(comic_id, source)
             )
         """)
+        # Migrate: add columns if they don't exist (for existing databases)
+        for col in ("source_site", "media_id"):
+            try:
+                self._conn.execute(f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''")
+            except sqlite3.OperationalError:
+                pass  # column already exists
         self._conn.commit()
 
     def upsert(
