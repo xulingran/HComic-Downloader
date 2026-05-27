@@ -15,7 +15,11 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "lint": "eslint src electron shared tests",
+    "lint:fix": "eslint src electron shared tests --fix",
+    "lint:py": "venv\\Scripts\\ruff.exe check .",
+    "lint:py:fix": "venv\\Scripts\\ruff.exe check . --fix"
   },
   "dependencies": {
     "react": "^18.2.0",
