@@ -40,11 +40,11 @@ function historyItemToComicInfo(item: HistoryItem) {
 }
 
 export function HistoryPage() {
-  const [items, setItems] = useState<HistoryItem[]>([])
+  const [items, setItems] = useState<HistoryItem[]>(cache.hasCache ? cache.items : [])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [pagination, setPagination] = useState<PaginationInfo | null>(null)
-  const [currentPage, setCurrentPage] = useState(1)
+  const [pagination, setPagination] = useState<PaginationInfo | null>(cache.hasCache ? cache.pagination : null)
+  const [currentPage, setCurrentPage] = useState(cache.hasCache ? cache.currentPage : 1)
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const { getHistory, deleteHistory, clearHistory } = useHistory()
@@ -78,12 +78,7 @@ export function HistoryPage() {
 
   useEffect(() => {
     mountedRef.current = true
-    if (cache.hasCache) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setItems(cache.items)
-      setPagination(cache.pagination)
-      setCurrentPage(cache.currentPage)
-    } else {
+    if (!cache.hasCache) {
       loadHistory(1)
     }
     return () => { mountedRef.current = false }
