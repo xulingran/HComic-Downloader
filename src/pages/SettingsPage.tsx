@@ -47,6 +47,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const { getAvailableFonts } = useAvailableFonts()
   const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'valid' | 'invalid' | 'error'>('idle')
   const [loginMessage, setLoginMessage] = useState('')
+  const [jmcomicLoginStatus, setJmcomicLoginStatus] = useState<'idle' | 'verifying' | 'valid' | 'invalid' | 'error'>('idle')
+  const [jmcomicLoginMessage, setJmcomicLoginMessage] = useState('')
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('cbz')
   const [config, setConfigState] = useState<ConfigState>({
     downloadDir: '',
@@ -227,58 +229,64 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
-  const handleApplyAuth = async (curlText: string) => {
+  const handleApplyAuth = async (curlText: string, source: string = 'hcomic') => {
     if (!curlText.trim()) return
-    setLoginStatus('verifying')
-    setLoginMessage('')
+    const setStatus = source === 'jmcomic' ? setJmcomicLoginStatus : setLoginStatus
+    const setMessage = source === 'jmcomic' ? setJmcomicLoginMessage : setLoginMessage
+    setStatus('verifying')
+    setMessage('')
     try {
-      await applyAuth(curlText.trim())
-      const verifyResult = await verifyAuth()
-      setLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
-      setLoginMessage(verifyResult.message || '')
+      await applyAuth(curlText.trim(), source)
+      const verifyResult = await verifyAuth(source)
+      setStatus(verifyResult.valid ? 'valid' : 'invalid')
+      setMessage(verifyResult.message || '')
     } catch (err: unknown) {
-      setLoginStatus('error')
-      setLoginMessage((err instanceof Error ? err.message : String(err)) || '操作失败')
+      setStatus('error')
+      setMessage((err instanceof Error ? err.message : String(err)) || '操作失败')
     }
   }
 
-  const handleTestAuth = async () => {
-    setLoginStatus('verifying')
-    setLoginMessage('')
+  const handleTestAuth = async (source: string = 'hcomic') => {
+    const setStatus = source === 'jmcomic' ? setJmcomicLoginStatus : setLoginStatus
+    const setMessage = source === 'jmcomic' ? setJmcomicLoginMessage : setLoginMessage
+    setStatus('verifying')
+    setMessage('')
     try {
-      const verifyResult = await verifyAuth()
-      setLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
-      setLoginMessage(verifyResult.message || '')
+      const verifyResult = await verifyAuth(source)
+      setStatus(verifyResult.valid ? 'valid' : 'invalid')
+      setMessage(verifyResult.message || '')
     } catch (err: unknown) {
-      setLoginStatus('error')
-      setLoginMessage((err instanceof Error ? err.message : String(err)) || '验证失败')
+      setStatus('error')
+      setMessage((err instanceof Error ? err.message : String(err)) || '验证失败')
     }
   }
 
-  const handleOpenLoginWindow = async () => {
-    const prevStatus = loginStatus
-    setLoginStatus('verifying')
-    setLoginMessage('')
+  const handleOpenLoginWindow = async (source: string = 'hcomic') => {
+    const prevStatus = source === 'jmcomic' ? jmcomicLoginStatus : loginStatus
+    const setStatus = source === 'jmcomic' ? setJmcomicLoginStatus : setLoginStatus
+    const setMessage = source === 'jmcomic' ? setJmcomicLoginMessage : setLoginMessage
+    setStatus('verifying')
+    setMessage('')
     try {
-      const result = await window.hcomic?.openLoginWindow()
+      const result = await window.hcomic?.openLoginWindow(source)
       if (!result) {
-        setLoginStatus(prevStatus)
+        setStatus(prevStatus)
         return
       }
       if (result.success) {
-        setLoginStatus('valid')
-        setLoginMessage(result.message || '登录成功')
+        setStatus('valid')
+        setMessage(result.message || '登录成功')
       } else {
         if (result.message === '已取消') {
-          setLoginStatus(prevStatus)
+          setStatus(prevStatus)
         } else {
-          setLoginStatus('error')
-          setLoginMessage(result.message || '登录失败')
+          setStatus('error')
+          setMessage(result.message || '登录失败')
         }
       }
     } catch (err: unknown) {
-      setLoginStatus('error')
-      setLoginMessage((err instanceof Error ? err.message : '') || '登录失败')
+      setStatus('error')
+      setMessage((err instanceof Error ? err.message : '') || '登录失败')
     }
   }
 
@@ -439,6 +447,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           loginSectionRef={loginSectionRef}
           loginStatus={loginStatus}
           loginMessage={loginMessage}
+          jmcomicLoginStatus={jmcomicLoginStatus}
+          jmcomicLoginMessage={jmcomicLoginMessage}
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}
