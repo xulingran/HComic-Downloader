@@ -23,6 +23,7 @@ from ipc.cover_cache import CoverCacheDB  # noqa: E402
 from ipc.cover_mixin import CoverMixin  # noqa: E402
 from ipc.download_mixin import DownloadMixin  # noqa: E402
 from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: E402,F401
+from ipc.history_mixin import HistoryMixin  # noqa: E402
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
 from ipc.search_mixin import SearchMixin  # noqa: E402
@@ -37,7 +38,7 @@ from ipc.types import (  # noqa: E402,F401
 )
 
 
-class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixin, AuthMixin, MigrationMixin):
+class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixin, AuthMixin, MigrationMixin, HistoryMixin):
 
     def __init__(self):
         from cbz_builder import CBZBuilder
@@ -115,6 +116,9 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
         # Migration engine
         self._init_migration()
 
+        # Reading history database
+        self._init_reading_history()
+
     # ── backward-compatible static helpers (delegated to image_utils) ─────
 
     @staticmethod
@@ -179,6 +183,10 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             "get_cache_stats": self.handle_get_cache_stats,
             "clear_preview_cache": self.handle_clear_preview_cache,
             "clear_all_cache": self.handle_clear_all_cache,
+            "get_history": self.handle_get_history,
+            "add_history": self.handle_add_history,
+            "delete_history": self.handle_delete_history,
+            "clear_history": self.handle_clear_history,
         }
 
         handler = handlers.get(method)
