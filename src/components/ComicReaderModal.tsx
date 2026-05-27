@@ -84,15 +84,14 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   }
 
   const recordHistory = useCallback((page: number) => {
-    const c = comic || comicRef.current
-    if (!c || page === lastRecordedPageRef.current) return
+    if (!comic || page === lastRecordedPageRef.current) return
     lastRecordedPageRef.current = page
     addHistory(
-      c.id,
-      c.title,
-      c.coverUrl,
-      c.source,
-      c.url,
+      comic.id,
+      comic.title,
+      comic.coverUrl,
+      comic.source,
+      comic.url,
       page,
       totalPages,
     ).catch((err) => {
