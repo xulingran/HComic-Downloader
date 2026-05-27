@@ -40,6 +40,7 @@ function historyItemToComicInfo(item: HistoryItem) {
 }
 
 export function HistoryPage() {
+  const cache = useHistoryStore()
   const [items, setItems] = useState<HistoryItem[]>(cache.hasCache ? cache.items : [])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -49,7 +50,6 @@ export function HistoryPage() {
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const { getHistory, deleteHistory, clearHistory } = useHistory()
   const { cardStyle } = useSettingsStore()
-  const cache = useHistoryStore()
   const { openReader } = useReaderStore()
   const latestPageRef = useRef(1)
   const mountedRef = useRef(true)
