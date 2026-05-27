@@ -6,6 +6,7 @@ import { Sidebar } from './components/Sidebar'
 import { SearchPage } from './pages/SearchPage'
 import { DownloadPage } from './pages/DownloadPage'
 import { FavouritesPage } from './pages/FavouritesPage'
+import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { Toast } from './components/common/Toast'
 import { ComicInfoDrawer } from './components/ComicInfoDrawer'
@@ -96,6 +97,8 @@ function App() {
         return <DownloadPage />
       case 'favourites':
         return <FavouritesPage onNavigateToSettings={() => { setActivePage('settings'); setScrollTarget('login') }} />
+      case 'history':
+        return <HistoryPage />
       case 'settings':
         return <SettingsPage scrollTarget={scrollTarget} onScrollDone={() => setScrollTarget(null)} />
       default:

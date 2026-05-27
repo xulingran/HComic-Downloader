@@ -7,6 +7,7 @@ const menuItems = [
   { id: 'search', label: '搜索', icon: '🔍' },
   { id: 'downloads', label: '下载管理', icon: '📥' },
   { id: 'favourites', label: '收藏夹', icon: '⭐' },
+  { id: 'history', label: '历史记录', icon: '📖' },
   { id: 'settings', label: '设置', icon: '⚙️' }
 ]
 
