@@ -193,6 +193,31 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   clearAllCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ALL_CACHE),
 
+  getHistory: (page?: unknown) => {
+    const p = page ?? 1
+    validatePage(p)
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_HISTORY, p)
+  },
+
+  addHistory: (comicId: unknown, title: unknown, coverUrl: unknown, source: unknown, sourceUrl: unknown, lastPage: unknown, totalPages: unknown) => {
+    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
+    if (typeof title !== 'string' || title.length === 0 || title.length > 256) throw new Error('Invalid title')
+    if (typeof coverUrl !== 'string' || coverUrl.length > 2048) throw new Error('Invalid coverUrl')
+    if (typeof source !== 'string' || source.length === 0 || source.length > 64) throw new Error('Invalid source')
+    if (typeof sourceUrl !== 'string' || sourceUrl.length > 2048) throw new Error('Invalid sourceUrl')
+    if (typeof lastPage !== 'number' || !Number.isInteger(lastPage) || lastPage < 0) throw new Error('Invalid lastPage')
+    if (typeof totalPages !== 'number' || !Number.isInteger(totalPages) || totalPages < 0) throw new Error('Invalid totalPages')
+    return ipcRenderer.invoke(IPC_CHANNELS.ADD_HISTORY, comicId, title, coverUrl, source, sourceUrl, lastPage, totalPages)
+  },
+
+  deleteHistory: (comicId: unknown, source: unknown) => {
+    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
+    if (typeof source !== 'string' || source.length === 0 || source.length > 64) throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.DELETE_HISTORY, comicId, source)
+  },
+
+  clearHistory: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_HISTORY),
+
   onMigrationProgress: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, callback)
   },

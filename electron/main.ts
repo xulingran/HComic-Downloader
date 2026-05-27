@@ -867,6 +867,43 @@ function registerCacheHandlers(bridge: Bridge) {
   })
 }
 
+function registerHistoryHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.GET_HISTORY, async (_, page?: unknown) => {
+    const p = page ?? 1
+    assert(and(number(), integer(), range(1, 1000)), p, 'history page')
+    return bridge.call('get_history', { page: p })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.ADD_HISTORY, async (_, comicId: unknown, title: unknown, coverUrl: unknown, source: unknown, sourceUrl: unknown, lastPage: unknown, totalPages: unknown) => {
+    assert(comicIdValidator, comicId, 'add_history comicId')
+    assert(and(string(), length(1, 256)), title, 'add_history title')
+    assert(and(string(), maxLength(2048)), coverUrl, 'add_history coverUrl')
+    assert(and(string(), length(1, 64), noControlChars()), source, 'add_history source')
+    assert(and(string(), maxLength(2048)), sourceUrl, 'add_history sourceUrl')
+    assert(and(number(), integer(), minValue(0)), lastPage, 'add_history lastPage')
+    assert(and(number(), integer(), minValue(0)), totalPages, 'add_history totalPages')
+    return bridge.call('add_history', {
+      comic_id: comicId,
+      title,
+      cover_url: coverUrl,
+      source,
+      source_url: sourceUrl,
+      last_page: lastPage,
+      total_pages: totalPages,
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.DELETE_HISTORY, async (_, comicId: unknown, source: unknown) => {
+    assert(comicIdValidator, comicId, 'delete_history comicId')
+    assert(and(string(), length(1, 64), noControlChars()), source, 'delete_history source')
+    return bridge.call('delete_history', { comic_id: comicId, source })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLEAR_HISTORY, async () => {
+    return bridge.call('clear_history')
+  })
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
@@ -880,6 +917,7 @@ function registerIPCHandlers() {
   registerPreviewHandlers(bridge)
   registerMigrationHandlers(bridge)
   registerCacheHandlers(bridge)
+  registerHistoryHandlers(bridge)
 }
 
 app.whenReady().then(() => {
