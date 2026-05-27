@@ -4,20 +4,25 @@ interface AuthSettingsProps {
   loginSectionRef: RefObject<HTMLDivElement>
   loginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   loginMessage: string
-  onApplyAuth: (curlText: string) => Promise<void>
-  onTestAuth: () => Promise<void>
-  onOpenLoginWindow: () => Promise<void>
+  jmcomicLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
+  jmcomicLoginMessage: string
+  onApplyAuth: (curlText: string, source?: string) => Promise<void>
+  onTestAuth: (source?: string) => Promise<void>
+  onOpenLoginWindow: (source?: string) => Promise<void>
 }
 
 export function AuthSettings({
   loginSectionRef,
   loginStatus,
   loginMessage,
+  jmcomicLoginStatus,
+  jmcomicLoginMessage,
   onApplyAuth,
   onTestAuth,
   onOpenLoginWindow,
 }: AuthSettingsProps) {
   const [curlText, setCurlText] = useState('')
+  const [jmcomicCurlText, setJmcomicCurlText] = useState('')
 
   return (
     <div ref={loginSectionRef} className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
@@ -44,7 +49,7 @@ export function AuthSettings({
 
         <div className="flex items-center gap-3">
           <button
-            onClick={onOpenLoginWindow}
+            onClick={() => onOpenLoginWindow()}
             disabled={loginStatus === 'verifying'}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                        bg-[var(--accent)] text-white hover:opacity-90
@@ -78,7 +83,7 @@ export function AuthSettings({
             应用登录信息
           </button>
           <button
-            onClick={onTestAuth}
+            onClick={() => onTestAuth()}
             disabled={loginStatus === 'verifying'}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                        bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]
@@ -102,6 +107,77 @@ export function AuthSettings({
             'text-[var(--text-secondary)]'
           }`}>
             {loginMessage}
+          </p>
+        )}
+      </div>
+
+      <div className="space-y-4 pt-4 border-t border-[var(--border)]">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium text-[var(--text-primary)]">禁漫天堂</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full ${
+            jmcomicLoginStatus === 'valid' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+            jmcomicLoginStatus === 'invalid' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+            jmcomicLoginStatus === 'verifying' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
+            'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+          }`}>
+            {jmcomicLoginStatus === 'valid' ? '有效' :
+             jmcomicLoginStatus === 'invalid' ? '失效' :
+             jmcomicLoginStatus === 'verifying' ? '验证中...' : '未配置'}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onOpenLoginWindow('jmcomic')}
+            disabled={jmcomicLoginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--accent)] text-white hover:opacity-90
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {jmcomicLoginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
+          </button>
+          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录禁漫天堂账号</span>
+        </div>
+
+        <div>
+          <textarea
+            value={jmcomicCurlText}
+            onChange={(e) => setJmcomicCurlText(e.target.value)}
+            placeholder="粘贴禁漫天堂的 Cookie 字符串或 curl 命令"
+            rows={3}
+            className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                       text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]
+                       resize-none font-mono"
+          />
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => onApplyAuth(jmcomicCurlText, 'jmcomic')}
+            disabled={!jmcomicCurlText.trim() || jmcomicLoginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--accent)] text-white hover:opacity-90
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            应用登录信息
+          </button>
+          <button
+            onClick={() => onTestAuth('jmcomic')}
+            disabled={jmcomicLoginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {jmcomicLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
+          </button>
+        </div>
+
+        {jmcomicLoginMessage && (
+          <p className={`text-xs ${
+            jmcomicLoginStatus === 'valid' ? 'text-green-600 dark:text-green-400' :
+            'text-[var(--text-secondary)]'
+          }`}>
+            {jmcomicLoginMessage}
           </p>
         )}
       </div>
