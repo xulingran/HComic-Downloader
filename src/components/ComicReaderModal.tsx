@@ -76,16 +76,23 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const { initialPage } = useReaderStore()
   const lastRecordedPageRef = useRef<number>(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const comicRef = useRef<ComicInfo | null>(null)
+
+  // Keep a ref to the current comic so we can still access it on close
+  if (comic) {
+    comicRef.current = comic
+  }
 
   const recordHistory = useCallback((page: number) => {
-    if (!comic || page === lastRecordedPageRef.current) return
+    const c = comic || comicRef.current
+    if (!c || page === lastRecordedPageRef.current) return
     lastRecordedPageRef.current = page
     addHistory(
-      comic.id,
-      comic.title,
-      comic.coverUrl,
-      comic.source,
-      comic.url,
+      c.id,
+      c.title,
+      c.coverUrl,
+      c.source,
+      c.url,
       page,
       totalPages,
     ).catch((err) => {
@@ -163,16 +170,20 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       fetchUrls(comic)
     } else {
       // Modal closing — save current page immediately if needed
-      if (comic && currentPage > 0 && currentPage !== lastRecordedPageRef.current) {
+      const c = comicRef.current
+      if (c && currentPage > 0 && currentPage !== lastRecordedPageRef.current) {
+        lastRecordedPageRef.current = currentPage
         addHistory(
-          comic.id,
-          comic.title,
-          comic.coverUrl,
-          comic.source,
-          comic.url,
+          c.id,
+          c.title,
+          c.coverUrl,
+          c.source,
+          c.url,
           currentPage,
           totalPages,
-        ).catch(() => {})
+        ).catch(() => {}).finally(() => {
+          historyStore.clearCache()
+        })
       }
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
