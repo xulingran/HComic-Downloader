@@ -65,7 +65,7 @@ export interface AppConfig {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[] }
+  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[] }
   previewCacheSizeLimitMB: number
   proxy?: string
   cookie?: string
@@ -169,7 +169,7 @@ export type ConfigValueMap = {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[] }
+  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[] }
   previewCacheSizeLimitMB: number
 }
 
@@ -440,12 +440,12 @@ export interface HcomicAPI {
   setConfig(key: ConfigKey, value: ConfigValue): Promise<{ success: boolean }>
   getDownloads(): Promise<{ tasks: DownloadTask[] }>
   cancelDownload(taskId: string): Promise<{ success: boolean }>
-  applyAuth(curlText: string): Promise<{ success: boolean }>
-  verifyAuth(): Promise<{ valid: boolean; message: string }>
+  applyAuth(curlText: string, source?: string): Promise<{ success: boolean }>
+  verifyAuth(source?: string): Promise<{ valid: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   fetchCover(url: string): Promise<{ dataUri: string }>
   openUrl(url: string): Promise<void>
-  openLoginWindow(): Promise<{ success: boolean; message?: string }>
+  openLoginWindow(source?: string): Promise<{ success: boolean; message?: string }>
   onDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void
   pauseTask(taskId: string): Promise<{ success: boolean }>
   resumeTask(taskId: string): Promise<{ success: boolean }>
@@ -470,7 +470,7 @@ export interface HcomicAPI {
   clearPreviewCache(): Promise<{ success: boolean }>
   clearAllCache(): Promise<{ success: boolean }>
   getHistory(page?: number): Promise<{ items: HistoryItem[]; pagination: PaginationInfo }>
-  addHistory(comicId: string, title: string, coverUrl: string, source: string, sourceSite: string, mediaId: string, sourceUrl: string, lastPage: number, totalPages: number): Promise<{ success: boolean }>
+  addHistory(params: { comicId: string; title: string; coverUrl: string; source: string; sourceSite: string; mediaId: string; sourceUrl: string; lastPage: number; totalPages: number }): Promise<{ success: boolean }>
   deleteHistory(comicId: string, source: string): Promise<{ success: boolean }>
   clearHistory(): Promise<{ success: boolean }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
@@ -480,11 +480,11 @@ export interface HcomicAPI {
 }
 
 /** Valid search modes — shared between preload and main */
-export const SEARCH_MODES = ['keyword', 'author', 'tag'] as const
+export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking'] as const
 export type SearchMode = typeof SEARCH_MODES[number]
 
 /** Valid comic sources — shared between preload and main */
-export const COMIC_SOURCES = ['hcomic', 'moeimg'] as const
+export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
 
 /** JSON-RPC application error codes (Python backend) */
