@@ -1,10 +1,9 @@
+import json
+import logging
 import os
 import sys
-import json
 import threading
 from concurrent.futures import ThreadPoolExecutor
-import logging
-from typing import Dict
 
 # Add project root to sys.path so we can import existing modules
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,28 +17,34 @@ logger = logging.getLogger(__name__)
 #   tests/test_ipc_config_mapping.py -> CONFIG_KEY_MAP
 #   tests/test_ipc_download_conflict.py -> _get_config_path
 #   tests/test_ipc_preview.py -> IPCServer._detect_image_type
-from ipc.types import AuthRequiredError, CONFIG_KEY_MAP, _get_config_path  # noqa: F401
-from ipc.types import _COVER_CACHE_MAX_SIZE, _COVER_POOL_MAX_WORKERS, _PREVIEW_POOL_MAX_WORKERS, _PREVIEW_IMAGE_MAX_SIZE  # noqa: F401
-from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: F401
-
+from ipc.auth_mixin import AuthMixin
+from ipc.config_mixin import ConfigMixin
 from ipc.cover_cache import CoverCacheDB
 from ipc.cover_mixin import CoverMixin
-from ipc.preview_mixin import PreviewMixin
 from ipc.download_mixin import DownloadMixin
-from ipc.config_mixin import ConfigMixin
-from ipc.auth_mixin import AuthMixin
-from ipc.search_mixin import SearchMixin
+from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: F401
 from ipc.migration_mixin import MigrationMixin
+from ipc.preview_mixin import PreviewMixin
+from ipc.search_mixin import SearchMixin
+from ipc.types import (  # noqa: F401  # noqa: F401
+    _COVER_CACHE_MAX_SIZE,
+    _COVER_POOL_MAX_WORKERS,
+    _PREVIEW_IMAGE_MAX_SIZE,
+    _PREVIEW_POOL_MAX_WORKERS,
+    CONFIG_KEY_MAP,
+    AuthRequiredError,
+    _get_config_path,
+)
 
 
 class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixin, AuthMixin, MigrationMixin):
 
     def __init__(self):
-        from parser import MultiSourceParser
-        from downloader import ComicDownloader
+        from cbz_builder import CBZBuilder
         from config import Config
         from download_manager import ComicDownloadManager
-        from cbz_builder import CBZBuilder
+        from downloader import ComicDownloader
+        from parser import MultiSourceParser
 
         try:
             self.config = Config.load(_get_config_path())
@@ -129,7 +134,7 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
 
     # ── request routing ───────────────────────────────────────────────────
 
-    def handle_request(self, request: Dict) -> Dict:
+    def handle_request(self, request: dict) -> dict:
         method = request.get("method")
         params = request.get("params", {})
         req_id = request.get("id")

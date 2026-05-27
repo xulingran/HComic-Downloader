@@ -3,15 +3,16 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from .types import CONFIG_KEY_MAP, _get_config_path
 
 if TYPE_CHECKING:
-    from config import Config
-    from downloader import ComicDownloader
     from cbz_builder import CBZBuilder
+    from config import Config
     from download_manager import ComicDownloadManager
+    from downloader import ComicDownloader
     from parser import MultiSourceParser
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class ConfigMixin:
     downloader: ComicDownloader
     cbz_builder: CBZBuilder
     parser: MultiSourceParser
-    _write_response: Callable[[Dict], None]
+    _write_response: Callable[[dict], None]
 
     def _apply_timeout(self, v: int) -> None:
         self.downloader.timeout = v
@@ -63,7 +64,7 @@ class ConfigMixin:
         if applier:
             applier(value)
 
-    def handle_get_config(self) -> Dict:
+    def handle_get_config(self) -> dict:
         reverse_map = {v: k for k, v in CONFIG_KEY_MAP.items()}
         raw = {
             'theme_mode': self.config.theme_mode,
@@ -93,7 +94,7 @@ class ConfigMixin:
         )
         return {"config": config}
 
-    def handle_set_config(self, key: str, value: Any) -> Dict:
+    def handle_set_config(self, key: str, value: Any) -> dict:
         python_key = CONFIG_KEY_MAP.get(key)
         if not python_key:
             raise ValueError(f"Unknown config key: {key}")
@@ -121,7 +122,7 @@ class ConfigMixin:
 
         return {"success": True}
 
-    def handle_get_proxy_status(self) -> Dict:
+    def handle_get_proxy_status(self) -> dict:
         """Return current system proxy configuration."""
         try:
             from utils import get_system_proxies
@@ -135,7 +136,7 @@ class ConfigMixin:
             logger.error("Get proxy status error: %s", e)
             return {"http": "", "https": "", "noProxy": ""}
 
-    def handle_get_available_fonts(self) -> Dict:
+    def handle_get_available_fonts(self) -> dict:
         """Return platform-aware CJK font recommendations."""
         import platform
         system = platform.system()

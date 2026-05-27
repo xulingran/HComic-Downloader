@@ -5,9 +5,9 @@ import re
 import shutil
 import tempfile
 import zipfile
-from typing import List, Optional, TYPE_CHECKING
-from xml.etree.ElementTree import Element, SubElement, tostring
+from typing import TYPE_CHECKING, Optional
 from xml.dom import minidom
+from xml.etree.ElementTree import Element, SubElement, tostring
 
 from image_formats import PAGE_FILENAME_FORMAT, SUPPORTED_IMAGE_EXTENSIONS
 from models import ArchiveBuildOptions, ComicInfo
@@ -88,7 +88,7 @@ class CBZBuilder:
                     f"Allowed: {{{', '.join(sorted(ALLOWED_FILENAME_PLACEHOLDERS))}}}"
                 )
 
-    def _get_download_dir(self, download_dir: Optional[str] = None) -> str:
+    def _get_download_dir(self, download_dir: str | None = None) -> str:
         """获取下载目录，优先使用传入值，否则回退到配置。"""
         if download_dir is not None:
             return download_dir
@@ -164,8 +164,8 @@ class CBZBuilder:
         self,
         image_dir: str,
         comic: ComicInfo,
-        output_path: Optional[str] = None,
-        download_dir: Optional[str] = None,
+        output_path: str | None = None,
+        download_dir: str | None = None,
         overwrite: bool = False,
     ) -> str:
         """创建 CBZ 文件
@@ -285,7 +285,7 @@ class CBZBuilder:
             pass
         return '', '', ''
 
-    def _generate_output_path(self, comic: ComicInfo, download_dir: Optional[str] = None) -> str:
+    def _generate_output_path(self, comic: ComicInfo, download_dir: str | None = None) -> str:
         """生成输出路径
 
         Args:
@@ -307,7 +307,7 @@ class CBZBuilder:
         download_dir = self._get_download_dir(download_dir)
         return os.path.join(download_dir, filename)
 
-    def get_output_path(self, comic: ComicInfo, download_dir: Optional[str] = None) -> str:
+    def get_output_path(self, comic: ComicInfo, download_dir: str | None = None) -> str:
         """获取漫画的输出路径（不创建文件）
 
         Args:
@@ -319,7 +319,7 @@ class CBZBuilder:
         """
         return self._generate_output_path(comic, download_dir)
 
-    def _collect_image_files(self, image_dir: str) -> List[str]:
+    def _collect_image_files(self, image_dir: str) -> list[str]:
         """收集目录中的图片文件
 
         Args:
@@ -343,8 +343,8 @@ class CBZBuilder:
         self,
         image_dir: str,
         comic: ComicInfo,
-        output_path: Optional[str] = None,
-        download_dir: Optional[str] = None,
+        output_path: str | None = None,
+        download_dir: str | None = None,
         overwrite: bool = False,
     ) -> str:
         """创建 ZIP 文件（不含 ComicInfo.xml）
@@ -376,7 +376,7 @@ class CBZBuilder:
         self,
         image_dir: str,
         comic: ComicInfo,
-        output_dir: Optional[str] = None,
+        output_dir: str | None = None,
         overwrite: bool = False,
     ) -> str:
         """保存为普通文件夹（移动并重命名临时目录）
@@ -432,7 +432,7 @@ class CBZBuilder:
         self,
         comic: ComicInfo,
         format_type: str,
-        download_dir: Optional[str] = None,
+        download_dir: str | None = None,
     ) -> str:
         """根据格式生成输出路径
 
@@ -473,7 +473,7 @@ class CBZBuilder:
         self,
         comic: ComicInfo,
         output_format: str,
-        download_dir: Optional[str] = None,
+        download_dir: str | None = None,
     ) -> str:
         """获取漫画的输出路径（不创建文件/文件夹）
 
@@ -508,7 +508,7 @@ class CBZBuilder:
 def build_cbz_simple(
     image_dir: str,
     output_path: str,
-    comic_info: Optional[ComicInfo] = None,
+    comic_info: ComicInfo | None = None,
     overwrite: bool = False,
 ) -> str:
     """简单方式创建 CBZ

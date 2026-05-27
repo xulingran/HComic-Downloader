@@ -1,9 +1,8 @@
 """Parser 收藏夹解析测试"""
 import json
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 import requests
 
 from parser import HComicParser, ParserResponseError

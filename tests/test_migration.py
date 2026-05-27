@@ -1,11 +1,11 @@
 """Tests for migration.py"""
-import json
 import logging
 import os
-import pytest
 from unittest.mock import MagicMock, patch
 
-from migration import MigrationEngine, MigrationState, MigrationPlanItem
+import pytest
+
+from migration import MigrationEngine, MigrationPlanItem, MigrationState
 
 
 @pytest.fixture(autouse=True)
@@ -467,7 +467,7 @@ def test_resume_preserves_log(tmp_path):
 
     engine.execute(on_progress=lambda p: None)
 
-    with open(log_path, "r", encoding="utf-8") as f:
+    with open(log_path, encoding="utf-8") as f:
         content = f.read()
     assert "[existing log line]" in content
 
@@ -507,6 +507,6 @@ def test_first_execution_clears_log(tmp_path):
     assert engine._state.started_at == 0.0
     engine.execute(on_progress=lambda p: None)
 
-    with open(log_path, "r", encoding="utf-8") as f:
+    with open(log_path, encoding="utf-8") as f:
         content = f.read()
     assert "[old log]" not in content

@@ -4,8 +4,9 @@ import platform
 import re
 import subprocess
 import threading
+from collections.abc import Callable
 from enum import Enum
-from typing import Callable, Dict, List, Optional
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,7 @@ class ThemeManager:
     _lock = threading.Lock()
 
     # 颜色定义
-    _COLORS: Dict[str, Dict[str, str]] = {
+    _COLORS: dict[str, dict[str, str]] = {
         "light": {
             "background": "#ffffff",
             "card_bg": "#ffffff",
@@ -59,7 +60,7 @@ class ThemeManager:
             return
 
         self._mode: ThemeMode = ThemeMode.AUTO
-        self._callbacks: List[Callable[[], None]] = []
+        self._callbacks: list[Callable[[], None]] = []
         self._current_theme: str = "light"
         self._initialized = True
 

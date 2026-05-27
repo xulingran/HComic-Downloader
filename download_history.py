@@ -6,7 +6,6 @@ import os
 import sqlite3
 import threading
 import time
-from typing import Dict, List, Optional, Tuple
 
 from models import ComicInfo
 
@@ -62,12 +61,12 @@ class DownloadHistoryDB:
 
     def check_downloaded_batch(
         self,
-        comic_keys: List[Tuple[str, str, str]],
+        comic_keys: list[tuple[str, str, str]],
         output_dir: str,
         output_format: str,
         filename_template: str,
-        comic_data_map: Optional[Dict[Tuple[str, str, str], dict]] = None,
-    ) -> Dict[Tuple[str, str, str], str]:
+        comic_data_map: dict[tuple[str, str, str], dict] | None = None,
+    ) -> dict[tuple[str, str, str], str]:
         """Check download status for a batch of comics.
 
         Args:
@@ -94,7 +93,7 @@ class DownloadHistoryDB:
         from cbz_builder import CBZBuilder
         builder = CBZBuilder(filename_template=filename_template)
 
-        result: Dict[Tuple[str, str, str], str] = {}
+        result: dict[tuple[str, str, str], str] = {}
         with self._lock:
             for batch in batches:
                 placeholders = ",".join(["(?, ?, ?)"] * len(batch))
@@ -108,7 +107,7 @@ class DownloadHistoryDB:
                     WHERE (source_site, comic_id, comic_source) IN ({placeholders})
                 """, flat_keys)
 
-                db_records: Dict[Tuple[str, str, str], dict] = {}
+                db_records: dict[tuple[str, str, str], dict] = {}
                 for row in cursor:
                     key = (row[0], row[1], row[2])
                     db_records[key] = {"output_path": row[3], "title": row[4], "author": row[5]}
@@ -136,7 +135,7 @@ class DownloadHistoryDB:
 
         return result
 
-    def get_all_records(self) -> List[Dict]:
+    def get_all_records(self) -> list[dict]:
         """Return all download history records."""
         with self._lock:
             cursor = self._conn.execute(
@@ -148,7 +147,7 @@ class DownloadHistoryDB:
                         "author", "output_path", "output_format", "downloaded_at"]
             return [dict(zip(columns, row)) for row in cursor]
 
-    def update_output_path(self, key: Tuple[str, str, str], new_path: str):
+    def update_output_path(self, key: tuple[str, str, str], new_path: str):
         """Update the output_path for a specific record."""
         with self._lock:
             self._conn.execute(

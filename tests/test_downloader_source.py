@@ -1,6 +1,7 @@
 """downloader 来源相关测试"""
 import pytest
 import requests
+
 from downloader import ComicDownloader
 from models import ComicInfo
 from url_validator import DownloadError, UrlValidator

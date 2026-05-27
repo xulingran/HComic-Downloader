@@ -5,8 +5,8 @@ import json
 import logging
 import re
 from collections import OrderedDict
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 from urllib.parse import quote, urljoin
 
 import requests
@@ -64,7 +64,7 @@ class HComicParser:
     def __exit__(self, *args):
         self.close()
 
-    def verify_login_status(self) -> Tuple[bool, str]:
+    def verify_login_status(self) -> tuple[bool, str]:
         """通过访问收藏夹接口校验登录状态。"""
         try:
             url = self._build_favourites_url(1)
@@ -114,7 +114,7 @@ class HComicParser:
         except requests.RequestException as e:
             raise ParserResponseError(f"请求失败: {url} ({e})") from e
 
-    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画
 
         Args:
@@ -132,7 +132,7 @@ class HComicParser:
             logger.error("Search failed: %s", e)
             return [], None
 
-    def random(self) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def random(self) -> tuple[list[ComicInfo], PaginationInfo | None]:
         url = self._build_random_url()
         try:
             return self.parse_search_page(self._request_text(url))
@@ -140,7 +140,7 @@ class HComicParser:
             logger.error("Random failed: %s", e)
             return [], None
 
-    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         """获取收藏夹漫画。
 
         Args:
@@ -188,11 +188,11 @@ class HComicParser:
             response.raise_for_status()
             return True
         except requests.Timeout as e:
-            raise ParserResponseError(f"加入收藏夹请求超时") from e
+            raise ParserResponseError("加入收藏夹请求超时") from e
         except requests.HTTPError as e:
             status = e.response.status_code if e.response is not None else None
             if status in (401, 403):
-                raise ParserResponseError(f"认证已失效，请重新登录") from e
+                raise ParserResponseError("认证已失效，请重新登录") from e
             body = ""
             try:
                 body = e.response.text[:500] if e.response is not None else ""
@@ -285,7 +285,7 @@ class HComicParser:
         except requests.RequestException as e:
             raise ParserResponseError(f"移除收藏夹请求失败: {e}") from e
 
-    def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
+    def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
         """获取漫画详情
 
         Args:
@@ -302,7 +302,7 @@ class HComicParser:
             logger.error("Get comic detail failed: %s", e)
             return None
 
-    def parse_search_page(self, html: str, requested_page: int = 1) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def parse_search_page(self, html: str, requested_page: int = 1) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """解析搜索页面
 
         Args:
@@ -340,7 +340,7 @@ class HComicParser:
 
     def parse_favourites_page(
         self, html: str, requested_page: int = 1
-    ) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         """解析收藏夹页面。
 
         Returns:
@@ -514,7 +514,7 @@ class HComicParser:
         return f"{base}{sep}page={page}"
 
     @classmethod
-    def _parse_pagination_info(cls, data: dict, requested_page: int = 1) -> Optional[PaginationInfo]:
+    def _parse_pagination_info(cls, data: dict, requested_page: int = 1) -> PaginationInfo | None:
         """解析分页信息
 
         Args:
@@ -560,7 +560,7 @@ class HComicParser:
         return preview_url, reader_url
 
     @classmethod
-    def _build_cover_url(cls, comic: dict) -> Optional[str]:
+    def _build_cover_url(cls, comic: dict) -> str | None:
         """构建封面 URL"""
         media_id = comic.get("media_id")
         if not media_id:
@@ -580,11 +580,11 @@ class HComicParser:
         return f"{cls.IMAGE_SERVER}/{suffix}"
 
     @classmethod
-    def _format_public_date(cls, unix_ts) -> Optional[str]:
+    def _format_public_date(cls, unix_ts) -> str | None:
         """格式化发布日期"""
         try:
             return datetime.fromtimestamp(
-                int(unix_ts), tz=timezone.utc
+                int(unix_ts), tz=UTC
             ).strftime("%Y-%m-%d")
         except (TypeError, ValueError):
             return None
@@ -705,9 +705,9 @@ class MoeImgParser:
         self.session.headers.update(self.HEADERS)
         apply_system_proxy_to_session(self.session)
         self.configure_auth(cookie=cookie, user_agent=user_agent)
-        self._manga_detail_cache: Dict[str, dict] = OrderedDict()
-        self._author_id_cache: Dict[str, str] = OrderedDict()
-        self._tag_id_cache: Dict[str, str] = OrderedDict()
+        self._manga_detail_cache: dict[str, dict] = OrderedDict()
+        self._author_id_cache: dict[str, str] = OrderedDict()
+        self._tag_id_cache: dict[str, str] = OrderedDict()
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置登录相关请求头。"""
@@ -723,11 +723,11 @@ class MoeImgParser:
     def __exit__(self, *args):
         self.close()
 
-    def verify_login_status(self) -> Tuple[bool, str]:
+    def verify_login_status(self) -> tuple[bool, str]:
         """moeimg 当前接入范围不依赖登录。"""
         return True, "当前来源无需登录校验"
 
-    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。"""
         mode, keyword = self._parse_query_mode(keyword)
         try:
@@ -736,7 +736,7 @@ class MoeImgParser:
             page_num = 1
 
         try:
-            data: Optional[dict] = None
+            data: dict | None = None
             if mode == "keyword" and not keyword:
                 data = self._request_json("/spa/latest-manga", params={"page": page_num})
             elif mode == "keyword":
@@ -758,11 +758,11 @@ class MoeImgParser:
         )
         return comics, pagination
 
-    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         """moeimg 当前版本不支持收藏夹。"""
         return [], None, False
 
-    def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
+    def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
         """获取漫画详情并补全可下载图片地址。"""
         try:
             detail_data = self._get_manga_detail_payload(comic_id)
@@ -815,7 +815,7 @@ class MoeImgParser:
             image_urls=image_urls,
         )
 
-    def _fetch_read_data(self, comic_id: str) -> Dict[str, Any]:
+    def _fetch_read_data(self, comic_id: str) -> dict[str, Any]:
         """获取漫画阅读数据并返回 chapter_detail 字典。"""
         read_data = self._request_json(f"/spa/manga/{comic_id}/read")
         if not isinstance(read_data, dict):
@@ -824,7 +824,7 @@ class MoeImgParser:
         return chapter_detail if isinstance(chapter_detail, dict) else {}
 
     @staticmethod
-    def _resolve_image_server(chapter_detail: Dict[str, Any]) -> str:
+    def _resolve_image_server(chapter_detail: dict[str, Any]) -> str:
         """从 chapter_detail 中解析图片服务器地址。"""
         server = chapter_detail.get("server") or ""
         if server:
@@ -836,7 +836,7 @@ class MoeImgParser:
                     return candidate.strip()
         return ""
 
-    def _extract_manga_images(self, chapter_detail: Dict[str, Any]) -> List[str]:
+    def _extract_manga_images(self, chapter_detail: dict[str, Any]) -> list[str]:
         """从 chapter_detail 中提取去重后的图片 URL 列表。"""
         server = self._resolve_image_server(chapter_detail)
         chapter_content = chapter_detail.get("chapter_content") or ""
@@ -844,7 +844,7 @@ class MoeImgParser:
         if not image_paths and chapter_content:
             image_paths = re.findall(r'(?:data-url|data-src|src)=["\']([^"\']+)["\']', chapter_content)
 
-        image_urls: List[str] = []
+        image_urls: list[str] = []
         seen: set[str] = set()
         for raw_path in image_paths:
             path = (raw_path or "").strip()
@@ -858,7 +858,7 @@ class MoeImgParser:
         return image_urls
 
     @staticmethod
-    def _resolve_total_pages(chapter_detail: Dict[str, Any], image_urls: List[str], preview_pages: int) -> int:
+    def _resolve_total_pages(chapter_detail: dict[str, Any], image_urls: list[str], preview_pages: int) -> int:
         """根据多种来源计算总页数。"""
         try:
             total_pages = int(chapter_detail.get("total") or 0)
@@ -866,7 +866,7 @@ class MoeImgParser:
             total_pages = 0
         return max(total_pages, len(image_urls), preview_pages)
 
-    def _request_json(self, path: str, params: Optional[Dict[str, Any]] = None) -> dict:
+    def _request_json(self, path: str, params: dict[str, Any] | None = None) -> dict:
         url = f"{self.BASE_URL}{path}"
         try:
             response = self.session.get(url, params=params, timeout=self.timeout)
@@ -876,14 +876,14 @@ class MoeImgParser:
             logger.error("MoeImg request failed: %s (%s)", url, e)
             raise ParserResponseError(f"MoeImg request failed: {url} ({e})") from e
 
-    def _search_entity(self, mode: str, keyword: str, page: int) -> Optional[dict]:
+    def _search_entity(self, mode: str, keyword: str, page: int) -> dict | None:
         entity_id = self._resolve_entity_id(mode=mode, keyword=keyword)
         if not entity_id:
             return None
         path = "/spa/author" if mode == "author" else "/spa/genre"
         return self._request_json(f"{path}/{entity_id}", params={"page": page})
 
-    def _resolve_entity_id(self, mode: str, keyword: str) -> Optional[str]:
+    def _resolve_entity_id(self, mode: str, keyword: str) -> str | None:
         token = (keyword or "").strip()
         if not token:
             return None
@@ -908,7 +908,7 @@ class MoeImgParser:
                 cache.popitem(last=False)  # type: ignore[call-arg]
         return resolved
 
-    def _lookup_entity_id_from_search(self, mode: str, keyword: str) -> Optional[str]:
+    def _lookup_entity_id_from_search(self, mode: str, keyword: str) -> str | None:
         """通过搜索结果反查实体 ID。
 
         复杂度注意：对每个搜索结果都会发起一次详情请求，最坏情况下
@@ -961,7 +961,7 @@ class MoeImgParser:
         return None
 
     @classmethod
-    def _parse_query_mode(cls, keyword: str) -> Tuple[str, str]:
+    def _parse_query_mode(cls, keyword: str) -> tuple[str, str]:
         text = (keyword or "").strip()
         if not text:
             return "keyword", ""
@@ -978,7 +978,7 @@ class MoeImgParser:
         return "keyword", text
 
     @classmethod
-    def _extract_entity_id(cls, text: str) -> Optional[str]:
+    def _extract_entity_id(cls, text: str) -> str | None:
         raw = (text or "").strip()
         if not raw:
             return None
@@ -996,12 +996,12 @@ class MoeImgParser:
         value = re.sub(r"\s+", " ", value)
         return value
 
-    def _parse_search_manga_list(self, data: Dict[str, Any]) -> List[ComicInfo]:
+    def _parse_search_manga_list(self, data: dict[str, Any]) -> list[ComicInfo]:
         items = data.get("manga_list") or []
         if not isinstance(items, list):
             return []
 
-        comics: List[ComicInfo] = []
+        comics: list[ComicInfo] = []
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -1033,7 +1033,7 @@ class MoeImgParser:
             )
         return comics
 
-    def _get_manga_detail_payload(self, comic_id: str) -> Optional[dict]:
+    def _get_manga_detail_payload(self, comic_id: str) -> dict | None:
         key = str(comic_id)
         cached = self._manga_detail_cache.get(key)
         if isinstance(cached, dict):
@@ -1050,11 +1050,11 @@ class MoeImgParser:
     @classmethod
     def _extract_manga_tags(
         cls,
-        detail_data: Dict[str, Any],
-        detail: Dict[str, Any],
-        chapter_detail: Optional[Dict[str, Any]] = None,
-    ) -> List[str]:
-        tag_values: List[str] = []
+        detail_data: dict[str, Any],
+        detail: dict[str, Any],
+        chapter_detail: dict[str, Any] | None = None,
+    ) -> list[str]:
+        tag_values: list[str] = []
         tag_values.extend(cls._extract_names(detail_data.get("tags"), "tag_name"))
         tag_values.extend(cls._extract_names(detail.get("tags"), "tag_name"))
         tag_values.extend(cls._extract_names(detail_data.get("parody"), "tag_name"))
@@ -1072,8 +1072,8 @@ class MoeImgParser:
         return cls._dedupe_keep_order(tag_values)
 
     @staticmethod
-    def _extract_names(items: Any, key: str) -> List[str]:
-        names: List[str] = []
+    def _extract_names(items: Any, key: str) -> list[str]:
+        names: list[str] = []
         if isinstance(items, str):
             text = items.strip()
             return [text] if text else names
@@ -1098,13 +1098,13 @@ class MoeImgParser:
         return MoeImgParser._dedupe_keep_order(names)
 
     @classmethod
-    def _extract_first_name(cls, items: list, key: str) -> Optional[str]:
+    def _extract_first_name(cls, items: list, key: str) -> str | None:
         names = cls._extract_names(items, key)
         return names[0] if names else None
 
     @staticmethod
-    def _dedupe_keep_order(values: List[str]) -> List[str]:
-        deduped: List[str] = []
+    def _dedupe_keep_order(values: list[str]) -> list[str]:
+        deduped: list[str] = []
         seen: set[str] = set()
         for value in values:
             text = (value or "").strip()
@@ -1132,7 +1132,7 @@ class MoeImgParser:
         return total
 
     @staticmethod
-    def _format_iso_date(date_text: Any) -> Optional[str]:
+    def _format_iso_date(date_text: Any) -> str | None:
         if not date_text:
             return None
         text = str(date_text).strip()
@@ -1150,7 +1150,7 @@ class MoeImgParser:
         pagi: Any,
         requested_page: int,
         current_count: int,
-    ) -> Optional[PaginationInfo]:
+    ) -> PaginationInfo | None:
         if not isinstance(pagi, dict):
             return None
         cur_page = max(1, int(pagi.get("cur_page") or requested_page or 1))
@@ -1179,8 +1179,8 @@ class MultiSourceParser:
         self,
         timeout: int = 30,
         default_source: str = "hcomic",
-        source_auth: Optional[dict[str, dict[str, str]]] = None,
-        auth: Optional[AuthConfig] = None,
+        source_auth: dict[str, dict[str, str]] | None = None,
+        auth: AuthConfig | None = None,
     ):
         self.timeout = timeout
         self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
@@ -1210,7 +1210,7 @@ class MultiSourceParser:
         self.current_source = default_source if default_source in self.parsers else "hcomic"
 
     @staticmethod
-    def _normalize_source_auth(source_auth: Optional[dict]) -> dict[str, dict[str, str]]:
+    def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
         return normalize_source_auth(source_auth)
 
     @property
@@ -1227,16 +1227,16 @@ class MultiSourceParser:
         if source in self.parsers:
             self.current_source = source
 
-    def source_supports_favourites(self, source: Optional[str] = None) -> bool:
+    def source_supports_favourites(self, source: str | None = None) -> bool:
         current = source or self.current_source
         return current == "hcomic"
 
-    def get_auth(self, source: Optional[str] = None) -> tuple[str, str]:
+    def get_auth(self, source: str | None = None) -> tuple[str, str]:
         current = source or self.current_source
         auth = self.source_auth.get(current, {"cookie": "", "user_agent": ""})
         return auth.get("cookie", ""), auth.get("user_agent", "")
 
-    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = "", source: Optional[str] = None):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = "", source: str | None = None):
         current = source or self.current_source
         if current not in self.parsers:
             return
@@ -1246,45 +1246,45 @@ class MultiSourceParser:
         self.source_auth[current] = {"cookie": cookie, "user_agent": user_agent, "bearer_token": bearer_token}
         self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
 
-    def verify_login_status(self, source: Optional[str] = None) -> Tuple[bool, str]:
+    def verify_login_status(self, source: str | None = None) -> tuple[bool, str]:
         src = source or self.current_source
         return self.parsers[src].verify_login_status()
 
-    def search(self, keyword: str, page: int = 1, source: Optional[str] = None, *, tag: str = "") -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def search(self, keyword: str, page: int = 1, source: str | None = None, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = source or self.current_source
         return self.parsers[src].search(keyword, page=page, tag=tag)
 
-    def random(self, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo]]:
+    def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = source or self.current_source
         if src != "hcomic":
             raise ValueError(f"Random is not supported for source: {src}")
         return self.parsers[src].random()
 
-    def favourites(self, page: int = 1, raise_errors: bool = False, source: Optional[str] = None) -> tuple[List[ComicInfo], Optional[PaginationInfo], bool]:
+    def favourites(self, page: int = 1, raise_errors: bool = False, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         src = source or self.current_source
         if not self.source_supports_favourites(src):
             return [], None, False
         return self.parsers[src].favourites(page=page, raise_errors=raise_errors)
 
-    def add_to_favourites(self, comic_id: str, source: Optional[str] = None) -> bool:
+    def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
         if src != "hcomic":
             return False
         return self.parsers[src].add_to_favourites(comic_id)
 
-    def check_favourite(self, comic_id: str, source: Optional[str] = None) -> bool:
+    def check_favourite(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
         if src != "hcomic":
             return False
         return self.parsers[src].check_favourite(comic_id)
 
-    def remove_from_favourites(self, comic_id: str, source: Optional[str] = None) -> bool:
+    def remove_from_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
         if src != "hcomic":
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 
-    def get_comic_detail(self, comic_id: str, slug: str = "", source: Optional[str] = None) -> Optional[ComicInfo]:
+    def get_comic_detail(self, comic_id: str, slug: str = "", source: str | None = None) -> ComicInfo | None:
         src = source or self.current_source
         return self.parsers[src].get_comic_detail(comic_id, slug=slug)
 

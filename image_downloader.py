@@ -4,12 +4,11 @@ import os
 import queue
 import shutil
 import tempfile
-from typing import Optional
 
 import requests
+from PIL import Image
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
-from PIL import Image
 
 from constants import DEFAULT_USER_AGENT
 from image_formats import MIME_TO_EXT, PIL_FORMAT_TO_EXT
@@ -142,7 +141,7 @@ class ImageDownloader:
         self._init_session_pool()
         self.configure_auth(cookie=saved_cookie, user_agent=saved_ua)
 
-    def download(self, url: str, path: str, referer: str = "", session: Optional[requests.Session] = None):
+    def download(self, url: str, path: str, referer: str = "", session: requests.Session | None = None):
         """下载单张图片，自动检测格式
 
         使用流式下载，设置单张图片大小上限（100MB），避免内存暴涨。
@@ -178,7 +177,7 @@ class ImageDownloader:
                 ensure_dir(os.path.dirname(path))
 
                 fd, tmp_path_raw = tempfile.mkstemp(suffix='.tmp', dir=os.path.dirname(path))
-                tmp_path: Optional[str] = tmp_path_raw
+                tmp_path: str | None = tmp_path_raw
                 try:
                     total = 0
                     with os.fdopen(fd, 'wb') as f:
@@ -199,7 +198,7 @@ class ImageDownloader:
                         try:
                             with Image.open(tmp_path) as img:  # type: ignore[arg-type]
                                 ext = PIL_FORMAT_TO_EXT.get(img.format or '', '.jpg')
-                        except (IOError, SyntaxError, ValueError):
+                        except (OSError, SyntaxError, ValueError):
                             logger.debug("Image format detection failed for %s, defaulting to .jpg", url)
                             ext = '.jpg'
 

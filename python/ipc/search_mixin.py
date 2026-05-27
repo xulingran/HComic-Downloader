@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 from .types import AuthRequiredError
 
@@ -23,7 +24,7 @@ class SearchMixin:
     _validate_preview_image_url: Callable[[str], bool]
     _do_fetch_preview_image: Callable[..., Any]
 
-    def _comic_to_dict(self, comic) -> Dict:
+    def _comic_to_dict(self, comic) -> dict:
         cover_url = comic.cover_url or ""
         if not cover_url:
             try:
@@ -44,7 +45,7 @@ class SearchMixin:
             "pages": comic.pages if hasattr(comic, 'pages') else None,
         }
 
-    def _build_and_prepare_comic(self, data: dict, comic_id: Optional[str] = None):
+    def _build_and_prepare_comic(self, data: dict, comic_id: str | None = None):
         """Build a ComicInfo from frontend data and prepare it for download.
 
         Ensures the comic has full metadata (author, title, pages, etc.)
@@ -73,7 +74,7 @@ class SearchMixin:
                 comic = prepared
         return comic
 
-    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: Optional[str] = None, tag: str = "") -> Dict:
+    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str | None = None, tag: str = "") -> dict:
         effective_source = source if source in ("hcomic", "moeimg") else self.config.default_source
         effective_query = query
         effective_tag = tag
@@ -94,7 +95,7 @@ class SearchMixin:
             },
         }
 
-    def handle_random(self) -> Dict:
+    def handle_random(self) -> dict:
         comics, pagination = self.parser.random(source="hcomic")
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
@@ -105,7 +106,7 @@ class SearchMixin:
             },
         }
 
-    def handle_get_favourites(self, page: int = 1) -> Dict:
+    def handle_get_favourites(self, page: int = 1) -> dict:
         from parser import ParserResponseError
         try:
             comics, pagination, needs_login = self.parser.favourites(
@@ -132,7 +133,7 @@ class SearchMixin:
             logger.error("Get favourites unexpected error: %s", e)
             raise
 
-    def handle_add_to_favourites(self, comic_id: str) -> Dict:
+    def handle_add_to_favourites(self, comic_id: str) -> dict:
         from parser import ParserResponseError
         try:
             success = self.parser.add_to_favourites(comic_id, source="hcomic")
@@ -143,7 +144,7 @@ class SearchMixin:
                 raise AuthRequiredError(msg)
             raise RuntimeError(msg)
 
-    def handle_check_favourite(self, comic_id: str) -> Dict:
+    def handle_check_favourite(self, comic_id: str) -> dict:
         from parser import ParserResponseError
         try:
             is_favourited = self.parser.check_favourite(comic_id, source="hcomic")
@@ -154,7 +155,7 @@ class SearchMixin:
                 raise AuthRequiredError(msg)
             raise RuntimeError(msg)
 
-    def handle_remove_from_favourites(self, comic_id: str) -> Dict:
+    def handle_remove_from_favourites(self, comic_id: str) -> dict:
         from parser import ParserResponseError
         try:
             success = self.parser.remove_from_favourites(comic_id, source="hcomic")
@@ -165,7 +166,7 @@ class SearchMixin:
                 raise AuthRequiredError(msg)
             raise RuntimeError(msg)
 
-    def handle_get_preview_urls(self, comic_data: dict) -> Dict:
+    def handle_get_preview_urls(self, comic_data: dict) -> dict:
         """Return all image URLs after applying the same metadata preparation as downloads."""
         if not isinstance(comic_data, dict):
             raise ValueError("Invalid comic data")
@@ -202,7 +203,7 @@ class SearchMixin:
             "totalPages": total_pages,
         }
 
-    def handle_fetch_preview_image(self, image_url: str) -> Dict:
+    def handle_fetch_preview_image(self, image_url: str) -> dict:
         self._validate_preview_image_url(image_url)
         logger.info("fetch_preview_image: url=%s", image_url)
         data_uri = self._do_fetch_preview_image(image_url)

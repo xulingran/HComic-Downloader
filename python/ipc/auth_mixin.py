@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any, Dict
+from typing import TYPE_CHECKING
 
 from .types import _get_config_path
 
 if TYPE_CHECKING:
     from config import Config
-    from parser import MultiSourceParser
     from downloader import ComicDownloader
+    from parser import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class AuthMixin:
     parser: MultiSourceParser
     downloader: ComicDownloader
 
-    def handle_apply_auth(self, curl_text: str) -> Dict:
+    def handle_apply_auth(self, curl_text: str) -> dict:
         if not curl_text or not curl_text.strip():
             raise ValueError("\u8bf7\u7c98\u8d34 curl \u547d\u4ee4")
 
@@ -38,6 +38,6 @@ class AuthMixin:
         logger.info("Auth applied: cookie length=%d, ua length=%d, bearer length=%d", len(cookie), len(user_agent), len(bearer_token))
         return {"success": True}
 
-    def handle_verify_auth(self) -> Dict:
+    def handle_verify_auth(self) -> dict:
         is_valid, message = self.parser.verify_login_status(source="hcomic")
         return {"valid": is_valid, "message": message}

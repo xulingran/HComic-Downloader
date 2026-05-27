@@ -3,10 +3,8 @@ import shutil
 import threading
 import time
 
-import pytest
-
-from downloader import DownloadResult
 from download_manager import ComicDownloadManager, DownloadManager
+from downloader import DownloadResult
 from models import ComicInfo, DownloadStatus, DownloadTask
 
 

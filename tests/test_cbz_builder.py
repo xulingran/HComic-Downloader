@@ -1,8 +1,10 @@
 """测试 cbz_builder.py CBZ 打包功能"""
 import os
 import zipfile
-import pytest
 from pathlib import Path
+
+import pytest
+
 from cbz_builder import CBZBuilder
 from models import ComicInfo
 

@@ -6,10 +6,10 @@ import os
 import shutil
 import threading
 import time
+from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, List, Optional
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -29,10 +29,10 @@ PROGRESS_THROTTLE_SEC = 0.1
 @dataclass
 class DownloadResult:
     success: bool
-    completed_pages: List[int]
-    failed_pages: List[int]
+    completed_pages: list[int]
+    failed_pages: list[int]
     temp_dir: str
-    error_message: Optional[str] = None
+    error_message: str | None = None
 
 
 @dataclass
@@ -45,13 +45,13 @@ class _DownloadRun:
     temp_dir: Path
     download_referer: str
     total: int
-    progress_callback: Optional[Callable]
-    comic_info: Optional[dict]
-    cancel_event: Optional[threading.Event]
-    pause_event: Optional[threading.Event]
+    progress_callback: Callable | None
+    comic_info: dict | None
+    cancel_event: threading.Event | None
+    pause_event: threading.Event | None
     downloaded_count: int = 0
-    new_completed: Optional[list] = None
-    new_failed: Optional[list] = None
+    new_completed: list | None = None
+    new_failed: list | None = None
     last_progress_ts: float = 0.0
 
     def __post_init__(self):
@@ -159,7 +159,7 @@ class ComicDownloader:
         return "https://h-comic.com/"
 
     @staticmethod
-    def _compute_pages_to_download(total: int, completed_pages: List[int], failed_pages: List[int]) -> List[int]:
+    def _compute_pages_to_download(total: int, completed_pages: list[int], failed_pages: list[int]) -> list[int]:
         """计算需要下载的页面列表。
 
         排序策略：失败页面优先重试（保持原顺序），然后按页码顺序追加未完成页面。
@@ -181,8 +181,8 @@ class ComicDownloader:
         progress_callback,
         downloaded_count: int,
         total: int,
-        cancel_event: Optional[threading.Event],
-        comic_info: Optional[dict],
+        cancel_event: threading.Event | None,
+        comic_info: dict | None,
     ) -> None:
         """批量下载完成后等待指定秒数。"""
         if delay_after <= 0:
@@ -279,13 +279,13 @@ class ComicDownloader:
         self,
         comic: ComicInfo,
         output_dir: str,
-        progress_callback: Optional[Callable[[int, int, str, Optional[dict]], None]] = None,
+        progress_callback: Callable[[int, int, str, dict | None], None] | None = None,
         delay_after: int = 0,
-        comic_info: Optional[dict] = None,
-        completed_pages: Optional[List[int]] = None,
-        failed_pages: Optional[List[int]] = None,
-        cancel_event: Optional[threading.Event] = None,
-        pause_event: Optional[threading.Event] = None,
+        comic_info: dict | None = None,
+        completed_pages: list[int] | None = None,
+        failed_pages: list[int] | None = None,
+        cancel_event: threading.Event | None = None,
+        pause_event: threading.Event | None = None,
     ) -> DownloadResult:
         """断点续传下载漫画
 

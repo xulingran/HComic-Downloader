@@ -1,6 +1,5 @@
 """curl 认证信息提取模块"""
 import shlex
-from typing import Tuple
 
 
 def _normalize_curl_text(curl_text: str) -> str:
@@ -18,7 +17,7 @@ def _split_header(header_value: str) -> tuple[str, str]:
     return name.strip(), value.strip()
 
 
-def extract_auth_from_curl(curl_text: str) -> Tuple[str, str, str]:
+def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str]:
     """从 curl 命令中提取 Cookie、User-Agent 和 Bearer Token。
 
     支持:

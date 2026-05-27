@@ -6,16 +6,16 @@ import shutil
 import tempfile
 import threading
 import time
-from typing import Dict, List, Optional, Callable
+from collections.abc import Callable
 
 from downloader import DownloadResult
 from image_formats import SUPPORTED_IMAGE_EXTENSIONS
-from models import ComicInfo, DownloadCancelledError, DownloadTask, DownloadStatus
+from models import ComicInfo, DownloadCancelledError, DownloadStatus, DownloadTask
 
 logger = logging.getLogger(__name__)
 
 
-_STATUS_SORT_PRIORITY: Dict[DownloadStatus, int] = {
+_STATUS_SORT_PRIORITY: dict[DownloadStatus, int] = {
     DownloadStatus.DOWNLOADING: 0,
     DownloadStatus.PAUSING: 1,
     DownloadStatus.QUEUED: 2,
@@ -31,23 +31,23 @@ class DownloadManager:
 
     def __init__(self):
         # 任务存储
-        self.tasks: Dict[str, DownloadTask] = {}
-        self.queue: List[str] = []
+        self.tasks: dict[str, DownloadTask] = {}
+        self.queue: list[str] = []
 
         # 状态标志
         self.is_running: bool = False
         self.global_pause: bool = False
-        self.current_task_id: Optional[str] = None
+        self.current_task_id: str | None = None
 
         # 线程同步
         self._lock = threading.Lock()
         self._queue_condition = threading.Condition(self._lock)
         self._stop_event = threading.Event()
-        self._worker_thread: Optional[threading.Thread] = None
+        self._worker_thread: threading.Thread | None = None
 
         # 回调
-        self._on_task_update: Optional[Callable[[DownloadTask], None]] = None
-        self._on_queue_complete: Optional[Callable[[], None]] = None
+        self._on_task_update: Callable[[DownloadTask], None] | None = None
+        self._on_queue_complete: Callable[[], None] | None = None
 
     def add_task(self, comic: ComicInfo, overwrite: bool = False) -> str:
         """添加单个任务到队列"""
@@ -70,7 +70,7 @@ class DownloadManager:
         self._notify_task_update(task)
         return task_id
 
-    def add_tasks(self, comics: List[ComicInfo]) -> List[str]:
+    def add_tasks(self, comics: list[ComicInfo]) -> list[str]:
         """添加多个任务到队列"""
         task_ids = []
         for comic in comics:
@@ -80,8 +80,8 @@ class DownloadManager:
 
     def set_callbacks(
         self,
-        on_task_update: Optional[Callable[[DownloadTask], None]] = None,
-        on_queue_complete: Optional[Callable[[], None]] = None,
+        on_task_update: Callable[[DownloadTask], None] | None = None,
+        on_queue_complete: Callable[[], None] | None = None,
     ):
         """设置状态更新回调"""
         self._on_task_update = on_task_update
@@ -166,7 +166,7 @@ class DownloadManager:
         if drained and self._on_queue_complete:
             self._on_queue_complete()
 
-    def _get_next_task_locked(self) -> Optional[str]:
+    def _get_next_task_locked(self) -> str | None:
         """获取下一个可处理的任务（调用方需持有 _lock）。
 
         遍历队列查找首个 QUEUED 任务，遇到不可执行任务（FAILED/PAUSED/PAUSING）
@@ -210,7 +210,7 @@ class DownloadManager:
         with self._lock:
             return {tid: copy.deepcopy(task) for tid, task in self.tasks.items()}
 
-    def get_sorted_tasks(self) -> List[DownloadTask]:
+    def get_sorted_tasks(self) -> list[DownloadTask]:
         """返回按状态分组排序的任务列表（线程安全）。
 
         排序规则：
@@ -423,7 +423,7 @@ class ComicDownloadManager(DownloadManager):
         downloader,
         cbz_builder,
         output_dir: str,
-        prepare_comic: Optional[Callable[[ComicInfo], ComicInfo]] = None,
+        prepare_comic: Callable[[ComicInfo], ComicInfo] | None = None,
         output_format: str = "cbz",
     ):
         super().__init__()
@@ -526,7 +526,7 @@ class ComicDownloadManager(DownloadManager):
             all_pages = set(range(1, pages + 1))
             task.failed_pages = sorted(all_pages - set(task.completed_pages))
 
-    def _build_staged_output(self, temp_dir: str, comic) -> tuple[str, str, Optional[str]]:
+    def _build_staged_output(self, temp_dir: str, comic) -> tuple[str, str, str | None]:
         """Build the requested output into a staging path.
 
         Returns:
@@ -565,7 +565,7 @@ class ComicDownloadManager(DownloadManager):
             self.cbz_builder.build_cbz(temp_dir, comic, staged_path, overwrite=True)
         return staged_path, final_path, None
 
-    def _cleanup_staged_output(self, staged_path: Optional[str], staging_root: Optional[str] = None) -> None:
+    def _cleanup_staged_output(self, staged_path: str | None, staging_root: str | None = None) -> None:
         """Remove a staged output without touching the final destination."""
         if staging_root and os.path.exists(staging_root):
             self._safe_rmtree(staging_root, self.output_dir)
@@ -628,7 +628,7 @@ class ComicDownloadManager(DownloadManager):
             if task.is_cancel_requested:
                 cancel_event.set()
 
-        def progress_callback(current: int, total: int, status: str, comic_info: Optional[dict] = None):
+        def progress_callback(current: int, total: int, status: str, comic_info: dict | None = None):
             with self._lock:
                 if task.is_cancel_requested:
                     cancel_event.set()
@@ -656,7 +656,7 @@ class ComicDownloadManager(DownloadManager):
 
         return result
 
-    def _cleanup_cancelled_task(self, task: DownloadTask, temp_dir: Optional[str], reason: str = "") -> None:
+    def _cleanup_cancelled_task(self, task: DownloadTask, temp_dir: str | None, reason: str = "") -> None:
         """清理已取消任务的临时目录和状态。"""
         logger.info("Task %s cancelled (%s), discarding temp", task.task_id, reason)
         if temp_dir and os.path.exists(temp_dir):
@@ -745,7 +745,7 @@ class ComicDownloadManager(DownloadManager):
             task.temp_dir = result.temp_dir
         self._attempt_auto_retry(task)
 
-    def _handle_download_exception(self, task: DownloadTask, exception: Exception, temp_dir: Optional[str]) -> None:
+    def _handle_download_exception(self, task: DownloadTask, exception: Exception, temp_dir: str | None) -> None:
         """处理下载异常：保留进度、尝试自动重试或清理。"""
         logger.error("Task %s failed: %s", task.task_id, exception)
 

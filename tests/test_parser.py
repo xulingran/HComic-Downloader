@@ -1,7 +1,8 @@
 """测试 parser.py 页面解析功能"""
 import pytest
+
+from models import ComicInfo
 from parser import HComicParser
-from models import ComicInfo, PaginationInfo
 
 
 class TestHComicParser:

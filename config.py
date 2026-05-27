@@ -2,9 +2,9 @@
 import json
 import logging
 import os
+from dataclasses import dataclass, field
+from dataclasses import fields as dc_fields
 from pathlib import Path
-from dataclasses import dataclass, field, fields as dc_fields
-from typing import Optional
 
 from utils import normalize_source_auth
 
@@ -124,11 +124,11 @@ class Config:
             self.auth_user_agent = self.source_auth[source]["user_agent"]
 
     @classmethod
-    def load(cls, config_path: Optional[str] = None) -> "Config":
+    def load(cls, config_path: str | None = None) -> "Config":
         """从文件加载配置，如果不存在则返回默认配置"""
         if config_path and os.path.exists(config_path):
             try:
-                with open(config_path, 'r', encoding='utf-8') as f:
+                with open(config_path, encoding='utf-8') as f:
                     data = json.load(f)
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(

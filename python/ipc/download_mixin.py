@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from config import Config
-    from cbz_builder import CBZBuilder
-    from download_manager import ComicDownloadManager
-    from download_history import DownloadHistoryDB
     from concurrent.futures import ThreadPoolExecutor
+
+    from cbz_builder import CBZBuilder
+    from config import Config
+    from download_history import DownloadHistoryDB
+    from download_manager import ComicDownloadManager
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +23,13 @@ class DownloadMixin:
 
     _history_db: DownloadHistoryDB
     config: Config
-    _write_response: Callable[[Dict], None]
+    _write_response: Callable[[dict], None]
     _download_manager: ComicDownloadManager
     cbz_builder: CBZBuilder
     _cover_executor: ThreadPoolExecutor
     _preview_executor: ThreadPoolExecutor
-    _build_and_prepare_comic: Callable[[dict, Optional[str]], Any]
-    _comic_to_dict: Callable[[Any], Dict]
+    _build_and_prepare_comic: Callable[[dict, str | None], Any]
+    _comic_to_dict: Callable[[Any], dict]
 
     def _on_download_update(self, task):
         """Send download progress as JSON-RPC notification to stdout."""
@@ -59,7 +61,7 @@ class DownloadMixin:
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
 
-    def handle_download(self, comic_id: str, comic_data: Optional[dict] = None, overwrite: bool = False) -> Dict:
+    def handle_download(self, comic_id: str, comic_data: dict | None = None, overwrite: bool = False) -> dict:
         comic = self._build_and_prepare_comic(comic_data or {}, comic_id=comic_id)
 
         if not overwrite:
@@ -76,7 +78,7 @@ class DownloadMixin:
             "status": task.status.value if task else "queued",
         }
 
-    def handle_check_download_conflict(self, comic_data: dict) -> Dict:
+    def handle_check_download_conflict(self, comic_data: dict) -> dict:
         comic = self._build_and_prepare_comic(comic_data or {})
         output_path = self.cbz_builder.get_output_path_for_format(
             comic, self.config.output_format, self.config.download_dir
@@ -86,7 +88,7 @@ class DownloadMixin:
             "path": output_path,
         }
 
-    def handle_get_downloads(self) -> Dict:
+    def handle_get_downloads(self) -> dict:
         sorted_tasks = self._download_manager.get_sorted_tasks()
         tasks = []
         for task in sorted_tasks:
@@ -102,11 +104,11 @@ class DownloadMixin:
             })
         return {"tasks": tasks}
 
-    def handle_cancel_download(self, task_id: str) -> Dict:
+    def handle_cancel_download(self, task_id: str) -> dict:
         success = self._download_manager.cancel_task(task_id)
         return {"success": success}
 
-    def handle_shutdown(self) -> Dict:
+    def handle_shutdown(self) -> dict:
         """Gracefully shut down: cancel active tasks, wait for completion, stop the queue."""
         active_statuses = {"queued", "downloading", "paused", "pausing"}
         cancelled_count = 0
@@ -124,7 +126,7 @@ class DownloadMixin:
         logger.info("Shutdown: cancelled %d active tasks", cancelled_count)
         return {"success": True, "cancelledTasks": cancelled_count}
 
-    def handle_pause_task(self, task_id: str) -> Dict:
+    def handle_pause_task(self, task_id: str) -> dict:
         """Pause a specific download task."""
         if not task_id or not isinstance(task_id, str):
             raise ValueError("Invalid task_id")
@@ -133,7 +135,7 @@ class DownloadMixin:
             raise ValueError(f"Task not found or cannot be paused: {task_id}")
         return {"success": True}
 
-    def handle_resume_task(self, task_id: str) -> Dict:
+    def handle_resume_task(self, task_id: str) -> dict:
         """Resume a paused download task."""
         if not task_id or not isinstance(task_id, str):
             raise ValueError("Invalid task_id")
@@ -142,7 +144,7 @@ class DownloadMixin:
             raise ValueError(f"Task not found or cannot be resumed: {task_id}")
         return {"success": True}
 
-    def handle_retry_task(self, task_id: str) -> Dict:
+    def handle_retry_task(self, task_id: str) -> dict:
         """Retry a failed download task."""
         if not task_id or not isinstance(task_id, str):
             raise ValueError("Invalid task_id")
@@ -151,12 +153,12 @@ class DownloadMixin:
             raise ValueError(f"Task not found or cannot be retried: {task_id}")
         return {"success": True}
 
-    def handle_toggle_global_pause(self) -> Dict:
+    def handle_toggle_global_pause(self) -> dict:
         """Toggle global pause on the download queue."""
         is_paused = self._download_manager.toggle_global_pause()
         return {"isPaused": is_paused}
 
-    def handle_get_download_detail(self, task_id: str) -> Dict:
+    def handle_get_download_detail(self, task_id: str) -> dict:
         """Return detailed information about a download task."""
         if not task_id or not isinstance(task_id, str):
             raise ValueError("Invalid task_id")
@@ -213,7 +215,7 @@ class DownloadMixin:
 
         return {"statusMap": result}
 
-    def handle_open_download_dir(self) -> Dict:
+    def handle_open_download_dir(self) -> dict:
         """Open the download directory in the OS file manager."""
         import platform
         import subprocess

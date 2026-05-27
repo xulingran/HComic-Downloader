@@ -13,7 +13,6 @@ import sqlite3
 import threading
 import time
 from collections import OrderedDict
-from typing import Dict
 
 logger = logging.getLogger(__name__)
 
@@ -153,7 +152,7 @@ class PreviewCacheDB:
             # Evict if over limit
             self._evict_if_needed()
 
-    def get_stats(self) -> Dict:
+    def get_stats(self) -> dict:
         """Return ``{file_count, total_size_bytes, max_size_bytes}``."""
         with self._lock:
             row = self._conn.execute(

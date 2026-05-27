@@ -36,7 +36,7 @@ class TestConfigShowPreview(unittest.TestCase):
         try:
             config.save(config_path)
 
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, encoding='utf-8') as f:
                 data = json.load(f)
 
             self.assertIn('show_preview', data, "保存的配置应包含 show_preview 字段")
@@ -54,7 +54,7 @@ class TestConfigShowPreview(unittest.TestCase):
         try:
             config.save(config_path)
 
-            with open(config_path, 'r', encoding='utf-8') as f:
+            with open(config_path, encoding='utf-8') as f:
                 data = json.load(f)
 
             self.assertTrue(data['show_preview'], "保存的值应为 True")
@@ -377,7 +377,7 @@ class TestConfigLoadCorrupted(unittest.TestCase):
             # 第一次损坏：创建备份
             Config.load(config_path)
             self.assertTrue(os.path.exists(backup_path))
-            with open(backup_path, 'r') as f:
+            with open(backup_path) as f:
                 first_backup = f.read()
 
             # 创建新的损坏文件（模拟第二次损坏）
@@ -386,7 +386,7 @@ class TestConfigLoadCorrupted(unittest.TestCase):
 
             # 第二次损坏：不应覆盖备份
             Config.load(config_path)
-            with open(backup_path, 'r') as f:
+            with open(backup_path) as f:
                 second_backup = f.read()
             self.assertEqual(first_backup, second_backup,
                              "第二次损坏不应覆盖已有的 .corrupted 备份")

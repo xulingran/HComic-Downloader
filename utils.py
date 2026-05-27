@@ -1,7 +1,7 @@
 """工具函数模块"""
 import os
 import re
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.request import getproxies
 
 KB = 1024
@@ -43,13 +43,13 @@ def ensure_dir(path: str):
     os.makedirs(path, exist_ok=True)
 
 
-def get_system_proxies() -> Dict[str, str]:
+def get_system_proxies() -> dict[str, str]:
     """获取系统代理配置（跨平台）。
 
     基于 urllib 的 getproxies()，可从环境变量和系统代理设置中提取代理。
     """
     raw = getproxies() or {}
-    proxies: Dict[str, str] = {}
+    proxies: dict[str, str] = {}
 
     def _normalize_proxy_url(url: str) -> str:
         value = (url or "").strip()
@@ -77,7 +77,7 @@ def get_system_proxies() -> Dict[str, str]:
     return proxies
 
 
-def apply_system_proxy_to_session(session: Any) -> Dict[str, str]:
+def apply_system_proxy_to_session(session: Any) -> dict[str, str]:
     """将系统代理配置注入 requests.Session。"""
     proxies = get_system_proxies()
     # 保留 requests 默认行为（包括 NO_PROXY 等环境规则）
@@ -98,7 +98,7 @@ def sanitize_path_chars(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
 
 
-def normalize_source_auth(source_auth: Optional[dict]) -> dict[str, dict[str, str]]:
+def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
     """规范化多来源认证字典。
 
     Args:

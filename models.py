@@ -1,8 +1,7 @@
 """数据模型"""
+import time
 from dataclasses import dataclass, field
 from enum import Enum
-import time
-from typing import List, Optional
 
 from constants import IMAGE_API_BASE
 from utils import sanitize_filename
@@ -29,17 +28,17 @@ class ComicInfo:
     """
     id: str = ""
     title: str = ""
-    author: Optional[str] = None
+    author: str | None = None
     pages: int = 0
-    category: Optional[str] = None
-    tags: List[str] = field(default_factory=list)
-    publish_date: Optional[str] = None
-    cover_url: Optional[str] = None
+    category: str | None = None
+    tags: list[str] = field(default_factory=list)
+    publish_date: str | None = None
+    cover_url: str | None = None
     preview_url: str = ""
     media_id: str = ""
     comic_source: str = ""
     source_site: str = "hcomic"
-    image_urls: List[str] = field(default_factory=list)
+    image_urls: list[str] = field(default_factory=list)
 
     _IMAGE_URL_SUFFIX_MAP = {
         "MMCG_SHORT": "mms",
@@ -74,7 +73,7 @@ class ComicInfo:
         suffix = self._IMAGE_URL_SUFFIX_MAP.get(self.comic_source.upper(), self._DEFAULT_IMAGE_URL_SUFFIX)
         return f"{IMAGE_API_BASE}/{suffix}/{self.media_id}/pages/{page}"
 
-    def get_all_image_urls(self) -> List[str]:
+    def get_all_image_urls(self) -> list[str]:
         """获取所有页面的图片 URL"""
         if self.image_urls:
             return list(self.image_urls)
@@ -135,7 +134,7 @@ class DownloadCancelledError(Exception):
         temp_dir: 下载时使用的临时目录，用于取消后清理
     """
 
-    def __init__(self, message: str = "Download cancelled", temp_dir: Optional[str] = None):
+    def __init__(self, message: str = "Download cancelled", temp_dir: str | None = None):
         super().__init__(message)
         self.temp_dir = temp_dir
 
@@ -171,18 +170,18 @@ class DownloadTask:
     status: DownloadStatus
     progress_current: int = 0
     progress_total: int = 0
-    temp_dir: Optional[str] = None
-    error_message: Optional[str] = None
+    temp_dir: str | None = None
+    error_message: str | None = None
     created_at: float = field(default_factory=time.time)
-    started_at: Optional[float] = None
+    started_at: float | None = None
     _pause_requested: bool = False
     _cancel_requested: bool = False
-    failed_pages: List[int] = field(default_factory=list)
-    completed_pages: List[int] = field(default_factory=list)
+    failed_pages: list[int] = field(default_factory=list)
+    completed_pages: list[int] = field(default_factory=list)
     download_speed: float = 0.0
     current_downloading_page: int = 0
     retry_count: int = 0
-    last_failed_at: Optional[float] = None
+    last_failed_at: float | None = None
     overwrite: bool = False
 
     @property
@@ -228,7 +227,7 @@ class ArchiveBuildOptions:
     image_dir: str
     comic: "ComicInfo"
     output_path: str
-    download_dir: Optional[str] = None
+    download_dir: str | None = None
     overwrite: bool = False
     include_comic_info_xml: bool = True
     log_label: str = "Archive"

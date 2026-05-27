@@ -1,5 +1,4 @@
 """测试 models.py 数据模型"""
-import pytest
 from models import ComicInfo, PaginationInfo
 
 

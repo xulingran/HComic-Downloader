@@ -5,15 +5,17 @@ from __future__ import annotations
 import logging
 import os
 import threading
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from migration import MigrationEngine
+
 from .types import _get_config_path
 
 if TYPE_CHECKING:
     from config import Config
-    from download_manager import ComicDownloadManager
     from download_history import DownloadHistoryDB
+    from download_manager import ComicDownloadManager
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +24,7 @@ class MigrationMixin:
     """Mixin providing migration handler methods for IPCServer."""
 
     config: Config
-    _write_response: Callable[[Dict], None]
+    _write_response: Callable[[dict], None]
     _download_manager: ComicDownloadManager
     _history_db: DownloadHistoryDB
 
@@ -35,7 +37,7 @@ class MigrationMixin:
             history_db=self._history_db,
             state_path=state_path,
         )
-        self._migration_thread: Optional[threading.Thread] = None
+        self._migration_thread: threading.Thread | None = None
         self._migration_lock = threading.Lock()
         self._migration_paused_dm: bool = False
 
@@ -104,7 +106,7 @@ class MigrationMixin:
                     logger.error("Failed to resume download manager: %s", e)
                 self._migration_paused_dm = False
 
-    def handle_start_migration(self, target_dir: str, mode: str) -> Dict:
+    def handle_start_migration(self, target_dir: str, mode: str) -> dict:
         target_dir = os.path.normpath(target_dir)
         if not os.path.isabs(target_dir):
             raise ValueError("target_dir must be an absolute path")
@@ -137,7 +139,7 @@ class MigrationMixin:
             ) if state.source_dir else False,
         }
 
-    def handle_confirm_migration(self, migration_id: str) -> Dict:
+    def handle_confirm_migration(self, migration_id: str) -> dict:
         with self._migration_lock:
             state = self._migration_engine.state
             if not state or state.id != migration_id:
@@ -158,12 +160,12 @@ class MigrationMixin:
 
         return {"started": True}
 
-    def handle_pause_migration(self) -> Dict:
+    def handle_pause_migration(self) -> dict:
         with self._migration_lock:
             self._migration_engine.pause()
         return {"paused": True}
 
-    def handle_resume_migration(self) -> Dict:
+    def handle_resume_migration(self) -> dict:
         with self._migration_lock:
             state = self._migration_engine.state
             if not state or state.status not in ("paused", "failed"):
@@ -180,7 +182,7 @@ class MigrationMixin:
 
         return {"resumed": True}
 
-    def handle_cancel_migration(self) -> Dict:
+    def handle_cancel_migration(self) -> dict:
         with self._migration_lock:
             self._migration_engine.pause()
             state = self._migration_engine.state
@@ -195,13 +197,13 @@ class MigrationMixin:
             self._migration_paused_dm = False
         return {"cancelled": True}
 
-    def handle_get_migration_status(self) -> Dict:
+    def handle_get_migration_status(self) -> dict:
         state = self._migration_engine.state
         if not state:
             return {"status": "none"}
         return state.to_dict()
 
-    def handle_resolve_unmatched(self, matches: list) -> Dict:
+    def handle_resolve_unmatched(self, matches: list) -> dict:
         state = self._migration_engine.state
         if not state:
             raise RuntimeError("No migration in progress")

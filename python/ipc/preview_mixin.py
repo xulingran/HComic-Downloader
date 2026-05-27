@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from .image_utils import detect_image_type, referer_for_image_url
@@ -20,7 +21,7 @@ class PreviewMixin:
     """Mixin providing preview page image fetch methods."""
 
     downloader: ComicDownloader
-    _write_response: Callable[[Dict], None]
+    _write_response: Callable[[dict], None]
 
     ALLOWED_PREVIEW_IMAGE_DOMAINS = {
         "h-comic.com",
@@ -101,6 +102,7 @@ class PreviewMixin:
     def _do_fetch_preview_image(self, url: str) -> str:
         """Fetch a preview page image, using cache when available."""
         import base64 as _base64
+
         from .image_utils import detect_image_type as _detect
 
         self._validate_preview_image_url(url)

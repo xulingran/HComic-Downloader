@@ -4,14 +4,15 @@ from __future__ import annotations
 
 import base64
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict
+from collections.abc import Callable
+from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
 from .image_utils import detect_image_type
 
 if TYPE_CHECKING:
-    from parser import MultiSourceParser
     from ipc.cover_cache import CoverCacheDB
+    from parser import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +24,7 @@ class CoverMixin:
 
     parser: MultiSourceParser
     _cover_cache: CoverCacheDB
-    _write_response: Callable[[Dict], None]
+    _write_response: Callable[[dict], None]
 
     ALLOWED_COVER_DOMAINS = {
         "h-comic.link",

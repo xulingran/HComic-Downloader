@@ -1,5 +1,6 @@
 """auth_parser 模块单元测试"""
 import unittest
+
 import pytest
 
 from auth_parser import extract_auth_from_curl

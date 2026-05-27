@@ -1,7 +1,7 @@
 """Tests for migration_mixin.py"""
-import threading
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, PropertyMock, patch
 
 from python.ipc.migration_mixin import MigrationMixin
 

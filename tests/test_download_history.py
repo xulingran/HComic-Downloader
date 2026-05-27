@@ -1,7 +1,9 @@
 """Tests for download_history.py DownloadHistoryDB"""
 import os
 import time
+
 import pytest
+
 from models import ComicInfo
 
 

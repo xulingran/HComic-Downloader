@@ -5,8 +5,9 @@ import os
 import shutil
 import time
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ class MigrationPlanItem:
     """迁移计划中的单个条目"""
     source: str
     target: str
-    db_key: Tuple[str, str, str]
+    db_key: tuple[str, str, str]
     status: str = "pending"  # pending | done | failed | skipped
 
     def to_dict(self) -> dict:
@@ -59,8 +60,8 @@ class MigrationState:
     updated_at: float = 0.0
     total_items: int = 0
     completed_items: int = 0
-    failed_items: List[Dict] = field(default_factory=list)
-    plan: List[MigrationPlanItem] = field(default_factory=list)
+    failed_items: list[dict] = field(default_factory=list)
+    plan: list[MigrationPlanItem] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
@@ -111,7 +112,7 @@ class MigrationState:
     def load(cls, path: str) -> Optional["MigrationState"]:
         if not os.path.exists(path):
             return None
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return cls.from_dict(data)
 
@@ -121,7 +122,7 @@ class MigrationEngine:
 
     def __init__(self, history_db, state_path: str = ""):
         self._history_db = history_db
-        self._state: Optional[MigrationState] = None
+        self._state: MigrationState | None = None
         self._pause_requested = False
         self._state_path = state_path
         self._migration_logger = logging.getLogger("migration.engine")
@@ -136,7 +137,7 @@ class MigrationEngine:
         self._migration_logger.setLevel(logging.DEBUG)
 
     @property
-    def state(self) -> Optional[MigrationState]:
+    def state(self) -> MigrationState | None:
         return self._state
 
     @staticmethod
@@ -167,7 +168,7 @@ class MigrationEngine:
         target_dir = os.path.normpath(target_dir)
 
         records = self._history_db.get_all_records()
-        plan: List[MigrationPlanItem] = []
+        plan: list[MigrationPlanItem] = []
 
         for record in records:
             output_path = os.path.normpath(record["output_path"])
@@ -208,17 +209,15 @@ class MigrationEngine:
         target_dir = os.path.normpath(target_dir)
         records = self._history_db.get_all_records()
 
-        files_on_disk: List[str] = []
+        files_on_disk: list[str] = []
         if os.path.isdir(target_dir):
             for entry in os.listdir(target_dir):
                 full_path = os.path.join(target_dir, entry)
                 ext = os.path.splitext(entry)[1].lower()
-                if os.path.isfile(full_path) and ext in (".cbz", ".zip"):
-                    files_on_disk.append(full_path)
-                elif os.path.isdir(full_path):
+                if os.path.isfile(full_path) and ext in (".cbz", ".zip") or os.path.isdir(full_path):
                     files_on_disk.append(full_path)
 
-        plan: List[MigrationPlanItem] = []
+        plan: list[MigrationPlanItem] = []
 
         for record in records:
             title = record.get("title", "")
@@ -251,12 +250,12 @@ class MigrationEngine:
 
     @staticmethod
     def _find_match(
-        files: List[str],
+        files: list[str],
         title: str,
         author: str,
         comic_id: str,
         template: str,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Try to find a file matching the given comic metadata."""
         if comic_id:
             for f in files:
@@ -278,8 +277,8 @@ class MigrationEngine:
 
     def execute(
         self,
-        on_progress: Optional[Callable[[MigrationProgress], None]] = None,
-        on_error: Optional[Callable[[Dict], None]] = None,
+        on_progress: Callable[[MigrationProgress], None] | None = None,
+        on_error: Callable[[dict], None] | None = None,
     ):
         """Execute the migration plan."""
         if not self._state or self._state.status not in ("ready", "paused"):

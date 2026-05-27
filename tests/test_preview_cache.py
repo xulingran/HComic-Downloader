@@ -1,7 +1,7 @@
 """Tests for PreviewCacheDB — hybrid file-system + SQLite cache for preview images."""
 import os
 import sys
-import time
+
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

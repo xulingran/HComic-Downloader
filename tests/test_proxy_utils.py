@@ -1,5 +1,4 @@
 """系统代理工具测试"""
-import os
 import unittest
 from unittest.mock import patch
 

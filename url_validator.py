@@ -4,7 +4,6 @@ import ipaddress
 import logging
 import re
 import socket
-from typing import Optional
 from urllib.parse import urljoin, urlparse
 
 import requests
@@ -47,9 +46,9 @@ class UrlValidator:
 
     def __init__(
         self,
-        hcomic_domains: Optional[set[str]] = None,
-        blocked_ipv4: Optional[list[ipaddress.IPv4Network]] = None,
-        blocked_ipv6: Optional[list[ipaddress.IPv6Network]] = None,
+        hcomic_domains: set[str] | None = None,
+        blocked_ipv4: list[ipaddress.IPv4Network] | None = None,
+        blocked_ipv6: list[ipaddress.IPv6Network] | None = None,
     ):
         if hcomic_domains is not None:
             self._HCOMIC_DOMAINS = hcomic_domains
