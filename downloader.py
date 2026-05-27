@@ -156,7 +156,34 @@ class ComicDownloader:
         site = self.url_validator.safe_source_site(getattr(comic, "source_site", "hcomic"))
         if site == "moeimg":
             return "https://moeimg.fan/"
+        if site == "jmcomic":
+            return "https://18comic.vip/"
         return "https://h-comic.com/"
+
+    @staticmethod
+    def _maybe_postprocess_images(comic: ComicInfo, temp_dir: Path) -> None:
+        """下载完成后对图片进行后处理（如 jmcomic 反混淆）。"""
+        if comic.source_site != "jmcomic" or not comic.scramble_id:
+            return
+        try:
+            from jmcomic.descrambler import descramble_image
+        except ImportError:
+            logger.warning("jmcomic descrambler not available, skipping postprocess")
+            return
+        try:
+            eps_id = int(comic.id)
+        except (ValueError, TypeError):
+            return
+        for img_file in sorted(temp_dir.iterdir()):
+            if not img_file.is_file():
+                continue
+            try:
+                original = img_file.read_bytes()
+                descrambled = descramble_image(original, eps_id, comic.scramble_id)
+                if descrambled != original:
+                    img_file.write_bytes(descrambled)
+            except Exception as e:
+                logger.warning("Descramble failed for %s: %s", img_file.name, e)
 
     @staticmethod
     def _compute_pages_to_download(total: int, completed_pages: list[int], failed_pages: list[int]) -> list[int]:
@@ -382,6 +409,7 @@ class ComicDownloader:
         success = len(all_failed) == 0 and all_pages_downloaded
 
         if success:
+            self._maybe_postprocess_images(comic, temp_dir)
             logger.info("Download completed: %s", comic.title)
             if progress_callback:
                 progress_callback(downloaded_count, total, "下载完成", comic_info)
