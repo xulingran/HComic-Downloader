@@ -205,3 +205,25 @@ export function useRemoveFromFavourites() {
 
   return { removeFromFavourites }
 }
+
+export function useHistory() {
+  const { invoke } = useIpc()
+
+  const getHistory = useCallback(async (page: number = 1) => {
+    return invoke(() => window.hcomic!.getHistory(page))
+  }, [invoke])
+
+  const addHistory = useCallback(async (comicId: string, title: string, coverUrl: string, source: string, sourceUrl: string, lastPage: number, totalPages: number) => {
+    return invoke(() => window.hcomic!.addHistory(comicId, title, coverUrl, source, sourceUrl, lastPage, totalPages))
+  }, [invoke])
+
+  const deleteHistory = useCallback(async (comicId: string, source: string) => {
+    return invoke(() => window.hcomic!.deleteHistory(comicId, source))
+  }, [invoke])
+
+  const clearHistory = useCallback(async () => {
+    return invoke(() => window.hcomic!.clearHistory())
+  }, [invoke])
+
+  return { getHistory, addHistory, deleteHistory, clearHistory }
+}
