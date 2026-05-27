@@ -4,6 +4,8 @@ import { useComicReader } from '../hooks/useComicReader'
 import { useReaderSettings, type BlankPosition } from '../hooks/useReaderSettings'
 import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
+import { useHistory } from '../hooks/useIpc'
+import { useHistoryStore } from '../stores/useHistoryStore'
 import { PageFlipView } from './PageFlipView'
 import { ReaderPage } from './ReaderPage'
 
@@ -68,6 +70,29 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     clearCache,
   } = usePreloadManager(imageUrls, loadingState)
 
+  const { addHistory } = useHistory()
+  const historyStore = useHistoryStore()
+  const lastRecordedPageRef = useRef<number>(0)
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const recordHistory = useCallback((page: number) => {
+    if (!comic || page === lastRecordedPageRef.current) return
+    lastRecordedPageRef.current = page
+    addHistory(
+      comic.id,
+      comic.title,
+      comic.coverUrl,
+      comic.source,
+      comic.url,
+      page,
+      totalPages,
+    ).catch((err) => {
+      console.error('Failed to record history:', err)
+    }).finally(() => {
+      historyStore.clearCache()
+    })
+  }, [comic, totalPages, addHistory, historyStore])
+
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
   const settingsPanelRef = useRef<HTMLDivElement>(null)
@@ -126,11 +151,43 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     if (open && comic) {
       fetchUrls(comic)
     } else {
+      // Modal closing — save current page immediately if needed
+      if (comic && currentPage > 0 && currentPage !== lastRecordedPageRef.current) {
+        addHistory(
+          comic.id,
+          comic.title,
+          comic.coverUrl,
+          comic.source,
+          comic.url,
+          currentPage,
+          totalPages,
+        ).catch(() => {})
+      }
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+      lastRecordedPageRef.current = 0
       reset()
       clearCache()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, comic?.id, fetchUrls, reset, clearCache])
+
+  // Debounced history recording on page change
+  useEffect(() => {
+    if (!open || !comic || loadingState !== 'loaded' || currentPage <= 0) return
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      recordHistory(currentPage)
+    }, 2000)
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [open, comic?.id, currentPage, loadingState, recordHistory])
 
   // Keyboard handler
   useEffect(() => {
