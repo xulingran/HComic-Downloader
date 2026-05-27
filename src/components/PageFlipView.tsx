@@ -1,5 +1,5 @@
 import { useRef, useCallback, useEffect, useState } from 'react'
-import type { DisplayMode } from '../hooks/useReaderSettings'
+import type { DisplayMode, BlankPosition } from '../hooks/useReaderSettings'
 
 interface PageFlipViewProps {
   imageUrls: string[]
@@ -12,6 +12,7 @@ interface PageFlipViewProps {
   imageCacheRef: React.RefObject<Map<number, string>>
   cacheVersion: number
   onPageChange: (page: number) => void
+  blankPosition: BlankPosition
 }
 
 export function PageFlipView({
@@ -25,6 +26,7 @@ export function PageFlipView({
   imageCacheRef,
   cacheVersion,
   onPageChange,
+  blankPosition,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [panOffset, setPanOffset] = useState(0)
@@ -34,17 +36,19 @@ export function PageFlipView({
   const isDoubleMode = displayMode === 'double'
   const step = isDoubleMode ? 2 : 1
 
+  const effectiveTotal = isDoubleMode && blankPosition === 'front' ? totalPages + 1 : totalPages
+
   const canGoPrev = currentPage > 1
   const canGoNext = isDoubleMode
-    ? currentPage + step <= totalPages
-    : currentPage < totalPages
+    ? currentPage + step <= effectiveTotal
+    : currentPage < effectiveTotal
 
   const goNext = useCallback(() => {
     if (!canGoNext) return
-    const next = Math.min(currentPage + step, totalPages)
+    const next = Math.min(currentPage + step, effectiveTotal)
     setCurrentPage(next)
     setPanOffset(0)
-  }, [canGoNext, currentPage, step, totalPages, setCurrentPage])
+  }, [canGoNext, currentPage, step, effectiveTotal, setCurrentPage])
 
   const goPrev = useCallback(() => {
     if (!canGoPrev) return
@@ -105,8 +109,24 @@ export function PageFlipView({
     }
   }, [currentPage, onPageChange])
 
-  const leftPageIdx = currentPage - 1
-  const rightPageIdx = isDoubleMode && currentPage < totalPages ? currentPage : null
+  let leftRealIdx: number
+  let rightRealIdx: number | null = null
+  let leftIsBlank = false
+  let rightIsBlank = false
+
+  if (isDoubleMode && blankPosition === 'front') {
+    leftRealIdx = currentPage - 2
+    rightRealIdx = currentPage - 1
+    leftIsBlank = leftRealIdx < 0
+    rightIsBlank = rightRealIdx >= totalPages
+  } else if (isDoubleMode && blankPosition === 'end') {
+    leftRealIdx = currentPage - 1
+    rightRealIdx = currentPage < totalPages ? currentPage : null
+    rightIsBlank = rightRealIdx === null
+  } else {
+    leftRealIdx = currentPage - 1
+    rightRealIdx = isDoubleMode && currentPage < totalPages ? currentPage : null
+  }
 
   // cacheVersion triggers re-render to pick up newly preloaded images from imageCacheRef
   void cacheVersion
@@ -136,11 +156,15 @@ export function PageFlipView({
         }}
       >
         <div className="h-full flex items-center justify-center">
-          <FlipPage url={imageUrls[leftPageIdx]} index={leftPageIdx} cachedDataUri={imageCacheRef.current?.get(leftPageIdx)} />
+          {leftIsBlank ? <BlankPage /> : (
+            <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} />
+          )}
         </div>
-        {rightPageIdx !== null && (
+        {(rightRealIdx !== null || rightIsBlank) && (
           <div className="h-full flex items-center justify-center">
-            <FlipPage url={imageUrls[rightPageIdx]} index={rightPageIdx} cachedDataUri={imageCacheRef.current?.get(rightPageIdx)} />
+            {rightIsBlank ? <BlankPage /> : (
+              <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedDataUri={imageCacheRef.current?.get(rightRealIdx!)} />
+            )}
           </div>
         )}
       </div>
@@ -179,6 +203,20 @@ export function PageFlipView({
         </button>
       </div>
     </div>
+  )
+}
+
+function BlankPage() {
+  return (
+    <div
+      className="h-full flex items-center justify-center"
+      style={{
+        aspectRatio: '3/4',
+        border: '2px dashed rgba(255,255,255,0.15)',
+        borderRadius: '4px',
+        background: 'rgba(255,255,255,0.03)',
+      }}
+    />
   )
 }
 
