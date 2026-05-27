@@ -79,9 +79,11 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const comicRef = useRef<ComicInfo | null>(null)
 
   // Keep a ref to the current comic so we can still access it on close
-  if (comic) {
-    comicRef.current = comic
-  }
+  useEffect(() => {
+    if (comic) {
+      comicRef.current = comic
+    }
+  }, [comic])
 
   const recordHistory = useCallback((page: number) => {
     if (!comic || page === lastRecordedPageRef.current) return
