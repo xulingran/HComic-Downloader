@@ -22,6 +22,12 @@ vi.mock('@/hooks/useIpc', () => ({
   }),
   useRemoveFromFavourites: vi.fn().mockReturnValue({
     removeFromFavourites: vi.fn().mockResolvedValue({ success: true })
+  }),
+  useHistory: vi.fn().mockReturnValue({
+    getHistory: vi.fn().mockResolvedValue({ items: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } }),
+    addHistory: vi.fn().mockResolvedValue({ success: true }),
+    deleteHistory: vi.fn().mockResolvedValue({ success: true }),
+    clearHistory: vi.fn().mockResolvedValue({ success: true })
   })
 }))
 
