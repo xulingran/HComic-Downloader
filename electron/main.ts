@@ -43,12 +43,16 @@ const ALLOWED_EXTERNAL_DOMAINS = [
   'h-comic.com',
   'moeimg.net',
   'moeimg.fan',
+  '18comic.vip',
+  '18comic.org',
+  'jmcomic.me',
 ]
 
 const ALLOWED_COVER_DOMAINS = [
   'h-comic.link',
   'moeimg.fan',
   'moeimg.net',
+  '18comic.vip',
 ]
 
 /** Image server domains that need Referer injection, mapped to their Referer origin. */
@@ -414,9 +418,11 @@ const LOGIN_COOKIE_SUCCESS_DELAY_MS = 3_000
 
 async function extractAndApplyCookies(
   userAgent: string,
+  source: string = 'hcomic',
+  domain: string = 'h-comic.com',
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const cookies = await session.defaultSession.cookies.get({ url: 'https://h-comic.com' })
+    const cookies = await session.defaultSession.cookies.get({ url: `https://${domain}` })
     if (cookies.length === 0) {
       return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口' }
     }
@@ -424,9 +430,10 @@ async function extractAndApplyCookies(
 
     const bridge = getPythonBridge()
     await bridge.call('apply_auth', {
-      curl_text: `curl 'https://h-comic.com' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
+      curl_text: `curl 'https://${domain}' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
+      source,
     })
-    const verifyResult = await bridge.call('verify_auth') as { valid: boolean; message: string }
+    const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
     return { success: verifyResult.valid, message: verifyResult.message }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : '登录处理失败'
@@ -442,11 +449,11 @@ interface LoginWindowContext {
   clearTimeout: () => void
 }
 
-function createLoginBrowserWindow(parent: BrowserWindow): BrowserWindow {
+function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
   return new BrowserWindow({
     width: 500,
     height: 700,
-    title: '登录 H-Comic',
+    title,
     parent,
     modal: true,
     webPreferences: {
@@ -485,7 +492,7 @@ function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowCo
   })
 }
 
-function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext) {
+function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext, source: string = 'hcomic', domain: string = 'h-comic.com') {
   loginWin.on('closed', () => {
     ctx.clearTimeout()
     if (ctx.settled) return
@@ -493,7 +500,7 @@ function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext)
       ctx.done({ success: false, message: '已取消' })
       return
     }
-    extractAndApplyCookies(ctx.savedUserAgent).then((result) => {
+    extractAndApplyCookies(ctx.savedUserAgent, source, domain).then((result) => {
       if (result.success && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
       }
@@ -504,14 +511,42 @@ function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext)
   })
 }
 
-function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
+function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, source: string, domain: string) {
+  loginWin.webContents.on('did-navigate', (_event, url) => {
+    if (!url.includes('/login') && !url.includes('/user/login')) {
+      setTimeout(async () => {
+        ctx.clearTimeout()
+        const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
+        if (!userAgent) {
+          ctx.done({ success: false, message: '已取消' })
+          return
+        }
+        const result = await extractAndApplyCookies(userAgent, source, domain)
+        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
+          setTimeout(() => {
+            ctx.done(result)
+          }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
+        } else {
+          ctx.done(result)
+        }
+      }, LOGIN_COOKIE_SETTLE_MS)
+    }
+  })
+}
+
+function openLoginWindow(source: string = 'hcomic'): Promise<{ success: boolean; message?: string }> {
   const parent = mainWindow
   if (!parent) {
     return Promise.resolve({ success: false, message: '主窗口不存在' })
   }
 
+  const loginUrl = source === 'jmcomic' ? 'https://18comic.vip' : 'https://h-comic.com'
+  const loginTitle = source === 'jmcomic' ? '登录禁漫天堂' : '登录 H-Comic'
+  const loginDomain = source === 'jmcomic' ? '18comic.vip' : 'h-comic.com'
+
   return new Promise((resolve) => {
-    const loginWin = createLoginBrowserWindow(parent)
+    const loginWin = createLoginBrowserWindow(parent, loginTitle)
 
     const ctx: LoginWindowContext = {
       settled: false,
@@ -539,10 +574,14 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
       }
     })
 
-    bindLoginNavigationTracking(loginWin, ctx)
-    bindLoginWindowClosed(loginWin, ctx)
+    if (source === 'jmcomic') {
+      bindJmcomicLoginTracking(loginWin, ctx, source, loginDomain)
+    } else {
+      bindLoginNavigationTracking(loginWin, ctx)
+    }
+    bindLoginWindowClosed(loginWin, ctx, source, loginDomain)
 
-    loginWin.loadURL('https://h-comic.com').catch(() => {
+    loginWin.loadURL(loginUrl).catch(() => {
       ctx.done({ success: false, message: '无法打开登录页面' })
     })
   })
@@ -712,19 +751,27 @@ function registerConfigHandlers(bridge: Bridge) {
 }
 
 function registerAuthHandlers(bridge: Bridge) {
-  ipcMain.handle(IPC_CHANNELS.APPLY_AUTH, async (_, curlText) => {
+  ipcMain.handle(IPC_CHANNELS.APPLY_AUTH, async (_, curlText, source) => {
     if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) {
       throw new Error('Invalid apply_auth curlText')
     }
-    return bridge.call('apply_auth', { curl_text: curlText.trim() })
+    const params: Record<string, unknown> = { curl_text: curlText.trim() }
+    if (source !== undefined && source !== null) {
+      params.source = source
+    }
+    return bridge.call('apply_auth', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.VERIFY_AUTH, async () => {
-    return bridge.call('verify_auth')
+  ipcMain.handle(IPC_CHANNELS.VERIFY_AUTH, async (_, source) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      params.source = source
+    }
+    return bridge.call('verify_auth', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async () => {
-    return openLoginWindow()
+  ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
+    return openLoginWindow(source || 'hcomic')
   })
 
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
@@ -874,26 +921,28 @@ function registerHistoryHandlers(bridge: Bridge) {
     return bridge.call('get_history', { page: p })
   })
 
-  ipcMain.handle(IPC_CHANNELS.ADD_HISTORY, async (_, comicId: unknown, title: unknown, coverUrl: unknown, source: unknown, sourceSite: unknown, mediaId: unknown, sourceUrl: unknown, lastPage: unknown, totalPages: unknown) => {
-    assert(comicIdValidator, comicId, 'add_history comicId')
-    assert(and(string(), length(1, 256)), title, 'add_history title')
-    assert(and(string(), maxLength(2048)), coverUrl, 'add_history coverUrl')
-    assert(and(string(), length(1, 64), noControlChars()), source, 'add_history source')
-    assert(and(string(), maxLength(64), noControlChars()), sourceSite, 'add_history sourceSite')
-    assert(and(string(), maxLength(256)), mediaId, 'add_history mediaId')
-    assert(and(string(), maxLength(2048)), sourceUrl, 'add_history sourceUrl')
-    assert(and(number(), integer(), minValue(0)), lastPage, 'add_history lastPage')
-    assert(and(number(), integer(), minValue(0)), totalPages, 'add_history totalPages')
+  ipcMain.handle(IPC_CHANNELS.ADD_HISTORY, async (_, params: unknown) => {
+    assert(and(object()), params, 'add_history params')
+    const p = params as Record<string, unknown>
+    assert(comicIdValidator, p.comicId, 'add_history comicId')
+    assert(and(string(), length(1, 256)), p.title, 'add_history title')
+    assert(and(string(), maxLength(2048)), p.coverUrl, 'add_history coverUrl')
+    assert(and(string(), length(1, 64), noControlChars()), p.source, 'add_history source')
+    assert(and(string(), maxLength(64), noControlChars()), p.sourceSite, 'add_history sourceSite')
+    assert(and(string(), maxLength(256)), p.mediaId, 'add_history mediaId')
+    assert(and(string(), maxLength(2048)), p.sourceUrl, 'add_history sourceUrl')
+    assert(and(number(), integer(), minValue(0)), p.lastPage, 'add_history lastPage')
+    assert(and(number(), integer(), minValue(0)), p.totalPages, 'add_history totalPages')
     return bridge.call('add_history', {
-      comic_id: comicId,
-      title,
-      cover_url: coverUrl,
-      source,
-      source_site: sourceSite,
-      media_id: mediaId,
-      source_url: sourceUrl,
-      last_page: lastPage,
-      total_pages: totalPages,
+      comic_id: p.comicId,
+      title: p.title,
+      cover_url: p.coverUrl,
+      source: p.source,
+      source_site: p.sourceSite,
+      media_id: p.mediaId,
+      source_url: p.sourceUrl,
+      last_page: p.lastPage,
+      total_pages: p.totalPages,
     })
   })
 

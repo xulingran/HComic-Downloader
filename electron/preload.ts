@@ -6,6 +6,7 @@ import {
 
 const VALID_SEARCH_MODES = new Set<string>(SEARCH_MODES)
 const VALID_SOURCES = new Set<string>(COMIC_SOURCES)
+const VALID_LOGIN_SOURCES = new Set<string>(['hcomic', 'jmcomic'])
 const VALID_CONFIG_KEYS = new Set<string>(CONFIG_KEYS)
 
 function validatePage(page: unknown): asserts page is number {
@@ -88,12 +89,16 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_DOWNLOAD, taskId)
   },
 
-  applyAuth: (curlText: unknown) => {
+  applyAuth: (curlText: unknown, source?: unknown) => {
     if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) throw new Error('Invalid curlText')
-    return ipcRenderer.invoke(IPC_CHANNELS.APPLY_AUTH, curlText)
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.APPLY_AUTH, curlText, source ?? undefined)
   },
 
-  verifyAuth: () => ipcRenderer.invoke(IPC_CHANNELS.VERIFY_AUTH),
+  verifyAuth: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.VERIFY_AUTH, source ?? undefined)
+  },
 
   shutdown: () => ipcRenderer.invoke(IPC_CHANNELS.SHUTDOWN),
 
@@ -102,7 +107,10 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_EXTERNAL, url)
   },
 
-  openLoginWindow: () => ipcRenderer.invoke(IPC_CHANNELS.OPEN_LOGIN_WINDOW),
+  openLoginWindow: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_LOGIN_WINDOW, source ?? undefined)
+  },
 
   fetchCover: (url: unknown) => {
     if (typeof url !== 'string' || url.length === 0 || url.length > 2048) throw new Error('Invalid cover URL')
@@ -199,7 +207,9 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_HISTORY, p)
   },
 
-  addHistory: (comicId: unknown, title: unknown, coverUrl: unknown, source: unknown, sourceSite: unknown, mediaId: unknown, sourceUrl: unknown, lastPage: unknown, totalPages: unknown) => {
+  addHistory: (params: Record<string, unknown>) => {
+    if (typeof params !== 'object' || params === null) throw new Error('Invalid params')
+    const { comicId, title, coverUrl, source, sourceSite, mediaId, sourceUrl, lastPage, totalPages } = params
     if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
     if (typeof title !== 'string' || title.length === 0 || title.length > 256) throw new Error('Invalid title')
     if (typeof coverUrl !== 'string' || coverUrl.length > 2048) throw new Error('Invalid coverUrl')
@@ -209,7 +219,7 @@ contextBridge.exposeInMainWorld('hcomic', {
     if (typeof sourceUrl !== 'string' || sourceUrl.length > 2048) throw new Error('Invalid sourceUrl')
     if (typeof lastPage !== 'number' || !Number.isInteger(lastPage) || lastPage < 0) throw new Error('Invalid lastPage')
     if (typeof totalPages !== 'number' || !Number.isInteger(totalPages) || totalPages < 0) throw new Error('Invalid totalPages')
-    return ipcRenderer.invoke(IPC_CHANNELS.ADD_HISTORY, comicId, title, coverUrl, source, sourceSite, mediaId, sourceUrl, lastPage, totalPages)
+    return ipcRenderer.invoke(IPC_CHANNELS.ADD_HISTORY, params)
   },
 
   deleteHistory: (comicId: unknown, source: unknown) => {
