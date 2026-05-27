@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { ComicInfo } from '@shared/types'
 import { useComicReader } from '../hooks/useComicReader'
-import { useReaderSettings } from '../hooks/useReaderSettings'
+import { useReaderSettings, type BlankPosition } from '../hooks/useReaderSettings'
 import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { PageFlipView } from './PageFlipView'
@@ -30,6 +30,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   } = useComicReader()
 
   const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
+  const [blankPosition, setBlankPosition] = useState<BlankPosition>('none')
+  const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [mounted, setMounted] = useState(false)
@@ -99,6 +101,11 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     setZoom(1)
   }, [])
 
+  const handleSetDisplayMode = useCallback((mode: typeof displayMode) => {
+    setDisplayMode(mode)
+    if (mode !== 'double') setBlankPosition('none')
+  }, [setDisplayMode])
+
   // Ctrl+Wheel zoom
   useEffect(() => {
     if (!open) return
@@ -148,10 +155,11 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         }
       } else {
         const step = displayMode === 'double' ? 2 : 1
+        const navTotal = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
           e.preventDefault()
-          if (currentPage < totalPages) {
-            setCurrentPage(Math.min(currentPage + step, totalPages))
+          if (currentPage + step <= navTotal) {
+            setCurrentPage(currentPage + step)
           }
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
           e.preventDefault()
@@ -163,7 +171,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [open, onClose, displayMode, currentPage, totalPages, setCurrentPage])
+  }, [open, onClose, displayMode, blankPosition, currentPage, totalPages, setCurrentPage])
 
   // Align currentPage to odd in double mode
   // Intentionally reads currentPage from closure without listing it as a dependency.
@@ -177,7 +185,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   if (!mounted) return null
 
-  const progress = totalPages > 0 ? Math.round((currentPage / totalPages) * 100) : 0
+  const progress = effectiveTotalPages > 0 ? Math.round((currentPage / effectiveTotalPages) * 100) : 0
 
   const handleSliderPointerDown = (e: React.PointerEvent) => {
     e.preventDefault()
@@ -204,7 +212,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     if (!track) return
     const rect = track.getBoundingClientRect()
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    const page = Math.max(1, Math.round(pct * totalPages))
+    const page = Math.max(1, Math.round(pct * effectiveTotalPages))
     dragPageRef.current = page
     pageRefs.current[page - 1]?.scrollIntoView({ behavior: 'instant' })
     setCurrentPage(page)
@@ -245,7 +253,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           className="px-2.5 py-1 rounded-full text-xs text-white"
           style={{ background: 'rgba(255,255,255,0.15)' }}
         >
-          {currentPage} / {totalPages}
+          {currentPage} / {effectiveTotalPages}
         </span>
       </div>
 
@@ -306,6 +314,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               imageCacheRef={imageCacheRef}
               cacheVersion={cacheVersion}
               onPageChange={(page) => setPreloadTarget(page)}
+              blankPosition={blankPosition}
             />
           )}
         </>
@@ -317,13 +326,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
       >
         <div className="flex items-center gap-3">
-          <span className="text-xs text-gray-500">{currentPage} / {totalPages}</span>
+          <span className="text-xs text-gray-500">{currentPage} / {effectiveTotalPages}</span>
           <div
             ref={sliderRef}
             data-track
             role="slider"
             aria-valuemin={1}
-            aria-valuemax={totalPages}
+            aria-valuemax={effectiveTotalPages}
             aria-valuenow={currentPage}
             aria-label="页面进度"
             className="flex-1 h-6 flex items-center cursor-pointer"
@@ -389,19 +398,19 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                   label="连续滚动"
                   icon={scrollIcon}
                   active={displayMode === 'scroll'}
-                  onClick={() => setDisplayMode('scroll')}
+                  onClick={() => handleSetDisplayMode('scroll')}
                 />
                 <ModeButton
                   label="单页显示"
                   icon={singleIcon}
                   active={displayMode === 'single'}
-                  onClick={() => setDisplayMode('single')}
+                  onClick={() => handleSetDisplayMode('single')}
                 />
                 <ModeButton
                   label="双页显示"
                   icon={doubleIcon}
                   active={displayMode === 'double'}
-                  onClick={() => setDisplayMode('double')}
+                  onClick={() => handleSetDisplayMode('double')}
                 />
               </div>
               {displayMode === 'scroll' && (
