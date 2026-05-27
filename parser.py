@@ -13,6 +13,7 @@ from urllib.parse import quote, urljoin
 import requests
 
 from constants import DEFAULT_USER_AGENT
+from jmcomic.parser import JmParser
 from models import AuthConfig, ComicInfo, PaginationInfo
 from utils import apply_system_proxy_to_session, configure_session_auth, normalize_source_auth
 
@@ -1171,6 +1172,7 @@ class MultiSourceParser:
     SOURCE_OPTIONS = (
         ("hcomic", "h-comic"),
         ("moeimg", "moeimg.fan"),
+        ("jmcomic", "禁漫天堂"),
     )
 
     def __init__(
@@ -1192,7 +1194,7 @@ class MultiSourceParser:
                 "bearer_token": self.source_auth["hcomic"].get("bearer_token", ""),
             }
 
-        self.parsers: dict[str, HComicParser | MoeImgParser] = {
+        self.parsers: dict[str, HComicParser | MoeImgParser | JmParser] = {
             "hcomic": HComicParser(
                 timeout=timeout,
                 cookie=self.source_auth["hcomic"]["cookie"],
@@ -1203,6 +1205,11 @@ class MultiSourceParser:
                 timeout=timeout,
                 cookie=self.source_auth["moeimg"]["cookie"],
                 user_agent=self.source_auth["moeimg"]["user_agent"],
+            ),
+            "jmcomic": JmParser(
+                timeout=timeout,
+                cookie=self.source_auth.get("jmcomic", {}).get("cookie", ""),
+                user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
             ),
         }
         self.current_source = default_source if default_source in self.parsers else "hcomic"
@@ -1216,7 +1223,7 @@ class MultiSourceParser:
         return self.parsers[self.current_source].session
 
     def get_sessions(self) -> list[requests.Session]:
-        return [self.parsers["hcomic"].session, self.parsers["moeimg"].session]
+        return [self.parsers["hcomic"].session, self.parsers["moeimg"].session, self.parsers["jmcomic"].session]
 
     def get_source_options(self) -> tuple[tuple[str, str], ...]:
         return self.SOURCE_OPTIONS
@@ -1254,7 +1261,7 @@ class MultiSourceParser:
 
     def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = source or self.current_source
-        if src != "hcomic":
+        if src not in ("hcomic", "jmcomic"):
             raise ValueError(f"Random is not supported for source: {src}")
         return self.parsers[src].random()
 
@@ -1303,6 +1310,6 @@ class MultiSourceParser:
             detail = parser.get_comic_detail(comic.id)
             return detail or comic
 
-        # moeimg 需要通过详情接口补齐章节图片地址。
+        # moeimg 和 jmcomic 需要通过详情接口补齐图片地址。
         detail = parser.get_comic_detail(comic.id)
         return detail or comic

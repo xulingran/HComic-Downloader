@@ -75,7 +75,7 @@ class SearchMixin:
         return comic
 
     def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str | None = None, tag: str = "") -> dict:
-        effective_source = source if source in ("hcomic", "moeimg") else self.config.default_source
+        effective_source = source if source in ("hcomic", "moeimg", "jmcomic") else self.config.default_source
         effective_query = query
         effective_tag = tag
         if effective_source == "hcomic" and mode == "tag":
@@ -84,6 +84,8 @@ class SearchMixin:
             effective_query = ""
         elif effective_source == "moeimg" and mode in ("author", "tag"):
             effective_query = f"{mode}:{query}"
+            effective_tag = ""
+        elif effective_source == "jmcomic" and mode == "ranking":
             effective_tag = ""
         comics, pagination = self.parser.search(effective_query, page=page, source=effective_source, tag=effective_tag)
         return {
@@ -95,8 +97,9 @@ class SearchMixin:
             },
         }
 
-    def handle_random(self) -> dict:
-        comics, pagination = self.parser.random(source="hcomic")
+    def handle_random(self, source: str | None = None) -> dict:
+        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        comics, pagination = self.parser.random(source=effective_source)
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": {
