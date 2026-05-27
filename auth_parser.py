@@ -18,14 +18,15 @@ def _split_header(header_value: str) -> tuple[str, str]:
     return name.strip(), value.strip()
 
 
-def extract_auth_from_curl(curl_text: str) -> Tuple[str, str]:
-    """从 curl 命令中提取 Cookie 和 User-Agent。
+def extract_auth_from_curl(curl_text: str) -> Tuple[str, str, str]:
+    """从 curl 命令中提取 Cookie、User-Agent 和 Bearer Token。
 
     支持:
     - `-b '...'` / `--cookie '...'`
     - `-H 'Cookie: ...'`
     - `-H 'User-Agent: ...'`
     - `-A '...'` / `--user-agent '...'`
+    - `-H 'Authorization: Bearer ...'`
     """
     text = _normalize_curl_text(curl_text)
     if not text:
@@ -38,6 +39,7 @@ def extract_auth_from_curl(curl_text: str) -> Tuple[str, str]:
 
     cookie = ""
     user_agent = ""
+    bearer_token = ""
     i = 0
     total = len(tokens)
 
@@ -65,6 +67,9 @@ def extract_auth_from_curl(curl_text: str) -> Tuple[str, str]:
                     cookie = header_val
                 elif header_name.lower() == "user-agent":
                     user_agent = header_val
+                elif header_name.lower() == "authorization":
+                    if header_val.lower().startswith("bearer "):
+                        bearer_token = header_val[7:].strip()
                 i += 2
                 continue
         elif token.startswith("--header="):
@@ -73,8 +78,15 @@ def extract_auth_from_curl(curl_text: str) -> Tuple[str, str]:
                 cookie = header_val
             elif header_name.lower() == "user-agent":
                 user_agent = header_val
+            elif header_name.lower() == "authorization":
+                if header_val.lower().startswith("bearer "):
+                    bearer_token = header_val[7:].strip()
 
         i += 1
+
+    # 从 Cookie 中自动提取 auth0_token 作为 Bearer token
+    if not bearer_token and cookie:
+        bearer_token = _extract_auth0_token(cookie)
 
     missing = []
     if not cookie:
@@ -84,4 +96,13 @@ def extract_auth_from_curl(curl_text: str) -> Tuple[str, str]:
     if missing:
         raise ValueError(f"curl 中缺少: {', '.join(missing)}")
 
-    return cookie, user_agent
+    return cookie, user_agent, bearer_token
+
+
+def _extract_auth0_token(cookie: str) -> str:
+    """从 Cookie 字符串中提取 auth0_token 值。"""
+    for part in cookie.split(";"):
+        part = part.strip()
+        if part.startswith("auth0_token="):
+            return part[len("auth0_token="):].strip()
+    return ""

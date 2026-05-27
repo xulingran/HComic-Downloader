@@ -157,13 +157,14 @@ function validateDownloadProgress(params: unknown): DownloadProgressEvent {
   assert(and(number(), integer(), minValue(0)), p.current, 'download progress: current')
   assert(and(number(), integer(), minValue(0)), p.total, 'download progress: total')
 
-  if (typeof p.current === 'number' && typeof p.total === 'number' && p.current > p.total) {
-    console.warn(`Invalid download progress: current (${p.current}) exceeds total (${p.total}), clamping for task ${p.taskId}`)
-    p.current = p.total
-  }
-
   assert(and(string(), length(1, 256)), p.title, 'download progress: title')
-  return p as unknown as DownloadProgressEvent
+
+  let current = p.current
+  if (typeof p.current === 'number' && typeof p.total === 'number' && current > p.total) {
+    console.warn(`Invalid download progress: current (${current}) exceeds total (${p.total}), clamping for task ${p.taskId}`)
+    current = p.total
+  }
+  return { ...p, current } as unknown as DownloadProgressEvent
 }
 
 const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
@@ -241,6 +242,104 @@ function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
   win.loadURL(url).catch(() => {})
 }
 
+function setupCSP(win: BrowserWindow) {
+  const isDev = !!process.env.ELECTRON_RENDERER_URL
+  const baseCspDirectives = [
+    "default-src 'self'",
+    isDev ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: https:",
+    "font-src 'self' data:",
+    isDev ? "connect-src 'self' https: ws:" : "connect-src 'self' https:",
+    "media-src 'self' data: blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+  ]
+
+  win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    callback({
+      responseHeaders: {
+        ...details.responseHeaders,
+        'Content-Security-Policy': [baseCspDirectives.join('; ')],
+      },
+    })
+  })
+}
+
+function setupRefererInjection(win: BrowserWindow) {
+  const refererFilterUrls = Object.keys(REFERER_OVERRIDES).flatMap(d => [
+    `https://${d}/*`, `https://*.${d}/*`,
+  ])
+  win.webContents.session.webRequest.onBeforeSendHeaders(
+    { urls: refererFilterUrls },
+    (details, callback) => {
+      const url = new URL(details.url)
+      for (const [domain, referer] of Object.entries(REFERER_OVERRIDES)) {
+        if (url.hostname === domain || url.hostname.endsWith('.' + domain)) {
+          details.requestHeaders['Referer'] = referer
+          break
+        }
+      }
+      callback(details)
+    }
+  )
+}
+
+function setupWindowCloseHandler(win: BrowserWindow) {
+  win.on('close', async (e) => {
+    if (isQuitting) return
+
+    // Always prevent to allow async work (Electron won't await async handlers)
+    e.preventDefault()
+
+    // Snapshot the window reference before any await
+    const snap = win
+
+    try {
+      const bridge = getPythonBridge()
+      const timeout = new Promise<null>((resolve) =>
+        setTimeout(() => resolve(null), CLOSE_GET_DOWNLOADS_TIMEOUT_MS)
+      )
+      const result = await Promise.race([
+        bridge.call('get_downloads'),
+        timeout,
+      ]) as { tasks: Array<{ status: string }> } | null
+
+      // Timeout — just close the window
+      if (!result) {
+        if (snap && !snap.isDestroyed()) snap.destroy()
+        return
+      }
+
+      if (isQuitting || !snap || snap.isDestroyed() || mainWindow !== snap) return
+
+      const activeTasks = result.tasks.filter(
+        t => t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused'
+      )
+
+      if (activeTasks.length > 0) {
+        const choice = dialog.showMessageBoxSync(snap, {
+          type: 'question',
+          title: '确认退出',
+          message: `还有 ${activeTasks.length} 个下载任务正在进行中。`,
+          detail: '退出将取消所有正在进行的下载。',
+          buttons: ['取消下载并退出', '继续下载'],
+          defaultId: 1,
+          cancelId: 1,
+        })
+        if (choice === 0) {
+          isQuitting = true
+          app.quit()
+        }
+      } else {
+        snap.destroy()
+      }
+    } catch {
+      if (snap && !snap.isDestroyed()) snap.destroy()
+    }
+  })
+}
+
 function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/preload.js')
 
@@ -292,56 +391,9 @@ function createWindow() {
 
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
 
-  // Content Security Policy — defense-in-depth against injection
-  const isDev = !!process.env.ELECTRON_RENDERER_URL
-  mainWindow.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    const csp = isDev
-      ? "default-src 'self'; " +
-        "script-src 'self' 'unsafe-inline'; " +
-        "style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data: https:; " +
-        "font-src 'self' data:; " +
-        "connect-src 'self' https: ws:; " +
-        "media-src 'self' data: blob:; " +
-        "object-src 'none'; " +
-        "base-uri 'self'"
-      : "default-src 'self'; " +
-        "script-src 'self'; " +
-        "style-src 'self' 'unsafe-inline'; " +
-        "img-src 'self' data: https:; " +
-        "font-src 'self' data:; " +
-        "connect-src 'self' https:; " +
-        "media-src 'self' data: blob:; " +
-        "object-src 'none'; " +
-        "base-uri 'self'"
+  setupCSP(mainWindow)
+  setupRefererInjection(mainWindow)
 
-    callback({
-      responseHeaders: {
-        ...details.responseHeaders,
-        'Content-Security-Policy': [csp],
-      },
-    })
-  })
-
-  // Inject correct Referer for comic page image requests
-  const refererFilterUrls = Object.keys(REFERER_OVERRIDES).flatMap(d => [
-    `https://${d}/*`, `https://*.${d}/*`,
-  ])
-  mainWindow.webContents.session.webRequest.onBeforeSendHeaders(
-    { urls: refererFilterUrls },
-    (details, callback) => {
-      const url = new URL(details.url)
-      for (const [domain, referer] of Object.entries(REFERER_OVERRIDES)) {
-        if (url.hostname === domain || url.hostname.endsWith('.' + domain)) {
-          details.requestHeaders['Referer'] = referer
-          break
-        }
-      }
-      callback(details)
-    }
-  )
-
-  // Dev server retry is handled by loadWithRetry; only show window on prod load failure
   if (!process.env.ELECTRON_RENDERER_URL) {
     mainWindow.webContents.on('did-fail-load', (_event, _errorCode, errorDescription) => {
       console.error('Failed to load:', errorDescription)
@@ -353,64 +405,7 @@ function createWindow() {
     mainWindow = null
   })
 
-  mainWindow.on('close', async (e) => {
-    if (isQuitting) return
-
-    // Always prevent to allow async work (Electron won't await async handlers)
-    e.preventDefault()
-
-    // Snapshot the window reference before any await
-    const win = mainWindow
-
-    try {
-      const bridge = getPythonBridge()
-      const timeout = new Promise<null>((resolve) =>
-        setTimeout(() => resolve(null), CLOSE_GET_DOWNLOADS_TIMEOUT_MS)
-      )
-      const result = await Promise.race([
-        bridge.call('get_downloads'),
-        timeout,
-      ]) as { tasks: Array<{ status: string }> } | null
-
-      // Timeout — just close the window
-      if (!result) {
-        if (win && !win.isDestroyed()) win.destroy()
-        return
-      }
-
-      if (isQuitting || !win || win.isDestroyed() || mainWindow !== win) return
-
-      const activeTasks = result.tasks.filter(
-        t => t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused'
-      )
-
-      if (activeTasks.length > 0) {
-        const choice = dialog.showMessageBoxSync(win, {
-          type: 'question',
-          title: '确认退出',
-          message: `还有 ${activeTasks.length} 个下载任务正在进行中。`,
-          detail: '退出将取消所有正在进行的下载。',
-          buttons: ['取消下载并退出', '继续下载'],
-          defaultId: 1,
-          cancelId: 1,
-        })
-        if (choice === 0) {
-          // User confirmed quit — trigger full app quit (before-quit handles bridge shutdown)
-          isQuitting = true
-          app.quit()
-        }
-        // choice === 1: user chose to keep running, window stays open
-      } else {
-        // No active downloads — just close this window, don't touch bridge
-        // (macOS: bridge stays alive for Dock re-activate; Windows/Linux:
-        //  window-all-closed triggers app.quit() → before-quit handles shutdown)
-        win.destroy()
-      }
-    } catch {
-      // Bridge unreachable — just close the window
-      if (win && !win.isDestroyed()) win.destroy()
-    }
-  })
+  setupWindowCloseHandler(mainWindow)
 }
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
@@ -433,9 +428,80 @@ async function extractAndApplyCookies(
     })
     const verifyResult = await bridge.call('verify_auth') as { valid: boolean; message: string }
     return { success: verifyResult.valid, message: verifyResult.message }
-  } catch (err: any) {
-    return { success: false, message: err?.message || '登录处理失败' }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : '登录处理失败'
+    return { success: false, message }
   }
+}
+
+interface LoginWindowContext {
+  settled: boolean
+  hasVisitedAuth0: boolean
+  savedUserAgent: string
+  done: (result: { success: boolean; message?: string }) => void
+  clearTimeout: () => void
+}
+
+function createLoginBrowserWindow(parent: BrowserWindow): BrowserWindow {
+  return new BrowserWindow({
+    width: 500,
+    height: 700,
+    title: '登录 H-Comic',
+    parent,
+    modal: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+}
+
+function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowContext) {
+  loginWin.webContents.on('did-navigate', (_event, url) => {
+    if (url.includes('auth0.com')) {
+      ctx.hasVisitedAuth0 = true
+    }
+    if (ctx.hasVisitedAuth0 && (url.startsWith('https://h-comic.com') || url.startsWith('https://www.h-comic.com'))) {
+      ctx.hasVisitedAuth0 = false
+      setTimeout(async () => {
+        ctx.clearTimeout()
+        const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
+        if (!userAgent) {
+          ctx.done({ success: false, message: '已取消' })
+          return
+        }
+        const result = await extractAndApplyCookies(userAgent)
+        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
+          setTimeout(() => {
+            ctx.done(result)
+          }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
+        } else {
+          ctx.done(result)
+        }
+      }, LOGIN_COOKIE_SETTLE_MS)
+    }
+  })
+}
+
+function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext) {
+  loginWin.on('closed', () => {
+    ctx.clearTimeout()
+    if (ctx.settled) return
+    if (!ctx.savedUserAgent) {
+      ctx.done({ success: false, message: '已取消' })
+      return
+    }
+    extractAndApplyCookies(ctx.savedUserAgent).then((result) => {
+      if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
+      }
+      ctx.done(result)
+    }).catch(() => {
+      ctx.done({ success: false, message: '已取消' })
+    })
+  })
 }
 
 function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
@@ -445,104 +511,67 @@ function openLoginWindow(): Promise<{ success: boolean; message?: string }> {
   }
 
   return new Promise((resolve) => {
-    let settled = false
-    let hasVisitedAuth0 = false
-    let savedUserAgent = ''
+    const loginWin = createLoginBrowserWindow(parent)
 
-    const loginWin = new BrowserWindow({
-      width: 500,
-      height: 700,
-      title: '登录 H-Comic',
-      parent: parent,
-      modal: true,
-      webPreferences: {
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: true,
+    const ctx: LoginWindowContext = {
+      settled: false,
+      hasVisitedAuth0: false,
+      savedUserAgent: '',
+      clearTimeout: () => {},
+      done: (result) => {
+        if (ctx.settled) return
+        ctx.settled = true
+        if (!loginWin.isDestroyed()) {
+          loginWin.close()
+        }
+        resolve(result)
       },
-    })
-
-    const done = (result: { success: boolean; message?: string }) => {
-      if (settled) return
-      settled = true
-      if (!loginWin.isDestroyed()) {
-        loginWin.close()
-      }
-      resolve(result)
     }
 
     const timeout = setTimeout(() => {
-      done({ success: false, message: '登录超时，请重试' })
+      ctx.done({ success: false, message: '登录超时，请重试' })
     }, LOGIN_WINDOW_TIMEOUT_MS)
+    ctx.clearTimeout = () => clearTimeout(timeout)
 
     loginWin.webContents.on('did-finish-load', () => {
-      if (!savedUserAgent) {
-        savedUserAgent = loginWin.webContents.userAgent
+      if (!ctx.savedUserAgent && !loginWin.isDestroyed()) {
+        ctx.savedUserAgent = loginWin.webContents.userAgent
       }
     })
 
-    loginWin.on('closed', () => {
-      clearTimeout(timeout)
-      if (!settled) {
-        extractAndApplyCookies(savedUserAgent || loginWin.webContents.userAgent).then((result) => {
-          if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-          }
-          done(result)
-        }).catch(() => {
-          done({ success: false, message: '已取消' })
-        })
-      }
-    })
-
-    loginWin.webContents.on('did-navigate', (_event, url) => {
-      if (url.includes('auth0.com')) {
-        hasVisitedAuth0 = true
-      }
-      if (hasVisitedAuth0 && (url.startsWith('https://h-comic.com') || url.startsWith('https://www.h-comic.com'))) {
-        hasVisitedAuth0 = false
-        setTimeout(async () => {
-          clearTimeout(timeout)
-          const result = await extractAndApplyCookies(savedUserAgent || loginWin.webContents.userAgent)
-          if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-            mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-            setTimeout(() => {
-              done(result)
-            }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
-          } else {
-            done(result)
-          }
-        }, LOGIN_COOKIE_SETTLE_MS)
-      }
-    })
+    bindLoginNavigationTracking(loginWin, ctx)
+    bindLoginWindowClosed(loginWin, ctx)
 
     loginWin.loadURL('https://h-comic.com').catch(() => {
-      done({ success: false, message: '无法打开登录页面' })
+      ctx.done({ success: false, message: '无法打开登录页面' })
     })
   })
 }
 
-function registerIPCHandlers() {
-  const bridge = getPythonBridge()
+// ── IPC Handler Groups ──────────────────────────────────────────────────────
 
-  // Sync notification settings from saved config on startup
+type Bridge = ReturnType<typeof getPythonBridge>
+
+function syncNotificationSettings(bridge: Bridge) {
   bridge.call('get_config').then((result: any) => {
-    if (result?.config) {
-      if (typeof result.config.notifyOnComplete === 'boolean'
-        && (result.config.notifyWhenForeground === 'inactive' || result.config.notifyWhenForeground === 'always')) {
-        notificationManager.updateSettings(
-          result.config.notifyOnComplete,
-          result.config.notifyWhenForeground,
-        )
-      } else if (typeof result.config.notifyOnComplete === 'boolean') {
-        notificationManager.updateSettings(
-          result.config.notifyOnComplete,
-          'inactive',
-        )
-      }
+    const config = result?.config
+    if (!config) return
+    if (typeof config.notifyOnComplete === 'boolean'
+      && (config.notifyWhenForeground === 'inactive' || config.notifyWhenForeground === 'always')) {
+      notificationManager.updateSettings(
+        config.notifyOnComplete,
+        config.notifyWhenForeground,
+      )
+    } else if (typeof config.notifyOnComplete === 'boolean') {
+      notificationManager.updateSettings(
+        config.notifyOnComplete,
+        'inactive',
+      )
     }
-  }).catch(() => {})
+  }).catch((err) => { console.warn('Failed to sync notification settings:', err) })
+}
 
+function registerNotificationHandlers(bridge: Bridge) {
   bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.DOWNLOAD_PROGRESS, (params) => {
     const event = validateDownloadProgress(params)
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, event)
@@ -560,7 +589,9 @@ function registerIPCHandlers() {
   bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.MIGRATION_ERROR, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_ERROR, params)
   })
+}
 
+function registerSearchHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source, tag) => {
     assert(and(string(), maxLength(512)), query, 'search query')
     assert(and(string(), oneOf(Array.from(MODE_VALUES))), mode, 'search mode')
@@ -571,6 +602,7 @@ function registerIPCHandlers() {
       params.source = source
     }
     if (tag !== undefined && tag !== null && tag !== '') {
+      assert(and(string(), maxLength(128), noControlChars()), tag, 'search tag')
       params.tag = tag
     }
     return bridge.call('search', params)
@@ -579,7 +611,9 @@ function registerIPCHandlers() {
   ipcMain.handle(IPC_CHANNELS.RANDOM, async () => {
     return bridge.call('random', {})
   })
+}
 
+function registerDownloadHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.DOWNLOAD, async (_, comicId, comicData, overwrite?: unknown) => {
     validateDownloadPayload(comicId, comicData)
     const params: Record<string, unknown> = { comic_id: comicId, comic_data: comicData }
@@ -600,6 +634,44 @@ function registerIPCHandlers() {
     return bridge.call('get_favourites', { page: p })
   })
 
+  ipcMain.handle(IPC_CHANNELS.ADD_TO_FAVOURITES, async (_, comicId: unknown) => {
+    assert(comicIdValidator, comicId, 'add_to_favourites comicId')
+    return bridge.call('add_to_favourites', { comic_id: comicId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CHECK_FAVOURITE, async (_, comicId: unknown) => {
+    assert(comicIdValidator, comicId, 'check_favourite comicId')
+    return bridge.call('check_favourite', { comic_id: comicId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, async (_, comicId: unknown) => {
+    assert(comicIdValidator, comicId, 'remove_from_favourites comicId')
+    return bridge.call('remove_from_favourites', { comic_id: comicId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_DOWNLOADS, async () => {
+    return bridge.call('get_downloads')
+  })
+
+  const registerTaskAction = (channel: string, method: string, label: string) => {
+    ipcMain.handle(channel, async (_, taskId) => {
+      validateTaskId(taskId, `${label} taskId`)
+      return bridge.call(method, { task_id: taskId })
+    })
+  }
+
+  registerTaskAction(IPC_CHANNELS.CANCEL_DOWNLOAD, 'cancel_download', 'cancel_download')
+  registerTaskAction(IPC_CHANNELS.PAUSE_TASK, 'pause_task', 'pause_task')
+  registerTaskAction(IPC_CHANNELS.RESUME_TASK, 'resume_task', 'resume_task')
+  registerTaskAction(IPC_CHANNELS.RETRY_TASK, 'retry_task', 'retry_task')
+  registerTaskAction(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, 'get_download_detail', 'get_download_detail')
+
+  ipcMain.handle(IPC_CHANNELS.TOGGLE_GLOBAL_PAUSE, async () => {
+    return bridge.call('toggle_global_pause')
+  })
+}
+
+function registerConfigHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_CONFIG, async () => {
     return bridge.call('get_config')
   })
@@ -637,16 +709,9 @@ function registerIPCHandlers() {
       throw err
     }
   })
+}
 
-  ipcMain.handle(IPC_CHANNELS.GET_DOWNLOADS, async () => {
-    return bridge.call('get_downloads')
-  })
-
-  ipcMain.handle(IPC_CHANNELS.CANCEL_DOWNLOAD, async (_, taskId) => {
-    validateTaskId(taskId, 'cancel_download taskId')
-    return bridge.call('cancel_download', { task_id: taskId })
-  })
-
+function registerAuthHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.APPLY_AUTH, async (_, curlText) => {
     if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) {
       throw new Error('Invalid apply_auth curlText')
@@ -665,38 +730,14 @@ function registerIPCHandlers() {
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
     return bridge.call('shutdown')
   })
+}
 
+function registerSystemHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url: string) => {
     validateHttpsUrlWithDomains(url, ALLOWED_EXTERNAL_DOMAINS, 'URL')
     await shell.openExternal(url)
   })
 
-  ipcMain.handle(IPC_CHANNELS.FETCH_COVER, async (_, url: string) => {
-    validateHttpsUrlWithDomains(url, ALLOWED_COVER_DOMAINS, 'cover image URL')
-    return bridge.call('fetch_cover', { url })
-  })
-
-  // ── Phase 1: Download Manager task controls ──
-  ipcMain.handle(IPC_CHANNELS.PAUSE_TASK, async (_, taskId: string) => {
-    validateTaskId(taskId, 'pause_task taskId')
-    return bridge.call('pause_task', { task_id: taskId })
-  })
-
-  ipcMain.handle(IPC_CHANNELS.RESUME_TASK, async (_, taskId: string) => {
-    validateTaskId(taskId, 'resume_task taskId')
-    return bridge.call('resume_task', { task_id: taskId })
-  })
-
-  ipcMain.handle(IPC_CHANNELS.RETRY_TASK, async (_, taskId: string) => {
-    validateTaskId(taskId, 'retry_task taskId')
-    return bridge.call('retry_task', { task_id: taskId })
-  })
-
-  ipcMain.handle(IPC_CHANNELS.TOGGLE_GLOBAL_PAUSE, async () => {
-    return bridge.call('toggle_global_pause')
-  })
-
-  // ── Phase 1: System info ──
   ipcMain.handle(IPC_CHANNELS.GET_PROXY_STATUS, async () => {
     return bridge.call('get_proxy_status')
   })
@@ -705,7 +746,6 @@ function registerIPCHandlers() {
     return bridge.call('get_available_fonts')
   })
 
-  // ── Phase 1: Download directory ──
   ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async () => {
     return bridge.call('open_download_dir')
   })
@@ -720,10 +760,12 @@ function registerIPCHandlers() {
     })
     return { canceled: result.canceled, filePaths: result.filePaths }
   })
+}
 
-  ipcMain.handle(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, async (_, taskId: string) => {
-    validateTaskId(taskId, 'get_download_detail taskId')
-    return bridge.call('get_download_detail', { task_id: taskId })
+function registerPreviewHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.FETCH_COVER, async (_, url: string) => {
+    validateHttpsUrlWithDomains(url, ALLOWED_COVER_DOMAINS, 'cover image URL')
+    return bridge.call('fetch_cover', { url })
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_PREVIEW_URLS, async (_, comicData: unknown) => {
@@ -733,23 +775,14 @@ function registerIPCHandlers() {
     if (data.sourceSite !== undefined && data.sourceSite !== null) {
       assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), data.sourceSite, 'comicData.sourceSite')
     }
-    const result = await bridge.call('get_preview_urls', { comic_data: comicData }) as { imageUrls?: unknown[]; totalPages?: unknown }
-    return result
+    return bridge.call('get_preview_urls', { comic_data: comicData })
   })
 
   ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown) => {
     assert(and(string(), length(1, 2048)), imageUrl, 'preview image URL')
-    try {
-      const parsed = new URL(imageUrl)
-      if (parsed.protocol !== 'https:') {
-        throw new Error('Only HTTPS URLs are allowed for preview images')
-      }
-    } catch (e: unknown) {
-      if (e instanceof Error && e.message !== 'Only HTTPS URLs are allowed for preview images') {
-        throw new Error('Invalid preview image URL format')
-      }
-      throw e
-    }
+    let parsed: URL
+    try { parsed = new URL(imageUrl) } catch { throw new Error('Invalid preview image URL format') }
+    if (parsed.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed for preview images')
     return bridge.call('fetch_preview_image', { image_url: imageUrl })
   })
 
@@ -767,8 +800,9 @@ function registerIPCHandlers() {
     }
     return bridge.call('check_downloaded_status', { comics })
   })
+}
 
-  // ── Migration ──
+function registerMigrationHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.START_MIGRATION, async (_, targetDir: unknown, mode: unknown) => {
     assert(downloadDirValidator, targetDir, 'targetDir')
     if (mode !== 'full' && mode !== 'repair') {
@@ -817,7 +851,9 @@ function registerIPCHandlers() {
     }
     return bridge.call('resolve_unmatched', params)
   })
+}
 
+function registerCacheHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_CACHE_STATS, async () => {
     return bridge.call('get_cache_stats')
   })
@@ -829,6 +865,21 @@ function registerIPCHandlers() {
   ipcMain.handle(IPC_CHANNELS.CLEAR_ALL_CACHE, async () => {
     return bridge.call('clear_all_cache')
   })
+}
+
+function registerIPCHandlers() {
+  const bridge = getPythonBridge()
+
+  syncNotificationSettings(bridge)
+  registerNotificationHandlers(bridge)
+  registerSearchHandlers(bridge)
+  registerDownloadHandlers(bridge)
+  registerConfigHandlers(bridge)
+  registerAuthHandlers(bridge)
+  registerSystemHandlers(bridge)
+  registerPreviewHandlers(bridge)
+  registerMigrationHandlers(bridge)
+  registerCacheHandlers(bridge)
 }
 
 app.whenReady().then(() => {

@@ -175,3 +175,33 @@ export function useAuth() {
 
   return { applyAuth, verifyAuth }
 }
+
+export function useAddToFavourites() {
+  const { invoke } = useIpc()
+
+  const addToFavourites = useCallback(async (comicId: string) => {
+    return invoke(() => window.hcomic!.addToFavourites(comicId))
+  }, [invoke])
+
+  return { addToFavourites }
+}
+
+export function useCheckFavourite() {
+  const { invoke } = useIpc()
+
+  const checkFavourite = useCallback(async (comicId: string) => {
+    return invoke(() => window.hcomic!.checkFavourite(comicId))
+  }, [invoke])
+
+  return { checkFavourite }
+}
+
+export function useRemoveFromFavourites() {
+  const { invoke } = useIpc()
+
+  const removeFromFavourites = useCallback(async (comicId: string) => {
+    return invoke(() => window.hcomic!.removeFromFavourites(comicId))
+  }, [invoke])
+
+  return { removeFromFavourites }
+}

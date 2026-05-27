@@ -134,8 +134,9 @@ export function and<T>(...validators: Validator<T>[]): Validator<T> {
     for (const validator of validators) {
       try {
         if (!validator(value)) return false
-      } catch {
-        return false
+      } catch (err) {
+        if (err instanceof ValidationError) return false
+        throw err
       }
     }
     return true

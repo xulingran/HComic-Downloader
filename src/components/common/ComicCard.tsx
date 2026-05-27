@@ -17,7 +17,7 @@ interface CoverImageProps {
 
 const COVER_STYLES = {
   cover: {
-    wrapper: '',
+    wrapper: 'w-full h-full',
     sfwIcon: 'text-3xl',
     sfwShowLabel: true,
     spinner: 'h-6 w-6',
@@ -168,14 +168,14 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
           </svg>
         </button>
       )}
-      <div className="aspect-[3/4]" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
+      <div className="aspect-[6/7]" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
         <CoverImage
           coverUrl={comic.coverUrl} coverSrc={coverSrc} sfwMode={sfwMode}
           title={comic.title} retry={retry} downloadStatus={downloadStatus}
           variant="cover" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}
         />
       </div>
-      <div className="p-3">
+      <div className="p-2">
         <h3
           onClick={(e) => {
             e.stopPropagation();
@@ -191,7 +191,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
           {comic.title}
         </h3>
         {comic.author && (
-          <p className="text-xs text-[var(--text-secondary)] mt-1 truncate select-text">
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate select-text">
             {comic.author}
           </p>
         )}

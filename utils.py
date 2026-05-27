@@ -108,8 +108,8 @@ def normalize_source_auth(source_auth: Optional[dict]) -> dict[str, dict[str, st
         规范化的认证字典，至少包含 hcomic 和 moeimg 的默认条目
     """
     normalized: dict[str, dict[str, str]] = {
-        "hcomic": {"cookie": "", "user_agent": ""},
-        "moeimg": {"cookie": "", "user_agent": ""},
+        "hcomic": {"cookie": "", "user_agent": "", "bearer_token": ""},
+        "moeimg": {"cookie": "", "user_agent": "", "bearer_token": ""},
     }
     if not isinstance(source_auth, dict):
         return normalized
@@ -118,6 +118,7 @@ def normalize_source_auth(source_auth: Optional[dict]) -> dict[str, dict[str, st
             continue
         normalized[source]["cookie"] = str(auth.get("cookie", "") or "").strip()
         normalized[source]["user_agent"] = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
+        normalized[source]["bearer_token"] = str(auth.get("bearer_token", "") or "").strip()
     return normalized
 
 
@@ -126,6 +127,7 @@ def configure_session_auth(
     default_headers: dict,
     cookie: str = "",
     user_agent: str = "",
+    bearer_token: str = "",
 ):
     """配置 requests.Session 的认证请求头。
 
@@ -134,12 +136,18 @@ def configure_session_auth(
         default_headers: 默认请求头字典（含默认 User-Agent）
         cookie: Cookie 字符串
         user_agent: User-Agent 字符串
+        bearer_token: Bearer token 字符串
     """
     ua = (user_agent or "").strip()
     ck = (cookie or "").strip()
+    bt = (bearer_token or "").strip()
 
     session.headers["User-Agent"] = ua or default_headers.get("User-Agent", "")
     if ck:
         session.headers["Cookie"] = ck
     else:
         session.headers.pop("Cookie", None)
+    if bt:
+        session.headers["Authorization"] = f"Bearer {bt}"
+    else:
+        session.headers.pop("Authorization", None)

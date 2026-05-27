@@ -1,8 +1,12 @@
 """Parser 收藏夹解析测试"""
 import json
 import unittest
+from unittest.mock import MagicMock, patch
 
-from parser import HComicParser
+import pytest
+import requests
+
+from parser import HComicParser, ParserResponseError
 
 
 def _build_payload_html(data_obj: dict) -> str:
@@ -95,6 +99,72 @@ class TestParserFavourites(unittest.TestCase):
     def test_build_favourites_url_with_page(self):
         self.assertEqual(HComicParser._build_favourites_url(1), "https://h-comic.com/favourites")
         self.assertEqual(HComicParser._build_favourites_url(3), "https://h-comic.com/favourites?page=3")
+
+
+class TestAddToFavourites(unittest.TestCase):
+    """测试加入收藏夹 API"""
+
+    def setUp(self):
+        self.parser = HComicParser(timeout=5)
+
+    def test_add_to_favourites_success(self):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        self.parser.session.post = MagicMock(return_value=mock_response)
+
+        result = self.parser.add_to_favourites("6a14ab77fc09e3d46c481542")
+
+        self.assertTrue(result)
+        self.parser.session.post.assert_called_once_with(
+            "https://api.h-comic.com/api/favourites",
+            json={"comicId": "6a14ab77fc09e3d46c481542"},
+            timeout=5,
+            headers={
+                "Origin": "https://h-comic.com",
+                "Referer": "https://h-comic.com/",
+                "Cookie": None,
+            },
+        )
+
+    def test_add_to_favourites_http_401(self):
+        error_response = MagicMock()
+        error_response.status_code = 401
+        self.parser.session.post = MagicMock(
+            side_effect=requests.HTTPError(response=error_response)
+        )
+
+        with self.assertRaises(ParserResponseError) as ctx:
+            self.parser.add_to_favourites("123")
+        self.assertIn("认证已失效", str(ctx.exception))
+
+    def test_add_to_favourites_http_403(self):
+        error_response = MagicMock()
+        error_response.status_code = 403
+        self.parser.session.post = MagicMock(
+            side_effect=requests.HTTPError(response=error_response)
+        )
+
+        with self.assertRaises(ParserResponseError) as ctx:
+            self.parser.add_to_favourites("123")
+        self.assertIn("认证已失效", str(ctx.exception))
+
+    def test_add_to_favourites_network_error(self):
+        self.parser.session.post = MagicMock(
+            side_effect=requests.ConnectionError("网络错误")
+        )
+
+        with self.assertRaises(ParserResponseError) as ctx:
+            self.parser.add_to_favourites("123")
+        self.assertIn("请求失败", str(ctx.exception))
+
+    def test_add_to_favourites_timeout(self):
+        self.parser.session.post = MagicMock(
+            side_effect=requests.Timeout("超时")
+        )
+
+        with self.assertRaises(ParserResponseError) as ctx:
+            self.parser.add_to_favourites("123")
+        self.assertIn("超时", str(ctx.exception))
 
 
 if __name__ == "__main__":

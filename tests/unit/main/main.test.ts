@@ -118,8 +118,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 33 previous + 1 random + 3 cache = 37 total
-      expect(handleCalls.length).toBe(37)
+      // 33 previous + 1 random + 3 cache + 1 add_to_favourites + 1 check_favourite + 1 remove_from_favourites = 40 total
+      expect(handleCalls.length).toBe(40)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -159,6 +159,7 @@ describe('main.ts', () => {
       'python:cancel-migration',
       'python:get-migration-status',
       'python:resolve-unmatched',
+      'python:add-to-favourites',
       'python:get-cache-stats',
       'python:clear-preview-cache',
       'python:clear-all-cache',
@@ -200,6 +201,7 @@ describe('main.ts', () => {
         'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',
         'check_downloaded_status', 'start_migration', 'confirm_migration', 'pause_migration', 'resume_migration',
         'cancel_migration', 'get_migration_status', 'resolve_unmatched',
+        'add_to_favourites', 'check_favourite', 'remove_from_favourites',
         'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {

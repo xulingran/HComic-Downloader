@@ -45,6 +45,65 @@ export class PythonBridge {
     return null
   }
 
+  private handleStdoutData(data: Buffer, proc: ChildProcess) {
+    if (this.process !== proc) return
+    this.buffer += data.toString()
+
+    const lines = this.buffer.split('\n')
+    this.buffer = lines.pop() || ''
+
+    for (const line of lines) {
+      if (line.trim()) {
+        if (line.length > MAX_BUFFER_SIZE) {
+          console.error('IPC single message too large, discarding')
+          for (const [, pending] of this.pendingRequests) {
+            clearTimeout(pending.timer)
+            pending.reject(new Error('IPC response too large'))
+          }
+          this.pendingRequests.clear()
+          this.buffer = ''
+          this.handleProcessFailure('IPC response too large')
+          return
+        }
+        try {
+          const response = JSON.parse(line)
+          if (response.id) {
+            const pending = this.pendingRequests.get(response.id)
+            if (pending) {
+              clearTimeout(pending.timer)
+              this.pendingRequests.delete(response.id)
+              if (response.error) {
+                const err = new Error(response.error.message) as Error & { code?: number }
+                if (typeof response.error.code === 'number') {
+                  err.code = response.error.code
+                }
+                pending.reject(err)
+              } else {
+                pending.resolve(response.result)
+                this.restartCount = 0
+              }
+            }
+          } else if (response.method) {
+            this.onNotification(response.method, response.params)
+          }
+        } catch (e) {
+          console.error('Failed to parse IPC response:', e)
+        }
+      }
+    }
+
+    if (this.buffer.length > MAX_BUFFER_SIZE) {
+      console.error('IPC buffer overflow, discarding incomplete message')
+      this.buffer = ''
+      for (const [, pending] of this.pendingRequests) {
+        clearTimeout(pending.timer)
+        pending.reject(new Error('IPC response too large'))
+      }
+      this.pendingRequests.clear()
+      this.handleProcessFailure('IPC buffer overflow')
+    }
+  }
+
   private start() {
     const pythonPath = this.getPythonPath()
     const scriptPath = this.getScriptPath()
@@ -57,66 +116,7 @@ export class PythonBridge {
     })
     const proc = this.process
 
-    proc.stdout?.on('data', (data: Buffer) => {
-      if (this.process !== proc) return
-      this.buffer += data.toString()
-
-      // Split lines first, process complete lines before overflow check
-      const lines = this.buffer.split('\n')
-      this.buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        if (line.trim()) {
-          if (line.length > MAX_BUFFER_SIZE) {
-            console.error('IPC single message too large, discarding')
-            for (const [, pending] of this.pendingRequests) {
-              clearTimeout(pending.timer)
-              pending.reject(new Error('IPC response too large'))
-            }
-            this.pendingRequests.clear()
-            this.buffer = ''
-            this.handleProcessFailure('IPC response too large')
-            return
-          }
-          try {
-            const response = JSON.parse(line)
-            if (response.id) {
-              const pending = this.pendingRequests.get(response.id)
-              if (pending) {
-                clearTimeout(pending.timer)
-                this.pendingRequests.delete(response.id)
-                if (response.error) {
-                  const err = new Error(response.error.message) as Error & { code?: number }
-                  if (typeof response.error.code === 'number') {
-                    err.code = response.error.code
-                  }
-                  pending.reject(err)
-                } else {
-                  pending.resolve(response.result)
-                  this.restartCount = 0
-                }
-              }
-            } else if (response.method) {
-              this.onNotification(response.method, response.params)
-            }
-          } catch (e) {
-            console.error('Failed to parse IPC response:', e)
-          }
-        }
-      }
-
-      // Only check overflow on the residual incomplete line
-      if (this.buffer.length > MAX_BUFFER_SIZE) {
-        console.error('IPC buffer overflow, discarding incomplete message')
-        this.buffer = ''
-        for (const [, pending] of this.pendingRequests) {
-          clearTimeout(pending.timer)
-          pending.reject(new Error('IPC response too large'))
-        }
-        this.pendingRequests.clear()
-        this.handleProcessFailure('IPC buffer overflow')
-      }
-    })
+    proc.stdout?.on('data', (data: Buffer) => this.handleStdoutData(data, proc))
 
     proc.stderr?.on('data', (data: Buffer) => {
       if (this.process !== proc) return

@@ -14,6 +14,19 @@ function validatePage(page: unknown): asserts page is number {
   }
 }
 
+function validateTaskId(id: unknown): asserts id is string {
+  if (typeof id !== 'string' || id.length === 0 || id.length > 256) throw new Error('Invalid taskId')
+}
+
+function onChannel(channel: string, callback: unknown, useData = true) {
+  if (typeof callback !== 'function') throw new Error('Invalid callback')
+  const handler = useData
+    ? (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
+    : () => callback()
+  ipcRenderer.on(channel, handler)
+  return () => { ipcRenderer.removeListener(channel, handler) }
+}
+
 contextBridge.exposeInMainWorld('hcomic', {
   search: (query: unknown, mode: unknown, page: unknown, source?: unknown, tag?: unknown) => {
     if (typeof query !== 'string' || query.length > 512) throw new Error('Invalid query')
@@ -22,9 +35,8 @@ contextBridge.exposeInMainWorld('hcomic', {
     if (tag !== undefined && tag !== null && typeof tag !== 'string') throw new Error('Invalid tag')
     if (source !== undefined && source !== null) {
       if (typeof source !== 'string' || !VALID_SOURCES.has(source)) throw new Error('Invalid source')
-      return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, source, tag)
     }
-    return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, undefined, tag)
+    return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, source ?? undefined, tag ?? undefined)
   },
 
   random: () => ipcRenderer.invoke(IPC_CHANNELS.RANDOM),
@@ -47,6 +59,21 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_FAVOURITES, p)
   },
 
+  addToFavourites: (comicId: unknown) => {
+    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
+    return ipcRenderer.invoke(IPC_CHANNELS.ADD_TO_FAVOURITES, comicId)
+  },
+
+  checkFavourite: (comicId: unknown) => {
+    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
+    return ipcRenderer.invoke(IPC_CHANNELS.CHECK_FAVOURITE, comicId)
+  },
+
+  removeFromFavourites: (comicId: unknown) => {
+    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
+    return ipcRenderer.invoke(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, comicId)
+  },
+
   getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CONFIG),
 
   setConfig: (key: unknown, value: unknown) => {
@@ -57,7 +84,7 @@ contextBridge.exposeInMainWorld('hcomic', {
   getDownloads: () => ipcRenderer.invoke(IPC_CHANNELS.GET_DOWNLOADS),
 
   cancelDownload: (taskId: unknown) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    validateTaskId(taskId)
     return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_DOWNLOAD, taskId)
   },
 
@@ -83,24 +110,21 @@ contextBridge.exposeInMainWorld('hcomic', {
   },
 
   onDownloadProgress: (callback: unknown) => {
-    if (typeof callback !== 'function') throw new Error('Invalid callback')
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
-    ipcRenderer.on(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, handler)
-    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, handler) }
+    return onChannel(NOTIFICATION_CHANNELS.DOWNLOAD_PROGRESS, callback)
   },
 
   pauseTask: (taskId: unknown) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    validateTaskId(taskId)
     return ipcRenderer.invoke(IPC_CHANNELS.PAUSE_TASK, taskId)
   },
 
   resumeTask: (taskId: unknown) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    validateTaskId(taskId)
     return ipcRenderer.invoke(IPC_CHANNELS.RESUME_TASK, taskId)
   },
 
   retryTask: (taskId: unknown) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    validateTaskId(taskId)
     return ipcRenderer.invoke(IPC_CHANNELS.RETRY_TASK, taskId)
   },
 
@@ -119,7 +143,7 @@ contextBridge.exposeInMainWorld('hcomic', {
   },
 
   getDownloadDetail: (taskId: unknown) => {
-    if (typeof taskId !== 'string' || taskId.length === 0 || taskId.length > 256) throw new Error('Invalid taskId')
+    validateTaskId(taskId)
     return ipcRenderer.invoke(IPC_CHANNELS.GET_DOWNLOAD_DETAIL, taskId)
   },
 
@@ -170,30 +194,18 @@ contextBridge.exposeInMainWorld('hcomic', {
   clearAllCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ALL_CACHE),
 
   onMigrationProgress: (callback: unknown) => {
-    if (typeof callback !== 'function') throw new Error('Invalid callback')
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
-    ipcRenderer.on(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, handler)
-    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, handler) }
+    return onChannel(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, callback)
   },
 
   onMigrationComplete: (callback: unknown) => {
-    if (typeof callback !== 'function') throw new Error('Invalid callback')
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
-    ipcRenderer.on(NOTIFICATION_CHANNELS.MIGRATION_COMPLETE, handler)
-    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.MIGRATION_COMPLETE, handler) }
+    return onChannel(NOTIFICATION_CHANNELS.MIGRATION_COMPLETE, callback)
   },
 
   onMigrationError: (callback: unknown) => {
-    if (typeof callback !== 'function') throw new Error('Invalid callback')
-    const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data)
-    ipcRenderer.on(NOTIFICATION_CHANNELS.MIGRATION_ERROR, handler)
-    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.MIGRATION_ERROR, handler) }
+    return onChannel(NOTIFICATION_CHANNELS.MIGRATION_ERROR, callback)
   },
 
   onLoginCookieSuccess: (callback: unknown) => {
-    if (typeof callback !== 'function') throw new Error('Invalid callback')
-    const handler = () => callback()
-    ipcRenderer.on(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, handler)
-    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, handler) }
+    return onChannel(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, callback, false)
   },
 })

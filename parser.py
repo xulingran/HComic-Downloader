@@ -43,16 +43,16 @@ class HComicParser:
         re.compile(r"data:\s*\[null,\s*(\{.*?\})\s*](?:\s|$)", re.S),
     )
 
-    def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = ""):
+    def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
         apply_system_proxy_to_session(self.session)
-        self.configure_auth(cookie=cookie, user_agent=user_agent)
+        self.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
 
-    def configure_auth(self, cookie: str = "", user_agent: str = ""):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置登录相关请求头。"""
-        configure_session_auth(self.session, self.HEADERS, cookie, user_agent)
+        configure_session_auth(self.session, self.HEADERS, cookie, user_agent, bearer_token)
 
     def close(self):
         """关闭底层会话连接。"""
@@ -158,6 +158,132 @@ class HComicParser:
             if raise_errors:
                 raise
             return [], None, False
+
+    def add_to_favourites(self, comic_id: str) -> bool:
+        """将漫画加入收藏夹。
+
+        向 https://api.h-comic.com/api/favourites 发送 POST 请求。
+
+        Args:
+            comic_id: 漫画 ID
+
+        Returns:
+            成功返回 True
+
+        Raises:
+            ParserResponseError: 请求失败或认证失效
+        """
+        url = "https://api.h-comic.com/api/favourites"
+        try:
+            response = self.session.post(
+                url,
+                json={"comicId": comic_id},
+                timeout=self.timeout,
+                headers={
+                    "Origin": "https://h-comic.com",
+                    "Referer": "https://h-comic.com/",
+                    "Cookie": None,
+                },
+            )
+            response.raise_for_status()
+            return True
+        except requests.Timeout as e:
+            raise ParserResponseError(f"加入收藏夹请求超时") from e
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status in (401, 403):
+                raise ParserResponseError(f"认证已失效，请重新登录") from e
+            body = ""
+            try:
+                body = e.response.text[:500] if e.response is not None else ""
+            except Exception:
+                pass
+            logger.error("add_to_favourites HTTP %s: %s", status, body)
+            raise ParserResponseError(f"加入收藏夹失败 (HTTP {status})") from e
+        except requests.RequestException as e:
+            raise ParserResponseError(f"加入收藏夹请求失败: {e}") from e
+
+    def check_favourite(self, comic_id: str) -> bool:
+        """检查漫画是否在收藏夹中。
+
+        Args:
+            comic_id: 漫画 ID
+
+        Returns:
+            True 表示已收藏，False 表示未收藏
+
+        Raises:
+            ParserResponseError: 请求失败或认证失效
+        """
+        url = f"https://api.h-comic.com/api/favourites/{comic_id}"
+        try:
+            response = self.session.get(
+                url,
+                timeout=self.timeout,
+                headers={
+                    "Origin": "https://h-comic.com",
+                    "Referer": "https://h-comic.com/",
+                    "Cookie": None,
+                },
+            )
+            if response.status_code == 200:
+                return True
+            if response.status_code == 404:
+                return False
+            response.raise_for_status()
+            return False
+        except requests.Timeout as e:
+            raise ParserResponseError("检查收藏状态请求超时") from e
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status in (401, 403):
+                raise ParserResponseError("认证已失效，请重新登录") from e
+            raise ParserResponseError(f"检查收藏状态失败 (HTTP {status})") from e
+        except requests.RequestException as e:
+            raise ParserResponseError(f"检查收藏状态请求失败: {e}") from e
+
+    def remove_from_favourites(self, comic_id: str) -> bool:
+        """将漫画从收藏夹移除。
+
+        向 https://api.h-comic.com/api/favourites/{comic_id} 发送 DELETE 请求。
+
+        Args:
+            comic_id: 漫画 ID (MongoDB ObjectId)
+
+        Returns:
+            成功返回 True
+
+        Raises:
+            ParserResponseError: 请求失败或认证失效
+        """
+        url = f"https://api.h-comic.com/api/favourites/{comic_id}"
+        try:
+            response = self.session.delete(
+                url,
+                timeout=self.timeout,
+                headers={
+                    "Origin": "https://h-comic.com",
+                    "Referer": "https://h-comic.com/",
+                    "Cookie": None,
+                },
+            )
+            response.raise_for_status()
+            return True
+        except requests.Timeout as e:
+            raise ParserResponseError("移除收藏夹请求超时") from e
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status in (401, 403):
+                raise ParserResponseError("认证已失效，请重新登录") from e
+            body = ""
+            try:
+                body = e.response.text[:500] if e.response is not None else ""
+            except Exception:
+                pass
+            logger.error("remove_from_favourites HTTP %s: %s", status, body)
+            raise ParserResponseError(f"移除收藏夹失败 (HTTP {status})") from e
+        except requests.RequestException as e:
+            raise ParserResponseError(f"移除收藏夹请求失败: {e}") from e
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> Optional[ComicInfo]:
         """获取漫画详情
@@ -328,7 +454,7 @@ class HComicParser:
         cover_url = self._build_cover_url(data)
 
         return ComicInfo(
-            id=str(data.get("id") or ""),
+            id=str(data.get("_id") or data.get("id") or ""),
             title=title_info.get("display")
             or title_info.get("japanese")
             or title_info.get("english")
@@ -583,9 +709,9 @@ class MoeImgParser:
         self._author_id_cache: Dict[str, str] = OrderedDict()
         self._tag_id_cache: Dict[str, str] = OrderedDict()
 
-    def configure_auth(self, cookie: str = "", user_agent: str = ""):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置登录相关请求头。"""
-        configure_session_auth(self.session, self.HEADERS, cookie, user_agent)
+        configure_session_auth(self.session, self.HEADERS, cookie, user_agent, bearer_token)
 
     def close(self):
         """关闭底层会话连接。"""
@@ -1065,6 +1191,7 @@ class MultiSourceParser:
             self.source_auth["hcomic"] = {
                 "cookie": (_cookie or "").strip(),
                 "user_agent": (_user_agent or "").strip(),
+                "bearer_token": self.source_auth["hcomic"].get("bearer_token", ""),
             }
 
         self.parsers: dict[str, HComicParser | MoeImgParser] = {
@@ -1072,6 +1199,7 @@ class MultiSourceParser:
                 timeout=timeout,
                 cookie=self.source_auth["hcomic"]["cookie"],
                 user_agent=self.source_auth["hcomic"]["user_agent"],
+                bearer_token=self.source_auth["hcomic"]["bearer_token"],
             ),
             "moeimg": MoeImgParser(
                 timeout=timeout,
@@ -1108,14 +1236,15 @@ class MultiSourceParser:
         auth = self.source_auth.get(current, {"cookie": "", "user_agent": ""})
         return auth.get("cookie", ""), auth.get("user_agent", "")
 
-    def configure_auth(self, cookie: str = "", user_agent: str = "", source: Optional[str] = None):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = "", source: Optional[str] = None):
         current = source or self.current_source
         if current not in self.parsers:
             return
         cookie = (cookie or "").strip()
         user_agent = (user_agent or "").strip()
-        self.source_auth[current] = {"cookie": cookie, "user_agent": user_agent}
-        self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent)
+        bearer_token = (bearer_token or "").strip()
+        self.source_auth[current] = {"cookie": cookie, "user_agent": user_agent, "bearer_token": bearer_token}
+        self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
 
     def verify_login_status(self, source: Optional[str] = None) -> Tuple[bool, str]:
         src = source or self.current_source
@@ -1136,6 +1265,24 @@ class MultiSourceParser:
         if not self.source_supports_favourites(src):
             return [], None, False
         return self.parsers[src].favourites(page=page, raise_errors=raise_errors)
+
+    def add_to_favourites(self, comic_id: str, source: Optional[str] = None) -> bool:
+        src = source or self.current_source
+        if src != "hcomic":
+            return False
+        return self.parsers[src].add_to_favourites(comic_id)
+
+    def check_favourite(self, comic_id: str, source: Optional[str] = None) -> bool:
+        src = source or self.current_source
+        if src != "hcomic":
+            return False
+        return self.parsers[src].check_favourite(comic_id)
+
+    def remove_from_favourites(self, comic_id: str, source: Optional[str] = None) -> bool:
+        src = source or self.current_source
+        if src != "hcomic":
+            return False
+        return self.parsers[src].remove_from_favourites(comic_id)
 
     def get_comic_detail(self, comic_id: str, slug: str = "", source: Optional[str] = None) -> Optional[ComicInfo]:
         src = source or self.current_source

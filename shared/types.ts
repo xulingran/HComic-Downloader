@@ -208,6 +208,18 @@ export interface IPCMethods {
     params: { page?: number }
     result: { comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }
   }
+  add_to_favourites: {
+    params: { comic_id: string }
+    result: { success: boolean }
+  }
+  check_favourite: {
+    params: { comic_id: string }
+    result: { isFavourited: boolean }
+  }
+  remove_from_favourites: {
+    params: { comic_id: string }
+    result: { success: boolean }
+  }
   get_config: {
     params: Record<string, never>
     result: { config: AppConfig }
@@ -333,6 +345,9 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:download': 'download',
   'python:check-download-conflict': 'check_download_conflict',
   'python:get-favourites': 'get_favourites',
+  'python:check-favourite': 'check_favourite',
+  'python:add-to-favourites': 'add_to_favourites',
+  'python:remove-from-favourites': 'remove_from_favourites',
   'python:get-config': 'get_config',
   'python:set-config': 'set_config',
   'python:get-downloads': 'get_downloads',
@@ -383,6 +398,9 @@ export interface HcomicAPI {
   download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
   getFavourites(page?: number): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
+  checkFavourite(comicId: string): Promise<{ isFavourited: boolean }>
+  addToFavourites(comicId: string): Promise<{ success: boolean }>
+  removeFromFavourites(comicId: string): Promise<{ success: boolean }>
   getConfig(): Promise<{ config: AppConfig }>
   setConfig(key: ConfigKey, value: ConfigValue): Promise<{ success: boolean }>
   getDownloads(): Promise<{ tasks: DownloadTask[] }>
@@ -443,6 +461,9 @@ export const IPC_CHANNELS = {
   DOWNLOAD: 'python:download',
   CHECK_DOWNLOAD_CONFLICT: 'python:check-download-conflict',
   GET_FAVOURITES: 'python:get-favourites',
+  ADD_TO_FAVOURITES: 'python:add-to-favourites',
+  CHECK_FAVOURITE: 'python:check-favourite',
+  REMOVE_FROM_FAVOURITES: 'python:remove-from-favourites',
   GET_CONFIG: 'python:get-config',
   SET_CONFIG: 'python:set-config',
   GET_DOWNLOADS: 'python:get-downloads',

@@ -13,6 +13,15 @@ vi.mock('@/hooks/useIpc', () => ({
     getConfig: mockGetConfig,
     setConfig: mockSetConfig,
     openDownloadDir: vi.fn().mockResolvedValue({ success: true })
+  }),
+  useAddToFavourites: vi.fn().mockReturnValue({
+    addToFavourites: vi.fn().mockResolvedValue({ success: true })
+  }),
+  useCheckFavourite: vi.fn().mockReturnValue({
+    checkFavourite: vi.fn().mockResolvedValue({ isFavourited: false })
+  }),
+  useRemoveFromFavourites: vi.fn().mockReturnValue({
+    removeFromFavourites: vi.fn().mockResolvedValue({ success: true })
   })
 }))
 

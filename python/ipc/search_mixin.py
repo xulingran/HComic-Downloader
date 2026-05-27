@@ -132,6 +132,39 @@ class SearchMixin:
             logger.error("Get favourites unexpected error: %s", e)
             raise
 
+    def handle_add_to_favourites(self, comic_id: str) -> Dict:
+        from parser import ParserResponseError
+        try:
+            success = self.parser.add_to_favourites(comic_id, source="hcomic")
+            return {"success": success}
+        except ParserResponseError as e:
+            msg = str(e)
+            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
+                raise AuthRequiredError(msg)
+            raise RuntimeError(msg)
+
+    def handle_check_favourite(self, comic_id: str) -> Dict:
+        from parser import ParserResponseError
+        try:
+            is_favourited = self.parser.check_favourite(comic_id, source="hcomic")
+            return {"isFavourited": is_favourited}
+        except ParserResponseError as e:
+            msg = str(e)
+            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
+                raise AuthRequiredError(msg)
+            raise RuntimeError(msg)
+
+    def handle_remove_from_favourites(self, comic_id: str) -> Dict:
+        from parser import ParserResponseError
+        try:
+            success = self.parser.remove_from_favourites(comic_id, source="hcomic")
+            return {"success": success}
+        except ParserResponseError as e:
+            msg = str(e)
+            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
+                raise AuthRequiredError(msg)
+            raise RuntimeError(msg)
+
     def handle_get_preview_urls(self, comic_data: dict) -> Dict:
         """Return all image URLs after applying the same metadata preparation as downloads."""
         if not isinstance(comic_data, dict):

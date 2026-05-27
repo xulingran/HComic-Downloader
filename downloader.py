@@ -113,9 +113,9 @@ class ComicDownloader:
         """Create an independent session (public wrapper for _create_session)."""
         return self._create_session()
 
-    def configure_auth(self, cookie: str = "", user_agent: str = ""):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置登录相关请求头，同步更新主 Session 和图片下载器池"""
-        configure_session_auth(self.session, {"User-Agent": self.default_user_agent}, cookie, user_agent)
+        configure_session_auth(self.session, {"User-Agent": self.default_user_agent}, cookie, user_agent, bearer_token)
         self.image_downloader.configure_auth(cookie=cookie, user_agent=user_agent)
 
     def rebuild_session(self):

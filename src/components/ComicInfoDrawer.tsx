@@ -1,16 +1,24 @@
 import { useEffect, useState, useCallback } from 'react'
-import { SearchMode } from '@shared/types'
+import { SearchMode, IPC_ERROR_CODES } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
+import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite } from '../hooks/useIpc'
+import { Toast } from './common/Toast'
 
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
   const { tagBlacklist, addTag, removeTag } = useSettingsStore()
+  const { addToFavourites } = useAddToFavourites()
+  const { removeFromFavourites } = useRemoveFromFavourites()
+  const { checkFavourite } = useCheckFavourite()
   const [mounted, setMounted] = useState(false)
   const [visible, setVisible] = useState(false)
   const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' } | null>(null)
+  const [favouritesState, setFavouritesState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [favToastMessage, setFavToastMessage] = useState('')
+  const [showFavToast, setShowFavToast] = useState(false)
 
-  const comicSource = drawerComic?.source || 'hcomic'
+  const comicSource = drawerComic?.sourceSite || 'hcomic'
 
   const isTagBlocked = (tag: string) => {
     const key = (comicSource === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
@@ -25,6 +33,27 @@ export function ComicInfoDrawer() {
       setVisible(false)
     }
   }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen || !drawerComic?.id || comicSource !== 'hcomic') {
+      setFavouritesState('idle')
+      return
+    }
+    let cancelled = false
+    setFavouritesState('loading')
+    checkFavourite(drawerComic.id)
+      .then((result: { isFavourited: boolean }) => {
+        if (!cancelled) {
+          setFavouritesState(result.isFavourited ? 'success' : 'idle')
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFavouritesState('idle')
+        }
+      })
+    return () => { cancelled = true }
+  }, [isOpen, drawerComic?.id, comicSource])
 
   const handleTransitionEnd = useCallback(() => {
     if (!visible) {
@@ -41,15 +70,59 @@ export function ComicInfoDrawer() {
     return () => document.removeEventListener('keydown', handler)
   }, [isOpen, closeDrawer])
 
-  if (!mounted) return null
-
   const handleSearch = (query: string, mode: SearchMode, append = false) => {
     setPendingSearch(query, mode, append)
     closeDrawer()
   }
 
+  const handleToggleFavourites = async () => {
+    if (!drawerComic?.id || favouritesState === 'loading') return
+    const isFavourited = favouritesState === 'success'
+    setFavouritesState('loading')
+    try {
+      if (isFavourited) {
+        await removeFromFavourites(drawerComic.id)
+        setFavouritesState('idle')
+        setFavToastMessage('已移除收藏')
+      } else {
+        await addToFavourites(drawerComic.id)
+        setFavouritesState('success')
+        setFavToastMessage('已加入收藏夹')
+      }
+      setShowFavToast(true)
+    } catch (err: unknown) {
+      const error = err as Error & { code?: number }
+      if (error.code === IPC_ERROR_CODES.AUTH_REQUIRED) {
+        setFavouritesState(isFavourited ? 'success' : 'error')
+        setFavToastMessage('请先登录后再操作')
+      } else {
+        setFavouritesState(isFavourited ? 'success' : 'error')
+        setFavToastMessage(isFavourited ? '移除收藏失败' : '加入收藏夹失败')
+      }
+      setShowFavToast(true)
+    }
+  }
+
+  useEffect(() => {
+    if (!showFavToast) return
+    const timer = setTimeout(() => {
+      setShowFavToast(false)
+      if (favouritesState === 'error') {
+        setFavouritesState('idle')
+      }
+    }, 3000)
+    return () => clearTimeout(timer)
+  }, [showFavToast, favouritesState])
+
+  if (!mounted) return null
+
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
+      <Toast
+        message={favToastMessage}
+        visible={showFavToast}
+        onDismiss={() => setShowFavToast(false)}
+      />
       <div
         className={`absolute inset-0 transition-opacity duration-300 ${
           visible ? 'bg-black/50' : 'bg-black/0'
@@ -101,13 +174,60 @@ export function ComicInfoDrawer() {
 
           <div>
             <span className="text-xs text-[var(--text-secondary)]">信息</span>
-            <p className="text-sm text-[var(--text-primary)] mt-0.5 select-text">
-              {drawerComic?.sourceSite || drawerComic?.source}
-              {drawerComic?.pages != null && drawerComic.pages > 0 && (
-                <> · {drawerComic.pages} 页</>
+            <div className="flex items-center gap-2 mt-0.5">
+              <p className="text-sm text-[var(--text-primary)] select-text">
+                {drawerComic?.sourceSite || drawerComic?.source}
+                {drawerComic?.pages != null && drawerComic.pages > 0 && (
+                  <> · {drawerComic.pages} 页</>
+                )}
+              </p>
+              {drawerComic?.url && (
+                <button
+                  onClick={() => window.hcomic.openUrl(drawerComic.url)}
+                  className="text-xs px-2 py-0.5 rounded-md bg-[var(--accent)]/10 text-[var(--accent)]
+                             hover:bg-[var(--accent)]/20 transition-colors flex-shrink-0"
+                  title={drawerComic.url}
+                >
+                  打开原网页
+                </button>
               )}
-            </p>
+            </div>
           </div>
+
+          {comicSource === 'hcomic' && (
+            <div>
+              <button
+                onClick={handleToggleFavourites}
+                disabled={favouritesState === 'loading'}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
+                  favouritesState === 'success'
+                    ? 'bg-pink-500/10 text-pink-500 hover:bg-pink-500/20'
+                    : 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
+                } disabled:opacity-60`}
+              >
+                <svg
+                  className="w-4 h-4 flex-shrink-0"
+                  viewBox="0 0 24 24"
+                  fill={favouritesState === 'success' ? 'currentColor' : 'none'}
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+                  />
+                </svg>
+                <span>
+                  {favouritesState === 'loading'
+                    ? '处理中...'
+                    : favouritesState === 'success'
+                      ? '已加入收藏'
+                      : '加入收藏'}
+                </span>
+              </button>
+            </div>
+          )}
 
           {drawerComic?.tags && drawerComic.tags.length > 0 && (
             <div>

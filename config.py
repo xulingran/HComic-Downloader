@@ -109,13 +109,15 @@ class Config:
             self.source_auth[source] = auth
         auth.setdefault("cookie", "")
         auth.setdefault("user_agent", "")
+        auth.setdefault("bearer_token", "")
         return auth
 
-    def set_source_auth(self, source: str, cookie: str = "", user_agent: str = ""):
+    def set_source_auth(self, source: str, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """设置来源认证信息。"""
         self.source_auth[source] = {
             "cookie": (cookie or "").strip(),
             "user_agent": (user_agent or "").strip(),
+            "bearer_token": (bearer_token or "").strip(),
         }
         if source == "hcomic":
             self.auth_cookie = self.source_auth[source]["cookie"]

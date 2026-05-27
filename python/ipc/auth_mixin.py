@@ -28,14 +28,14 @@ class AuthMixin:
 
         from auth_parser import extract_auth_from_curl
 
-        cookie, user_agent = extract_auth_from_curl(curl_text.strip())
-        self.config.set_source_auth("hcomic", cookie=cookie, user_agent=user_agent)
+        cookie, user_agent, bearer_token = extract_auth_from_curl(curl_text.strip())
+        self.config.set_source_auth("hcomic", cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
         self.config.save(_get_config_path())
 
-        self.parser.configure_auth(cookie=cookie, user_agent=user_agent, source="hcomic")
-        self.downloader.configure_auth(cookie=cookie, user_agent=user_agent)
+        self.parser.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token, source="hcomic")
+        self.downloader.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
 
-        logger.info("Auth applied: cookie length=%d, ua length=%d", len(cookie), len(user_agent))
+        logger.info("Auth applied: cookie length=%d, ua length=%d, bearer length=%d", len(cookie), len(user_agent), len(bearer_token))
         return {"success": True}
 
     def handle_verify_auth(self) -> Dict:

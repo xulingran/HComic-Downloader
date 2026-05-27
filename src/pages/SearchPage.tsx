@@ -206,8 +206,8 @@ export function SearchPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm">
+    <div className="space-y-3">
+      <div className="bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
         <div className="flex gap-3">
           <select
             value={source}
@@ -304,6 +304,7 @@ export function SearchPage() {
             <span className="text-xs text-[var(--text-secondary)]">
               源: {sources.find(s => s.value === source)?.label} | 模式: {searchModes.find(m => m.value === mode)?.label}
               {pagination && pagination.totalItems > 0 && ` | 共 ${pagination.totalItems} 条结果`}
+              {blockedCount > 0 && ` | 已过滤 ${blockedCount} 条结果`}
             </span>
             {comics.length > 0 && (
               <BatchControls
@@ -329,16 +330,10 @@ export function SearchPage() {
 
       <ErrorDisplay message={error} />
 
-      {blockedCount > 0 && (
-        <div className="text-sm text-[var(--text-secondary)]">
-          已过滤 {blockedCount} 条结果
-        </div>
-      )}
-
       {filteredComics.length > 0 && (
         <div className={cardStyle === 'detailed'
           ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-          : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
+          : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
         }>
           {filteredComics.map(({ comic, isBlocked }) => (
             isBlocked ? (
@@ -400,7 +395,7 @@ function BlockedPlaceholder({ comic, cardStyle }: { comic: ComicInfo; cardStyle:
 
   return (
     <div className="bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden opacity-50">
-      <div className="aspect-[3/4] bg-[var(--bg-secondary)] flex items-center justify-center">
+      <div className="aspect-[6/7] bg-[var(--bg-secondary)] flex items-center justify-center">
         <div className="flex flex-col items-center gap-1 text-[var(--text-secondary)]">
           <span className="text-2xl">🚫</span>
           <span className="text-xs">已屏蔽</span>
