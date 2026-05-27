@@ -18,16 +18,39 @@ import { useReaderStore } from '../stores/useReaderStore'
 const searchModes = [
   { value: 'keyword', label: '关键词' },
   { value: 'author', label: '作者' },
-  { value: 'tag', label: 'Tag' }
+  { value: 'tag', label: 'Tag' },
+  { value: 'ranking', label: '排行' }
 ]
 
 const sources = [
   { value: 'hcomic', label: 'HComic' },
-  { value: 'moeimg', label: 'Moeimg' }
+  { value: 'moeimg', label: 'Moeimg' },
+  { value: 'jmcomic', label: '禁漫天堂' }
 ]
 
-function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' {
-  return (source === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
+const rankingOptions = [
+  { value: '日更新', label: '日更新' },
+  { value: '周更新', label: '周更新' },
+  { value: '月更新', label: '月更新' },
+  { value: '总更新', label: '总更新' },
+  { value: '日点击', label: '日点击' },
+  { value: '周点击', label: '周点击' },
+  { value: '月点击', label: '月点击' },
+  { value: '总点击', label: '总点击' },
+  { value: '日评分', label: '日评分' },
+  { value: '周评分', label: '周评分' },
+  { value: '月评分', label: '月评分' },
+  { value: '总评分', label: '总评分' },
+  { value: '日收藏', label: '日收藏' },
+  { value: '周收藏', label: '周收藏' },
+  { value: '月收藏', label: '月收藏' },
+  { value: '总收藏', label: '总收藏' },
+]
+
+function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' {
+  if (source === 'moeimg') return 'moeimg'
+  if (source === 'jmcomic') return 'jmcomic'
+  return 'hcomic'
 }
 
 export function SearchPage() {
@@ -238,18 +261,32 @@ export function SearchPage() {
           </select>
 
           <div className="flex-1 relative">
-            <input
-              ref={inputRef}
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onFocus={() => { if (history.length > 0) setShowHistory(true) }}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              placeholder="输入搜索内容..."
-              className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                         text-[var(--text-primary)] placeholder-[var(--text-secondary)]
-                         focus:outline-none focus:border-[var(--accent)]"
-            />
+            {mode === 'ranking' && source === 'jmcomic' ? (
+              <select
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                           text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+              >
+                <option value="">选择排行</option>
+                {rankingOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{opt.label}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                ref={inputRef}
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                onFocus={() => { if (history.length > 0) setShowHistory(true) }}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                placeholder="输入搜索内容..."
+                className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                           text-[var(--text-primary)] placeholder-[var(--text-secondary)]
+                           focus:outline-none focus:border-[var(--accent)]"
+              />
+            )}
             {showHistory && history.length > 0 && (
               <div ref={historyDropdownRef} className="absolute top-full left-0 right-0 mt-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)]">
@@ -266,7 +303,7 @@ export function SearchPage() {
             )}
           </div>
 
-          {source === 'hcomic' && (
+          {(source === 'hcomic' || source === 'jmcomic') && (
             <button
               onClick={handleRandom}
               disabled={isLoading}
