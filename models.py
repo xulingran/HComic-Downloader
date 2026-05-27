@@ -38,6 +38,7 @@ class ComicInfo:
     media_id: str = ""
     comic_source: str = ""
     source_site: str = "hcomic"
+    scramble_id: str = ""
     image_urls: list[str] = field(default_factory=list)
 
     _IMAGE_URL_SUFFIX_MAP = {
