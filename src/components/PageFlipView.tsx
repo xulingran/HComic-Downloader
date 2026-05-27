@@ -176,6 +176,7 @@ export function PageFlipView({
           aria-disabled={!canGoPrev}
           className="w-[40%] h-full pointer-events-auto cursor-pointer flex items-center justify-start pl-4 group"
           onClick={goPrev}
+          onPointerDown={(e) => e.stopPropagation()}
           style={{ background: 'transparent', border: 'none' }}
         >
           <svg
@@ -191,6 +192,7 @@ export function PageFlipView({
           aria-disabled={!canGoNext}
           className="w-[60%] h-full pointer-events-auto cursor-pointer flex items-center justify-end pr-4 group"
           onClick={goNext}
+          onPointerDown={(e) => e.stopPropagation()}
           style={{ background: 'transparent', border: 'none' }}
         >
           <svg
