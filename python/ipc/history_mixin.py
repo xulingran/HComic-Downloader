@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import os
 import sqlite3
@@ -100,8 +99,9 @@ class ReadingHistoryDB:
             )
         """)
         # Migrate: add columns if they don't exist (for existing databases)
+        existing_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(reading_history)")}
         for col in ("source_site", "media_id"):
-            with contextlib.suppress(sqlite3.OperationalError):
+            if col not in existing_cols:
                 self._conn.execute(f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''")
         self._conn.commit()
 

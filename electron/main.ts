@@ -46,6 +46,12 @@ const ALLOWED_EXTERNAL_DOMAINS = [
   '18comic.vip',
   '18comic.org',
   'jmcomic.me',
+  // jmcomic mirror domains — need periodic maintenance as mirrors change frequently
+  'jmcomic-zzz.one',
+  'jmcomic-zzz.xyz',
+  'jmcomic-ne.net',
+  'comic18j-robo.me',
+  '18comic-cpp.com',
 ]
 
 const ALLOWED_COVER_DOMAINS = [
@@ -53,6 +59,12 @@ const ALLOWED_COVER_DOMAINS = [
   'moeimg.fan',
   'moeimg.net',
   '18comic.vip',
+  // jmcomic mirror domains — need periodic maintenance as mirrors change frequently
+  'jmcomic-zzz.one',
+  'jmcomic-zzz.xyz',
+  'jmcomic-ne.net',
+  'comic18j-robo.me',
+  '18comic-cpp.com',
 ]
 
 /** Image server domains that need Referer injection, mapped to their Referer origin. */
@@ -60,6 +72,11 @@ const REFERER_OVERRIDES: Record<string, string> = {
   'h-comic.link': 'https://h-comic.com/',
   'moeimg.fan': 'https://moeimg.fan/',
 }
+
+/** Dynamic jmcomic CDN domain, updated from Python backend config. */
+let jmcomicCdnDomain: string | null = null
+
+const DOMAIN_RE = /^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}$/
 
 const CBZ_TEMPLATE_ALLOWED_PLACEHOLDERS = ['{author}', '{title}', '{id}']
 
@@ -647,8 +664,12 @@ function registerSearchHandlers(bridge: Bridge) {
     return bridge.call('search', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.RANDOM, async () => {
-    return bridge.call('random', {})
+  ipcMain.handle(IPC_CHANNELS.RANDOM, async (_, source?: string) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      params.source = source
+    }
+    return bridge.call('random', params)
   })
 }
 
@@ -712,7 +733,16 @@ function registerDownloadHandlers(bridge: Bridge) {
 
 function registerConfigHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_CONFIG, async () => {
-    return bridge.call('get_config')
+    const result = await bridge.call('get_config') as { config?: { jmcomicCdnDomain?: string } }
+    if (result?.config?.jmcomicCdnDomain) {
+      const domain = result.config.jmcomicCdnDomain
+      if (DOMAIN_RE.test(domain)) {
+        jmcomicCdnDomain = domain
+      } else {
+        console.warn('Invalid jmcomic CDN domain from backend, ignoring:', domain)
+      }
+    }
+    return result
   })
 
   ipcMain.handle(IPC_CHANNELS.SET_CONFIG, async (_, key, value) => {
@@ -781,7 +811,12 @@ function registerAuthHandlers(bridge: Bridge) {
 
 function registerSystemHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url: string) => {
-    validateHttpsUrlWithDomains(url, ALLOWED_EXTERNAL_DOMAINS, 'URL')
+    // 动态添加 jmcomic CDN 域名
+    const allowedDomains = [...ALLOWED_EXTERNAL_DOMAINS]
+    if (jmcomicCdnDomain && !allowedDomains.includes(jmcomicCdnDomain)) {
+      allowedDomains.push(jmcomicCdnDomain)
+    }
+    validateHttpsUrlWithDomains(url, allowedDomains, 'URL')
     await shell.openExternal(url)
   })
 
@@ -811,7 +846,12 @@ function registerSystemHandlers(bridge: Bridge) {
 
 function registerPreviewHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.FETCH_COVER, async (_, url: string) => {
-    validateHttpsUrlWithDomains(url, ALLOWED_COVER_DOMAINS, 'cover image URL')
+    // 动态添加 jmcomic CDN 域名
+    const allowedDomains = [...ALLOWED_COVER_DOMAINS]
+    if (jmcomicCdnDomain && !allowedDomains.includes(jmcomicCdnDomain)) {
+      allowedDomains.push(jmcomicCdnDomain)
+    }
+    validateHttpsUrlWithDomains(url, allowedDomains, 'cover image URL')
     return bridge.call('fetch_cover', { url })
   })
 

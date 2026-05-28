@@ -219,7 +219,7 @@ export function SearchPage() {
     setQuery('')
     setSearchTags('')
     setShowHistory(false)
-    await withLoading(() => random())
+    await withLoading(() => random(source))
   }
 
   const handleOpenReader = (comic: ComicInfo) => {

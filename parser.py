@@ -1225,6 +1225,13 @@ class MultiSourceParser:
     def get_sessions(self) -> list[requests.Session]:
         return [self.parsers["hcomic"].session, self.parsers["moeimg"].session, self.parsers["jmcomic"].session]
 
+    def get_jmcomic_cdn_domain(self) -> str | None:
+        """返回 jmcomic 当前解析到的 CDN 域名。"""
+        jm_parser = self.parsers.get("jmcomic")
+        if jm_parser and hasattr(jm_parser, 'cdn_domain'):
+            return jm_parser.cdn_domain
+        return None
+
     def get_source_options(self) -> tuple[tuple[str, str], ...]:
         return self.SOURCE_OPTIONS
 

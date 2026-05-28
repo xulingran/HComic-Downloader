@@ -53,7 +53,7 @@ class Config:
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
-        if self.default_source not in ("hcomic", "moeimg"):
+        if self.default_source not in ("hcomic", "moeimg", "jmcomic"):
             self.default_source = "hcomic"
         # 验证输出格式
         if self.output_format not in ("folder", "zip", "cbz"):

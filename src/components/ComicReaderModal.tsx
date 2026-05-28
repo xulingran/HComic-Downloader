@@ -88,17 +88,17 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const recordHistory = useCallback((page: number) => {
     if (!comic || page === lastRecordedPageRef.current) return
     lastRecordedPageRef.current = page
-    addHistory(
-      comic.id,
-      comic.title,
-      comic.coverUrl,
-      comic.source,
-      comic.sourceSite || '',
-      comic.mediaId || '',
-      comic.url,
-      page,
+    addHistory({
+      comicId: comic.id,
+      title: comic.title,
+      coverUrl: comic.coverUrl,
+      source: comic.source,
+      sourceSite: comic.sourceSite || '',
+      mediaId: comic.mediaId || '',
+      sourceUrl: comic.url,
+      lastPage: page,
       totalPages,
-    ).catch((err) => {
+    }).catch((err) => {
       console.error('Failed to record history:', err)
     }).finally(() => {
       historyStore.clearCache()
@@ -108,10 +108,11 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
   const settingsPanelRef = useRef<HTMLDivElement>(null)
+  const freezePageTrackingRef = useRef(false)
 
   usePageTracking(
     pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
-    loadingState, imageUrls.length,
+    loadingState, imageUrls.length, freezePageTrackingRef,
   )
 
   // Jump to initial page when opening from history
@@ -176,17 +177,17 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       const c = comicRef.current
       if (c && currentPage > 0 && currentPage !== lastRecordedPageRef.current) {
         lastRecordedPageRef.current = currentPage
-        addHistory(
-          c.id,
-          c.title,
-          c.coverUrl,
-          c.source,
-          c.sourceSite || '',
-          c.mediaId || '',
-          c.url,
-          currentPage,
+        addHistory({
+          comicId: c.id,
+          title: c.title,
+          coverUrl: c.coverUrl,
+          source: c.source,
+          sourceSite: c.sourceSite || '',
+          mediaId: c.mediaId || '',
+          sourceUrl: c.url,
+          lastPage: currentPage,
           totalPages,
-        ).catch(() => {}).finally(() => {
+        }).catch(() => {}).finally(() => {
           historyStore.clearCache()
         })
       }
@@ -260,12 +261,28 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose, displayMode, blankPosition, currentPage, totalPages, setCurrentPage])
 
-  // Align currentPage to odd in double mode
-  // Intentionally reads currentPage from closure without listing it as a dependency.
-  // Only align on displayMode change; adding currentPage would cause infinite re-runs.
+  const prevDisplayModeRef = useRef(displayMode)
   useEffect(() => {
+    const prevMode = prevDisplayModeRef.current
+    prevDisplayModeRef.current = displayMode
+
+    if (prevMode === displayMode) return
+
     if (displayMode === 'double' && currentPage > 1 && currentPage % 2 === 0) {
       setCurrentPage(currentPage - 1)
+    }
+
+    if (displayMode === 'scroll' && currentPage > 1 && loadingState === 'loaded') {
+      freezePageTrackingRef.current = true
+      requestAnimationFrame(() => {
+        const el = pageRefs.current[currentPage - 1]
+        if (el) {
+          el.scrollIntoView({ behavior: 'instant', block: 'start' })
+        }
+        setTimeout(() => {
+          freezePageTrackingRef.current = false
+        }, 50)
+      })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayMode])

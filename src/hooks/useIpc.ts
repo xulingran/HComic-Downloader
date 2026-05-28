@@ -37,8 +37,8 @@ export function useSearch() {
 export function useRandom() {
   const { invoke } = useIpc()
 
-  const random = useCallback(async () => {
-    return invoke(() => window.hcomic!.random())
+  const random = useCallback(async (source?: string) => {
+    return invoke(() => window.hcomic!.random(source))
   }, [invoke])
 
   return { random }

@@ -6,10 +6,10 @@ import os
 import re
 import time
 
-import requests
 from lxml import etree
 
 from jmcomic.constants import DEFAULT_DOMAIN, HEADERS, PUBLISH_URL
+from jmcomic.session import create_session
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +27,7 @@ class JmDomainResolver:
     def __init__(self, cache_dir: str | None = None):
         self._cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
         self._cache_path = os.path.join(self._cache_dir, self.CACHE_FILENAME)
+        self._session = create_session()
 
     def resolve(self) -> str:
         """返回当前可用域名。优先缓存，其次发布页，最后 fallback。"""
@@ -78,7 +79,7 @@ class JmDomainResolver:
 
     def _fetch_publish_domains(self) -> list[str]:
         """从发布页解析域名列表。"""
-        resp = requests.get(self.PUBLISH_URL, headers={
+        resp = self._session.get(self.PUBLISH_URL, headers={
             "User-Agent": HEADERS["User-Agent"],
             "Accept": HEADERS["Accept"],
         }, timeout=10, allow_redirects=True)
@@ -107,12 +108,12 @@ class JmDomainResolver:
     def _test_domain(self, domain: str) -> bool:
         """测试域名是否可用。"""
         try:
-            resp = requests.head(
+            resp = self._session.head(
                 f"https://{domain}",
                 headers={"User-Agent": HEADERS["User-Agent"]},
                 timeout=self.TEST_TIMEOUT,
                 allow_redirects=True,
             )
             return resp.status_code < 500
-        except requests.RequestException:
+        except Exception:
             return False

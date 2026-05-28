@@ -208,7 +208,7 @@ export interface IPCMethods {
     result: SearchResult
   }
   random: {
-    params: Record<string, never>
+    params: { source?: string }
     result: SearchResult
   }
   download: {
@@ -429,7 +429,7 @@ export interface DownloadProgressEvent {
 /** Narrow API exposed by preload via window.hcomic */
 export interface HcomicAPI {
   search(query: string, mode: string, page: number, source?: string, tag?: string): Promise<SearchResult>
-  random(): Promise<SearchResult>
+  random(source?: string): Promise<SearchResult>
   download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
   getFavourites(page?: number): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>

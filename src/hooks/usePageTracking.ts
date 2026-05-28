@@ -12,6 +12,7 @@ export function usePageTracking(
   setCurrentPage: (page: number) => void,
   loadingState: string,
   imageCount: number,
+  freezeRef?: React.RefObject<boolean>,
 ) {
   const observerRef = useRef<IntersectionObserver | null>(null)
   const isDraggingRef = useRef(isDragging)
@@ -33,6 +34,7 @@ export function usePageTracking(
     observerRef.current = new IntersectionObserver(
       (entries) => {
         if (isDraggingRef.current) return
+        if (freezeRef?.current) return
         let topPage = currentPageRef.current
         let topY = Infinity
         for (const entry of entries) {

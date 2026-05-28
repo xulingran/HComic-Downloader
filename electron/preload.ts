@@ -39,7 +39,12 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, source ?? undefined, tag ?? undefined)
   },
 
-  random: () => ipcRenderer.invoke(IPC_CHANNELS.RANDOM),
+  random: (source?: unknown) => {
+    if (source !== undefined && source !== null) {
+      if (typeof source !== 'string' || !VALID_SOURCES.has(source)) throw new Error('Invalid source')
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.RANDOM, source ?? undefined)
+  },
 
   download: (comicId: unknown, comicData: unknown, overwrite?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0) throw new Error('Invalid comicId')

@@ -4,6 +4,10 @@ DEFAULT_DOMAIN = "18comic.vip"
 
 PUBLISH_URL = "https://jm365.work/mJ8rWd"
 
+# curl_cffi 浏览器指纹模拟标识
+# 需要定期更新以匹配当前主流浏览器版本，过旧版本可能被反爬识别
+IMPERSONATE_BROWSER = "chrome124"
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",

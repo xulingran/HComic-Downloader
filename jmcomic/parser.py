@@ -5,7 +5,6 @@ import logging
 import re
 from urllib.parse import quote
 
-import requests
 from lxml import etree
 
 from jmcomic.constants import (
@@ -18,8 +17,9 @@ from jmcomic.constants import (
     SEARCH_URL_TEMPLATE,
 )
 from jmcomic.domain import JmDomainResolver
+from jmcomic.session import create_session
 from models import ComicInfo, PaginationInfo
-from utils import apply_system_proxy_to_session, configure_session_auth
+from utils import configure_session_auth
 
 logger = logging.getLogger(__name__)
 
@@ -35,9 +35,9 @@ class JmParser:
         self._cookie = cookie
         self._user_agent = user_agent
         self._domain: str | None = None
-        self.session = requests.Session()
+        self._cdn_domain: str | None = None
+        self.session = create_session()
         self.session.headers.update(HEADERS)
-        apply_system_proxy_to_session(self.session)
         self.configure_auth(cookie=cookie, user_agent=user_agent)
 
     def _ensure_domain(self) -> str:
@@ -45,6 +45,11 @@ class JmParser:
             resolver = JmDomainResolver()
             self._domain = resolver.resolve()
         return self._domain
+
+    @property
+    def cdn_domain(self) -> str | None:
+        """返回当前解析到的 CDN 域名（如 cdn-msp2.jmcomic-zzz.one）。"""
+        return self._cdn_domain
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         configure_session_auth(self.session, HEADERS, cookie, user_agent, bearer_token)
@@ -144,7 +149,9 @@ class JmParser:
         return RANDOM_URL_TEMPLATE.format(domain=domain)
 
     def _request_text(self, url: str) -> str:
-        resp = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+        domain = self._ensure_domain()
+        headers = {"Referer": f"https://{domain}/"}
+        resp = self.session.get(url, timeout=self.timeout, allow_redirects=True, headers=headers)
         resp.raise_for_status()
         if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
             resp.encoding = "utf-8"
@@ -189,6 +196,12 @@ class JmParser:
         if cover_url.endswith("blank.jpg"):
             cover_url = ""
 
+        # 追踪 CDN 域名
+        if cover_url and not self._cdn_domain:
+            cdn_match = re.match(r"https://([^/]+)/", cover_url)
+            if cdn_match:
+                self._cdn_domain = cdn_match.group(1)
+
         return ComicInfo(
             id=comic_id,
             title=title,
@@ -223,22 +236,24 @@ class JmParser:
         title_el = doc.xpath("//h1/text()")
         title = title_el[0].strip() if title_el else "未知标题"
 
-        image_urls: list[str] = []
+        # 从 JavaScript 中提取 scramble_id
         scramble_id = ""
+        scramble_match = re.search(r"var scramble_id\s*=\s*(\d+)", html)
+        if scramble_match:
+            scramble_id = scramble_match.group(1)
+
+        # 提取图片 URL（支持 data-src 和 data-original 两种懒加载方式）
+        image_urls: list[str] = []
         img_elements = doc.xpath('.//img[contains(@id,"album_photo_")]')
         for img in img_elements:
-            img_url = img.xpath("./@data-original") or img.xpath("./@src")
+            img_url = img.xpath("./@data-src") or img.xpath("./@data-original") or img.xpath("./@src")
             if img_url:
                 url = img_url[0]
                 if not url.startswith("http"):
                     url = f"https://{domain}{url}"
-                if url.endswith("blank.jpg"):
+                if "blank.jpg" in url:
                     continue
                 image_urls.append(url)
-                if not scramble_id:
-                    m = re.search(r"/\d+/(\d+)/", url)
-                    if m:
-                        scramble_id = m.group(1)
 
         author = None
         artist_el = doc.xpath('.//span[@data-type="author"]/a/text()')
@@ -254,6 +269,26 @@ class JmParser:
             if m:
                 pages = int(m.group())
 
+        # 如果页面上的图片数量少于总页数，使用 URL 模式生成所有图片 URL
+        total_pages = max(pages, len(image_urls))
+        if len(image_urls) < total_pages and image_urls:
+            sample_url = image_urls[0]
+            url_match = re.match(r"(https://[^/]+)/media/photos/\d+/(\d+)\.(\w+)", sample_url)
+            if url_match:
+                cdn_base = url_match.group(1)
+                ext = url_match.group(3)
+                image_urls = [
+                    f"{cdn_base}/media/photos/{comic_id}/{i:05d}.{ext}"
+                    for i in range(1, total_pages + 1)
+                ]
+                logger.debug(
+                    "Generated %d image URLs from pattern (ext=%s)", total_pages, ext
+                )
+            else:
+                logger.warning(
+                    "Sample image URL does not match expected pattern: %s", sample_url
+                )
+
         cover_url = ""
         cover_el = doc.xpath('.//div[@id="album_photo_cover"]//img/@src')
         if cover_el:
@@ -265,7 +300,7 @@ class JmParser:
             id=comic_id,
             title=title,
             author=author,
-            pages=max(pages, len(image_urls)),
+            pages=total_pages,
             tags=tags,
             cover_url=cover_url,
             preview_url=f"https://{domain}/album/{comic_id}",
