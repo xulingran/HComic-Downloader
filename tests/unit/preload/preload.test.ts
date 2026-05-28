@@ -131,7 +131,12 @@ describe('preload.ts', () => {
   describe('applyAuth', () => {
     it('should invoke with curlText', async () => {
       await exposedApi.applyAuth('curl example.com')
-      expect(mockInvoke).toHaveBeenCalledWith('python:apply-auth', 'curl example.com')
+      expect(mockInvoke).toHaveBeenCalledWith('python:apply-auth', 'curl example.com', undefined)
+    })
+
+    it('should invoke with curlText and source', async () => {
+      await exposedApi.applyAuth('curl example.com', 'jmcomic')
+      expect(mockInvoke).toHaveBeenCalledWith('python:apply-auth', 'curl example.com', 'jmcomic')
     })
 
     it('should reject empty curlText', () => {
@@ -182,7 +187,12 @@ describe('preload.ts', () => {
 
     it('verifyAuth should invoke python:verify-auth', async () => {
       await exposedApi.verifyAuth()
-      expect(mockInvoke).toHaveBeenCalledWith('python:verify-auth')
+      expect(mockInvoke).toHaveBeenCalledWith('python:verify-auth', undefined)
+    })
+
+    it('verifyAuth should pass source to python:verify-auth', async () => {
+      await exposedApi.verifyAuth('jmcomic')
+      expect(mockInvoke).toHaveBeenCalledWith('python:verify-auth', 'jmcomic')
     })
   })
 

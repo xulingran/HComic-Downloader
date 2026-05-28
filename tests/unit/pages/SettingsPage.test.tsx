@@ -133,7 +133,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      const input = screen.getByPlaceholderText('请输入下载目录的绝对路径') as HTMLInputElement
+      const input = screen.getAllByPlaceholderText('请输入下载目录的绝对路径')[0] as HTMLInputElement
       expect(input.value).toBe('/downloads')
     })
   })
@@ -213,10 +213,10 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('请输入下载目录的绝对路径')).toBeInTheDocument()
+      expect(screen.getAllByPlaceholderText('请输入下载目录的绝对路径').length).toBeGreaterThanOrEqual(1)
     })
 
-    const input = screen.getByPlaceholderText('请输入下载目录的绝对路径')
+    const input = screen.getAllByPlaceholderText('请输入下载目录的绝对路径')[0]
     await userEvent.clear(input)
     await userEvent.type(input, '/new/path')
     await userEvent.tab()
@@ -241,7 +241,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('未配置')).toBeInTheDocument()
+      expect(screen.getAllByText('未配置').length).toBeGreaterThanOrEqual(2)
     })
   })
 
@@ -249,8 +249,8 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('应用登录信息')).toBeInTheDocument()
-      expect(screen.getByText('测试登录')).toBeInTheDocument()
+      expect(screen.getAllByText('应用登录信息').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(2)
     })
   })
 
@@ -258,11 +258,11 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('应用登录信息')).toBeInTheDocument()
+      expect(screen.getAllByText('应用登录信息').length).toBeGreaterThanOrEqual(2)
     })
 
-    const applyBtn = screen.getByText('应用登录信息').closest('button')!
-    expect(applyBtn).toBeDisabled()
+    const applyBtns = screen.getAllByText('应用登录信息').map(el => el.closest('button')!)
+    expect(applyBtns[0]).toBeDisabled()
   })
 
   it('apply auth works when curl text provided', async () => {
@@ -272,19 +272,19 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/从浏览器获取 curl 命令/)).toBeInTheDocument()
+      expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
     })
 
-    const textarea = screen.getByPlaceholderText(/从浏览器获取 curl 命令/)
+    const textarea = screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/)[0]
     await userEvent.type(textarea, 'curl https://example.com')
 
-    const applyBtn = screen.getByText('应用登录信息').closest('button')!
+    const applyBtn = screen.getAllByText('应用登录信息')[0].closest('button')!
     expect(applyBtn).not.toBeDisabled()
 
     await userEvent.click(applyBtn)
 
     await waitFor(() => {
-      expect(mockApplyAuth).toHaveBeenCalledWith('curl https://example.com')
+      expect(mockApplyAuth).toHaveBeenCalledWith('curl https://example.com', 'hcomic')
       expect(mockVerifyAuth).toHaveBeenCalled()
     })
   })
@@ -296,15 +296,15 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/从浏览器获取 curl 命令/)).toBeInTheDocument()
+      expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
     })
 
-    const textarea = screen.getByPlaceholderText(/从浏览器获取 curl 命令/)
+    const textarea = screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/)[0]
     await userEvent.type(textarea, 'curl cmd')
-    await userEvent.click(screen.getByText('应用登录信息'))
+    await userEvent.click(screen.getAllByText('应用登录信息')[0])
 
     await waitFor(() => {
-      expect(screen.getByText('有效')).toBeInTheDocument()
+      expect(screen.getAllByText('有效').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText('Login OK')).toBeInTheDocument()
     })
   })
@@ -316,15 +316,15 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/从浏览器获取 curl 命令/)).toBeInTheDocument()
+      expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
     })
 
-    const textarea = screen.getByPlaceholderText(/从浏览器获取 curl 命令/)
+    const textarea = screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/)[0]
     await userEvent.type(textarea, 'curl cmd')
-    await userEvent.click(screen.getByText('应用登录信息'))
+    await userEvent.click(screen.getAllByText('应用登录信息')[0])
 
     await waitFor(() => {
-      expect(screen.getByText('失效')).toBeInTheDocument()
+      expect(screen.getAllByText('失效').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText('Session expired')).toBeInTheDocument()
     })
   })
@@ -335,15 +335,15 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText(/从浏览器获取 curl 命令/)).toBeInTheDocument()
+      expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
     })
 
-    const textarea = screen.getByPlaceholderText(/从浏览器获取 curl 命令/)
+    const textarea = screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/)[0]
     await userEvent.type(textarea, 'curl cmd')
-    await userEvent.click(screen.getByText('应用登录信息'))
+    await userEvent.click(screen.getAllByText('应用登录信息')[0])
 
     await waitFor(() => {
-      expect(screen.getByText('错误')).toBeInTheDocument()
+      expect(screen.getAllByText('错误').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText('Network error')).toBeInTheDocument()
     })
   })
@@ -354,10 +354,10 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('测试登录')).toBeInTheDocument()
+      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(2)
     })
 
-    await userEvent.click(screen.getByText('测试登录'))
+    await userEvent.click(screen.getAllByText('测试登录')[0])
 
     await waitFor(() => {
       expect(mockVerifyAuth).toHaveBeenCalled()
@@ -370,13 +370,13 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('测试登录')).toBeInTheDocument()
+      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(2)
     })
 
-    await userEvent.click(screen.getByText('测试登录'))
+    await userEvent.click(screen.getAllByText('测试登录')[0])
 
     await waitFor(() => {
-      expect(screen.getByText('错误')).toBeInTheDocument()
+      expect(screen.getAllByText('错误').length).toBeGreaterThanOrEqual(1)
       expect(screen.getByText('Connection failed')).toBeInTheDocument()
     })
   })
@@ -415,8 +415,21 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(mockVerifyAuth).toHaveBeenCalled()
-      expect(screen.getByText('有效')).toBeInTheDocument()
+      expect(mockVerifyAuth).toHaveBeenCalledWith('hcomic')
+      expect(screen.getAllByText('有效').length).toBeGreaterThanOrEqual(1)
+    })
+  })
+
+  it('verifies jmcomic auth on load when hasJmcomicAuth is true', async () => {
+    mockGetConfig.mockResolvedValue({
+      config: { ...defaultConfig, hasJmcomicAuth: true }
+    })
+    mockVerifyAuth.mockResolvedValue({ valid: true, message: 'Valid session' })
+
+    render(<SettingsPage />)
+
+    await waitFor(() => {
+      expect(mockVerifyAuth).toHaveBeenCalledWith('jmcomic')
     })
   })
 
@@ -429,12 +442,12 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(mockVerifyAuth).toHaveBeenCalled()
+      expect(mockVerifyAuth).toHaveBeenCalledWith('hcomic')
     })
 
     // Should revert to idle status
     await waitFor(() => {
-      expect(screen.getByText('未配置')).toBeInTheDocument()
+      expect(screen.getAllByText('未配置').length).toBeGreaterThanOrEqual(2)
     })
   })
 
@@ -497,10 +510,10 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByPlaceholderText('请输入下载目录的绝对路径')).toBeInTheDocument()
+      expect(screen.getAllByPlaceholderText('请输入下载目录的绝对路径').length).toBeGreaterThanOrEqual(1)
     })
 
-    const input = screen.getByPlaceholderText('请输入下载目录的绝对路径')
+    const input = screen.getAllByPlaceholderText('请输入下载目录的绝对路径')[0]
     await userEvent.clear(input)
     await userEvent.tab()
 

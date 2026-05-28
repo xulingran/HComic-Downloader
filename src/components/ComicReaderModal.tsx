@@ -215,6 +215,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         clearTimeout(debounceTimerRef.current)
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- comic?.id is sufficient; recordHistory already captures comic
   }, [open, comic?.id, currentPage, loadingState, recordHistory])
 
   // Keyboard handler

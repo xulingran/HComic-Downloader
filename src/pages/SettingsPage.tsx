@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useConfig, useProxyStatus, useAvailableFonts } from '../hooks/useIpc'
 import { useOptimisticConfig } from '../hooks/useOptimisticConfig'
@@ -88,7 +88,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   const [activeSection, setActiveSection] = useState<string | null>(null)
 
-  const loadProxyStatus = async () => {
+  const loadProxyStatus = useCallback(async () => {
     setProxyLoading(true)
     try {
       const result = await getProxyStatus()
@@ -98,7 +98,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     } finally {
       setProxyLoading(false)
     }
-  }
+  }, [getProxyStatus])
 
   const loadConfig = async () => {
     try {
@@ -126,11 +126,21 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         if (result.config.hasAuth) {
           setLoginStatus('verifying')
           try {
-            const verifyResult = await verifyAuth()
+            const verifyResult = await verifyAuth('hcomic')
             setLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
             setLoginMessage(verifyResult.message || '')
           } catch {
             setLoginStatus('idle')
+          }
+        }
+        if (result.config.hasJmcomicAuth) {
+          setJmcomicLoginStatus('verifying')
+          try {
+            const verifyResult = await verifyAuth('jmcomic')
+            setJmcomicLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
+            setJmcomicLoginMessage(verifyResult.message || '')
+          } catch {
+            setJmcomicLoginStatus('idle')
           }
         }
         if (result.config.fontName) setFontName(result.config.fontName)

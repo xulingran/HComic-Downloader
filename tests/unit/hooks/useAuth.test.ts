@@ -22,7 +22,7 @@ describe('useAuth', () => {
     const hcomic = createMockHcomic({ applyAuth: vi.fn().mockResolvedValue({ success: true }) })
     const { result } = renderHook(() => useAuth())
     const response = await result.current.applyAuth('curl https://example.com')
-    expect(hcomic.applyAuth).toHaveBeenCalledWith('curl https://example.com')
+    expect(hcomic.applyAuth).toHaveBeenCalledWith('curl https://example.com', undefined)
     expect(response).toEqual({ success: true })
   })
 
@@ -39,6 +39,20 @@ describe('useAuth', () => {
     const hcomic = createMockHcomic({ applyAuth: vi.fn().mockResolvedValue({ success: true }) })
     const { result } = renderHook(() => useAuth())
     await result.current.applyAuth(curlCommand)
-    expect(hcomic.applyAuth).toHaveBeenCalledWith(curlCommand)
+    expect(hcomic.applyAuth).toHaveBeenCalledWith(curlCommand, undefined)
+  })
+
+  it('applyAuth 应传递 source 参数', async () => {
+    const hcomic = createMockHcomic({ applyAuth: vi.fn().mockResolvedValue({ success: true }) })
+    const { result } = renderHook(() => useAuth())
+    await result.current.applyAuth('curl cmd', 'jmcomic')
+    expect(hcomic.applyAuth).toHaveBeenCalledWith('curl cmd', 'jmcomic')
+  })
+
+  it('verifyAuth 应传递 source 参数', async () => {
+    const hcomic = createMockHcomic({ verifyAuth: vi.fn().mockResolvedValue({ valid: true, message: 'ok' }) })
+    const { result } = renderHook(() => useAuth())
+    await result.current.verifyAuth('jmcomic')
+    expect(hcomic.verifyAuth).toHaveBeenCalledWith('jmcomic')
   })
 })

@@ -333,11 +333,29 @@ describe('main.ts', () => {
       })
     })
 
+    it('python:apply-auth forwards source to bridge when provided', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
+      const curlStr = 'curl -H "Cookie: test=123" https://example.com'
+      await handler.handler({}, curlStr, 'jmcomic')
+
+      expect(mockBridgeCall).toHaveBeenCalledWith('apply_auth', {
+        curl_text: curlStr,
+        source: 'jmcomic'
+      })
+    })
+
     it('python:verify-auth delegates with no params', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:verify-auth')!
       await handler.handler({})
 
-      expect(mockBridgeCall).toHaveBeenCalledWith('verify_auth')
+      expect(mockBridgeCall).toHaveBeenCalledWith('verify_auth', {})
+    })
+
+    it('python:verify-auth forwards source to bridge when provided', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:verify-auth')!
+      await handler.handler({}, 'jmcomic')
+
+      expect(mockBridgeCall).toHaveBeenCalledWith('verify_auth', { source: 'jmcomic' })
     })
   })
 

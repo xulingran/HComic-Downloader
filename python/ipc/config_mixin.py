@@ -92,6 +92,9 @@ class ConfigMixin:
         config['hasAuth'] = bool(
             self.config.source_auth.get('hcomic', {}).get('cookie')
         )
+        config['hasJmcomicAuth'] = bool(
+            self.config.source_auth.get('jmcomic', {}).get('cookie')
+        )
         # 返回 jmcomic CDN 域名，供前端动态更新白名单
         jmcomic_cdn = self.parser.get_jmcomic_cdn_domain()
         if jmcomic_cdn:

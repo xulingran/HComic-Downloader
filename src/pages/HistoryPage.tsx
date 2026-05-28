@@ -74,11 +74,13 @@ export function HistoryPage() {
     } finally {
       setIsLoading(false)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only setCache is used, not the entire cache object
   }, [getHistory, cache.setCache])
 
   useEffect(() => {
     mountedRef.current = true
     if (!cache.hasCache) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       loadHistory(1)
     }
     return () => { mountedRef.current = false }
