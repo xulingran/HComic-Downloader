@@ -1,7 +1,7 @@
 """MoeImgParser 单元测试"""
 from typing import Any
 
-from parser import MoeImgParser
+from sources.moeimg import MoeImgParser
 
 
 class _MockResponse:

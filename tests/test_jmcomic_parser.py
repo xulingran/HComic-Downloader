@@ -1,6 +1,6 @@
 """jmcomic parser 单元测试。"""
-from jmcomic.constants import RANKING_MAPPINGS
-from jmcomic.parser import JmParser
+from sources.jmcomic.constants import RANKING_MAPPINGS
+from sources.jmcomic.parser import JmParser
 
 
 def test_build_search_url_keyword():

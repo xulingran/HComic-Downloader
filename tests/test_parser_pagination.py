@@ -1,7 +1,7 @@
 """Parser 分页与 JS 对象解析单元测试"""
 import unittest
 
-from parser import HComicParser
+from sources.hcomic import HComicParser
 
 
 class TestParserPagination(unittest.TestCase):

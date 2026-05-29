@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from parser import HComicParser
+from sources.hcomic import HComicParser
 
 
 @pytest.fixture

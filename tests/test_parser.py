@@ -2,7 +2,7 @@
 import pytest
 
 from models import ComicInfo
-from parser import HComicParser
+from sources.hcomic import HComicParser
 
 
 class TestHComicParser:
@@ -316,7 +316,7 @@ class TestHComicParserAdditionalCoverage:
 
     def test_verify_login_status_network_error(self, parser, monkeypatch):
         """测试登录验证网络错误"""
-        from parser import ParserResponseError
+        from sources.hcomic import ParserResponseError
 
         def mock_request_text(url):
             raise ParserResponseError("Connection failed")

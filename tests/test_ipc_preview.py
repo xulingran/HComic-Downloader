@@ -33,7 +33,7 @@ def _create_test_server():
 
 def test_fetch_preview_image_returns_data_uri(monkeypatch):
     server = _create_test_server()
-    monkeypatch.setattr(server, "_do_fetch_preview_image", lambda url: "data:image/webp;base64,abc")
+    monkeypatch.setattr(server, "_do_fetch_preview_image", lambda url, **kw: "data:image/webp;base64,abc")
 
     result = server.handle_fetch_preview_image("https://h-comic.link/api/nh/media123/pages/1")
 

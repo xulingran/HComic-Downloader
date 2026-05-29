@@ -1,6 +1,6 @@
 """MultiSourceParser 单元测试"""
 from models import ComicInfo
-from parser import MultiSourceParser
+from sources import MultiSourceParser
 
 
 def test_default_source_and_auth_mapping():

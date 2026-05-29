@@ -2,7 +2,7 @@
 
 import requests
 
-from parser import HComicParser, ParserResponseError
+from sources.hcomic import HComicParser, ParserResponseError
 
 
 def test_extract_payload_data_primary_regex_fails():

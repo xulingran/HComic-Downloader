@@ -4,7 +4,7 @@ from io import BytesIO
 
 from PIL import Image
 
-from jmcomic.descrambler import _compute_num, descramble_image
+from sources.jmcomic.descrambler import _compute_num, descramble_image
 
 
 def _make_test_image(width=100, height=200) -> bytes:

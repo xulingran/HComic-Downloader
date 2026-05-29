@@ -2,7 +2,7 @@
 import time
 from unittest.mock import patch
 
-from jmcomic.domain import JmDomainResolver
+from sources.jmcomic.domain import JmDomainResolver
 
 
 def test_resolve_from_cache(tmp_path):

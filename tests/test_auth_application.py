@@ -2,7 +2,7 @@
 import unittest
 
 from downloader import ComicDownloader
-from parser import HComicParser
+from sources.hcomic import HComicParser
 
 
 class TestAuthApplication(unittest.TestCase):

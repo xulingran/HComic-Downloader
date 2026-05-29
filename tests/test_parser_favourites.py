@@ -5,7 +5,7 @@ from unittest.mock import MagicMock
 
 import requests
 
-from parser import HComicParser, ParserResponseError
+from sources.hcomic import HComicParser, ParserResponseError
 
 
 def _build_payload_html(data_obj: dict) -> str:
@@ -109,12 +109,13 @@ class TestAddToFavourites(unittest.TestCase):
     def test_add_to_favourites_success(self):
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
-        self.parser.session.post = MagicMock(return_value=mock_response)
+        self.parser.session.request = MagicMock(return_value=mock_response)
 
         result = self.parser.add_to_favourites("6a14ab77fc09e3d46c481542")
 
         self.assertTrue(result)
-        self.parser.session.post.assert_called_once_with(
+        self.parser.session.request.assert_called_once_with(
+            "POST",
             "https://api.h-comic.com/api/favourites",
             json={"comicId": "6a14ab77fc09e3d46c481542"},
             timeout=5,
@@ -127,7 +128,7 @@ class TestAddToFavourites(unittest.TestCase):
     def test_add_to_favourites_http_401(self):
         error_response = MagicMock()
         error_response.status_code = 401
-        self.parser.session.post = MagicMock(
+        self.parser.session.request = MagicMock(
             side_effect=requests.HTTPError(response=error_response)
         )
 
@@ -138,7 +139,7 @@ class TestAddToFavourites(unittest.TestCase):
     def test_add_to_favourites_http_403(self):
         error_response = MagicMock()
         error_response.status_code = 403
-        self.parser.session.post = MagicMock(
+        self.parser.session.request = MagicMock(
             side_effect=requests.HTTPError(response=error_response)
         )
 
@@ -147,7 +148,7 @@ class TestAddToFavourites(unittest.TestCase):
         self.assertIn("认证已失效", str(ctx.exception))
 
     def test_add_to_favourites_network_error(self):
-        self.parser.session.post = MagicMock(
+        self.parser.session.request = MagicMock(
             side_effect=requests.ConnectionError("网络错误")
         )
 
@@ -156,7 +157,7 @@ class TestAddToFavourites(unittest.TestCase):
         self.assertIn("请求失败", str(ctx.exception))
 
     def test_add_to_favourites_timeout(self):
-        self.parser.session.post = MagicMock(
+        self.parser.session.request = MagicMock(
             side_effect=requests.Timeout("超时")
         )
 
@@ -175,7 +176,7 @@ class TestCheckFavourite(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"_id": "fav123", "comicId": "abc"}
-        self.parser.session.get = MagicMock(return_value=mock_response)
+        self.parser.session.request = MagicMock(return_value=mock_response)
 
         result = self.parser.check_favourite("abc")
 
@@ -184,7 +185,7 @@ class TestCheckFavourite(unittest.TestCase):
     def test_check_favourite_not_favourited_404(self):
         mock_response = MagicMock()
         mock_response.status_code = 404
-        self.parser.session.get = MagicMock(return_value=mock_response)
+        self.parser.session.request = MagicMock(return_value=mock_response)
 
         result = self.parser.check_favourite("abc")
 
@@ -194,7 +195,7 @@ class TestCheckFavourite(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.side_effect = ValueError("No JSON")
-        self.parser.session.get = MagicMock(return_value=mock_response)
+        self.parser.session.request = MagicMock(return_value=mock_response)
 
         result = self.parser.check_favourite("abc")
 
@@ -204,7 +205,7 @@ class TestCheckFavourite(unittest.TestCase):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = None
-        self.parser.session.get = MagicMock(return_value=mock_response)
+        self.parser.session.request = MagicMock(return_value=mock_response)
 
         result = self.parser.check_favourite("abc")
 
@@ -213,7 +214,7 @@ class TestCheckFavourite(unittest.TestCase):
     def test_check_favourite_http_401(self):
         error_response = MagicMock()
         error_response.status_code = 401
-        self.parser.session.get = MagicMock(
+        self.parser.session.request = MagicMock(
             side_effect=requests.HTTPError(response=error_response)
         )
 
@@ -222,7 +223,7 @@ class TestCheckFavourite(unittest.TestCase):
         self.assertIn("认证已失效", str(ctx.exception))
 
     def test_check_favourite_timeout(self):
-        self.parser.session.get = MagicMock(
+        self.parser.session.request = MagicMock(
             side_effect=requests.Timeout("超时")
         )
 
