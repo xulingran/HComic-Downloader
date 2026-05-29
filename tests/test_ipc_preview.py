@@ -21,7 +21,7 @@ def _create_test_server():
     thread pools) so the constructor can run to completion.
     """
     with patch("config.Config.load", return_value=Config()), \
-         patch("parser.MultiSourceParser", return_value=MagicMock()), \
+         patch("sources.MultiSourceParser", return_value=MagicMock()), \
          patch("downloader.ComicDownloader", return_value=MagicMock()), \
          patch("cbz_builder.CBZBuilder", return_value=MagicMock()), \
          patch("download_manager.ComicDownloadManager", return_value=MagicMock()), \
