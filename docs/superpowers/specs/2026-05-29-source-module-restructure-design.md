@@ -34,7 +34,7 @@ sources/
 - `sources/hcomic/__init__.py`：单行 re-export `from .parser import HComicParser`
 - `sources/moeimg/__init__.py`：单行 re-export `from .parser import MoeImgParser`
 - 各来源的 `parser.py`：代码内容基本原样搬运，只调整内部 import 路径
-- `sources/jmcomic/` 目录整体从根目录移入，内部文件不做修改
+- `sources/jmcomic/` 目录整体从根目录移入，内部互相引用改为相对引用（引用根目录共享模块的路径不变）
 
 ## Import 路径变更
 
