@@ -7,6 +7,14 @@ const ZOOM_STEP = 0.1
 export function useZoom(open: boolean) {
   const [zoom, setZoom] = useState(1)
 
+  // Reset zoom when the reader closes. This must run in an effect rather than
+  // during render because the zoom value is not derived from `open` — it is
+  // independent user state that only needs to be zeroed on close.
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!open) setZoom(1)
+  }, [open])
+
   const zoomIn = useCallback(() => {
     setZoom(z => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(1)))
   }, [])
