@@ -30,6 +30,7 @@ class PreviewMixin:
         "moeimg.net",
         "cdndelivers.cloud",
         "bunnyssd.com",
+        "jmcomic-zzz.one",
     }
 
     def _validate_preview_image_url(self, url: str) -> None:
@@ -99,16 +100,24 @@ class PreviewMixin:
         b64 = base64.b64encode(content).decode("ascii")
         return f"data:{content_type};base64,{b64}"
 
-    def _do_fetch_preview_image(self, url: str) -> str:
-        """Fetch a preview page image, using cache when available."""
+    def _do_fetch_preview_image(
+        self, url: str, *, scramble_id: str = "", comic_id: str = "",
+    ) -> str:
+        """Fetch a preview page image, using cache when available.
+
+        When *scramble_id* and *comic_id* are provided (jmcomic source),
+        the fetched image is descrambled before caching.
+        """
         import base64 as _base64
 
         from .image_utils import detect_image_type as _detect
 
         self._validate_preview_image_url(url)
 
-        # Check persistent cache
-        if hasattr(self, '_preview_cache'):
+        needs_descramble = bool(scramble_id and comic_id)
+
+        # Check persistent cache (only for non-descrambled images)
+        if not needs_descramble and hasattr(self, '_preview_cache'):
             cached_path = self._preview_cache.get(url)
             if cached_path:
                 try:
@@ -124,6 +133,21 @@ class PreviewMixin:
 
         data_uri = self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE)
 
+        # Apply jmcomic descrambling
+        if needs_descramble:
+            try:
+                from sources.jmcomic.descrambler import descramble_image
+                b64_part = data_uri.split(",", 1)[1]
+                raw_bytes = _base64.b64decode(b64_part)
+                descrambled = descramble_image(raw_bytes, int(comic_id), scramble_id)
+                if descrambled != raw_bytes:
+                    content_type = _detect(descrambled)
+                    if content_type:
+                        data_uri = f"data:{content_type};base64,{_base64.b64encode(descrambled).decode('ascii')}"
+                        logger.debug("Descrambled preview image for %s", url)
+            except Exception as e:
+                logger.warning("Descramble failed for %s: %s", url, e)
+
         # Save to persistent cache
         if hasattr(self, '_preview_cache'):
             try:
@@ -135,10 +159,12 @@ class PreviewMixin:
 
         return data_uri
 
-    def _async_fetch_preview_image(self, url: str, req_id: str) -> None:
+    def _async_fetch_preview_image(
+        self, url: str, req_id: str, *, scramble_id: str = "", comic_id: str = "",
+    ) -> None:
         """Thread-pool target: fetch a reader page image and write response."""
         try:
-            data_uri = self._do_fetch_preview_image(url)
+            data_uri = self._do_fetch_preview_image(url, scramble_id=scramble_id, comic_id=comic_id)
             self._write_response({
                 "jsonrpc": "2.0",
                 "id": req_id,

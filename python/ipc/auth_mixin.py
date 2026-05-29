@@ -10,7 +10,7 @@ from .types import _get_config_path
 if TYPE_CHECKING:
     from config import Config
     from downloader import ComicDownloader
-    from parser import MultiSourceParser
+    from sources import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 

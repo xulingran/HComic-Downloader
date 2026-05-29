@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from config import Config
     from download_manager import ComicDownloadManager
     from downloader import ComicDownloader
-    from parser import MultiSourceParser
+    from sources import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 

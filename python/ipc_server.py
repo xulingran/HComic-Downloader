@@ -45,7 +45,7 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
         from config import Config
         from download_manager import ComicDownloadManager
         from downloader import ComicDownloader
-        from parser import MultiSourceParser
+        from sources import MultiSourceParser
 
         try:
             self.config = Config.load(_get_config_path())
@@ -268,6 +268,8 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
                 # ── fetch_preview_image: authenticated image proxy for reader pages ──
                 if method == "fetch_preview_image":
                     image_url = params.get("image_url", "")
+                    scramble_id = params.get("scramble_id", "")
+                    comic_id = params.get("comic_id", "")
                     try:
                         self._validate_preview_image_url(image_url)
                     except ValueError as e:
@@ -276,7 +278,10 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
                             "error": {"code": -32602, "message": str(e)},
                         })
                         continue
-                    self._preview_executor.submit(self._async_fetch_preview_image, image_url, req_id)
+                    self._preview_executor.submit(
+                        self._async_fetch_preview_image, image_url, req_id,
+                        scramble_id=scramble_id, comic_id=comic_id,
+                    )
                     continue
 
                 response = self.handle_request(request)

@@ -166,7 +166,7 @@ class ComicDownloader:
         if comic.source_site != "jmcomic" or not comic.scramble_id:
             return
         try:
-            from jmcomic.descrambler import descramble_image
+            from sources.jmcomic.descrambler import descramble_image
         except ImportError:
             logger.warning("jmcomic descrambler not available, skipping postprocess")
             return

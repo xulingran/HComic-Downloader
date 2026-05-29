@@ -12,7 +12,7 @@ from .image_utils import detect_image_type
 
 if TYPE_CHECKING:
     from ipc.cover_cache import CoverCacheDB
-    from parser import MultiSourceParser
+    from sources import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +30,7 @@ class CoverMixin:
         "h-comic.link",
         "moeimg.fan",
         "moeimg.net",
+        "jmcomic-zzz.one",
     }
 
     def _build_cover_session(self):

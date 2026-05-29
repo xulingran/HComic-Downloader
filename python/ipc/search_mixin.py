@@ -11,7 +11,7 @@ from .types import AuthRequiredError
 
 if TYPE_CHECKING:
     from config import Config
-    from parser import MultiSourceParser
+    from sources import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class SearchMixin:
         }
 
     def handle_get_favourites(self, page: int = 1) -> dict:
-        from parser import ParserResponseError
+        from sources import ParserResponseError
         try:
             comics, pagination, needs_login = self.parser.favourites(
                 page=page, raise_errors=True, source="hcomic"
@@ -137,7 +137,7 @@ class SearchMixin:
             raise
 
     def handle_add_to_favourites(self, comic_id: str) -> dict:
-        from parser import ParserResponseError
+        from sources import ParserResponseError
         try:
             success = self.parser.add_to_favourites(comic_id, source="hcomic")
             return {"success": success}
@@ -148,7 +148,7 @@ class SearchMixin:
             raise RuntimeError(msg) from e
 
     def handle_check_favourite(self, comic_id: str) -> dict:
-        from parser import ParserResponseError
+        from sources import ParserResponseError
         try:
             is_favourited = self.parser.check_favourite(comic_id, source="hcomic")
             return {"isFavourited": is_favourited}
@@ -159,7 +159,7 @@ class SearchMixin:
             raise RuntimeError(msg) from e
 
     def handle_remove_from_favourites(self, comic_id: str) -> dict:
-        from parser import ParserResponseError
+        from sources import ParserResponseError
         try:
             success = self.parser.remove_from_favourites(comic_id, source="hcomic")
             return {"success": success}
@@ -201,13 +201,18 @@ class SearchMixin:
             len(image_urls),
             total_pages,
         )
-        return {
+        result = {
             "imageUrls": image_urls,
             "totalPages": total_pages,
         }
+        # jmcomic 反混淆需要 scrambleId 和 comicId
+        if comic.source_site == "jmcomic" and comic.scramble_id:
+            result["scrambleId"] = comic.scramble_id
+            result["comicId"] = comic.id
+        return result
 
-    def handle_fetch_preview_image(self, image_url: str) -> dict:
+    def handle_fetch_preview_image(self, image_url: str, scramble_id: str = "", comic_id: str = "") -> dict:
         self._validate_preview_image_url(image_url)
-        logger.info("fetch_preview_image: url=%s", image_url)
-        data_uri = self._do_fetch_preview_image(image_url)
+        logger.info("fetch_preview_image: url=%s scramble_id=%s comic_id=%s", image_url, scramble_id, comic_id)
+        data_uri = self._do_fetch_preview_image(image_url, scramble_id=scramble_id, comic_id=comic_id)
         return {"dataUri": data_uri}
