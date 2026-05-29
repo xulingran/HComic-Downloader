@@ -54,30 +54,41 @@ function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录
   })
 }
 
-function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null) {
+function completeLoginFlow(
+  loginWin: BrowserWindow,
+  ctx: LoginWindowContext,
+  mainWindow: BrowserWindow | null,
+  source: string,
+  domain: string,
+) {
+  ctx.clearTimeout()
+  const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
+  if (!userAgent) {
+    ctx.done({ success: false, message: '已取消' })
+    return
+  }
+  extractAndApplyCookies(userAgent, source, domain).then((result) => {
+    if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
+      setTimeout(() => {
+        ctx.done(result)
+      }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
+    } else {
+      ctx.done(result)
+    }
+  }).catch(() => {
+    ctx.done({ success: false, message: '已取消' })
+  })
+}
+
+function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
   loginWin.webContents.on('did-navigate', (_event, url) => {
     if (url.includes('auth0.com')) {
       ctx.hasVisitedAuth0 = true
     }
     if (ctx.hasVisitedAuth0 && (url.startsWith('https://h-comic.com') || url.startsWith('https://www.h-comic.com'))) {
       ctx.hasVisitedAuth0 = false
-      setTimeout(async () => {
-        ctx.clearTimeout()
-        const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
-        if (!userAgent) {
-          ctx.done({ success: false, message: '已取消' })
-          return
-        }
-        const result = await extractAndApplyCookies(userAgent)
-        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-          setTimeout(() => {
-            ctx.done(result)
-          }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
-        } else {
-          ctx.done(result)
-        }
-      }, LOGIN_COOKIE_SETTLE_MS)
+      setTimeout(() => completeLoginFlow(loginWin, ctx, mainWindow, source, domain), LOGIN_COOKIE_SETTLE_MS)
     }
   })
 }
@@ -104,23 +115,7 @@ function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext,
 function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
   loginWin.webContents.on('did-navigate', (_event, url) => {
     if (!url.includes('/login') && !url.includes('/user/login')) {
-      setTimeout(async () => {
-        ctx.clearTimeout()
-        const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
-        if (!userAgent) {
-          ctx.done({ success: false, message: '已取消' })
-          return
-        }
-        const result = await extractAndApplyCookies(userAgent, source, domain)
-        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-          setTimeout(() => {
-            ctx.done(result)
-          }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
-        } else {
-          ctx.done(result)
-        }
-      }, LOGIN_COOKIE_SETTLE_MS)
+      setTimeout(() => completeLoginFlow(loginWin, ctx, mainWindow, source, domain), LOGIN_COOKIE_SETTLE_MS)
     }
   })
 }
@@ -166,7 +161,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
     if (source === 'jmcomic') {
       bindJmcomicLoginTracking(loginWin, ctx, mainWindow, source, loginDomain)
     } else {
-      bindLoginNavigationTracking(loginWin, ctx, mainWindow)
+      bindLoginNavigationTracking(loginWin, ctx, mainWindow, source, loginDomain)
     }
     bindLoginWindowClosed(loginWin, ctx, mainWindow, source, loginDomain)
 
