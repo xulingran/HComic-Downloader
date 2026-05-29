@@ -5,21 +5,20 @@ import logging
 import re
 from urllib.parse import quote
 
+import requests
 from lxml import etree
 
+from models import ComicInfo, PaginationInfo
+from utils import configure_session_auth
+
 from .constants import (
-    DEFAULT_DOMAIN,
-    DETAIL_URL_TEMPLATE,
     HEADERS,
     RANDOM_URL_TEMPLATE,
     RANKING_MAPPINGS,
-    RANKING_URL_TEMPLATE,
     SEARCH_URL_TEMPLATE,
 )
 from .domain import JmDomainResolver
 from .session import create_session
-from models import ComicInfo, PaginationInfo
-from utils import configure_session_auth
 
 logger = logging.getLogger(__name__)
 

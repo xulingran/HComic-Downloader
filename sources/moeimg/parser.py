@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 import re
 from collections import OrderedDict
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import Any
 from urllib.parse import urljoin
 

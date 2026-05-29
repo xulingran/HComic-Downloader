@@ -5,10 +5,8 @@ import contextlib
 import json
 import logging
 import re
-from collections import OrderedDict
 from datetime import UTC, datetime
-from typing import Any
-from urllib.parse import quote, urljoin
+from urllib.parse import quote
 
 import requests
 

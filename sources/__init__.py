@@ -7,8 +7,8 @@ import requests
 
 from models import AuthConfig, ComicInfo, PaginationInfo
 from sources.hcomic.parser import HComicParser, ParserResponseError
-from sources.moeimg.parser import MoeImgParser
 from sources.jmcomic.parser import JmParser
+from sources.moeimg.parser import MoeImgParser
 from utils import normalize_source_auth
 
 logger = logging.getLogger(__name__)
