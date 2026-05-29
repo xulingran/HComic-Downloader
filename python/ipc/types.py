@@ -29,7 +29,6 @@ CONFIG_KEY_MAP = {
     'fontSize': 'font_size',
     'sfwMode': 'sfw_mode',
     'tagBlacklist': 'tag_blacklist',
-    'showPreview': 'show_preview',
     'previewCacheSizeLimitMB': 'preview_cache_size_limit_mb',
 }
 

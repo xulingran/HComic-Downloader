@@ -28,8 +28,6 @@ class Config:
     # 字体配置（空字符串表示自动检测）
     font_name: str = ""  # 留空则自动选择最佳中文字体
     font_size: int = 12  # 基础字体大小
-    # 预览图设置
-    show_preview: bool = False  # 是否显示封面预览图（默认不显示）
     # 登录配置
     auth_cookie: str = ""  # 从 curl 提取的 Cookie
     auth_user_agent: str = ""  # 从 curl 提取的 User-Agent
