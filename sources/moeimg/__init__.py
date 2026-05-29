@@ -1,4 +1,4 @@
 """moeimg 来源模块。"""
-from .parser import MoeImgParser, ParserResponseError
+from .parser import MoeImgParser
 
-__all__ = ["MoeImgParser", "ParserResponseError"]
+__all__ = ["MoeImgParser"]

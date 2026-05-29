@@ -4,10 +4,6 @@ import re
 from typing import Any
 from urllib.request import getproxies
 
-KB = 1024
-MB = 1024 * 1024
-GB = 1024 * 1024 * 1024
-
 
 def sanitize_filename(name: str) -> str:
     """清理文件名中的非法字符
@@ -105,11 +101,12 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         source_auth: 原始来源认证字典，可能为 None 或包含部分条目
 
     Returns:
-        规范化的认证字典，至少包含 hcomic 和 moeimg 的默认条目
+        规范化的认证字典，至少包含 hcomic、moeimg 和 jmcomic 的默认条目
     """
     normalized: dict[str, dict[str, str]] = {
         "hcomic": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "moeimg": {"cookie": "", "user_agent": "", "bearer_token": ""},
+        "jmcomic": {"cookie": "", "user_agent": "", "bearer_token": ""},
     }
     if not isinstance(source_auth, dict):
         return normalized
