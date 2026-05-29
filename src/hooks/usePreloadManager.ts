@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
  * Returns the cache map (via ref), a cacheVersion counter to trigger re-renders,
  * and setters for preloadTarget.
  */
-export function usePreloadManager(imageUrls: string[], loadingState: string) {
+export function usePreloadManager(imageUrls: string[], loadingState: string, scrambleId?: string, comicId?: string) {
   const imageCacheRef = useRef(new Map<number, string>())
   const [cacheVersion, setCacheVersion] = useState(0)
   const [preloadTarget, setPreloadTarget] = useState<number | null>(null)
@@ -40,7 +40,7 @@ export function usePreloadManager(imageUrls: string[], loadingState: string) {
       for (const pg of queue) {
         if (cancelled) return
         try {
-          const result = await window.hcomic!.fetchPreviewImage(imageUrls[pg - 1])
+          const result = await window.hcomic!.fetchPreviewImage(imageUrls[pg - 1], scrambleId, comicId)
           if (cancelled) return
           if (result?.dataUri) {
             cache.set(pg - 1, result.dataUri)
@@ -53,7 +53,7 @@ export function usePreloadManager(imageUrls: string[], loadingState: string) {
     })()
 
     return () => { cancelled = true }
-  }, [preloadTarget, loadingState, imageUrls])
+  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId])
 
   return {
     imageCacheRef,

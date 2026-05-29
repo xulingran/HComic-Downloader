@@ -43,14 +43,15 @@ export function DownloadPage() {
         // 完整任务列表由 loadDownloads() 负责加载
         continue
       }
+      const d = data as { status: string; progress: number; total: number; current: number }
       updateTask(taskId, {
-        status: data.status as DownloadStatus,
-        progress: data.progress,
-        totalPages: data.total,
-        downloadedPages: data.current,
+        status: d.status as DownloadStatus,
+        progress: d.progress,
+        totalPages: d.total,
+        downloadedPages: d.current,
       })
       // ── Detect failure transitions ──
-      if (data.status === 'failed' && existingTask.status !== 'failed') {
+      if (d.status === 'failed' && existingTask.status !== 'failed') {
         window.hcomic?.getDownloadDetail(taskId).then((detail) => setFailedDialog(detail)).catch(() => {})
       }
     }

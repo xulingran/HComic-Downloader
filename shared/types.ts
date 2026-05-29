@@ -71,6 +71,7 @@ export interface AppConfig {
   cookie?: string
   userAgent?: string
   hasAuth?: boolean
+  hasJmcomicAuth?: boolean
 }
 
 export type TagBlacklist = AppConfig['tagBlacklist']
@@ -98,6 +99,8 @@ export interface DownloadDetail {
 interface PreviewUrlsResult {
   imageUrls: string[]
   totalPages: number
+  scrambleId?: string
+  comicId?: string
 }
 
 interface PreviewImageResult {
@@ -457,7 +460,7 @@ export interface HcomicAPI {
   selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
-  fetchPreviewImage(imageUrl: string): Promise<PreviewImageResult>
+  fetchPreviewImage(imageUrl: string, scrambleId?: string, comicId?: string): Promise<PreviewImageResult>
   checkDownloadedStatus(comics: ComicInfo[]): Promise<{ statusMap: Record<string, 'downloaded' | 'unknown'> }>
   startMigration(targetDir: string, mode: 'full' | 'repair'): Promise<MigrationPlanPreview>
   confirmMigration(migrationId: string): Promise<{ started: boolean }>

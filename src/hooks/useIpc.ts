@@ -91,7 +91,7 @@ export function useDownloadProgress() {
 
   useEffect(() => {
     if (!window.hcomic?.onDownloadProgress) return
-    const unsubscribe = window.hcomic.onDownloadProgress((data: unknown) => {
+    const unsubscribe = window.hcomic.onDownloadProgress((data: { taskId: string }) => {
       setProgress(prev => ({ ...prev, [data.taskId]: data }))
     })
     return unsubscribe

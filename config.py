@@ -76,26 +76,19 @@ class Config:
         self.auth_cookie = hcomic_auth.get("cookie", "")
         self.auth_user_agent = hcomic_auth.get("user_agent", "")
 
-        try:
-            lo, hi = self.CONCURRENT_RANGE
-            self.concurrent_downloads = max(lo, min(hi, int(self.concurrent_downloads)))
-        except (ValueError, TypeError):
-            self.concurrent_downloads = 4
-        try:
-            lo, hi = self.TIMEOUT_RANGE
-            self.timeout = max(lo, min(hi, int(self.timeout)))
-        except (ValueError, TypeError):
-            self.timeout = 30
-        try:
-            lo, hi = self.RETRY_RANGE
-            self.retry_times = max(lo, min(hi, int(self.retry_times)))
-        except (ValueError, TypeError):
-            self.retry_times = 3
-        # 验证缓存上限范围
-        try:
-            self.preview_cache_size_limit_mb = max(100, min(2048, int(self.preview_cache_size_limit_mb)))
-        except (ValueError, TypeError):
-            self.preview_cache_size_limit_mb = 500
+        self._validate_ranges()
+
+    def _validate_ranges(self):
+        for attr, lo, hi, default in [
+            ("concurrent_downloads", *self.CONCURRENT_RANGE, 4),
+            ("timeout", *self.TIMEOUT_RANGE, 30),
+            ("retry_times", *self.RETRY_RANGE, 3),
+            ("preview_cache_size_limit_mb", 100, 2048, 500),
+        ]:
+            try:
+                setattr(self, attr, max(lo, min(hi, int(getattr(self, attr)))))
+            except (ValueError, TypeError):
+                setattr(self, attr, default)
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:

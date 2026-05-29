@@ -9,6 +9,8 @@ interface UseComicReaderReturn {
   currentPage: number
   loadingState: LoadingState
   errorMessage: string
+  scrambleId: string
+  comicId: string
   fetchUrls: (comic: ComicInfo) => Promise<void>
   setCurrentPage: (page: number) => void
   reset: () => void
@@ -20,6 +22,8 @@ export function useComicReader(): UseComicReaderReturn {
   const [currentPage, setCurrentPage] = useState(0)
   const [loadingState, setLoadingState] = useState<LoadingState>('idle')
   const [errorMessage, setErrorMessage] = useState('')
+  const [scrambleId, setScrambleId] = useState('')
+  const [comicId, setComicId] = useState('')
 
   const fetchUrls = useCallback(async (comic: ComicInfo) => {
     setLoadingState('loading')
@@ -28,6 +32,8 @@ export function useComicReader(): UseComicReaderReturn {
       const result = await window.hcomic!.getPreviewUrls(comic)
       setImageUrls(result.imageUrls)
       setTotalPages(result.totalPages)
+      setScrambleId(result.scrambleId ?? '')
+      setComicId(result.comicId ?? '')
       setCurrentPage(result.imageUrls.length > 0 ? 1 : 0)
       setLoadingState('loaded')
     } catch (err) {
@@ -43,6 +49,8 @@ export function useComicReader(): UseComicReaderReturn {
     setCurrentPage(0)
     setLoadingState('idle')
     setErrorMessage('')
+    setScrambleId('')
+    setComicId('')
   }, [])
 
   return {
@@ -51,6 +59,8 @@ export function useComicReader(): UseComicReaderReturn {
     currentPage,
     loadingState,
     errorMessage,
+    scrambleId,
+    comicId,
     fetchUrls,
     setCurrentPage,
     reset,

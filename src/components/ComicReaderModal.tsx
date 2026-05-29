@@ -4,15 +4,14 @@ import { useComicReader } from '../hooks/useComicReader'
 import { useReaderSettings, type BlankPosition } from '../hooks/useReaderSettings'
 import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
+import { useZoom } from '../hooks/useZoom'
+import { useSliderDrag } from '../hooks/useSliderDrag'
+import { useModalAnimation } from '../hooks/useModalAnimation'
 import { useHistory } from '../hooks/useIpc'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { PageFlipView } from './PageFlipView'
 import { ReaderPage } from './ReaderPage'
-
-const ZOOM_MIN = 0.25
-const ZOOM_MAX = 4.0
-const ZOOM_STEP = 0.1
 
 interface ComicReaderModalProps {
   comic: ComicInfo | null
@@ -27,6 +26,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     currentPage,
     loadingState,
     errorMessage,
+    scrambleId,
+    comicId,
     fetchUrls,
     setCurrentPage,
     reset,
@@ -34,34 +35,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
   const [blankPosition, setBlankPosition] = useState<BlankPosition>('none')
-  const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [zoom, setZoom] = useState(1)
-  const [mounted, setMounted] = useState(false)
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMounted(true)
-      // 双层 RAF：等待 DOM mount + 浏览器完成样式计算后再触发 CSS transition
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setVisible(true))
-      })
-    } else {
-      setVisible(false)
-    }
-  }, [open])
-
-  const handleTransitionEnd = useCallback(() => {
-    if (!visible) {
-      setMounted(false)
-    }
-  }, [visible])
-
-  const [isDragging, setIsDragging] = useState(false)
-  const dragPageRef = useRef(0)
-  const sliderRef = useRef<HTMLDivElement>(null)
+  const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
+  const { mounted, visible, handleTransitionEnd } = useModalAnimation(open)
 
   const {
     imageCacheRef,
@@ -69,7 +45,17 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     preloadTarget,
     setPreloadTarget,
     clearCache,
-  } = usePreloadManager(imageUrls, loadingState)
+  } = usePreloadManager(imageUrls, loadingState, scrambleId, comicId)
+
+  const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+  const {
+    isDragging,
+    sliderRef,
+    handleSliderPointerDown,
+    handleSliderPointerMove,
+    handleSliderPointerUp,
+    cancelDrag,
+  } = useSliderDrag(effectiveTotalPages, setCurrentPage, setPreloadTarget)
 
   const { addHistory } = useHistory()
   const historyStore = useHistoryStore()
@@ -137,36 +123,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     return () => document.removeEventListener('mousedown', handler)
   }, [settingsOpen])
 
-  const zoomIn = useCallback(() => {
-    setZoom(z => Math.min(ZOOM_MAX, +(z + ZOOM_STEP).toFixed(1)))
-  }, [])
-
-  const zoomOut = useCallback(() => {
-    setZoom(z => Math.max(ZOOM_MIN, +(z - ZOOM_STEP).toFixed(1)))
-  }, [])
-
-  const resetZoom = useCallback(() => {
-    setZoom(1)
-  }, [])
-
   const handleSetDisplayMode = useCallback((mode: typeof displayMode) => {
     setDisplayMode(mode)
     if (mode !== 'double') setBlankPosition('none')
   }, [setDisplayMode])
-
-  // Ctrl+Wheel zoom
-  useEffect(() => {
-    if (!open) return
-    const handler = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault()
-        if (e.deltaY < 0) zoomIn()
-        else if (e.deltaY > 0) zoomOut()
-      }
-    }
-    window.addEventListener('wheel', handler, { passive: false })
-    return () => window.removeEventListener('wheel', handler)
-  }, [open, zoomIn, zoomOut])
 
   // Fetch URLs when modal opens
   useEffect(() => {
@@ -292,37 +252,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const progress = effectiveTotalPages > 0 ? Math.round((currentPage / effectiveTotalPages) * 100) : 0
 
-  const handleSliderPointerDown = (e: React.PointerEvent) => {
-    e.preventDefault()
-    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-    setIsDragging(true)
-    updateDragPosition(e)
-  }
-
-  const handleSliderPointerMove = (e: React.PointerEvent) => {
-    if (!isDragging) return
-    updateDragPosition(e)
-  }
-
-  const handleSliderPointerUp = () => {
-    if (!isDragging) return
-    setIsDragging(false)
-    if (dragPageRef.current > 0) {
-      setPreloadTarget(dragPageRef.current)
-    }
-  }
-
-  const updateDragPosition = (e: React.PointerEvent) => {
-    const track = sliderRef.current
-    if (!track) return
-    const rect = track.getBoundingClientRect()
-    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width))
-    const page = Math.max(1, Math.round(pct * effectiveTotalPages))
-    dragPageRef.current = page
-    pageRefs.current[page - 1]?.scrollIntoView({ behavior: 'instant' })
-    setCurrentPage(page)
-  }
-
   return (
     <div className="fixed inset-0 z-50">
       {/* 半透明遮罩层，点击可关闭 */}
@@ -390,6 +319,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                     index={idx}
                     priority={preloadTarget != null && Math.abs(idx + 1 - preloadTarget) <= 5}
                     cachedDataUri={cachedDataUri}
+                    scrambleId={scrambleId}
+                    comicId={comicId}
                   />
                 </div>
                 )
@@ -421,6 +352,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               cacheVersion={cacheVersion}
               onPageChange={(page) => setPreloadTarget(page)}
               blankPosition={blankPosition}
+              scrambleId={scrambleId}
+              comicId={comicId}
             />
           )}
         </>
@@ -446,8 +379,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
             onPointerDown={handleSliderPointerDown}
             onPointerMove={handleSliderPointerMove}
             onPointerUp={handleSliderPointerUp}
-            onPointerCancel={() => setIsDragging(false)}
-            onLostPointerCapture={() => setIsDragging(false)}
+            onPointerCancel={cancelDrag}
+            onLostPointerCapture={cancelDrag}
           >
             <div className="w-full relative" style={{ height: '4px' }}>
               <div className="absolute inset-0 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }} />

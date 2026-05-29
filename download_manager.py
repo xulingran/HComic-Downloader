@@ -416,6 +416,121 @@ class DownloadManager:
             return stats
 
 
+class OutputStagingManager:
+    """管理下载输出的 staging/commit/cleanup 文件系统操作。"""
+
+    def __init__(self, output_dir: str, cbz_builder, output_format: str = "cbz"):
+        self.output_dir = output_dir
+        self.cbz_builder = cbz_builder
+        self.output_format = output_format
+
+    @staticmethod
+    def _rmtree_onerror(func, path, exc_info):
+        logger.warning("Failed to remove %s during rmtree: %s", path, exc_info)
+
+    @staticmethod
+    def safe_rmtree(path: str, parent_dir: str) -> None:
+        """验证路径在 parent_dir 内后再执行删除。"""
+        try:
+            real_path = os.path.realpath(path)
+            real_parent = os.path.realpath(parent_dir)
+        except (TypeError, ValueError, OSError):
+            logger.warning("Refusing to rmtree unresolvable path: %s", path)
+            return
+        if real_path != real_parent and not real_path.startswith(real_parent + os.sep):
+            logger.warning("Refusing to rmtree path outside output dir: %s", path)
+            return
+
+        shutil.rmtree(path, ignore_errors=False, onerror=OutputStagingManager._rmtree_onerror)
+
+    def build(self, temp_dir: str, comic) -> tuple[str, str, str | None]:
+        """Build the requested output into a staging path.
+
+        Returns:
+            (staged_path, final_path, staging_root)
+        """
+        final_path = self.cbz_builder.get_output_path_for_format(
+            comic, self.output_format, self.output_dir
+        )
+
+        if self.output_format == "folder":
+            staging_root = tempfile.mkdtemp(dir=self.output_dir, prefix=".hcomic_stage_")
+            try:
+                staged_path = self.cbz_builder.save_as_folder(
+                    temp_dir, comic, staging_root, overwrite=False
+                )
+                return staged_path, final_path, staging_root
+            except Exception:
+                self.safe_rmtree(staging_root, self.output_dir)
+                raise
+
+        output_dir = os.path.dirname(final_path)
+        os.makedirs(output_dir, exist_ok=True)
+        basename = os.path.basename(final_path)
+        ext = ".zip" if self.output_format == "zip" else ".cbz"
+        fd, staged_path = tempfile.mkstemp(
+            dir=output_dir,
+            prefix=f".{basename}.stage.",
+            suffix=ext,
+        )
+        os.close(fd)
+        os.unlink(staged_path)
+
+        if self.output_format == "zip":
+            self.cbz_builder.build_zip(temp_dir, comic, staged_path, overwrite=True)
+        else:
+            self.cbz_builder.build_cbz(temp_dir, comic, staged_path, overwrite=True)
+        return staged_path, final_path, None
+
+    def cleanup(self, staged_path: str | None, staging_root: str | None = None) -> None:
+        """Remove a staged output without touching the final destination."""
+        if staging_root and os.path.exists(staging_root):
+            self.safe_rmtree(staging_root, self.output_dir)
+            return
+        if not staged_path or not os.path.exists(staged_path):
+            return
+        if os.path.isdir(staged_path):
+            self.safe_rmtree(staged_path, self.output_dir)
+        else:
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(staged_path)
+
+    def commit(
+        self,
+        staged_path: str,
+        final_path: str,
+        overwrite: bool = False,
+    ) -> str:
+        """Atomically commit staged output to the final destination when possible."""
+        if os.path.exists(final_path) and not overwrite:
+            raise FileExistsError(f"Output already exists: {final_path}")
+
+        if not os.path.isdir(staged_path):
+            os.replace(staged_path, final_path)
+            return final_path
+
+        output_dir = os.path.dirname(final_path)
+        os.makedirs(output_dir, exist_ok=True)
+        if not os.path.exists(final_path):
+            shutil.move(staged_path, final_path)
+            return final_path
+
+        folder_name = os.path.basename(final_path)
+        backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
+        os.rmdir(backup_path)
+        shutil.move(final_path, backup_path)
+        try:
+            shutil.move(staged_path, final_path)
+            self.safe_rmtree(backup_path, self.output_dir)
+        except Exception:
+            if os.path.exists(final_path):
+                self.safe_rmtree(final_path, self.output_dir)
+            if os.path.exists(backup_path):
+                shutil.move(backup_path, final_path)
+            raise
+        return final_path
+
+
 class ComicDownloadManager(DownloadManager):
     """漫画下载管理器 - 集成 ComicDownloader"""
 
@@ -429,32 +544,23 @@ class ComicDownloadManager(DownloadManager):
     ):
         super().__init__()
         self.downloader = downloader
-        self.cbz_builder = cbz_builder
-        self.output_dir = output_dir
         self.prepare_comic = prepare_comic
         self.delay_after = 0  # 批量下载间隔（秒）
         self.auto_retry_max_attempts = 2  # 自动重试次数（默认2次）
-        self.output_format = output_format  # 输出格式: folder | zip | cbz
+        self._staging = OutputStagingManager(output_dir, cbz_builder, output_format)
         self.on_download_success = None  # Optional callback: (comic, output_path, output_format) -> None
 
-    @staticmethod
-    def _rmtree_onerror(func, path, exc_info):
-        logger.warning("Failed to remove %s during rmtree: %s", path, exc_info)
+    @property
+    def output_dir(self) -> str:
+        return self._staging.output_dir
 
-    @staticmethod
-    def _safe_rmtree(path: str, parent_dir: str) -> None:
-        """验证路径在 parent_dir 内后再执行删除。"""
-        try:
-            real_path = os.path.realpath(path)
-            real_parent = os.path.realpath(parent_dir)
-        except (TypeError, ValueError, OSError):
-            logger.warning("Refusing to rmtree unresolvable path: %s", path)
-            return
-        if real_path != real_parent and not real_path.startswith(real_parent + os.sep):
-            logger.warning("Refusing to rmtree path outside output dir: %s", path)
-            return
+    @property
+    def output_format(self) -> str:
+        return self._staging.output_format
 
-        shutil.rmtree(path, ignore_errors=False, onerror=ComicDownloadManager._rmtree_onerror)
+    @property
+    def cbz_builder(self):
+        return self._staging.cbz_builder
 
     def set_auto_retry_max_attempts(self, attempts: int):
         """设置自动重试次数
@@ -466,7 +572,7 @@ class ComicDownloadManager(DownloadManager):
 
     def set_output_dir(self, output_dir: str):
         """设置输出目录"""
-        self.output_dir = output_dir
+        self._staging.output_dir = output_dir
 
     def set_delay_after(self, delay: int):
         """设置批量下载间隔（秒）"""
@@ -479,7 +585,7 @@ class ComicDownloadManager(DownloadManager):
             output_format: 输出格式 ("folder" | "zip" | "cbz")
         """
         if output_format in ("folder", "zip", "cbz"):
-            self.output_format = output_format
+            self._staging.output_format = output_format
             logger.info("Output format set to: %s", output_format)
 
     def add_task(self, comic: ComicInfo, overwrite: bool = False) -> str:
@@ -526,93 +632,6 @@ class ComicDownloadManager(DownloadManager):
             task.progress_total = max(pages, task.progress_current)
             all_pages = set(range(1, pages + 1))
             task.failed_pages = sorted(all_pages - set(task.completed_pages))
-
-    def _build_staged_output(self, temp_dir: str, comic) -> tuple[str, str, str | None]:
-        """Build the requested output into a staging path.
-
-        Returns:
-            (staged_path, final_path, staging_root)
-        """
-        final_path = self.cbz_builder.get_output_path_for_format(
-            comic, self.output_format, self.output_dir
-        )
-
-        if self.output_format == "folder":
-            staging_root = tempfile.mkdtemp(dir=self.output_dir, prefix=".hcomic_stage_")
-            try:
-                staged_path = self.cbz_builder.save_as_folder(
-                    temp_dir, comic, staging_root, overwrite=False
-                )
-                return staged_path, final_path, staging_root
-            except Exception:
-                self._safe_rmtree(staging_root, self.output_dir)
-                raise
-
-        output_dir = os.path.dirname(final_path)
-        os.makedirs(output_dir, exist_ok=True)
-        basename = os.path.basename(final_path)
-        ext = ".zip" if self.output_format == "zip" else ".cbz"
-        fd, staged_path = tempfile.mkstemp(
-            dir=output_dir,
-            prefix=f".{basename}.stage.",
-            suffix=ext,
-        )
-        os.close(fd)
-        os.unlink(staged_path)
-
-        if self.output_format == "zip":
-            self.cbz_builder.build_zip(temp_dir, comic, staged_path, overwrite=True)
-        else:
-            self.cbz_builder.build_cbz(temp_dir, comic, staged_path, overwrite=True)
-        return staged_path, final_path, None
-
-    def _cleanup_staged_output(self, staged_path: str | None, staging_root: str | None = None) -> None:
-        """Remove a staged output without touching the final destination."""
-        if staging_root and os.path.exists(staging_root):
-            self._safe_rmtree(staging_root, self.output_dir)
-            return
-        if not staged_path or not os.path.exists(staged_path):
-            return
-        if os.path.isdir(staged_path):
-            self._safe_rmtree(staged_path, self.output_dir)
-        else:
-            with contextlib.suppress(FileNotFoundError):
-                os.remove(staged_path)
-
-    def _commit_staged_output(
-        self,
-        staged_path: str,
-        final_path: str,
-        overwrite: bool = False,
-    ) -> str:
-        """Atomically commit staged output to the final destination when possible."""
-        if os.path.exists(final_path) and not overwrite:
-            raise FileExistsError(f"Output already exists: {final_path}")
-
-        if not os.path.isdir(staged_path):
-            os.replace(staged_path, final_path)
-            return final_path
-
-        output_dir = os.path.dirname(final_path)
-        os.makedirs(output_dir, exist_ok=True)
-        if not os.path.exists(final_path):
-            shutil.move(staged_path, final_path)
-            return final_path
-
-        folder_name = os.path.basename(final_path)
-        backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
-        os.rmdir(backup_path)
-        shutil.move(final_path, backup_path)
-        try:
-            shutil.move(staged_path, final_path)
-            self._safe_rmtree(backup_path, self.output_dir)
-        except Exception:
-            if os.path.exists(final_path):
-                self._safe_rmtree(final_path, self.output_dir)
-            if os.path.exists(backup_path):
-                shutil.move(backup_path, final_path)
-            raise
-        return final_path
 
     def _execute_download(self, task: DownloadTask) -> DownloadResult:
         """执行漫画下载并返回结果。"""
@@ -702,22 +721,22 @@ class ComicDownloadManager(DownloadManager):
         staged_path = None
         staging_root = None
         try:
-            staged_path, output_path, staging_root = self._build_staged_output(result.temp_dir, task.comic)
+            staged_path, output_path, staging_root = self._staging.build(result.temp_dir, task.comic)
 
             if task.is_cancel_requested:
                 self._cleanup_cancelled_task(task, (
                     result.temp_dir if self.output_format != "folder" else None
                 ), "during packaging")
-                self._cleanup_staged_output(staged_path, staging_root)
+                self._staging.cleanup(staged_path, staging_root)
                 return
 
-            output_path = self._commit_staged_output(staged_path, output_path, overwrite=task.overwrite)
+            output_path = self._staging.commit(staged_path, output_path, overwrite=task.overwrite)
             if staging_root and os.path.exists(staging_root):
-                self._safe_rmtree(staging_root, self.output_dir)
+                self._staging.safe_rmtree(staging_root, self.output_dir)
             staged_path = None
             staging_root = None
         except Exception:
-            self._cleanup_staged_output(staged_path, staging_root)
+            self._staging.cleanup(staged_path, staging_root)
             raise
 
         if self.output_format != "folder":

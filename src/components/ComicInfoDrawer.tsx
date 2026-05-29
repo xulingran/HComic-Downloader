@@ -186,7 +186,7 @@ export function ComicInfoDrawer() {
               </p>
               {drawerComic?.url && (
                 <button
-                  onClick={() => window.hcomic.openUrl(drawerComic.url)}
+                  onClick={() => window.hcomic?.openUrl(drawerComic.url)}
                   className="text-xs px-2 py-0.5 rounded-md bg-[var(--accent)]/10 text-[var(--accent)]
                              hover:bg-[var(--accent)]/20 transition-colors flex-shrink-0"
                   title={drawerComic.url}

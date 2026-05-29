@@ -13,6 +13,8 @@ interface PageFlipViewProps {
   cacheVersion: number
   onPageChange: (page: number) => void
   blankPosition: BlankPosition
+  scrambleId?: string
+  comicId?: string
 }
 
 export function PageFlipView({
@@ -27,6 +29,8 @@ export function PageFlipView({
   cacheVersion,
   onPageChange,
   blankPosition,
+  scrambleId,
+  comicId,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [panOffset, setPanOffset] = useState(0)
@@ -159,14 +163,14 @@ export function PageFlipView({
         <div className="h-full flex items-center justify-center">
           {leftIsBlank ? <BlankPage /> : (
             // eslint-disable-next-line react-hooks/refs
-            <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} />
+            <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} />
           )}
         </div>
         {(rightRealIdx !== null || rightIsBlank) && (
           <div className="h-full flex items-center justify-center">
             {rightIsBlank ? <BlankPage /> : (
               // eslint-disable-next-line react-hooks/refs
-              <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedDataUri={imageCacheRef.current?.get(rightRealIdx!)} />
+              <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedDataUri={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} />
             )}
           </div>
         )}
@@ -225,7 +229,7 @@ function BlankPage() {
   )
 }
 
-function FlipPage({ url, index, cachedDataUri }: { url: string; index: number; cachedDataUri?: string }) {
+function FlipPage({ url, index, cachedDataUri, scrambleId, comicId }: { url: string; index: number; cachedDataUri?: string; scrambleId?: string; comicId?: string }) {
   const [dataUri, setDataUri] = useState<string | null>(() => cachedDataUri ?? null)
   const [error, setError] = useState(false)
 
@@ -243,7 +247,7 @@ function FlipPage({ url, index, cachedDataUri }: { url: string; index: number; c
     setError(false)
 
     let cancelled = false
-    window.hcomic!.fetchPreviewImage(url)
+    window.hcomic!.fetchPreviewImage(url, scrambleId, comicId)
       .then((result) => {
         if (cancelled) return
         if (result?.dataUri) setDataUri(result.dataUri)

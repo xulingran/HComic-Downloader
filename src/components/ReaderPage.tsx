@@ -1,10 +1,12 @@
 import { useState, useEffect, useRef } from 'react'
 
-export function ReaderPage({ url, index, priority, cachedDataUri }: {
+export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, comicId }: {
   url: string
   index: number
   priority?: boolean
   cachedDataUri?: string
+  scrambleId?: string
+  comicId?: string
 }) {
   const [error, setError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
@@ -43,7 +45,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri }: {
     let cancelled = false
 
     Promise.resolve()
-      .then(() => window.hcomic!.fetchPreviewImage(url))
+      .then(() => window.hcomic!.fetchPreviewImage(url, scrambleId, comicId))
       .then((result) => {
         if (cancelled) return
         if (!result?.dataUri) {

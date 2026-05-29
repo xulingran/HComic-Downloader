@@ -164,9 +164,9 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_PREVIEW_URLS, comicData)
   },
 
-  fetchPreviewImage: (imageUrl: unknown) => {
+  fetchPreviewImage: (imageUrl: unknown, scrambleId?: unknown, comicId?: unknown) => {
     if (typeof imageUrl !== 'string' || imageUrl.length === 0 || imageUrl.length > 2048) throw new Error('Invalid preview image URL')
-    return ipcRenderer.invoke(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, imageUrl)
+    return ipcRenderer.invoke(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, imageUrl, scrambleId, comicId)
   },
 
   checkDownloadedStatus: (comics: unknown) => {

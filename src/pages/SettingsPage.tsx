@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useConfig, useProxyStatus, useAvailableFonts } from '../hooks/useIpc'
 import { useOptimisticConfig } from '../hooks/useOptimisticConfig'
-import { useAuth } from '../hooks/useIpc'
+import { useAuthState } from '../hooks/useAuthState'
 import type { ConfigKey, ConfigValueMap, FontInfo, ProxyStatus } from '@shared/types'
 import { AppearanceSettings } from '../components/settings/AppearanceSettings'
 import { DownloadSettings } from '../components/settings/DownloadSettings'
@@ -42,13 +42,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const { themeMode, cardStyle, sfwMode, setThemeMode, setCardStyle, setSfwMode, tagBlacklist, addTag, removeTag } = useSettingsStore()
   const loginSectionRef = useRef<HTMLDivElement>(null!)
   const { getConfig, setConfig, openDownloadDir, selectDirectory } = useConfig()
-  const { applyAuth, verifyAuth } = useAuth()
+  const hcomicAuth = useAuthState('hcomic')
+  const jmcomicAuth = useAuthState('jmcomic')
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
-  const [loginStatus, setLoginStatus] = useState<'idle' | 'verifying' | 'valid' | 'invalid' | 'error'>('idle')
-  const [loginMessage, setLoginMessage] = useState('')
-  const [jmcomicLoginStatus, setJmcomicLoginStatus] = useState<'idle' | 'verifying' | 'valid' | 'invalid' | 'error'>('idle')
-  const [jmcomicLoginMessage, setJmcomicLoginMessage] = useState('')
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('cbz')
   const [config, setConfigState] = useState<ConfigState>({
     downloadDir: '',
@@ -124,24 +121,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           setThemeMode(result.config.themeMode)
         }
         if (result.config.hasAuth) {
-          setLoginStatus('verifying')
-          try {
-            const verifyResult = await verifyAuth('hcomic')
-            setLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
-            setLoginMessage(verifyResult.message || '')
-          } catch {
-            setLoginStatus('idle')
-          }
+          hcomicAuth.verifyFromConfig(true)
         }
         if (result.config.hasJmcomicAuth) {
-          setJmcomicLoginStatus('verifying')
-          try {
-            const verifyResult = await verifyAuth('jmcomic')
-            setJmcomicLoginStatus(verifyResult.valid ? 'valid' : 'invalid')
-            setJmcomicLoginMessage(verifyResult.message || '')
-          } catch {
-            setJmcomicLoginStatus('idle')
-          }
+          jmcomicAuth.verifyFromConfig(true)
         }
         if (result.config.fontName) setFontName(result.config.fontName)
         if (result.config.fontSize) setFontSize(result.config.fontSize)
@@ -198,7 +181,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   const handleConfigChange = async (key: ConfigKey, value: unknown) => {
     setSaveError(null)
-    const prevValue = (config as Record<string, unknown>)[key]
+    const prevValue = (config as unknown as Record<string, unknown>)[key]
     setConfigState(prev => ({ ...prev, [key]: value }))
     setIsSaving(true)
     try {
@@ -218,7 +201,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   }
 
   const handleTextConfigBlur = async (key: ConfigKey) => {
-    const value = (config as Record<string, unknown>)[key]
+    const value = (config as unknown as Record<string, unknown>)[key]
     setIsSaving(true)
     try {
       await setConfig(key, value as ConfigValueMap[ConfigKey])
@@ -226,7 +209,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
       try {
         const result = await getConfig()
         if (result.config) {
-          const restored = (result.config as Record<string, unknown>)[key]
+          const restored = (result.config as unknown as Record<string, unknown>)[key]
           if (restored !== undefined) {
             setConfigState(prev => ({ ...prev, [key]: restored }))
           }
@@ -240,64 +223,18 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   }
 
   const handleApplyAuth = async (curlText: string, source: string = 'hcomic') => {
-    if (!curlText.trim()) return
-    const setStatus = source === 'jmcomic' ? setJmcomicLoginStatus : setLoginStatus
-    const setMessage = source === 'jmcomic' ? setJmcomicLoginMessage : setLoginMessage
-    setStatus('verifying')
-    setMessage('')
-    try {
-      await applyAuth(curlText.trim(), source)
-      const verifyResult = await verifyAuth(source)
-      setStatus(verifyResult.valid ? 'valid' : 'invalid')
-      setMessage(verifyResult.message || '')
-    } catch (err: unknown) {
-      setStatus('error')
-      setMessage((err instanceof Error ? err.message : String(err)) || '操作失败')
-    }
+    const auth = source === 'jmcomic' ? jmcomicAuth : hcomicAuth
+    await auth.apply(curlText)
   }
 
   const handleTestAuth = async (source: string = 'hcomic') => {
-    const setStatus = source === 'jmcomic' ? setJmcomicLoginStatus : setLoginStatus
-    const setMessage = source === 'jmcomic' ? setJmcomicLoginMessage : setLoginMessage
-    setStatus('verifying')
-    setMessage('')
-    try {
-      const verifyResult = await verifyAuth(source)
-      setStatus(verifyResult.valid ? 'valid' : 'invalid')
-      setMessage(verifyResult.message || '')
-    } catch (err: unknown) {
-      setStatus('error')
-      setMessage((err instanceof Error ? err.message : String(err)) || '验证失败')
-    }
+    const auth = source === 'jmcomic' ? jmcomicAuth : hcomicAuth
+    await auth.test()
   }
 
   const handleOpenLoginWindow = async (source: string = 'hcomic') => {
-    const prevStatus = source === 'jmcomic' ? jmcomicLoginStatus : loginStatus
-    const setStatus = source === 'jmcomic' ? setJmcomicLoginStatus : setLoginStatus
-    const setMessage = source === 'jmcomic' ? setJmcomicLoginMessage : setLoginMessage
-    setStatus('verifying')
-    setMessage('')
-    try {
-      const result = await window.hcomic?.openLoginWindow(source)
-      if (!result) {
-        setStatus(prevStatus)
-        return
-      }
-      if (result.success) {
-        setStatus('valid')
-        setMessage(result.message || '登录成功')
-      } else {
-        if (result.message === '已取消') {
-          setStatus(prevStatus)
-        } else {
-          setStatus('error')
-          setMessage(result.message || '登录失败')
-        }
-      }
-    } catch (err: unknown) {
-      setStatus('error')
-      setMessage((err instanceof Error ? err.message : '') || '登录失败')
-    }
+    const auth = source === 'jmcomic' ? jmcomicAuth : hcomicAuth
+    await auth.openWindow(auth.status)
   }
 
   const handleSectionClick = (sectionId: string) => {
@@ -455,10 +392,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
       <div id="section-auth">
         <AuthSettings
           loginSectionRef={loginSectionRef}
-          loginStatus={loginStatus}
-          loginMessage={loginMessage}
-          jmcomicLoginStatus={jmcomicLoginStatus}
-          jmcomicLoginMessage={jmcomicLoginMessage}
+          loginStatus={hcomicAuth.status}
+          loginMessage={hcomicAuth.message}
+          jmcomicLoginStatus={jmcomicAuth.status}
+          jmcomicLoginMessage={jmcomicAuth.message}
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}

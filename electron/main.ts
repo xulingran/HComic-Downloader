@@ -1,7 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain, session, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 import { NotificationManager } from './notification-manager'
+import { openLoginWindow } from './login-window'
 import {
   SEARCH_MODES, COMIC_SOURCES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
@@ -429,181 +430,6 @@ function createWindow() {
   setupWindowCloseHandler(mainWindow)
 }
 
-const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
-const LOGIN_COOKIE_SETTLE_MS = 1_000
-const LOGIN_COOKIE_SUCCESS_DELAY_MS = 3_000
-
-async function extractAndApplyCookies(
-  userAgent: string,
-  source: string = 'hcomic',
-  domain: string = 'h-comic.com',
-): Promise<{ success: boolean; message: string }> {
-  try {
-    const cookies = await session.defaultSession.cookies.get({ url: `https://${domain}` })
-    if (cookies.length === 0) {
-      return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口' }
-    }
-    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
-
-    const bridge = getPythonBridge()
-    await bridge.call('apply_auth', {
-      curl_text: `curl 'https://${domain}' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
-      source,
-    })
-    const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
-    return { success: verifyResult.valid, message: verifyResult.message }
-  } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '登录处理失败'
-    return { success: false, message }
-  }
-}
-
-interface LoginWindowContext {
-  settled: boolean
-  hasVisitedAuth0: boolean
-  savedUserAgent: string
-  done: (result: { success: boolean; message?: string }) => void
-  clearTimeout: () => void
-}
-
-function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
-  return new BrowserWindow({
-    width: 500,
-    height: 700,
-    title,
-    parent,
-    modal: true,
-    webPreferences: {
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: true,
-    },
-  })
-}
-
-function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowContext) {
-  loginWin.webContents.on('did-navigate', (_event, url) => {
-    if (url.includes('auth0.com')) {
-      ctx.hasVisitedAuth0 = true
-    }
-    if (ctx.hasVisitedAuth0 && (url.startsWith('https://h-comic.com') || url.startsWith('https://www.h-comic.com'))) {
-      ctx.hasVisitedAuth0 = false
-      setTimeout(async () => {
-        ctx.clearTimeout()
-        const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
-        if (!userAgent) {
-          ctx.done({ success: false, message: '已取消' })
-          return
-        }
-        const result = await extractAndApplyCookies(userAgent)
-        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-          setTimeout(() => {
-            ctx.done(result)
-          }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
-        } else {
-          ctx.done(result)
-        }
-      }, LOGIN_COOKIE_SETTLE_MS)
-    }
-  })
-}
-
-function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext, source: string = 'hcomic', domain: string = 'h-comic.com') {
-  loginWin.on('closed', () => {
-    ctx.clearTimeout()
-    if (ctx.settled) return
-    if (!ctx.savedUserAgent) {
-      ctx.done({ success: false, message: '已取消' })
-      return
-    }
-    extractAndApplyCookies(ctx.savedUserAgent, source, domain).then((result) => {
-      if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-      }
-      ctx.done(result)
-    }).catch(() => {
-      ctx.done({ success: false, message: '已取消' })
-    })
-  })
-}
-
-function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, source: string, domain: string) {
-  loginWin.webContents.on('did-navigate', (_event, url) => {
-    if (!url.includes('/login') && !url.includes('/user/login')) {
-      setTimeout(async () => {
-        ctx.clearTimeout()
-        const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
-        if (!userAgent) {
-          ctx.done({ success: false, message: '已取消' })
-          return
-        }
-        const result = await extractAndApplyCookies(userAgent, source, domain)
-        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-          mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-          setTimeout(() => {
-            ctx.done(result)
-          }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
-        } else {
-          ctx.done(result)
-        }
-      }, LOGIN_COOKIE_SETTLE_MS)
-    }
-  })
-}
-
-function openLoginWindow(source: string = 'hcomic'): Promise<{ success: boolean; message?: string }> {
-  const parent = mainWindow
-  if (!parent) {
-    return Promise.resolve({ success: false, message: '主窗口不存在' })
-  }
-
-  const loginUrl = source === 'jmcomic' ? 'https://18comic.vip' : 'https://h-comic.com'
-  const loginTitle = source === 'jmcomic' ? '登录禁漫天堂' : '登录 H-Comic'
-  const loginDomain = source === 'jmcomic' ? '18comic.vip' : 'h-comic.com'
-
-  return new Promise((resolve) => {
-    const loginWin = createLoginBrowserWindow(parent, loginTitle)
-
-    const ctx: LoginWindowContext = {
-      settled: false,
-      hasVisitedAuth0: false,
-      savedUserAgent: '',
-      clearTimeout: () => {},
-      done: (result) => {
-        if (ctx.settled) return
-        ctx.settled = true
-        if (!loginWin.isDestroyed()) {
-          loginWin.close()
-        }
-        resolve(result)
-      },
-    }
-
-    const timeout = setTimeout(() => {
-      ctx.done({ success: false, message: '登录超时，请重试' })
-    }, LOGIN_WINDOW_TIMEOUT_MS)
-    ctx.clearTimeout = () => clearTimeout(timeout)
-
-    loginWin.webContents.on('did-finish-load', () => {
-      if (!ctx.savedUserAgent && !loginWin.isDestroyed()) {
-        ctx.savedUserAgent = loginWin.webContents.userAgent
-      }
-    })
-
-    if (source === 'jmcomic') {
-      bindJmcomicLoginTracking(loginWin, ctx, source, loginDomain)
-    } else {
-      bindLoginNavigationTracking(loginWin, ctx)
-    }
-    bindLoginWindowClosed(loginWin, ctx, source, loginDomain)
-
-    loginWin.loadURL(loginUrl).catch(() => {
-      ctx.done({ success: false, message: '无法打开登录页面' })
-    })
-  })
-}
-
 // ── IPC Handler Groups ──────────────────────────────────────────────────────
 
 type Bridge = ReturnType<typeof getPythonBridge>
@@ -759,7 +585,9 @@ function registerConfigHandlers(bridge: Bridge) {
       }
     } catch (err) {
       if (err instanceof ValidationError) {
-        throw new Error(`Invalid value for ${key}: ${JSON.stringify(value)}`, { cause: err })
+        const wrappedErr = new Error(`Invalid value for ${key}: ${JSON.stringify(value)}`)
+        ;(wrappedErr as Error & { cause?: unknown }).cause = err
+        throw wrappedErr
       }
       throw err
     }
@@ -801,7 +629,7 @@ function registerAuthHandlers(bridge: Bridge) {
   })
 
   ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
-    return openLoginWindow(source || 'hcomic')
+    return openLoginWindow(mainWindow, source || 'hcomic')
   })
 
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
@@ -865,12 +693,15 @@ function registerPreviewHandlers(bridge: Bridge) {
     return bridge.call('get_preview_urls', { comic_data: comicData })
   })
 
-  ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown, scrambleId?: unknown, comicId?: unknown) => {
     assert(and(string(), length(1, 2048)), imageUrl, 'preview image URL')
     let parsed: URL
     try { parsed = new URL(imageUrl) } catch { throw new Error('Invalid preview image URL format') }
     if (parsed.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed for preview images')
-    return bridge.call('fetch_preview_image', { image_url: imageUrl })
+    const params: Record<string, unknown> = { image_url: imageUrl }
+    if (typeof scrambleId === 'string' && scrambleId) params.scramble_id = scrambleId
+    if (typeof comicId === 'string' && comicId) params.comic_id = comicId
+    return bridge.call('fetch_preview_image', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.CHECK_DOWNLOADED_STATUS, async (_, comics: unknown) => {
