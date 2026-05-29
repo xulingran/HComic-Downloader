@@ -211,6 +211,16 @@ class SearchMixin:
             result["comicId"] = comic.id
         return result
 
+    def handle_get_comic_detail(self, comic_id: str, source: str = "moeimg") -> dict:
+        valid_sources = ("hcomic", "moeimg", "jmcomic")
+        effective_source = source if source in valid_sources else "moeimg"
+        if source not in valid_sources:
+            logger.warning("get_comic_detail: invalid source %r, falling back to moeimg", source)
+        comic = self.parser.get_comic_detail(comic_id, source=effective_source)
+        if comic is None:
+            return {"comic": None}
+        return {"comic": self._comic_to_dict(comic)}
+
     def handle_fetch_preview_image(self, image_url: str, scramble_id: str = "", comic_id: str = "") -> dict:
         self._validate_preview_image_url(image_url)
         logger.info("fetch_preview_image: url=%s scramble_id=%s comic_id=%s", image_url, scramble_id, comic_id)

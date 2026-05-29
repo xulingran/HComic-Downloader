@@ -28,6 +28,9 @@ vi.mock('@/hooks/useIpc', () => ({
     addHistory: vi.fn().mockResolvedValue({ success: true }),
     deleteHistory: vi.fn().mockResolvedValue({ success: true }),
     clearHistory: vi.fn().mockResolvedValue({ success: true })
+  }),
+  useComicDetail: vi.fn().mockReturnValue({
+    getComicDetail: vi.fn().mockResolvedValue({ comic: null })
   })
 }))
 

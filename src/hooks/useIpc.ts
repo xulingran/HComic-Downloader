@@ -86,12 +86,20 @@ export function useDownloadCommands() {
   return { startDownload, cancelDownload, getDownloads, checkDownloadConflict, pauseTask, resumeTask, retryTask, toggleGlobalPause, getDownloadDetail }
 }
 
+export interface DownloadProgressData {
+  taskId: string
+  status: string
+  progress: number
+  total: number
+  current: number
+}
+
 export function useDownloadProgress() {
-  const [progress, setProgress] = useState<Record<string, unknown>>({})
+  const [progress, setProgress] = useState<Record<string, DownloadProgressData>>({})
 
   useEffect(() => {
     if (!window.hcomic?.onDownloadProgress) return
-    const unsubscribe = window.hcomic.onDownloadProgress((data: { taskId: string }) => {
+    const unsubscribe = window.hcomic.onDownloadProgress((data: DownloadProgressData) => {
       setProgress(prev => ({ ...prev, [data.taskId]: data }))
     })
     return unsubscribe
@@ -226,4 +234,14 @@ export function useHistory() {
   }, [invoke])
 
   return { getHistory, addHistory, deleteHistory, clearHistory }
+}
+
+export function useComicDetail() {
+  const { invoke } = useIpc()
+
+  const getComicDetail = useCallback(async (comicId: string, source?: string) => {
+    return invoke(() => window.hcomic!.getComicDetail(comicId, source))
+  }, [invoke])
+
+  return { getComicDetail }
 }

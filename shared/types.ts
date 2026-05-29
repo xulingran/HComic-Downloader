@@ -314,6 +314,10 @@ export interface IPCMethods {
     params: { comics: ComicInfo[] }
     result: { statusMap: Record<string, 'downloaded' | 'unknown'> }
   }
+  get_comic_detail: {
+    params: { comic_id: string; source?: string }
+    result: { comic: ComicInfo | null }
+  }
   start_migration: {
     params: { target_dir: string; mode: string }
     result: MigrationPlanPreview
@@ -401,6 +405,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-preview-urls': 'get_preview_urls',
   'python:fetch-preview-image': 'fetch_preview_image',
   'python:check-downloaded-status': 'check_downloaded_status',
+  'python:get-comic-detail': 'get_comic_detail',
   'python:start-migration': 'start_migration',
   'python:confirm-migration': 'confirm_migration',
   'python:pause-migration': 'pause_migration',
@@ -462,6 +467,7 @@ export interface HcomicAPI {
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
   fetchPreviewImage(imageUrl: string, scrambleId?: string, comicId?: string): Promise<PreviewImageResult>
   checkDownloadedStatus(comics: ComicInfo[]): Promise<{ statusMap: Record<string, 'downloaded' | 'unknown'> }>
+  getComicDetail(comicId: string, source?: string): Promise<{ comic: ComicInfo | null }>
   startMigration(targetDir: string, mode: 'full' | 'repair'): Promise<MigrationPlanPreview>
   confirmMigration(migrationId: string): Promise<{ started: boolean }>
   pauseMigration(): Promise<{ paused: boolean }>
@@ -527,6 +533,7 @@ export const IPC_CHANNELS = {
   GET_PREVIEW_URLS: 'python:get-preview-urls',
   FETCH_PREVIEW_IMAGE: 'python:fetch-preview-image',
   CHECK_DOWNLOADED_STATUS: 'python:check-downloaded-status',
+  GET_COMIC_DETAIL: 'python:get-comic-detail',
   START_MIGRATION: 'python:start-migration',
   CONFIRM_MIGRATION: 'python:confirm-migration',
   PAUSE_MIGRATION: 'python:pause-migration',

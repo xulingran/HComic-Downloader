@@ -1,8 +1,8 @@
-import { useEffect, useState, useCallback } from 'react'
-import { SearchMode, IPC_ERROR_CODES } from '@shared/types'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { SearchMode, IPC_ERROR_CODES, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
-import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite } from '../hooks/useIpc'
+import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail } from '../hooks/useIpc'
 import { Toast } from './common/Toast'
 
 export function ComicInfoDrawer() {
@@ -11,14 +11,22 @@ export function ComicInfoDrawer() {
   const { addToFavourites } = useAddToFavourites()
   const { removeFromFavourites } = useRemoveFromFavourites()
   const { checkFavourite } = useCheckFavourite()
+  const { getComicDetail } = useComicDetail()
   const [mounted, setMounted] = useState(false)
   const [visible, setVisible] = useState(false)
   const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' } | null>(null)
   const [favouritesState, setFavouritesState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [favToastMessage, setFavToastMessage] = useState('')
   const [showFavToast, setShowFavToast] = useState(false)
+  const [enrichedComic, setEnrichedComic] = useState<ComicInfo | null>(null)
 
   const comicSource = drawerComic?.sourceSite || 'hcomic'
+
+  const displayComic = useMemo(() => {
+    if (!drawerComic) return null
+    if (!enrichedComic) return drawerComic
+    return { ...drawerComic, ...enrichedComic }
+  }, [drawerComic, enrichedComic])
 
   const isTagBlocked = (tag: string) => {
     const key = (comicSource === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
@@ -34,6 +42,29 @@ export function ComicInfoDrawer() {
       setVisible(false)
     }
   }, [isOpen])
+
+  // Fetch full detail for sources where search results lack complete tags
+  useEffect(() => {
+    if (!isOpen || !drawerComic?.id) {
+      return
+    }
+    if (comicSource !== 'moeimg') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEnrichedComic(null)
+      return
+    }
+    let cancelled = false
+    setEnrichedComic(null)
+    getComicDetail(drawerComic.id, comicSource)
+      .then((result) => {
+        if (!cancelled && result.comic) {
+          setEnrichedComic(result.comic)
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, drawerComic?.id, comicSource])
 
   useEffect(() => {
     if (!isOpen || !drawerComic?.id || comicSource !== 'hcomic') {
@@ -154,18 +185,18 @@ export function ComicInfoDrawer() {
 
         <div className="px-5 py-4 space-y-4">
           <h3 className="text-base font-medium text-[var(--text-primary)] leading-relaxed select-text">
-            {drawerComic?.title}
+            {displayComic?.title}
           </h3>
 
-          {drawerComic?.author ? (
+          {displayComic?.author ? (
             <div>
               <span className="text-xs text-[var(--text-secondary)]">作者</span>
               <button
-                onClick={() => handleSearch(drawerComic.author!, 'author')}
+                onClick={() => handleSearch(displayComic.author!, 'author')}
                 className="block text-sm text-[var(--accent)] mt-0.5 cursor-pointer
                            hover:underline select-text text-left"
               >
-                {drawerComic.author}
+                {displayComic.author}
               </button>
             </div>
           ) : (
@@ -179,17 +210,17 @@ export function ComicInfoDrawer() {
             <span className="text-xs text-[var(--text-secondary)]">信息</span>
             <div className="flex items-center gap-2 mt-0.5">
               <p className="text-sm text-[var(--text-primary)] select-text">
-                {drawerComic?.sourceSite || drawerComic?.source}
-                {drawerComic?.pages != null && drawerComic.pages > 0 && (
-                  <> · {drawerComic.pages} 页</>
+                {displayComic?.sourceSite || displayComic?.source}
+                {displayComic?.pages != null && displayComic.pages > 0 && (
+                  <> · {displayComic.pages} 页</>
                 )}
               </p>
-              {drawerComic?.url && (
+              {displayComic?.url && (
                 <button
-                  onClick={() => window.hcomic?.openUrl(drawerComic.url)}
+                  onClick={() => window.hcomic?.openUrl(displayComic.url)}
                   className="text-xs px-2 py-0.5 rounded-md bg-[var(--accent)]/10 text-[var(--accent)]
                              hover:bg-[var(--accent)]/20 transition-colors flex-shrink-0"
-                  title={drawerComic.url}
+                  title={displayComic.url}
                 >
                   打开原网页
                 </button>
@@ -232,11 +263,11 @@ export function ComicInfoDrawer() {
             </div>
           )}
 
-          {drawerComic?.tags && drawerComic.tags.length > 0 && (
+          {displayComic?.tags && displayComic.tags.length > 0 && (
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
               <div className="flex flex-wrap gap-1.5 mt-2">
-                {drawerComic.tags.map((tag, i) => {
+                {displayComic.tags.map((tag, i) => {
                   const blocked = isTagBlocked(tag)
                   return (
                     <span key={i} className="relative group">

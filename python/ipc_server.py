@@ -173,6 +173,7 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             "get_preview_urls": self.handle_get_preview_urls,
             "fetch_preview_image": self.handle_fetch_preview_image,
             "check_downloaded_status": self.handle_check_downloaded_status,
+            "get_comic_detail": self.handle_get_comic_detail,
             "start_migration": self.handle_start_migration,
             "confirm_migration": self.handle_confirm_migration,
             "pause_migration": self.handle_pause_migration,

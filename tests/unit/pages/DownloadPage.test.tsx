@@ -40,6 +40,9 @@ vi.mock('@/hooks/useIpc', () => ({
     checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
     progress: {},
   }),
+  useComicDetail: vi.fn().mockReturnValue({
+    getComicDetail: vi.fn().mockResolvedValue({ comic: null })
+  }),
 }))
 
 vi.mock('@/hooks/useDownloadHelper', () => ({

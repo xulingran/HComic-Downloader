@@ -30,6 +30,9 @@ vi.mock('@/hooks/useIpc', () => ({
     cancelDownload: vi.fn().mockResolvedValue({ success: true }),
     getDownloads: vi.fn().mockResolvedValue({ tasks: [] }),
   }),
+  useComicDetail: vi.fn().mockReturnValue({
+    getComicDetail: vi.fn().mockResolvedValue({ comic: null })
+  }),
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({

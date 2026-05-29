@@ -118,8 +118,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 33 previous + 1 random + 3 cache + 1 add_to_favourites + 1 check_favourite + 1 remove_from_favourites + 4 history = 44 total
-      expect(handleCalls.length).toBe(44)
+      // 33 previous + 1 random + 3 cache + 1 add_to_favourites + 1 check_favourite + 1 remove_from_favourites + 4 history + 1 get_comic_detail = 45 total
+      expect(handleCalls.length).toBe(45)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -152,6 +152,7 @@ describe('main.ts', () => {
       'python:get-download-detail',
       'python:get-preview-urls',
       'python:check-downloaded-status',
+      'python:get-comic-detail',
       'python:start-migration',
       'python:confirm-migration',
       'python:pause-migration',
@@ -204,6 +205,7 @@ describe('main.ts', () => {
         'add_to_favourites', 'check_favourite', 'remove_from_favourites',
         'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
         'get_history', 'add_history', 'delete_history', 'clear_history',
+        'get_comic_detail',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),

@@ -718,6 +718,16 @@ function registerPreviewHandlers(bridge: Bridge) {
     }
     return bridge.call('check_downloaded_status', { comics })
   })
+
+  ipcMain.handle(IPC_CHANNELS.GET_COMIC_DETAIL, async (_, comicId: unknown, source?: unknown) => {
+    assert(comicIdValidator, comicId, 'get_comic_detail comicId')
+    const params: Record<string, unknown> = { comic_id: comicId }
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'get_comic_detail source')
+      params.source = source
+    }
+    return bridge.call('get_comic_detail', params)
+  })
 }
 
 function registerMigrationHandlers(bridge: Bridge) {

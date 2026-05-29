@@ -49,6 +49,9 @@ vi.mock('@/hooks/useIpc', () => ({
   useConfig: vi.fn().mockReturnValue({
     getConfig: mockGetConfig,
     setConfig: vi.fn()
+  }),
+  useComicDetail: vi.fn().mockReturnValue({
+    getComicDetail: vi.fn().mockResolvedValue({ comic: null })
   })
 }))
 

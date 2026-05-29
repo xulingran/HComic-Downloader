@@ -46,6 +46,7 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, unkn
     getDownloadDetail: vi.fn().mockResolvedValue({ taskId: '', tempDir: '', errorMessage: '', outputPath: '' }),
     getPreviewUrls: vi.fn().mockResolvedValue({ imageUrls: [], totalPages: 0 }),
     checkDownloadedStatus: vi.fn().mockResolvedValue({ statusMap: {} }),
+    getComicDetail: vi.fn().mockResolvedValue({ comic: null }),
     checkFavourite: vi.fn().mockResolvedValue({ isFavourited: false }),
     addToFavourites: vi.fn().mockResolvedValue({ success: true }),
     removeFromFavourites: vi.fn().mockResolvedValue({ success: true }),

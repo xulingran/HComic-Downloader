@@ -178,6 +178,12 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.CHECK_DOWNLOADED_STATUS, comics)
   },
 
+  getComicDetail: (comicId: unknown, source?: unknown) => {
+    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_COMIC_DETAIL, comicId, source ?? undefined)
+  },
+
   startMigration: (targetDir: unknown, mode: unknown) => {
     if (typeof targetDir !== 'string' || targetDir.length === 0) throw new Error('Invalid targetDir')
     if (mode !== 'full' && mode !== 'repair') throw new Error('Invalid mode')
