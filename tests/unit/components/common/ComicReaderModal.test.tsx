@@ -121,8 +121,8 @@ describe('ComicReaderModal', () => {
     )
 
     await waitFor(() => {
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/1.jpg')
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/2.jpg')
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/1.jpg', undefined, undefined)
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/2.jpg', undefined, undefined)
     })
   })
 
@@ -218,7 +218,7 @@ describe('ComicReaderModal', () => {
     await userEvent.click(screen.getByText('重试'))
 
     await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalledTimes(2))
-    expect(mockFetchPreviewImage).toHaveBeenLastCalledWith('https://img.example.com/1.jpg')
+    expect(mockFetchPreviewImage).toHaveBeenLastCalledWith('https://img.example.com/1.jpg', undefined, undefined)
 
     consoleErrorSpy.mockRestore()
   })
@@ -320,7 +320,7 @@ describe('ComicReaderModal', () => {
 
       // Verify sequential preloading was triggered starting from page 10
       await waitFor(() => {
-        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/10.jpg')
+        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/10.jpg', undefined, undefined)
       })
     })
   })

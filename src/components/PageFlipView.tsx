@@ -257,7 +257,7 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId }: { url: str
         if (!cancelled) setError(true)
       })
     return () => { cancelled = true }
-  }, [url, cachedDataUri])
+  }, [url, cachedDataUri, scrambleId, comicId])
 
   if (error) {
     return (

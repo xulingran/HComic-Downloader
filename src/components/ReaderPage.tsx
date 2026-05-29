@@ -60,7 +60,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
         setError(true)
       })
     return () => { cancelled = true }
-  }, [cachedDataUri, dataUri, error, isVisible, priority, retryTick, url])
+  }, [cachedDataUri, dataUri, error, isVisible, priority, retryTick, url, scrambleId, comicId])
 
   const retry = () => {
     setError(false)

@@ -459,7 +459,7 @@ describe('PythonBridge', () => {
       stdoutCallbacks.forEach(cb => cb(bigData))
 
       // The pending request should be rejected immediately, not after 30s timeout
-      await expect(callPromise).rejects.toThrow('IPC response too large')
+      await expect(callPromise).rejects.toThrow('IPC buffer overflow')
     })
 
     it('should kill old process on buffer overflow', () => {
