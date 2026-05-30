@@ -55,7 +55,11 @@ const createReaderState = (overrides: Partial<ReturnType<typeof useComicReader>>
   currentPage: 1,
   loadingState: 'loaded' as const,
   errorMessage: '',
+  scrambleId: '',
+  comicId: '',
+  chapters: [],
   fetchUrls: vi.fn(),
+  fetchChapterUrls: vi.fn(),
   setCurrentPage: vi.fn(),
   reset: vi.fn(),
   ...overrides,
@@ -121,8 +125,8 @@ describe('ComicReaderModal', () => {
     )
 
     await waitFor(() => {
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/1.jpg', undefined, undefined)
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/2.jpg', undefined, undefined)
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/1.jpg', '', '')
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/2.jpg', '', '')
     })
   })
 
@@ -218,7 +222,7 @@ describe('ComicReaderModal', () => {
     await userEvent.click(screen.getByText('重试'))
 
     await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalledTimes(2))
-    expect(mockFetchPreviewImage).toHaveBeenLastCalledWith('https://img.example.com/1.jpg', undefined, undefined)
+    expect(mockFetchPreviewImage).toHaveBeenLastCalledWith('https://img.example.com/1.jpg', '', '')
 
     consoleErrorSpy.mockRestore()
   })
@@ -320,7 +324,7 @@ describe('ComicReaderModal', () => {
 
       // Verify sequential preloading was triggered starting from page 10
       await waitFor(() => {
-        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/10.jpg', undefined, undefined)
+        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/10.jpg', '', '')
       })
     })
   })
@@ -380,6 +384,55 @@ describe('ComicReaderModal', () => {
       expect(screen.getByLabelText('连续滚动')).toBeInTheDocument()
       expect(screen.getByLabelText('单页显示')).toBeInTheDocument()
       expect(screen.getByLabelText('双页显示')).toBeInTheDocument()
+    })
+  })
+
+  describe('multi-chapter', () => {
+    const multiChapterComic: ComicInfo = {
+      id: '999001',
+      title: '多章漫画',
+      url: 'https://example.com/999001',
+      coverUrl: '',
+      source: 'JMCOMIC',
+      sourceSite: 'jmcomic',
+      albumId: '999001',
+    }
+
+    it('shows chapter picker for multi-chapter albums before a chapter is chosen', () => {
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: [],
+        totalPages: 0,
+        currentPage: 0,
+        chapters: [
+          { id: '999001', name: '第 1 話', index: 1 },
+          { id: '999002', name: '第 2 話', index: 2 },
+        ],
+      }))
+      render(
+        <ComicReaderModal comic={multiChapterComic} open={true} onClose={vi.fn()} />
+      )
+      expect(screen.getByRole('list', { name: '章节列表' })).toBeInTheDocument()
+      expect(screen.getByText('第 1 話')).toBeInTheDocument()
+      expect(screen.getByText('第 2 話')).toBeInTheDocument()
+    })
+
+    it('loads a chapter via getChapterPreviewUrls when a chapter is clicked', async () => {
+      const fetchChapterUrls = vi.fn()
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: [],
+        totalPages: 0,
+        currentPage: 0,
+        chapters: [
+          { id: '999001', name: '第 1 話', index: 1 },
+          { id: '999002', name: '第 2 話', index: 2 },
+        ],
+        fetchChapterUrls,
+      }))
+      render(
+        <ComicReaderModal comic={multiChapterComic} open={true} onClose={vi.fn()} />
+      )
+      await userEvent.click(screen.getByText('第 2 話'))
+      expect(fetchChapterUrls).toHaveBeenCalledWith('999002', '999001')
     })
   })
 })

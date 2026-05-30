@@ -12,6 +12,7 @@ import { useHistoryStore } from '../stores/useHistoryStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { PageFlipView } from './PageFlipView'
 import { ReaderPage } from './ReaderPage'
+import { ChapterPicker } from './ChapterPicker'
 
 interface ComicReaderModalProps {
   comic: ComicInfo | null
@@ -28,7 +29,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     errorMessage,
     scrambleId,
     comicId,
+    chapters,
     fetchUrls,
+    fetchChapterUrls,
     setCurrentPage,
     reset,
   } = useComicReader()
@@ -59,7 +62,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const { addHistory } = useHistory()
   const historyStore = useHistoryStore()
-  const { initialPage } = useReaderStore()
+  const { initialPage, initialChapterId } = useReaderStore()
+  const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
   const lastRecordedPageRef = useRef<number>(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const comicRef = useRef<ComicInfo | null>(null)
@@ -128,10 +132,24 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     if (mode !== 'double') setBlankPosition('none')
   }, [setDisplayMode])
 
+  const handleSelectChapter = useCallback((chapterId: string) => {
+    setSelectedChapterId(chapterId)
+    fetchChapterUrls(chapterId, comic?.albumId ?? comic?.id)
+  }, [fetchChapterUrls, comic])
+
+  // 多章节专辑且尚未选章时，显示选章首屏而非翻页视图
+  const showChapterPicker = chapters.length > 1 && !selectedChapterId
+
   // Fetch URLs when modal opens
   useEffect(() => {
     if (open && comic) {
-      fetchUrls(comic)
+      if (initialChapterId) {
+        // Jump straight into a specific chapter (e.g. resumed from history)
+        setSelectedChapterId(initialChapterId)
+        fetchChapterUrls(initialChapterId, comic.albumId ?? comic.id)
+      } else {
+        fetchUrls(comic)
+      }
     } else {
       // Modal closing — save current page immediately if needed
       const c = comicRef.current
@@ -155,11 +173,12 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         clearTimeout(debounceTimerRef.current)
       }
       lastRecordedPageRef.current = 0
+      setSelectedChapterId(null)
       reset()
       clearCache()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, comic?.id, fetchUrls, reset, clearCache])
+  }, [open, comic?.id, fetchUrls, fetchChapterUrls, reset, clearCache])
 
   // Debounced history recording on page change
   useEffect(() => {
@@ -292,7 +311,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       </div>
 
       {/* Content */}
-      {displayMode === 'scroll' ? (
+      {showChapterPicker ? (
+        <ChapterPicker
+          chapters={chapters}
+          onSelect={handleSelectChapter}
+          title={comic?.title}
+        />
+      ) : displayMode === 'scroll' ? (
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
           {(loadingState === 'loading' || loadingState === 'idle') && (
             <ReaderLoadingState className="h-full" />
