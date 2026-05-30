@@ -500,11 +500,18 @@ function registerSearchHandlers(bridge: Bridge) {
 }
 
 function registerDownloadHandlers(bridge: Bridge) {
-  ipcMain.handle(IPC_CHANNELS.DOWNLOAD, async (_, comicId, comicData, overwrite?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.DOWNLOAD, async (_, comicId, comicData, overwrite?: unknown, chapterIds?: unknown) => {
     validateDownloadPayload(comicId, comicData)
     const params: Record<string, unknown> = { comic_id: comicId, comic_data: comicData }
     if (overwrite === true) {
       params.overwrite = true
+    }
+    if (Array.isArray(chapterIds) && chapterIds.length > 0) {
+      if (chapterIds.length > 1000) throw new ValidationError('Invalid download chapterIds: too many')
+      for (const cid of chapterIds) {
+        assert(and(string(), length(1, 256)), cid, 'download chapterId')
+      }
+      params.chapter_ids = chapterIds
     }
     return bridge.call('download', params)
   })
@@ -711,6 +718,16 @@ function registerPreviewHandlers(bridge: Bridge) {
       assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), data.sourceSite, 'comicData.sourceSite')
     }
     return bridge.call('get_preview_urls', { comic_data: comicData })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_CHAPTER_PREVIEW_URLS, async (_, chapterId: unknown, albumId?: unknown) => {
+    assert(and(string(), length(1, 256)), chapterId, 'chapterId')
+    const params: Record<string, unknown> = { chapter_id: chapterId }
+    if (albumId !== undefined && albumId !== null) {
+      assert(and(string(), length(1, 256)), albumId, 'albumId')
+      params.album_id = albumId
+    }
+    return bridge.call('get_chapter_preview_urls', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown, scrambleId?: unknown, comicId?: unknown) => {

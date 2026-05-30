@@ -22,7 +22,7 @@ export function useDownloadHelper() {
         comic,
         conflict.hasConflict ? true : undefined
       )
-      if (result.taskId) {
+      if ('taskId' in result && result.taskId) {
         upsertTask({
           id: result.taskId,
           comic,

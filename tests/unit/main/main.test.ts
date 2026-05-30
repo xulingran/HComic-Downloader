@@ -118,8 +118,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 33 previous + 1 random + 3 cache + 1 add_to_favourites + 1 check_favourite + 1 remove_from_favourites + 4 history + 1 get_comic_detail = 45 total
-      expect(handleCalls.length).toBe(45)
+      // 33 previous + 1 random + 3 cache + 1 add_to_favourites + 1 check_favourite + 1 remove_from_favourites + 4 history + 1 get_comic_detail + 1 get_chapter_preview_urls = 46 total
+      expect(handleCalls.length).toBe(46)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -200,6 +200,7 @@ describe('main.ts', () => {
         'get_downloads', 'cancel_download', 'apply_auth', 'verify_auth', 'shutdown',
         'fetch_cover', 'fetch_preview_image', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
         'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',
+        'get_chapter_preview_urls',
         'check_downloaded_status', 'start_migration', 'confirm_migration', 'pause_migration', 'resume_migration',
         'cancel_migration', 'get_migration_status', 'resolve_unmatched',
         'add_to_favourites', 'check_favourite', 'remove_from_favourites',

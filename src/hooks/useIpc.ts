@@ -47,8 +47,8 @@ export function useRandom() {
 export function useDownloadCommands() {
   const { invoke } = useIpc()
 
-  const startDownload = useCallback(async (comicId: string, comicData: ComicInfo, overwrite?: boolean) => {
-    return invoke(() => window.hcomic!.download(comicId, comicData, overwrite))
+  const startDownload = useCallback(async (comicId: string, comicData: ComicInfo, overwrite?: boolean, chapterIds?: string[]) => {
+    return invoke(() => window.hcomic!.download(comicId, comicData, overwrite, chapterIds))
   }, [invoke])
 
   const checkDownloadConflict = useCallback(async (comicData: ComicInfo) => {

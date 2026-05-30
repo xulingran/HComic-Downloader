@@ -41,7 +41,7 @@ describe('IPC Channel Consistency', () => {
       'apply_auth', 'verify_auth', 'shutdown', 'fetch_cover',
       'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
       'get_proxy_status', 'get_available_fonts', 'open_download_dir',
-      'get_download_detail', 'get_preview_urls', 'fetch_preview_image',
+      'get_download_detail', 'get_preview_urls', 'get_chapter_preview_urls', 'fetch_preview_image',
       'check_downloaded_status', 'start_migration', 'confirm_migration',
       'pause_migration', 'resume_migration', 'cancel_migration',
       'get_migration_status', 'resolve_unmatched',

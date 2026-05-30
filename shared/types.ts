@@ -1,3 +1,10 @@
+export interface ChapterInfo {
+  id: string
+  name: string
+  index: number
+  pages?: number
+}
+
 export interface ComicInfo {
   id: string
   title: string
@@ -9,6 +16,9 @@ export interface ComicInfo {
   tags?: string[]
   author?: string
   pages?: number
+  chapters?: ChapterInfo[]
+  albumId?: string
+  albumTotalChapters?: number
 }
 
 export interface PaginationInfo {
@@ -101,6 +111,9 @@ interface PreviewUrlsResult {
   totalPages: number
   scrambleId?: string
   comicId?: string
+  chapters?: ChapterInfo[]
+  albumId?: string
+  albumTotalChapters?: number
 }
 
 interface PreviewImageResult {
@@ -188,6 +201,7 @@ interface DownloadStartResult {
 
 type DownloadResult =
   | DownloadStartResult
+  | { taskIds: string[]; status: string }
   | { taskId: null; status: 'conflict'; conflictPath: string }
 
 interface DownloadConflictResult {
@@ -306,6 +320,10 @@ export interface IPCMethods {
     params: { comic_data: ComicInfo }
     result: PreviewUrlsResult
   }
+  get_chapter_preview_urls: {
+    params: { chapter_id: string; album_id?: string }
+    result: PreviewUrlsResult
+  }
   fetch_preview_image: {
     params: { image_url: string }
     result: PreviewImageResult
@@ -403,6 +421,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:open-download-dir': 'open_download_dir',
   'python:get-download-detail': 'get_download_detail',
   'python:get-preview-urls': 'get_preview_urls',
+  'python:get-chapter-preview-urls': 'get_chapter_preview_urls',
   'python:fetch-preview-image': 'fetch_preview_image',
   'python:check-downloaded-status': 'check_downloaded_status',
   'python:get-comic-detail': 'get_comic_detail',
@@ -438,7 +457,7 @@ export interface DownloadProgressEvent {
 export interface HcomicAPI {
   search(query: string, mode: string, page: number, source?: string, tag?: string): Promise<SearchResult>
   random(source?: string): Promise<SearchResult>
-  download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadResult>
+  download(comicId: string, comicData: ComicInfo, overwrite?: boolean, chapterIds?: string[]): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
   getFavourites(page?: number, source?: string): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
   checkFavourite(comicId: string, source?: string): Promise<{ isFavourited: boolean }>
@@ -465,6 +484,7 @@ export interface HcomicAPI {
   selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
+  getChapterPreviewUrls(chapterId: string, albumId?: string): Promise<PreviewUrlsResult>
   fetchPreviewImage(imageUrl: string, scrambleId?: string, comicId?: string): Promise<PreviewImageResult>
   checkDownloadedStatus(comics: ComicInfo[]): Promise<{ statusMap: Record<string, 'downloaded' | 'unknown'> }>
   getComicDetail(comicId: string, source?: string): Promise<{ comic: ComicInfo | null }>
@@ -531,6 +551,7 @@ export const IPC_CHANNELS = {
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
   GET_PREVIEW_URLS: 'python:get-preview-urls',
+  GET_CHAPTER_PREVIEW_URLS: 'python:get-chapter-preview-urls',
   FETCH_PREVIEW_IMAGE: 'python:fetch-preview-image',
   CHECK_DOWNLOADED_STATUS: 'python:check-downloaded-status',
   GET_COMIC_DETAIL: 'python:get-comic-detail',

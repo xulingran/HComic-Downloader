@@ -74,7 +74,7 @@ describe('preload.ts', () => {
     it('should invoke python:download with correct args', async () => {
       const comicData = { title: 'Test', url: 'http://x.com', source: 'hcomic' }
       await exposedApi.download('id-1', comicData)
-      expect(mockInvoke).toHaveBeenCalledWith('python:download', 'id-1', comicData, undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:download', 'id-1', comicData, undefined, undefined)
     })
 
     it('should reject empty comicId', () => {
