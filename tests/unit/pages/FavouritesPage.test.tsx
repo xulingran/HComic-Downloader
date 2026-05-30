@@ -41,6 +41,7 @@ vi.mock('@/stores/useSettingsStore', () => ({
 
 vi.mock('@/stores/useFavouritesStore', () => ({
   useFavouritesStore: vi.fn().mockReturnValue({
+    caches: {},
     comics: [],
     pagination: null,
     currentPage: 1,

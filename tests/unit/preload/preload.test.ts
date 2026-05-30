@@ -89,12 +89,12 @@ describe('preload.ts', () => {
   describe('getFavourites', () => {
     it('should invoke with default page 1', async () => {
       await exposedApi.getFavourites()
-      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 1)
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 1, undefined)
     })
 
     it('should invoke with specified page', async () => {
       await exposedApi.getFavourites(3)
-      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 3)
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 3, undefined)
     })
 
     it('should reject invalid page', () => {
