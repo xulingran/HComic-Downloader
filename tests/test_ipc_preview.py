@@ -162,3 +162,37 @@ def test_resolve_eps_id_falls_back_to_comic_id():
 
     assert _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="430371") == 430371
     assert _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="") == 0
+
+
+def test_get_preview_urls_returns_chapters(monkeypatch):
+    """多章节专辑：不预取图片，返回章节列表。"""
+    from models import ChapterInfo
+
+    server = _create_test_server()
+    comic = ComicInfo(
+        id="999001", title="多章", source_site="jmcomic", comic_source="JMCOMIC",
+        album_id="999001", album_total_chapters=2,
+        chapters=[ChapterInfo(id="999001", name="第 1 話", index=1),
+                  ChapterInfo(id="999002", name="第 2 話", index=2)],
+    )
+    monkeypatch.setattr(server, "_build_and_prepare_comic", lambda d, comic_id=None: comic)
+    result = server.handle_get_preview_urls({"id": "999001", "sourceSite": "jmcomic"})
+    assert result["imageUrls"] == []
+    assert len(result["chapters"]) == 2
+    assert result["chapters"][0]["id"] == "999001"
+    assert result["chapters"][0]["name"] == "第 1 話"
+    assert result["albumId"] == "999001"
+    assert result["albumTotalChapters"] == 2
+
+
+def test_get_chapter_preview_urls(monkeypatch):
+    """get_chapter_preview_urls 取单章图片与 scramble_id。"""
+    server = _create_test_server()
+    fake_jm = SimpleNamespace(
+        get_chapter_images=lambda cid: (["https://cdn/media/photos/999002/00001.webp"], "220980")
+    )
+    server.parser.parsers = {"jmcomic": fake_jm}
+    result = server.handle_get_chapter_preview_urls(chapter_id="999002", album_id="999001")
+    assert result["imageUrls"][0].endswith("00001.webp")
+    assert result["scrambleId"] == "220980"
+    assert result["comicId"] == "999002"

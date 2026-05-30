@@ -171,6 +171,7 @@ class IPCServer(SearchMixin, CoverMixin, PreviewMixin, DownloadMixin, ConfigMixi
             "open_download_dir": self.handle_open_download_dir,
             "get_download_detail": self.handle_get_download_detail,
             "get_preview_urls": self.handle_get_preview_urls,
+            "get_chapter_preview_urls": self.handle_get_chapter_preview_urls,
             "fetch_preview_image": self.handle_fetch_preview_image,
             "check_downloaded_status": self.handle_check_downloaded_status,
             "get_comic_detail": self.handle_get_comic_detail,

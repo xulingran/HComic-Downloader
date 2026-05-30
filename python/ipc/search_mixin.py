@@ -43,6 +43,12 @@ class SearchMixin:
             "tags": comic.tags if hasattr(comic, 'tags') else [],
             "author": comic.author if hasattr(comic, 'author') else None,
             "pages": comic.pages if hasattr(comic, 'pages') else None,
+            "chapters": [
+                {"id": c.id, "name": c.name, "index": c.index, "pages": c.pages}
+                for c in (getattr(comic, "chapters", None) or [])
+            ],
+            "albumId": getattr(comic, "album_id", "") or comic.id,
+            "albumTotalChapters": getattr(comic, "album_total_chapters", 1) or 1,
         }
 
     def _build_and_prepare_comic(self, data: dict, comic_id: str | None = None):
@@ -198,6 +204,20 @@ class SearchMixin:
         )
 
         comic = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
+
+        # 多章节专辑：不预取图片，返回章节列表供前端选章。
+        if comic.source_site == "jmcomic" and len(getattr(comic, "chapters", None) or []) > 1:
+            return {
+                "imageUrls": [],
+                "totalPages": comic.pages or 0,
+                "chapters": [
+                    {"id": c.id, "name": c.name, "index": c.index, "pages": c.pages}
+                    for c in comic.chapters
+                ],
+                "albumId": comic.album_id or comic.id,
+                "albumTotalChapters": comic.album_total_chapters or len(comic.chapters),
+            }
+
         image_urls = comic.get_all_image_urls()
         total_pages = max(comic.pages or 0, len(image_urls))
 
@@ -217,6 +237,23 @@ class SearchMixin:
         if comic.source_site == "jmcomic" and comic.scramble_id:
             result["scrambleId"] = comic.scramble_id
             result["comicId"] = comic.id
+        return result
+
+    def handle_get_chapter_preview_urls(self, chapter_id: str, album_id: str = "") -> dict:
+        """获取单个 jmcomic 章节的图片 URL 列表与 scramble_id。"""
+        if not chapter_id or not isinstance(chapter_id, str):
+            raise ValueError("Missing chapter id")
+        jm = self.parser.parsers.get("jmcomic")
+        if jm is None:
+            raise ValueError("jmcomic source unavailable")
+        image_urls, scramble_id = jm.get_chapter_images(chapter_id)
+        result = {
+            "imageUrls": image_urls,
+            "totalPages": len(image_urls),
+            "comicId": chapter_id,
+        }
+        if scramble_id:
+            result["scrambleId"] = scramble_id
         return result
 
     def handle_get_comic_detail(self, comic_id: str, source: str = "moeimg") -> dict:
