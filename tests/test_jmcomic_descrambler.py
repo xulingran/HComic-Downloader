@@ -1,6 +1,5 @@
 """jmcomic 图片反混淆模块测试。"""
 import hashlib
-import math
 from io import BytesIO
 
 from PIL import Image

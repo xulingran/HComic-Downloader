@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -46,6 +47,25 @@ class ConfigMixin:
         self.downloader.image_downloader.retry_times = v
         self.downloader.rebuild_session()
 
+    def _apply_jmcomic_domain(self, v: str) -> None:
+        """Apply jmcomic custom domain with availability test."""
+        v = v.strip()
+        if v:
+            # Format validation
+            if " " in v or "/" in v or not v or len(v) > 256:
+                raise ValueError(f"域名格式不正确: {v}")
+            # Availability test
+            try:
+                from sources.jmcomic.domain import JmDomainResolver
+                resolver = JmDomainResolver()
+                if not resolver._test_domain(v):
+                    raise ValueError(f"域名 {v} 无法访问，请检查是否正确")
+            except ValueError:
+                raise
+            except Exception as e:
+                raise ValueError(f"测试域名 {v} 失败: {e}") from e
+        self.parser.set_jmcomic_domain(v)
+
     def _apply_runtime(self, key: str, value: Any) -> None:
         """Apply a config value to the live runtime objects."""
         _RUNTIME_APPLIERS = {
@@ -58,6 +78,7 @@ class ConfigMixin:
             'retryTimes': self._apply_retry_times,
             'cbzFilenameTemplate': lambda v: setattr(self.cbz_builder, 'filename_template', v),
             'defaultSource': lambda v: self.parser.set_source(v),
+            'jmcomicDomain': self._apply_jmcomic_domain,
             'previewCacheSizeLimitMB': lambda v: self._preview_cache.update_max_size(v) if hasattr(self, '_preview_cache') else None,
         }
         applier = _RUNTIME_APPLIERS.get(key)
@@ -84,6 +105,7 @@ class ConfigMixin:
             'sfw_mode': getattr(self.config, 'sfw_mode', True),
             'tag_blacklist': getattr(self.config, 'tag_blacklist', {"hcomic": [], "moeimg": []}),
             'preview_cache_size_limit_mb': getattr(self.config, 'preview_cache_size_limit_mb', 500),
+            'jmcomic_domain': getattr(self.config, 'jmcomic_domain', ''),
         }
         config = {}
         for snake_key, value in raw.items():
@@ -99,6 +121,11 @@ class ConfigMixin:
         jmcomic_cdn = self.parser.get_jmcomic_cdn_domain()
         if jmcomic_cdn:
             config['jmcomicCdnDomain'] = jmcomic_cdn
+        # 返回 jmcomic 主域名，供弹窗登录使用
+        jm = self.parser.parsers.get("jmcomic")
+        if jm and hasattr(jm, '_ensure_domain'):
+            with contextlib.suppress(Exception):
+                config['jmcomicDomain'] = jm._ensure_domain()
         return {"config": config}
 
     def handle_set_config(self, key: str, value: Any) -> dict:
