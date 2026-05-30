@@ -165,6 +165,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     if (open && comic) {
       if (initialChapterId) {
         // Jump straight into a specific chapter (e.g. resumed from history)
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedChapterId(initialChapterId)
         fetchChapterUrls(initialChapterId, comic.albumId ?? comic.id)
       } else {
