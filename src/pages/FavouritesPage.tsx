@@ -13,6 +13,11 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
 import { useReaderStore } from '../stores/useReaderStore'
 
+const sources = [
+  { value: 'hcomic', label: 'HComic' },
+  { value: 'jmcomic', label: '禁漫天堂' }
+]
+
 interface FavouritesPageProps {
   onNavigateToSettings?: () => void
 }
@@ -24,6 +29,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [needsLogin, setNeedsLogin] = useState(false)
+  const [source, setSource] = useState('hcomic')
   const { getFavourites, checkDownloadedStatus } = useFavourites()
   const { downloadWithConflictCheck } = useDownloadHelper()
   const {
@@ -46,13 +52,14 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const getTaskId = (comic: ComicInfo) =>
     `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
 
-  const loadFavourites = useCallback(async (page: number = 1) => {
+  const loadFavourites = useCallback(async (page: number = 1, selectedSource?: string) => {
     setIsLoading(true)
     setError(null)
     setNeedsLogin(false)
 
     try {
-      const result = await getFavourites(page)
+      const effectiveSource = selectedSource || source
+      const result = await getFavourites(page, effectiveSource)
       setComics(result.comics)
       setPagination(result.pagination ?? null)
       setNeedsLogin(result.needsLogin)
@@ -69,10 +76,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       checkDownloadedStatus(result.comics).then((statusResult) => {
         if (latestPageRef.current !== pageSnapshot) return
         setDownloadedStatus(statusResult.statusMap)
-        cache.setCache({ ...cacheData, downloadedStatus: statusResult.statusMap })
+        cache.setCache({ ...cacheData, downloadedStatus: statusResult.statusMap }, effectiveSource)
       }).catch((err) => {
         console.error('Failed to check downloaded status:', err)
-        cache.setCache(cacheData)
+        cache.setCache(cacheData, effectiveSource)
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load favourites'
@@ -85,27 +92,29 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       setIsLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getFavourites, checkDownloadedStatus, cache.setCache])
+  }, [getFavourites, checkDownloadedStatus, cache.setCache, source])
 
   useEffect(() => {
     mountedRef.current = true
-    if (cache.hasCache) {
+    // 检查当前源是否有缓存
+    const currentCache = cache.caches[source]
+    if (currentCache && currentCache.comics.length > 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setComics(cache.comics)
-      setPagination(cache.pagination)
-      setCurrentPage(cache.currentPage)
-      setDownloadedStatus(cache.downloadedStatus)
+      setComics(currentCache.comics)
+      setPagination(currentCache.pagination)
+      setCurrentPage(currentCache.currentPage)
+      setDownloadedStatus(currentCache.downloadedStatus)
 
       // 后台静默刷新下载状态，不影响展示和页码
-      checkDownloadedStatus(cache.comics).then((statusResult) => {
+      checkDownloadedStatus(currentCache.comics).then((statusResult) => {
         if (!mountedRef.current) return
         setDownloadedStatus(statusResult.statusMap)
         cache.setCache({
-          comics: cache.comics,
-          pagination: cache.pagination,
-          currentPage: cache.currentPage,
+          comics: currentCache.comics,
+          pagination: currentCache.pagination,
+          currentPage: currentCache.currentPage,
           downloadedStatus: statusResult.statusMap,
-        })
+        }, source)
       }).catch((err) => { console.debug('Background downloaded status refresh failed:', err) })
     } else {
       loadFavourites(1)
@@ -162,6 +171,32 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           <h2 className="text-lg font-semibold text-[var(--text-primary)]">
             收藏夹
           </h2>
+          <select
+            value={source}
+            onChange={(e) => {
+              const newSource = e.target.value
+              setSource(newSource)
+              // 检查新源是否有缓存
+              const cachedData = cache.caches[newSource]
+              if (cachedData && cachedData.comics.length > 0) {
+                setComics(cachedData.comics)
+                setPagination(cachedData.pagination)
+                setCurrentPage(cachedData.currentPage)
+                setDownloadedStatus(cachedData.downloadedStatus)
+              } else {
+                setComics([])
+                loadFavourites(1, newSource)
+              }
+            }}
+            className="px-3 py-1 text-sm bg-[var(--bg-secondary)] border border-[var(--border)]
+                       rounded-lg text-[var(--text-primary)]"
+          >
+            {sources.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </select>
           <button
             onClick={() => {
               cache.clearCache()

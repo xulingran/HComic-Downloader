@@ -139,7 +139,7 @@ class PreviewMixin:
                 from sources.jmcomic.descrambler import descramble_image
                 b64_part = data_uri.split(",", 1)[1]
                 raw_bytes = _base64.b64decode(b64_part)
-                descrambled = descramble_image(raw_bytes, int(comic_id), scramble_id)
+                descrambled = descramble_image(raw_bytes, int(comic_id), image_url=url)
                 if descrambled != raw_bytes:
                     content_type = _detect(descrambled)
                     if content_type:

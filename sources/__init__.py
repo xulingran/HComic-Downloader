@@ -91,7 +91,7 @@ class MultiSourceParser:
 
     def source_supports_favourites(self, source: str | None = None) -> bool:
         current = source or self.current_source
-        return current == "hcomic"
+        return current in ("hcomic", "jmcomic")
 
     def get_auth(self, source: str | None = None) -> tuple[str, str]:
         current = source or self.current_source
@@ -130,19 +130,19 @@ class MultiSourceParser:
 
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
-        if src != "hcomic":
+        if src not in ("hcomic", "jmcomic"):
             return False
         return self.parsers[src].add_to_favourites(comic_id)
 
     def check_favourite(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
-        if src != "hcomic":
+        if src not in ("hcomic", "jmcomic"):
             return False
         return self.parsers[src].check_favourite(comic_id)
 
     def remove_from_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
-        if src != "hcomic":
+        if src not in ("hcomic", "jmcomic"):
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 

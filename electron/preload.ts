@@ -58,25 +58,29 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.CHECK_DOWNLOAD_CONFLICT, comicData)
   },
 
-  getFavourites: (page?: unknown) => {
+  getFavourites: (page?: unknown, source?: unknown) => {
     const p = page ?? 1
     validatePage(p)
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_FAVOURITES, p)
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_FAVOURITES, p, source ?? undefined)
   },
 
-  addToFavourites: (comicId: unknown) => {
+  addToFavourites: (comicId: unknown, source?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
-    return ipcRenderer.invoke(IPC_CHANNELS.ADD_TO_FAVOURITES, comicId)
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.ADD_TO_FAVOURITES, comicId, source ?? undefined)
   },
 
-  checkFavourite: (comicId: unknown) => {
+  checkFavourite: (comicId: unknown, source?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
-    return ipcRenderer.invoke(IPC_CHANNELS.CHECK_FAVOURITE, comicId)
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.CHECK_FAVOURITE, comicId, source ?? undefined)
   },
 
-  removeFromFavourites: (comicId: unknown) => {
+  removeFromFavourites: (comicId: unknown, source?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
-    return ipcRenderer.invoke(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, comicId)
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, comicId, source ?? undefined)
   },
 
   getConfig: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CONFIG),

@@ -223,19 +223,19 @@ export interface IPCMethods {
     result: DownloadConflictResult
   }
   get_favourites: {
-    params: { page?: number }
+    params: { page?: number; source?: string }
     result: { comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }
   }
   add_to_favourites: {
-    params: { comic_id: string }
+    params: { comic_id: string; source?: string }
     result: { success: boolean }
   }
   check_favourite: {
-    params: { comic_id: string }
+    params: { comic_id: string; source?: string }
     result: { isFavourited: boolean }
   }
   remove_from_favourites: {
-    params: { comic_id: string }
+    params: { comic_id: string; source?: string }
     result: { success: boolean }
   }
   get_config: {
@@ -440,10 +440,10 @@ export interface HcomicAPI {
   random(source?: string): Promise<SearchResult>
   download(comicId: string, comicData: ComicInfo, overwrite?: boolean): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
-  getFavourites(page?: number): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
-  checkFavourite(comicId: string): Promise<{ isFavourited: boolean }>
-  addToFavourites(comicId: string): Promise<{ success: boolean }>
-  removeFromFavourites(comicId: string): Promise<{ success: boolean }>
+  getFavourites(page?: number, source?: string): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
+  checkFavourite(comicId: string, source?: string): Promise<{ isFavourited: boolean }>
+  addToFavourites(comicId: string, source?: string): Promise<{ success: boolean }>
+  removeFromFavourites(comicId: string, source?: string): Promise<{ success: boolean }>
   getConfig(): Promise<{ config: AppConfig }>
   setConfig(key: ConfigKey, value: ConfigValue): Promise<{ success: boolean }>
   getDownloads(): Promise<{ tasks: DownloadTask[] }>

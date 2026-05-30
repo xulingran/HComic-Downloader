@@ -51,4 +51,4 @@ for _time_label, _time_val in TIME_MAP.items():
 
 # 搜索 URL 模板
 SEARCH_URL_TEMPLATE = "https://{domain}/search/photos?main_tag=0&search_query={query}"
-RANDOM_URL_TEMPLATE = "https://{domain}/random"
+RANDOM_URL_TEMPLATE = "https://{domain}/albums/random"

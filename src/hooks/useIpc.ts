@@ -117,8 +117,8 @@ export function useDownload() {
 export function useFavourites() {
   const { invoke } = useIpc()
 
-  const getFavourites = useCallback(async (page: number = 1) => {
-    return invoke(() => window.hcomic!.getFavourites(page))
+  const getFavourites = useCallback(async (page: number = 1, source?: string) => {
+    return invoke(() => window.hcomic!.getFavourites(page, source))
   }, [invoke])
 
   const checkDownloadedStatus = useCallback(async (comics: ComicInfo[]) => {
@@ -187,8 +187,8 @@ export function useAuth() {
 export function useAddToFavourites() {
   const { invoke } = useIpc()
 
-  const addToFavourites = useCallback(async (comicId: string) => {
-    return invoke(() => window.hcomic!.addToFavourites(comicId))
+  const addToFavourites = useCallback(async (comicId: string, source?: string) => {
+    return invoke(() => window.hcomic!.addToFavourites(comicId, source))
   }, [invoke])
 
   return { addToFavourites }
@@ -197,8 +197,8 @@ export function useAddToFavourites() {
 export function useCheckFavourite() {
   const { invoke } = useIpc()
 
-  const checkFavourite = useCallback(async (comicId: string) => {
-    return invoke(() => window.hcomic!.checkFavourite(comicId))
+  const checkFavourite = useCallback(async (comicId: string, source?: string) => {
+    return invoke(() => window.hcomic!.checkFavourite(comicId, source))
   }, [invoke])
 
   return { checkFavourite }
@@ -207,8 +207,8 @@ export function useCheckFavourite() {
 export function useRemoveFromFavourites() {
   const { invoke } = useIpc()
 
-  const removeFromFavourites = useCallback(async (comicId: string) => {
-    return invoke(() => window.hcomic!.removeFromFavourites(comicId))
+  const removeFromFavourites = useCallback(async (comicId: string, source?: string) => {
+    return invoke(() => window.hcomic!.removeFromFavourites(comicId, source))
   }, [invoke])
 
   return { removeFromFavourites }

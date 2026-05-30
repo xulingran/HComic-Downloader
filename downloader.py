@@ -179,7 +179,7 @@ class ComicDownloader:
                 continue
             try:
                 original = img_file.read_bytes()
-                descrambled = descramble_image(original, eps_id, comic.scramble_id)
+                descrambled = descramble_image(original, eps_id, img_file.stem)
                 if descrambled != original:
                     img_file.write_bytes(descrambled)
             except Exception as e:

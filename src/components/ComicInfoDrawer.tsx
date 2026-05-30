@@ -43,12 +43,14 @@ export function ComicInfoDrawer() {
     }
   }, [isOpen])
 
-  // Fetch full detail for sources where search results lack complete tags
+  // Fetch full detail for sources where search results lack complete metadata.
+  // moeimg/jmcomic search cards omit some fields (full tag set, page count,
+  // works/characters), so enrich from the detail page when the drawer opens.
   useEffect(() => {
     if (!isOpen || !drawerComic?.id) {
       return
     }
-    if (comicSource !== 'moeimg') {
+    if (comicSource !== 'moeimg' && comicSource !== 'jmcomic') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setEnrichedComic(null)
       return

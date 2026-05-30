@@ -109,11 +109,13 @@ class SearchMixin:
             },
         }
 
-    def handle_get_favourites(self, page: int = 1) -> dict:
+    def handle_get_favourites(self, page: int = 1, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
+        valid_sources = ("hcomic", "jmcomic")
+        effective_source = source if source in valid_sources else "hcomic"
         try:
             comics, pagination, needs_login = self.parser.favourites(
-                page=page, raise_errors=True, source="hcomic"
+                page=page, raise_errors=True, source=effective_source
             )
             return {
                 "comics": [self._comic_to_dict(c) for c in comics],
@@ -136,34 +138,40 @@ class SearchMixin:
             logger.error("Get favourites unexpected error: %s", e)
             raise
 
-    def handle_add_to_favourites(self, comic_id: str) -> dict:
+    def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
+        valid_sources = ("hcomic", "jmcomic")
+        effective_source = source if source in valid_sources else "hcomic"
         try:
-            success = self.parser.add_to_favourites(comic_id, source="hcomic")
+            success = self.parser.add_to_favourites(comic_id, source=effective_source)
             return {"success": success}
-        except ParserResponseError as e:
+        except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
-    def handle_check_favourite(self, comic_id: str) -> dict:
+    def handle_check_favourite(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
+        valid_sources = ("hcomic", "jmcomic")
+        effective_source = source if source in valid_sources else "hcomic"
         try:
-            is_favourited = self.parser.check_favourite(comic_id, source="hcomic")
+            is_favourited = self.parser.check_favourite(comic_id, source=effective_source)
             return {"isFavourited": is_favourited}
-        except ParserResponseError as e:
+        except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
-    def handle_remove_from_favourites(self, comic_id: str) -> dict:
+    def handle_remove_from_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
+        valid_sources = ("hcomic", "jmcomic")
+        effective_source = source if source in valid_sources else "hcomic"
         try:
-            success = self.parser.remove_from_favourites(comic_id, source="hcomic")
+            success = self.parser.remove_from_favourites(comic_id, source=effective_source)
             return {"success": success}
-        except ParserResponseError as e:
+        except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
                 raise AuthRequiredError(msg) from e

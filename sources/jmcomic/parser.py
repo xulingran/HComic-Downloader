@@ -78,6 +78,92 @@ class JmParser:
         except requests.RequestException as e:
             return False, f"登录校验失败: {e}"
 
+    def add_to_favourites(self, comic_id: str) -> bool:
+        """将漫画加入收藏夹。
+
+        Args:
+            comic_id: 漫画 ID
+
+        Returns:
+            成功返回 True
+
+        Raises:
+            RuntimeError: 请求失败或认证失效
+        """
+        domain = self._ensure_domain()
+        url = f"https://{domain}/ajax/favorite/add"
+        try:
+            resp = self.session.post(
+                url,
+                data={"aid": comic_id},
+                timeout=self.timeout,
+                headers={"Referer": f"https://{domain}/album/{comic_id}", "X-Requested-With": "XMLHttpRequest"},
+            )
+            resp.raise_for_status()
+            result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            if result.get("status") == "ok" or result.get("success"):
+                return True
+            # 如果返回了结果但不是明确的失败，也认为成功（某些站点返回空对象）
+            return True
+        except requests.RequestException as e:
+            logger.error("jmcomic add_to_favourites failed: %s", e)
+            raise RuntimeError(f"加入收藏夹失败: {e}") from e
+
+    def check_favourite(self, comic_id: str) -> bool:
+        """检查漫画是否在收藏夹中。
+
+        Args:
+            comic_id: 漫画 ID
+
+        Returns:
+            True 表示已收藏，False 表示未收藏
+
+        Raises:
+            RuntimeError: 请求失败或认证失效
+        """
+        domain = self._ensure_domain()
+        url = f"https://{domain}/ajax/favorite/check"
+        try:
+            resp = self.session.get(
+                url,
+                params={"aid": comic_id},
+                timeout=self.timeout,
+                headers={"Referer": f"https://{domain}/", "X-Requested-With": "XMLHttpRequest"},
+            )
+            resp.raise_for_status()
+            result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            return bool(result.get("favorited") or result.get("is_favorite") or result.get("status") == "ok")
+        except requests.RequestException as e:
+            logger.error("jmcomic check_favourite failed: %s", e)
+            raise RuntimeError(f"检查收藏状态失败: {e}") from e
+
+    def remove_from_favourites(self, comic_id: str) -> bool:
+        """将漫画从收藏夹移除。
+
+        Args:
+            comic_id: 漫画 ID
+
+        Returns:
+            成功返回 True
+
+        Raises:
+            RuntimeError: 请求失败或认证失效
+        """
+        domain = self._ensure_domain()
+        url = f"https://{domain}/ajax/favorite/remove"
+        try:
+            resp = self.session.post(
+                url,
+                data={"aid": comic_id},
+                timeout=self.timeout,
+                headers={"Referer": f"https://{domain}/album/{comic_id}", "X-Requested-With": "XMLHttpRequest"},
+            )
+            resp.raise_for_status()
+            return True
+        except requests.RequestException as e:
+            logger.error("jmcomic remove_from_favourites failed: %s", e)
+            raise RuntimeError(f"移除收藏夹失败: {e}") from e
+
     def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。支持关键词、标签和排行模式。"""
         domain = self._ensure_domain()
@@ -115,8 +201,54 @@ class JmParser:
             return None
 
     def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
-        """jmcomic 收藏夹（暂未实现）。"""
-        return [], None, False
+        """获取 jmcomic 收藏夹漫画。
+
+        Args:
+            page: 页码
+            raise_errors: 如果为 True，异常会向上传播而不是静默返回空列表
+
+        Returns:
+            (漫画信息列表, 分页信息, 是否需要登录)
+        """
+        domain = self._ensure_domain()
+        url = f"https://{domain}/user/favorites"
+        if page > 1:
+            url += f"?page={page}"
+        try:
+            resp = self.session.get(url, timeout=self.timeout, allow_redirects=True,
+                                    headers={"Referer": f"https://{domain}/"})
+            # 检查是否重定向到登录页面
+            if resp.url and "/login" in str(resp.url):
+                return [], None, True
+            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
+                resp.encoding = "utf-8"
+            html = resp.text
+            doc = etree.HTML(html)
+            # 检查是否需要登录（页面包含登录提示）
+            login_prompt = doc.xpath('//div[contains(text(),"請先登入")]')
+            if login_prompt:
+                return [], None, True
+            comics = self._parse_favourites_items(doc, domain=domain)
+            pagination = self._parse_pagination(doc)
+            return comics, pagination, False
+        except Exception as e:
+            logger.error("jmcomic favourites failed: %s", e)
+            if raise_errors:
+                raise
+            return [], None, False
+
+    def _parse_favourites_items(self, doc, domain: str) -> list[ComicInfo]:
+        """解析收藏夹页面的漫画列表。"""
+        items = doc.xpath('//div[contains(@class,"thumb-overlay")]')
+        comics = []
+        for item in items:
+            try:
+                comic = self._parse_search_item(item, domain=domain)
+                if comic:
+                    comics.append(comic)
+            except Exception as e:
+                logger.debug("Parse favourites item skipped: %s", e)
+        return comics
 
     def _search_ranking(self, keyword: str, page: int = 1) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """排行搜索。"""
@@ -171,8 +303,17 @@ class JmParser:
         pagination = self._parse_pagination(doc)
         return comics, pagination
 
+    @staticmethod
+    def _clean_texts(values) -> list[str]:
+        """清洗并去重文本列表，保持原始顺序。"""
+        return list(dict.fromkeys(v.strip() for v in (values or []) if v and v.strip()))
+
     def _parse_search_item(self, item, domain: str) -> ComicInfo | None:
-        """解析单个搜索结果项。"""
+        """解析单个搜索结果项。
+
+        除 id/标题/封面外，搜索卡片还携带作者、标签和分类，
+        一并提取以便卡片直接显示并参与标签黑名单过滤。
+        """
         link = item.xpath('.//a/@href')
         if not link:
             return None
@@ -201,11 +342,31 @@ class JmParser:
             if cdn_match:
                 self._cdn_domain = cdn_match.group(1)
 
+        # 从卡片容器（封面外两层 div）提取作者/标签/分类
+        author: str | None = None
+        tags: list[str] = []
+        category: str | None = None
+        parent_card = item.xpath("./parent::*/parent::div")
+        if parent_card:
+            card = parent_card[0]
+            artist_el = card.xpath('.//div//a[contains(@href,"main_tag=2")]/text()')
+            if artist_el and artist_el[0].strip():
+                author = artist_el[0].strip()
+            tags = self._clean_texts(card.xpath('.//div[contains(@class,"tags")]//a[@class="tag"]/text()'))
+        cat_el = item.xpath('.//div[@class="category-icon"]/div/text()')
+        if cat_el:
+            category = " ".join(t.strip() for t in cat_el if t.strip()).strip() or None
+
         return ComicInfo(
             id=comic_id,
             title=title,
+            author=author,
+            tags=tags,
+            category=category,
             cover_url=cover_url,
             preview_url=f"https://{domain}/album/{comic_id}",
+            media_id=comic_id,
+            comic_source="JMCOMIC",
             source_site="jmcomic",
         )
 
@@ -230,10 +391,24 @@ class JmParser:
         )
 
     def _parse_detail(self, html: str, comic_id: str, domain: str) -> ComicInfo:
-        """解析漫画详情页面。"""
+        """解析漫画详情页面。
+
+        详情页的元信息集中在封面块（#album_photo_cover）之后的兄弟 div 中，
+        将作者/标签/作品/登场人物等字段的查询限定在该区块，避免误抓到
+        页面下方「猜你喜欢」等推荐区的同名节点。
+        """
         doc = etree.HTML(html)
-        title_el = doc.xpath("//h1/text()")
+        title_el = doc.xpath('//h1[@id="book-name"]/text()') or doc.xpath("//h1/text()")
         title = title_el[0].strip() if title_el else "未知标题"
+
+        # 定位信息区块：封面块之后的第一个兄弟 div
+        info_el = None
+        cover_blocks = doc.xpath('//div[@id="album_photo_cover"]')
+        if cover_blocks:
+            siblings = cover_blocks[-1].xpath("./following-sibling::div")
+            if siblings:
+                info_el = siblings[0]
+        scope = info_el if info_el is not None else doc
 
         # 从 JavaScript 中提取 scramble_id
         scramble_id = ""
@@ -254,19 +429,46 @@ class JmParser:
                     continue
                 image_urls.append(url)
 
-        author = None
-        artist_el = doc.xpath('.//span[@data-type="author"]/a/text()')
-        if artist_el:
-            author = artist_el[0].strip()
+        # 作者（去重，页面中 author 节点可能因展开/收起重复出现）
+        authors = self._clean_texts(scope.xpath('.//span[@data-type="author"]/a/text()'))
+        author = authors[0] if authors else None
 
-        tags = doc.xpath('.//span[@data-type="tags"]/a/text()')
+        # 标签、作品（原作）、登场人物（角色）
+        tags = self._clean_texts(scope.xpath('.//span[@data-type="tags"]/a/text()'))
+        works = self._clean_texts(scope.xpath('.//span[@data-type="works"]/a/text()'))
+        actors = self._clean_texts(scope.xpath('.//span[@data-type="actor"]/a/text()'))
 
+        # 分类标签合并：作品与登场人物对搜索和展示同样有价值，
+        # 合并进 tags 并整体去重，保持「标签 → 作品 → 角色」顺序。
+        merged_tags = list(dict.fromkeys([*tags, *works, *actors]))
+
+        # 提取页数（限定在信息区块，避免误读推荐区的数字）
         pages = 0
-        pages_text = doc.xpath('.//div[contains(text(),"頁數") or contains(text(),"页数")]/text()')
+        pages_text = scope.xpath('.//div[contains(text(),"頁數") or contains(text(),"页数")]/text()')
         if pages_text:
             m = re.search(r"\d+", pages_text[0])
             if m:
                 pages = int(m.group())
+
+        # 提取发布日期：页面同时有「上架日期」和「更新日期」两个
+        # itemprop="datePublished" 节点，优先取上架日期。
+        publish_date = None
+        for span in scope.xpath('.//span[@itemprop="datePublished"]'):
+            text = "".join(span.itertext())
+            content = span.get("content")
+            if not content:
+                continue
+            if "上架" in text or "上傳" in text or "上传" in text:
+                publish_date = content
+                break
+            if publish_date is None:
+                publish_date = content
+        if not publish_date:
+            date_match = re.search(r'itemprop="datePublished"\s+content="(\d{4}-\d{2}-\d{2})"', html)
+            if not date_match:
+                date_match = re.search(r"(?:上架日期|上傳日期|上传日期)\s*[:：]\s*(\d{4}-\d{2}-\d{2})", html)
+            if date_match:
+                publish_date = date_match.group(1)
 
         # 如果页面上的图片数量少于总页数，使用 URL 模式生成所有图片 URL
         total_pages = max(pages, len(image_urls))
@@ -295,12 +497,16 @@ class JmParser:
             if not cover_url.startswith("http"):
                 cover_url = f"https://{domain}{cover_url}"
 
+        category = works[0] if works else None
+
         return ComicInfo(
             id=comic_id,
             title=title,
             author=author,
             pages=total_pages,
-            tags=tags,
+            tags=merged_tags,
+            category=category,
+            publish_date=publish_date,
             cover_url=cover_url,
             preview_url=f"https://{domain}/album/{comic_id}",
             media_id=comic_id,

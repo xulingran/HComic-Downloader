@@ -514,25 +514,45 @@ function registerDownloadHandlers(bridge: Bridge) {
     return bridge.call('check_download_conflict', { comic_data: comicData })
   })
 
-  ipcMain.handle(IPC_CHANNELS.GET_FAVOURITES, async (_, page?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.GET_FAVOURITES, async (_, page?: unknown, source?: unknown) => {
     const p = page ?? 1
     assert(and(number(), integer(), range(1, 1000)), p, 'favourites page')
-    return bridge.call('get_favourites', { page: p })
+    const params: Record<string, unknown> = { page: p }
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'favourites source')
+      params.source = source
+    }
+    return bridge.call('get_favourites', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.ADD_TO_FAVOURITES, async (_, comicId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.ADD_TO_FAVOURITES, async (_, comicId: unknown, source?: unknown) => {
     assert(comicIdValidator, comicId, 'add_to_favourites comicId')
-    return bridge.call('add_to_favourites', { comic_id: comicId })
+    const params: Record<string, unknown> = { comic_id: comicId }
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'add_to_favourites source')
+      params.source = source
+    }
+    return bridge.call('add_to_favourites', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.CHECK_FAVOURITE, async (_, comicId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.CHECK_FAVOURITE, async (_, comicId: unknown, source?: unknown) => {
     assert(comicIdValidator, comicId, 'check_favourite comicId')
-    return bridge.call('check_favourite', { comic_id: comicId })
+    const params: Record<string, unknown> = { comic_id: comicId }
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'check_favourite source')
+      params.source = source
+    }
+    return bridge.call('check_favourite', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, async (_, comicId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, async (_, comicId: unknown, source?: unknown) => {
     assert(comicIdValidator, comicId, 'remove_from_favourites comicId')
-    return bridge.call('remove_from_favourites', { comic_id: comicId })
+    const params: Record<string, unknown> = { comic_id: comicId }
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'remove_from_favourites source')
+      params.source = source
+    }
+    return bridge.call('remove_from_favourites', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.GET_DOWNLOADS, async () => {
