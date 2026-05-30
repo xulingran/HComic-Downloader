@@ -200,6 +200,18 @@ class JmParser:
             logger.error("jmcomic get_comic_detail failed: %s", e)
             return None
 
+    def get_chapter_images(self, chapter_id: str) -> tuple[list[str], str]:
+        """获取单个章节的图片 URL 列表与 scramble_id。
+
+        章节图片在 /photo/{chapter_id} 页面，页面结构与专辑详情页一致，
+        复用 _parse_detail 的图片提取逻辑（传入 chapter_id 作为 comic_id）。
+        """
+        domain = self._ensure_domain()
+        url = f"https://{domain}/photo/{chapter_id}"
+        html = self._request_text(url)
+        detail = self._parse_detail(html, comic_id=chapter_id, domain=domain)
+        return detail.image_urls, detail.scramble_id
+
     def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         """获取 jmcomic 收藏夹漫画。
 

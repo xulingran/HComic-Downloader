@@ -114,6 +114,24 @@ def test_parse_detail_single_chapter_no_chapters():
     assert comic.album_id == "430371"
 
 
+def test_get_chapter_images(monkeypatch):
+    """get_chapter_images 请求 /photo/{id} 并复用详情解析提取图片与 scramble_id。"""
+    html = (FIXTURES / "jm_album_detail.html").read_text(encoding="utf-8")
+    parser = _make_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+    captured = {}
+
+    def fake_request_text(url):
+        captured["url"] = url
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+    image_urls, scramble_id = parser.get_chapter_images("430371")
+    assert captured["url"] == "https://test.one/photo/430371"
+    assert scramble_id == "220980"
+    assert isinstance(image_urls, list)
+
+
 def test_parse_search_results_extracts_cards():
     """搜索页每项应提取 id/标题/作者/标签/分类，且无重复。"""
     html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
