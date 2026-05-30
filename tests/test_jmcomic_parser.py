@@ -90,6 +90,30 @@ def test_parse_detail_generates_image_urls():
     assert comic.cover_url.startswith("https://cdn-msp2.test.one/media/albums/430371.jpg")
 
 
+def test_parse_detail_multi_chapter():
+    """多章节专辑应解析出章节列表与总章数。"""
+    html = (FIXTURES / "jm_album_multi_chapter.html").read_text(encoding="utf-8")
+    parser = _make_parser()
+    comic = parser._parse_detail(html, comic_id="999001", domain="test.one")
+    assert len(comic.chapters) == 3
+    assert comic.chapters[0].id == "999001"
+    assert comic.chapters[0].name == "第 1 話"
+    assert comic.chapters[0].index == 1
+    assert comic.chapters[2].index == 3
+    assert comic.album_total_chapters == 3
+    assert comic.album_id == "999001"
+
+
+def test_parse_detail_single_chapter_no_chapters():
+    """单章节专辑：chapters 为空、总章数为 1、album_id 回退到自身。"""
+    html = (FIXTURES / "jm_album_detail.html").read_text(encoding="utf-8")
+    parser = _make_parser()
+    comic = parser._parse_detail(html, comic_id="430371", domain="test.one")
+    assert comic.chapters == []
+    assert comic.album_total_chapters == 1
+    assert comic.album_id == "430371"
+
+
 def test_parse_search_results_extracts_cards():
     """搜索页每项应提取 id/标题/作者/标签/分类，且无重复。"""
     html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")

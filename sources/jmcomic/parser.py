@@ -8,7 +8,7 @@ from urllib.parse import quote
 import requests
 from lxml import etree
 
-from models import ComicInfo, PaginationInfo
+from models import ChapterInfo, ComicInfo, PaginationInfo
 from utils import configure_session_auth
 
 from .constants import (
@@ -416,6 +416,26 @@ class JmParser:
         if scramble_match:
             scramble_id = scramble_match.group(1)
 
+        # 解析章节列表（多章节专辑）。参考 ComicGUISpider：取最后一个 episode 块。
+        chapters: list[ChapterInfo] = []
+        episode_blocks = doc.xpath('//div[@class="episode"]')
+        if episode_blocks:
+            for a in episode_blocks[-1].xpath("./ul/a"):
+                chap_id = (a.xpath("./@data-album") or [""])[0]
+                data_index = (a.xpath("./@data-index") or ["0"])[0]
+                name_nodes = self._clean_texts(a.xpath(".//h3/text()"))
+                if not chap_id:
+                    continue
+                try:
+                    idx = int(data_index) + 1
+                except (ValueError, TypeError):
+                    idx = len(chapters) + 1
+                chapters.append(ChapterInfo(
+                    id=chap_id,
+                    name=name_nodes[0] if name_nodes else f"第 {idx} 話",
+                    index=idx,
+                ))
+
         # 提取图片 URL（支持 data-src 和 data-original 两种懒加载方式）
         image_urls: list[str] = []
         img_elements = doc.xpath('.//img[contains(@id,"album_photo_")]')
@@ -514,4 +534,7 @@ class JmParser:
             source_site="jmcomic",
             scramble_id=scramble_id,
             image_urls=image_urls,
+            chapters=chapters,
+            album_id=comic_id,
+            album_total_chapters=len(chapters) if chapters else 1,
         )
