@@ -203,7 +203,7 @@ interface DownloadStartResult {
 
 type DownloadResult =
   | DownloadStartResult
-  | { taskIds: string[]; status: string }
+  | { taskIds: string[]; status: string; failedChapters?: Array<{ id: string; name: string; error: string }> }
   | { taskId: null; status: 'conflict'; conflictPath: string }
 
 interface DownloadConflictResult {

@@ -97,23 +97,31 @@ class DownloadMixin:
             raise ValueError("jmcomic source unavailable")
 
         task_ids = []
+        failed = []
         for chap_id in chapter_ids:
-            image_urls, scramble_id = jm.get_chapter_images(chap_id)
             chap_name = chapter_meta.get(chap_id, {}).get("name", chap_id)
-            comic = ComicInfo(
-                id=chap_id,
-                title=f"{album_title} - {chap_name}",
-                source_site="jmcomic",
-                comic_source="JMCOMIC",
-                media_id=chap_id,
-                image_urls=image_urls,
-                pages=len(image_urls),
-                scramble_id=scramble_id,
-                album_id=album_id,
-                album_total_chapters=total,
-            )
-            task_ids.append(self._download_manager.add_task(comic, overwrite=overwrite))
-        return {"taskIds": task_ids, "status": "queued"}
+            try:
+                image_urls, scramble_id = jm.get_chapter_images(chap_id)
+                comic = ComicInfo(
+                    id=chap_id,
+                    title=f"{album_title} - {chap_name}",
+                    source_site="jmcomic",
+                    comic_source="JMCOMIC",
+                    media_id=chap_id,
+                    image_urls=image_urls,
+                    pages=len(image_urls),
+                    scramble_id=scramble_id,
+                    album_id=album_id,
+                    album_total_chapters=total,
+                )
+                task_ids.append(self._download_manager.add_task(comic, overwrite=overwrite))
+            except Exception as e:
+                # 单章失败不应中断其余章节：记录后继续，让调用方据 failedChapters 提示并保持前后端状态一致。
+                logger.warning("Failed to queue chapter %s (%s): %s", chap_id, chap_name, e)
+                failed.append({"id": chap_id, "name": chap_name, "error": str(e)})
+
+        status = "queued" if task_ids else "error"
+        return {"taskIds": task_ids, "failedChapters": failed, "status": status}
 
     def handle_check_download_conflict(self, comic_data: dict) -> dict:
         comic = self._build_and_prepare_comic(comic_data or {})

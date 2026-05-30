@@ -60,7 +60,17 @@ export function useDownloadHelper() {
           downloadedPages: 0,
         })
       }
-      return true
+      // 后端逐章建任务，部分章节可能失败：提示用户哪些章节未能加入下载。
+      const failed = 'failedChapters' in result ? (result.failedChapters ?? []) : []
+      if (failed.length > 0) {
+        const names = failed.map((f) => f.name).join('、')
+        window.alert(
+          taskIds.length > 0
+            ? `部分章节加入下载失败：${names}`
+            : `章节加入下载失败：${names}`
+        )
+      }
+      return taskIds.length > 0
     } catch (err) {
       console.error('Chapter download failed:', err)
       return false
