@@ -62,8 +62,13 @@ class DownloadMixin:
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
 
-    def handle_download(self, comic_id: str, comic_data: dict | None = None, overwrite: bool = False) -> dict:
-        comic = self._build_and_prepare_comic(comic_data or {}, comic_id=comic_id)
+    def handle_download(self, comic_id: str, comic_data: dict | None = None,
+                        overwrite: bool = False, chapter_ids: list | None = None) -> dict:
+        comic_data = comic_data or {}
+        if chapter_ids:
+            return self._download_chapters(comic_id, comic_data, chapter_ids, overwrite)
+
+        comic = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
 
         if not overwrite:
             output_path = self.cbz_builder.get_output_path_for_format(
@@ -78,6 +83,37 @@ class DownloadMixin:
             "taskId": task_id,
             "status": task.status.value if task else "queued",
         }
+
+    def _download_chapters(self, album_id: str, comic_data: dict,
+                           chapter_ids: list, overwrite: bool) -> dict:
+        """为选中的每个章节创建独立下载任务。"""
+        from models import ComicInfo
+
+        album_title = comic_data.get("title", "Unknown")
+        total = int(comic_data.get("albumTotalChapters") or len(chapter_ids))
+        chapter_meta = {c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c}
+        jm = self.parser.parsers.get("jmcomic")
+        if jm is None:
+            raise ValueError("jmcomic source unavailable")
+
+        task_ids = []
+        for chap_id in chapter_ids:
+            image_urls, scramble_id = jm.get_chapter_images(chap_id)
+            chap_name = chapter_meta.get(chap_id, {}).get("name", chap_id)
+            comic = ComicInfo(
+                id=chap_id,
+                title=f"{album_title} - {chap_name}",
+                source_site="jmcomic",
+                comic_source="JMCOMIC",
+                media_id=chap_id,
+                image_urls=image_urls,
+                pages=len(image_urls),
+                scramble_id=scramble_id,
+                album_id=album_id,
+                album_total_chapters=total,
+            )
+            task_ids.append(self._download_manager.add_task(comic, overwrite=overwrite))
+        return {"taskIds": task_ids, "status": "queued"}
 
     def handle_check_download_conflict(self, comic_data: dict) -> dict:
         comic = self._build_and_prepare_comic(comic_data or {})
