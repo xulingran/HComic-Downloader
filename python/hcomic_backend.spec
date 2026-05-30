@@ -1,5 +1,9 @@
 # -*- mode: python ; coding: utf-8 -*-
 import os
+import platform
+
+# UPX is unavailable on macOS ARM64; disable to prevent build failures
+_use_upx = not (platform.system() == 'Darwin' and platform.machine() == 'arm64')
 
 SPEC_DIR = os.path.abspath(SPECPATH)
 PROJECT_ROOT = os.path.dirname(SPEC_DIR)
@@ -39,7 +43,7 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    upx=_use_upx,
     console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -52,7 +56,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=_use_upx,
     upx_exclude=[],
     name='python',
 )
