@@ -55,6 +55,8 @@ export interface HistoryItem {
   sourceUrl: string
   lastPage: number
   totalPages: number
+  lastChapterId?: string
+  lastChapterName?: string
   lastReadAt: string
   createdAt: string
 }
@@ -499,7 +501,7 @@ export interface HcomicAPI {
   clearPreviewCache(): Promise<{ success: boolean }>
   clearAllCache(): Promise<{ success: boolean }>
   getHistory(page?: number): Promise<{ items: HistoryItem[]; pagination: PaginationInfo }>
-  addHistory(params: { comicId: string; title: string; coverUrl: string; source: string; sourceSite: string; mediaId: string; sourceUrl: string; lastPage: number; totalPages: number }): Promise<{ success: boolean }>
+  addHistory(params: { comicId: string; title: string; coverUrl: string; source: string; sourceSite: string; mediaId: string; sourceUrl: string; lastPage: number; totalPages: number; lastChapterId?: string; lastChapterName?: string }): Promise<{ success: boolean }>
   deleteHistory(comicId: string, source: string): Promise<{ success: boolean }>
   clearHistory(): Promise<{ success: boolean }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void

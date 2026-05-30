@@ -232,7 +232,7 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   addHistory: (params: Record<string, unknown>) => {
     if (typeof params !== 'object' || params === null) throw new Error('Invalid params')
-    const { comicId, title, coverUrl, source, sourceSite, mediaId, sourceUrl, lastPage, totalPages } = params
+    const { comicId, title, coverUrl, source, sourceSite, mediaId, sourceUrl, lastPage, totalPages, lastChapterId, lastChapterName } = params
     if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
     if (typeof title !== 'string' || title.length === 0 || title.length > 256) throw new Error('Invalid title')
     if (typeof coverUrl !== 'string' || coverUrl.length > 2048) throw new Error('Invalid coverUrl')
@@ -242,6 +242,8 @@ contextBridge.exposeInMainWorld('hcomic', {
     if (typeof sourceUrl !== 'string' || sourceUrl.length > 2048) throw new Error('Invalid sourceUrl')
     if (typeof lastPage !== 'number' || !Number.isInteger(lastPage) || lastPage < 0) throw new Error('Invalid lastPage')
     if (typeof totalPages !== 'number' || !Number.isInteger(totalPages) || totalPages < 0) throw new Error('Invalid totalPages')
+    if (lastChapterId !== undefined && (typeof lastChapterId !== 'string' || lastChapterId.length > 256)) throw new Error('Invalid lastChapterId')
+    if (lastChapterName !== undefined && (typeof lastChapterName !== 'string' || lastChapterName.length > 256)) throw new Error('Invalid lastChapterName')
     return ipcRenderer.invoke(IPC_CHANNELS.ADD_HISTORY, params)
   },
 

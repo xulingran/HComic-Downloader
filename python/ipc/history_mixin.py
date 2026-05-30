@@ -49,6 +49,8 @@ class HistoryMixin:
         source_url: str = "",
         last_page: int = 0,
         total_pages: int = 0,
+        last_chapter_id: str = "",
+        last_chapter_name: str = "",
     ) -> dict:
         self._reading_history_db.upsert(
             comic_id=comic_id,
@@ -60,6 +62,8 @@ class HistoryMixin:
             source_url=source_url,
             last_page=last_page,
             total_pages=total_pages,
+            last_chapter_id=last_chapter_id,
+            last_chapter_name=last_chapter_name,
         )
         return {"success": True}
 
@@ -100,7 +104,7 @@ class ReadingHistoryDB:
         """)
         # Migrate: add columns if they don't exist (for existing databases)
         existing_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(reading_history)")}
-        for col in ("source_site", "media_id"):
+        for col in ("source_site", "media_id", "last_chapter_id", "last_chapter_name"):
             if col not in existing_cols:
                 self._conn.execute(f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''")
         self._conn.commit()
@@ -116,12 +120,14 @@ class ReadingHistoryDB:
         source_url: str,
         last_page: int,
         total_pages: int,
+        last_chapter_id: str = "",
+        last_chapter_name: str = "",
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()  # noqa: UP017
         self._conn.execute(
             """
-            INSERT INTO reading_history (comic_id, title, cover_url, source, source_site, media_id, source_url, last_page, total_pages, last_read_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO reading_history (comic_id, title, cover_url, source, source_site, media_id, source_url, last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(comic_id, source) DO UPDATE SET
                 title = excluded.title,
                 cover_url = excluded.cover_url,
@@ -130,9 +136,11 @@ class ReadingHistoryDB:
                 source_url = excluded.source_url,
                 last_page = excluded.last_page,
                 total_pages = excluded.total_pages,
+                last_chapter_id = excluded.last_chapter_id,
+                last_chapter_name = excluded.last_chapter_name,
                 last_read_at = excluded.last_read_at
             """,
-            (comic_id, title, cover_url, source, source_site, media_id, source_url, last_page, total_pages, now, now),
+            (comic_id, title, cover_url, source, source_site, media_id, source_url, last_page, total_pages, last_chapter_id, last_chapter_name, now, now),
         )
         self._conn.commit()
 
@@ -142,7 +150,7 @@ class ReadingHistoryDB:
         rows = self._conn.execute(
             """
             SELECT id, comic_id, title, cover_url, source, source_site, media_id, source_url,
-                   last_page, total_pages, last_read_at, created_at
+                   last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at
             FROM reading_history
             ORDER BY last_read_at DESC
             LIMIT ? OFFSET ?
@@ -162,6 +170,8 @@ class ReadingHistoryDB:
                 "sourceUrl": row["source_url"] or "",
                 "lastPage": row["last_page"],
                 "totalPages": row["total_pages"],
+                "lastChapterId": row["last_chapter_id"] or "",
+                "lastChapterName": row["last_chapter_name"] or "",
                 "lastReadAt": row["last_read_at"],
                 "createdAt": row["created_at"],
             })

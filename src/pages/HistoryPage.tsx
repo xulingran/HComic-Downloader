@@ -88,7 +88,11 @@ export function HistoryPage() {
   }, [])
 
   const handleOpenReader = (item: HistoryItem) => {
-    openReader(historyItemToComicInfo(item), item.lastPage > 0 ? item.lastPage : undefined)
+    openReader(
+      historyItemToComicInfo(item),
+      item.lastPage > 0 ? item.lastPage : undefined,
+      item.lastChapterId || undefined,
+    )
   }
 
   const handleDelete = async (item: HistoryItem) => {
@@ -246,6 +250,8 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
           </h3>
           <div className="text-xs text-[var(--text-secondary)] mt-0.5">
             {item.totalPages > 0 && <span>第{item.lastPage}/{item.totalPages}页</span>}
+            {item.lastChapterName && <span className="mx-1.5">·</span>}
+            {item.lastChapterName && <span className="truncate">{item.lastChapterName}</span>}
             {item.totalPages > 0 && <span className="mx-1.5">·</span>}
             <span>{formatRelativeTime(item.lastReadAt)}</span>
           </div>
@@ -289,6 +295,8 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
       <div className="px-2 pb-2 -mt-1">
         <div className="text-xs text-[var(--text-secondary)]">
           {item.totalPages > 0 && <span>第{item.lastPage}/{item.totalPages}页</span>}
+          {item.lastChapterName && <span className="mx-1">·</span>}
+          {item.lastChapterName && <span>{item.lastChapterName}</span>}
           {item.totalPages > 0 && <span className="mx-1">·</span>}
           <span>{formatRelativeTime(item.lastReadAt)}</span>
         </div>

@@ -64,6 +64,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const historyStore = useHistoryStore()
   const { initialPage, initialChapterId } = useReaderStore()
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null)
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(-1)
+  const [chapterFlipHint, setChapterFlipHint] = useState<'next' | 'prev' | null>(null)
   const lastRecordedPageRef = useRef<number>(0)
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const comicRef = useRef<ComicInfo | null>(null)
@@ -88,12 +90,14 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       sourceUrl: comic.url,
       lastPage: page,
       totalPages,
+      lastChapterId: chapters[currentChapterIndex]?.id ?? '',
+      lastChapterName: chapters[currentChapterIndex]?.name ?? '',
     }).catch((err) => {
       console.error('Failed to record history:', err)
     }).finally(() => {
       historyStore.clearCache()
     })
-  }, [comic, totalPages, addHistory, historyStore])
+  }, [comic, totalPages, addHistory, historyStore, chapters, currentChapterIndex])
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
@@ -132,8 +136,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     if (mode !== 'double') setBlankPosition('none')
   }, [setDisplayMode])
 
-  const [currentChapterIndex, setCurrentChapterIndex] = useState(-1)
-  const [chapterFlipHint, setChapterFlipHint] = useState<'next' | 'prev' | null>(null)
   const hasPrevChapter = currentChapterIndex > 0
   const hasNextChapter = currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1
 
@@ -183,6 +185,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           sourceUrl: c.url,
           lastPage: currentPage,
           totalPages,
+          lastChapterId: chapters[currentChapterIndex]?.id ?? '',
+          lastChapterName: chapters[currentChapterIndex]?.name ?? '',
         }).catch(() => {}).finally(() => {
           historyStore.clearCache()
         })

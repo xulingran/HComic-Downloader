@@ -221,7 +221,7 @@ export function useHistory() {
     return invoke(() => window.hcomic!.getHistory(page))
   }, [invoke])
 
-  const addHistory = useCallback(async (params: { comicId: string; title: string; coverUrl: string; source: string; sourceSite: string; mediaId: string; sourceUrl: string; lastPage: number; totalPages: number }) => {
+  const addHistory = useCallback(async (params: { comicId: string; title: string; coverUrl: string; source: string; sourceSite: string; mediaId: string; sourceUrl: string; lastPage: number; totalPages: number; lastChapterId?: string; lastChapterName?: string }) => {
     return invoke(() => window.hcomic!.addHistory(params))
   }, [invoke])
 
