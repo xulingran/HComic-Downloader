@@ -35,6 +35,7 @@ vi.mock('electron', () => {
       on: vi.fn(),
       quit: vi.fn(),
       setAsDefaultProtocolClient: vi.fn(),
+      requestSingleInstanceLock: vi.fn().mockReturnValue(true),
     },
     BrowserWindow: MockBrowserWindow,
     ipcMain: { handle: mockHandle },
