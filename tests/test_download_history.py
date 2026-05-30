@@ -236,3 +236,51 @@ def test_update_output_path_changes_stored_path(db, sample_comic, tmp_path):
 
 def test_update_output_path_no_match_does_nothing(db):
     db.update_output_path(("hcomic", "nonexist", "NH"), "/some/path.cbz")
+
+
+def _jm_chapter(chap_id, album_id, total):
+    return ComicInfo(
+        id=chap_id, title="多章漫画", source_site="jmcomic",
+        comic_source="JMCOMIC", album_id=album_id, album_total_chapters=total,
+    )
+
+
+def test_multi_chapter_partial_not_downloaded(db, tmp_path):
+    """只下载了 1/2 章 → 专辑视角未完成 → unknown。"""
+    out = tmp_path / "ch1"
+    out.mkdir()
+    db.record_download(_jm_chapter("999001", "999001", 2), str(out), "folder")
+
+    key = ("jmcomic", "999001", "JMCOMIC")
+    result = db.check_downloaded_batch([key], str(tmp_path), "folder", "{title}")
+    assert result[key] == "unknown"
+
+
+def test_multi_chapter_complete_downloaded(db, tmp_path):
+    """两章齐全 → 专辑视角已完成 → downloaded。"""
+    o1 = tmp_path / "c1"
+    o1.mkdir()
+    o2 = tmp_path / "c2"
+    o2.mkdir()
+    db.record_download(_jm_chapter("999001", "999001", 2), str(o1), "folder")
+    db.record_download(_jm_chapter("999002", "999001", 2), str(o2), "folder")
+
+    key = ("jmcomic", "999001", "JMCOMIC")
+    result = db.check_downloaded_batch([key], str(tmp_path), "folder", "{title}")
+    assert result[key] == "downloaded"
+
+
+def test_legacy_single_record_still_downloaded(db, sample_comic, tmp_path):
+    """迁移后旧单本记录(album_id 补齐为 comic_id)仍按存储路径判定为已下载。"""
+    output_path = str(tmp_path / "legacy.cbz")
+    with open(output_path, "w") as f:
+        f.write("fake")
+    # 模拟旧记录：album_id 为空，迁移逻辑应补齐
+    db.record_download(sample_comic, output_path, "cbz")
+    db._conn.execute("UPDATE download_history SET album_id = '', album_total_chapters = 1")
+    db._conn.commit()
+    db._migrate_album_ids()
+
+    key = ("hcomic", "12345", "MMCG_SHORT")
+    result = db.check_downloaded_batch([key], str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result[key] == "downloaded"
