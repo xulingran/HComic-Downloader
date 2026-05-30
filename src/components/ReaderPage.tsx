@@ -28,7 +28,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
     if (!el) return
     const observer = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) setIsVisible(true) },
-      { rootMargin: '400px' }
+      { rootMargin: '2000px 0px' }
     )
     observer.observe(el)
     return () => observer.disconnect()

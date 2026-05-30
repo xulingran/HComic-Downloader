@@ -322,9 +322,9 @@ describe('ComicReaderModal', () => {
       fireEvent.pointerDown(slider, { clientX: 150, pointerId: 1 })
       fireEvent.pointerUp(slider, { pointerId: 1 })
 
-      // Verify sequential preloading was triggered starting from page 10
+      // Verify concurrent preloading was triggered starting from page 11 (skips current page 10)
       await waitFor(() => {
-        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/10.jpg', '', '')
+        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/11.jpg', '', '')
       })
     })
   })

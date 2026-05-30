@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 /**
- * Manages serial preloading of reader page images around a jump target.
- * Returns the cache map (via ref), a cacheVersion counter to trigger re-renders,
- * and setters for preloadTarget.
+ * Manages concurrent preloading of reader page images around a jump target.
+ * Uses a worker-pool pattern to fetch multiple pages in parallel.
  */
 export function usePreloadManager(imageUrls: string[], loadingState: string, scrambleId?: string, comicId?: string) {
   const imageCacheRef = useRef(new Map<number, string>())
@@ -16,16 +15,17 @@ export function usePreloadManager(imageUrls: string[], loadingState: string, scr
     setPreloadTarget(null)
   }, [])
 
-  // Serial preloading around jump target
   useEffect(() => {
     if (preloadTarget == null || loadingState !== 'loaded') return
     let cancelled = false
     const cache = imageCacheRef.current
-    const FORWARD = 5
+    const FORWARD = 8
     const BACKWARD = 2
+    const CONCURRENCY = 3
     const queue: number[] = []
 
-    for (let i = 0; i <= FORWARD; i++) {
+    // Start from +1 to skip the current page (already loaded by the visible component)
+    for (let i = 1; i <= FORWARD; i++) {
       const pg = preloadTarget + i
       if (pg >= 1 && pg <= imageUrls.length && !cache.has(pg - 1)) queue.push(pg)
     }
@@ -36,21 +36,26 @@ export function usePreloadManager(imageUrls: string[], loadingState: string, scr
 
     if (queue.length === 0) return
 
-    ;(async () => {
-      for (const pg of queue) {
-        if (cancelled) return
-        try {
-          const result = await window.hcomic!.fetchPreviewImage(imageUrls[pg - 1], scrambleId, comicId)
-          if (cancelled) return
-          if (result?.dataUri) {
-            cache.set(pg - 1, result.dataUri)
-            setCacheVersion((v) => v + 1)
+    const workerCount = Math.min(CONCURRENCY, queue.length)
+    const workers: Promise<void>[] = []
+
+    for (let i = 0; i < workerCount; i++) {
+      workers.push((async () => {
+        while (queue.length > 0 && !cancelled) {
+          const pg = queue.shift()!
+          try {
+            const result = await window.hcomic!.fetchPreviewImage(imageUrls[pg - 1], scrambleId, comicId)
+            if (cancelled) return
+            if (result?.dataUri) {
+              cache.set(pg - 1, result.dataUri)
+              setCacheVersion((v) => v + 1)
+            }
+          } catch {
+            // Individual page preload failures are non-critical
           }
-        } catch {
-          // Individual page preload failures are non-critical
         }
-      }
-    })()
+      })())
+    }
 
     return () => { cancelled = true }
   }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId])
