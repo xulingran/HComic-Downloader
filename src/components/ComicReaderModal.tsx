@@ -132,10 +132,28 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     if (mode !== 'double') setBlankPosition('none')
   }, [setDisplayMode])
 
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(-1)
+  const [chapterFlipHint, setChapterFlipHint] = useState<'next' | 'prev' | null>(null)
+  const hasPrevChapter = currentChapterIndex > 0
+  const hasNextChapter = currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1
+
+  const goToChapter = useCallback((idx: number) => {
+    if (idx < 0 || idx >= chapters.length) return
+    setCurrentChapterIndex(idx)
+    setChapterFlipHint(null)
+    setSelectedChapterId(chapters[idx].id)
+    fetchChapterUrls(chapters[idx].id, comic?.albumId ?? comic?.id)
+  }, [chapters, fetchChapterUrls, comic])
+
   const handleSelectChapter = useCallback((chapterId: string) => {
-    setSelectedChapterId(chapterId)
-    fetchChapterUrls(chapterId, comic?.albumId ?? comic?.id)
-  }, [fetchChapterUrls, comic])
+    const idx = chapters.findIndex((c) => c.id === chapterId)
+    if (idx >= 0) {
+      goToChapter(idx)
+    } else {
+      setSelectedChapterId(chapterId)
+      fetchChapterUrls(chapterId, comic?.albumId ?? comic?.id)
+    }
+  }, [chapters, goToChapter, fetchChapterUrls, comic])
 
   // 多章节专辑且尚未选章时，显示选章首屏而非翻页视图
   const showChapterPicker = chapters.length > 1 && !selectedChapterId
@@ -174,6 +192,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       }
       lastRecordedPageRef.current = 0
       setSelectedChapterId(null)
+      setCurrentChapterIndex(-1)
+      setChapterFlipHint(null)
       reset()
       clearCache()
     }
@@ -226,12 +246,26 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
           e.preventDefault()
           if (currentPage + step <= navTotal) {
+            setChapterFlipHint(null)
             setCurrentPage(currentPage + step)
+          } else if (hasNextChapter) {
+            if (chapterFlipHint === 'next') {
+              goToChapter(currentChapterIndex + 1)
+            } else {
+              setChapterFlipHint('next')
+            }
           }
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
           e.preventDefault()
           if (currentPage > 1) {
+            setChapterFlipHint(null)
             setCurrentPage(Math.max(currentPage - step, 1))
+          } else if (hasPrevChapter) {
+            if (chapterFlipHint === 'prev') {
+              goToChapter(currentChapterIndex - 1)
+            } else {
+              setChapterFlipHint('prev')
+            }
           }
         }
       }
@@ -239,7 +273,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, onClose, displayMode, blankPosition, currentPage, totalPages, setCurrentPage])
+  }, [open, onClose, displayMode, blankPosition, currentPage, totalPages, setCurrentPage,
+      chapters.length, hasNextChapter, hasPrevChapter, chapterFlipHint, currentChapterIndex, goToChapter])
 
   const prevDisplayModeRef = useRef(displayMode)
   useEffect(() => {
@@ -384,12 +419,35 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         </>
       )}
 
+      {/* 边界翻章提示浮层 */}
+      {chapterFlipHint && (
+        <div className="pointer-events-none absolute left-1/2 bottom-24 -translate-x-1/2 z-10">
+          <div
+            className="px-4 py-2 rounded-full text-sm text-white shadow-lg"
+            style={{ background: 'rgba(108,140,255,0.9)', backdropFilter: 'blur(4px)' }}
+          >
+            {chapterFlipHint === 'next' ? '再翻一次进入下一章 →' : '← 再翻一次进入上一章'}
+          </div>
+        </div>
+      )}
+
       {/* Footer */}
       <div
         className="px-5 py-2 shrink-0 relative"
         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
       >
         <div className="flex items-center gap-3">
+          {chapters.length > 1 && (
+            <button
+              aria-label="上一章"
+              disabled={!hasPrevChapter}
+              onClick={() => goToChapter(currentChapterIndex - 1)}
+              className="px-2 py-1 rounded text-xs text-white transition-colors hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+              style={{ background: 'rgba(255,255,255,0.08)' }}
+            >
+              ‹ 上一章
+            </button>
+          )}
           <span className="text-xs text-gray-500">{currentPage} / {effectiveTotalPages}</span>
           <div
             ref={sliderRef}
@@ -428,6 +486,17 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               />
             </div>
           </div>
+          {chapters.length > 1 && (
+            <button
+              aria-label="下一章"
+              disabled={!hasNextChapter}
+              onClick={() => goToChapter(currentChapterIndex + 1)}
+              className="px-2 py-1 rounded text-xs text-white transition-colors hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
+              style={{ background: 'rgba(255,255,255,0.08)' }}
+            >
+              下一章 ›
+            </button>
+          )}
           <span className="text-xs text-gray-500">
             {displayMode === 'scroll' ? 'ESC 关闭 | ↑↓ 滚动' : 'ESC 关闭 | ←→ 翻页'}
           </span>

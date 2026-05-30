@@ -434,5 +434,53 @@ describe('ComicReaderModal', () => {
       await userEvent.click(screen.getByText('第 2 話'))
       expect(fetchChapterUrls).toHaveBeenCalledWith('999002', '999001')
     })
+
+    it('footer 下一章 button loads the next chapter and is disabled on the last chapter', async () => {
+      const fetchChapterUrls = vi.fn()
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: [],
+        totalPages: 0,
+        currentPage: 0,
+        chapters: [
+          { id: '999001', name: '第 1 話', index: 1 },
+          { id: '999002', name: '第 2 話', index: 2 },
+        ],
+        fetchChapterUrls,
+      }))
+      render(
+        <ComicReaderModal comic={multiChapterComic} open={true} onClose={vi.fn()} />
+      )
+
+      // 进入第 1 章 → 底栏「下一章」可用
+      await userEvent.click(screen.getByText('第 1 話'))
+      const nextBtn = screen.getByLabelText('下一章')
+      expect(nextBtn).toBeEnabled()
+      fetchChapterUrls.mockClear()
+
+      // 点击「下一章」加载第 2 章
+      await userEvent.click(nextBtn)
+      expect(fetchChapterUrls).toHaveBeenLastCalledWith('999002', '999001')
+
+      // 已到末章 → 「下一章」禁用
+      expect(screen.getByLabelText('下一章')).toBeDisabled()
+    })
+
+    it('first chapter has 上一章 disabled', async () => {
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: [],
+        totalPages: 0,
+        currentPage: 0,
+        chapters: [
+          { id: '999001', name: '第 1 話', index: 1 },
+          { id: '999002', name: '第 2 話', index: 2 },
+        ],
+        fetchChapterUrls: vi.fn(),
+      }))
+      render(
+        <ComicReaderModal comic={multiChapterComic} open={true} onClose={vi.fn()} />
+      )
+      await userEvent.click(screen.getByText('第 1 話'))
+      expect(screen.getByLabelText('上一章')).toBeDisabled()
+    })
   })
 })
