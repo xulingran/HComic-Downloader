@@ -76,6 +76,8 @@ const REFERER_OVERRIDES: Record<string, string> = {
 
 /** Dynamic jmcomic CDN domain, updated from Python backend config. */
 let jmcomicCdnDomain: string | null = null
+/** Dynamic jmcomic main domain, updated from Python backend config. */
+let jmcomicMainDomain: string | null = null
 
 const DOMAIN_RE = /^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}$/
 
@@ -207,6 +209,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   sfwMode: boolean(),
   tagBlacklist: tagBlacklistValidator(),
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
+  jmcomicDomain: and(string(), maxLength(256)),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────
@@ -586,13 +589,21 @@ function registerDownloadHandlers(bridge: Bridge) {
 
 function registerConfigHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_CONFIG, async () => {
-    const result = await bridge.call('get_config') as { config?: { jmcomicCdnDomain?: string } }
+    const result = await bridge.call('get_config') as { config?: { jmcomicCdnDomain?: string; jmcomicDomain?: string } }
     if (result?.config?.jmcomicCdnDomain) {
       const domain = result.config.jmcomicCdnDomain
       if (DOMAIN_RE.test(domain)) {
         jmcomicCdnDomain = domain
       } else {
         console.warn('Invalid jmcomic CDN domain from backend, ignoring:', domain)
+      }
+    }
+    if (result?.config?.jmcomicDomain) {
+      const domain = result.config.jmcomicDomain
+      if (DOMAIN_RE.test(domain)) {
+        jmcomicMainDomain = domain
+      } else {
+        console.warn('Invalid jmcomic main domain from backend, ignoring:', domain)
       }
     }
     return result
@@ -627,7 +638,12 @@ function registerConfigHandlers(bridge: Bridge) {
       if (key === 'notifyWhenForeground' && (value === 'inactive' || value === 'always')) {
         notificationManager.updateSettings(prevNotifyOnComplete, value)
       }
-      return await bridge.call('set_config', { key, value })
+      const result = await bridge.call('set_config', { key, value })
+      // jmcomicDomain 设置成功后，更新主进程域名白名单
+      if (key === 'jmcomicDomain' && typeof value === 'string' && value && DOMAIN_RE.test(value)) {
+        jmcomicMainDomain = value
+      }
+      return result
     } catch (err) {
       notificationManager.updateSettings(prevNotifyOnComplete, prevNotifyWhenForeground)
       throw err
@@ -656,7 +672,18 @@ function registerAuthHandlers(bridge: Bridge) {
   })
 
   ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
-    return openLoginWindow(mainWindow, source || 'hcomic')
+    // 对 jmcomic，先获取配置以更新域名
+    if (source === 'jmcomic' && !jmcomicMainDomain) {
+      try {
+        const result = await bridge.call('get_config') as { config?: { jmcomicDomain?: string } }
+        if (result?.config?.jmcomicDomain && DOMAIN_RE.test(result.config.jmcomicDomain)) {
+          jmcomicMainDomain = result.config.jmcomicDomain
+        }
+      } catch (e) {
+        console.warn('Failed to get jmcomic domain:', e)
+      }
+    }
+    return openLoginWindow(mainWindow, source || 'hcomic', jmcomicMainDomain || undefined)
   })
 
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
@@ -670,6 +697,9 @@ function registerSystemHandlers(bridge: Bridge) {
     const allowedDomains = [...ALLOWED_EXTERNAL_DOMAINS]
     if (jmcomicCdnDomain && !allowedDomains.includes(jmcomicCdnDomain)) {
       allowedDomains.push(jmcomicCdnDomain)
+    }
+    if (jmcomicMainDomain && !allowedDomains.includes(jmcomicMainDomain)) {
+      allowedDomains.push(jmcomicMainDomain)
     }
     validateHttpsUrlWithDomains(url, allowedDomains, 'URL')
     await shell.openExternal(url)
@@ -705,6 +735,9 @@ function registerPreviewHandlers(bridge: Bridge) {
     const allowedDomains = [...ALLOWED_COVER_DOMAINS]
     if (jmcomicCdnDomain && !allowedDomains.includes(jmcomicCdnDomain)) {
       allowedDomains.push(jmcomicCdnDomain)
+    }
+    if (jmcomicMainDomain && !allowedDomains.includes(jmcomicMainDomain)) {
+      allowedDomains.push(jmcomicMainDomain)
     }
     validateHttpsUrlWithDomains(url, allowedDomains, 'cover image URL')
     return bridge.call('fetch_cover', { url })
@@ -891,6 +924,12 @@ function registerIPCHandlers() {
   registerHistoryHandlers(bridge)
 }
 
+// ── Single instance lock ──
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+  app.quit()
+}
+
 app.whenReady().then(() => {
   try {
     // ── URI protocol registration (hcomic://) ──
@@ -910,6 +949,15 @@ app.whenReady().then(() => {
 app.on('open-url', (_event, _url: string) => {
   // hcomic://bring-to-front or similar
   _event.preventDefault()
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+})
+
+// ── Handle URI protocol activation (Windows) ──
+app.on('second-instance', () => {
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
