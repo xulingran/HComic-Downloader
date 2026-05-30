@@ -41,6 +41,17 @@ def _extract_page_num(image_url: str) -> str:
     return m.group(1) if m else "0"
 
 
+def _extract_eps_id(image_url: str) -> int:
+    """从 jmcomic 图片 URL 路径提取章节(photo) id。
+
+    URL 格式: https://cdn.xxx/media/photos/{eps_id}/{page_num}.{ext}
+    多章节专辑每章有独立 eps_id；这是反混淆所需的正确 id（而非专辑 id）。
+    无法提取时返回 0（调用方据此跳过反混淆或回退）。
+    """
+    m = re.search(r"/media/photos/(\d+)/", image_url)
+    return int(m.group(1)) if m else 0
+
+
 def _get_image_format(img: Image.Image, original_bytes: bytes) -> tuple[str, dict]:
     """检测图片格式并返回适合保存的格式和参数。
 

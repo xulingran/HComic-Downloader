@@ -7,6 +7,7 @@ from PIL import Image
 
 from sources.jmcomic.descrambler import (
     _compute_num,
+    _extract_eps_id,
     _extract_page_num,
     descramble_image,
 )
@@ -18,6 +19,15 @@ def _make_test_image(width=100, height=200) -> bytes:
     buf = BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+def test_extract_eps_id_from_url():
+    url = "https://cdn.test.one/media/photos/700123/00001.webp"
+    assert _extract_eps_id(url) == 700123
+
+
+def test_extract_eps_id_missing_returns_zero():
+    assert _extract_eps_id("https://cdn.test.one/cover.jpg") == 0
 
 
 def test_no_scramble_for_old_ids():
