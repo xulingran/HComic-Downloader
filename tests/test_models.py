@@ -1,5 +1,5 @@
 """测试 models.py 数据模型"""
-from models import ComicInfo, PaginationInfo
+from models import ChapterInfo, ComicInfo, PaginationInfo
 
 
 class TestComicInfo:
@@ -72,6 +72,28 @@ class TestComicInfo:
         comic2 = ComicInfo(id="1", comic_source="MMCG_SHORT", source_site="moeimg")
         assert comic1 != comic2
         assert len({comic1, comic2}) == 2
+
+
+class TestChapterInfo:
+    def test_chapter_info_defaults(self):
+        ch = ChapterInfo(id="700", name="第 1 話", index=1)
+        assert ch.id == "700"
+        assert ch.name == "第 1 話"
+        assert ch.index == 1
+        assert ch.pages == 0
+
+    def test_comic_info_chapter_fields_default(self):
+        comic = ComicInfo(id="430371", title="t")
+        assert comic.chapters == []
+        assert comic.album_id == ""
+        assert comic.album_total_chapters == 1
+
+    def test_comic_info_chapters_not_in_hash(self):
+        a = ComicInfo(id="1", source_site="jmcomic", comic_source="JMCOMIC")
+        b = ComicInfo(id="1", source_site="jmcomic", comic_source="JMCOMIC",
+                      chapters=[ChapterInfo(id="2", name="x", index=1)])
+        assert hash(a) == hash(b)
+        assert a == b
 
 
 class TestPaginationInfo:

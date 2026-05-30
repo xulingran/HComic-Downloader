@@ -8,6 +8,22 @@ from utils import sanitize_filename
 
 
 @dataclass
+class ChapterInfo:
+    """jmcomic 章节信息。
+
+    Attributes:
+        id: 章节(photo) id，用于请求 /photo/{id} 及反混淆
+        name: 章节名，如 "第 1 話"
+        index: 1-based 顺序
+        pages: 页数（可选，懒填充）
+    """
+    id: str = ""
+    name: str = ""
+    index: int = 0
+    pages: int = 0
+
+
+@dataclass
 class ComicInfo:
     """漫画信息数据类
 
@@ -40,6 +56,9 @@ class ComicInfo:
     source_site: str = "hcomic"
     scramble_id: str = ""
     image_urls: list[str] = field(default_factory=list)
+    chapters: list[ChapterInfo] = field(default_factory=list)
+    album_id: str = ""              # 多章节时为专辑 id；单本时等于 id
+    album_total_chapters: int = 1   # 专辑总章数；单本/其他来源为 1
 
     _IMAGE_URL_SUFFIX_MAP = {
         "MMCG_SHORT": "mms",
