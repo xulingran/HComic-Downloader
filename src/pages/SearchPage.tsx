@@ -4,6 +4,7 @@ import { useSearch, useRandom, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
+import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
@@ -60,10 +61,11 @@ export function SearchPage() {
   const [searchTags, setSearchTags] = useState('')
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { random } = useRandom()
-  const { downloadWithConflictCheck } = useDownloadHelper()
+  const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const { getConfig } = useConfig()
   const {
     batchMode,
@@ -227,6 +229,10 @@ export function SearchPage() {
   }
 
   const handleDownload = async (comic: ComicInfo) => {
+    if (comic.chapters && comic.chapters.length > 1) {
+      setChapterDialogComic(comic)
+      return
+    }
     await downloadWithConflictCheck(comic)
   }
 
@@ -400,6 +406,20 @@ export function SearchPage() {
           totalPages={pagination?.totalPages || 1}
           onJump={(page) => { handleSearch(page); setShowJumpDialog(false) }}
           onClose={() => setShowJumpDialog(false)}
+        />
+      )}
+
+      {/* ── Chapter download dialog ── */}
+      {chapterDialogComic && (
+        <ChapterDownloadDialog
+          chapters={chapterDialogComic.chapters ?? []}
+          open={chapterDialogComic !== null}
+          onConfirm={(ids) => {
+            const comic = chapterDialogComic
+            setChapterDialogComic(null)
+            if (comic) downloadChapters(comic, ids)
+          }}
+          onCancel={() => setChapterDialogComic(null)}
         />
       )}
 

@@ -72,4 +72,48 @@ describe('useDownloadHelper', () => {
 
     expect(returned).toBe(false)
   })
+
+  describe('downloadChapters', () => {
+    const multiChapterComic: ComicInfo = {
+      ...mockComic,
+      id: '999001',
+      source: 'JMCOMIC',
+      pages: 60,
+    }
+
+    it('downloads selected chapters with chapterIds and upserts a task per returned taskId', async () => {
+      const hcomic = createMockHcomic({
+        download: vi.fn().mockResolvedValue({ taskIds: ['t-a', 't-b'], status: 'queued' }),
+      })
+
+      const { result } = renderHook(() => useDownloadHelper())
+      const ok = await result.current.downloadChapters(multiChapterComic, ['999001', '999002'])
+
+      expect(ok).toBe(true)
+      expect(hcomic.download).toHaveBeenCalledWith('999001', multiChapterComic, undefined, ['999001', '999002'])
+    })
+
+    it('handles single taskId responses too', async () => {
+      const hcomic = createMockHcomic({
+        download: vi.fn().mockResolvedValue({ taskId: 't-only', status: 'queued' }),
+      })
+
+      const { result } = renderHook(() => useDownloadHelper())
+      const ok = await result.current.downloadChapters(multiChapterComic, ['999001'])
+
+      expect(ok).toBe(true)
+      expect(hcomic.download).toHaveBeenCalledWith('999001', multiChapterComic, undefined, ['999001'])
+    })
+
+    it('returns false when download throws', async () => {
+      createMockHcomic({
+        download: vi.fn().mockRejectedValue(new Error('boom')),
+      })
+
+      const { result } = renderHook(() => useDownloadHelper())
+      const ok = await result.current.downloadChapters(multiChapterComic, ['999001'])
+
+      expect(ok).toBe(false)
+    })
+  })
 })

@@ -44,6 +44,29 @@ export function useDownloadHelper() {
     }
   }
 
+  const downloadChapters = async (comic: ComicInfo, chapterIds: string[]) => {
+    try {
+      const result = await startDownload(comic.id, comic, undefined, chapterIds)
+      const taskIds = 'taskIds' in result && Array.isArray(result.taskIds)
+        ? result.taskIds
+        : ('taskId' in result && result.taskId ? [result.taskId] : [])
+      for (const taskId of taskIds) {
+        upsertTask({
+          id: taskId,
+          comic,
+          status: 'queued',
+          progress: 0,
+          totalPages: comic.pages || 0,
+          downloadedPages: 0,
+        })
+      }
+      return true
+    } catch (err) {
+      console.error('Chapter download failed:', err)
+      return false
+    }
+  }
+
   const handlePauseTask = async (taskId: string) => {
     try {
       await pauseTask(taskId)
@@ -80,5 +103,5 @@ export function useDownloadHelper() {
     }
   }
 
-  return { downloadWithConflictCheck, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause }
+  return { downloadWithConflictCheck, downloadChapters, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause }
 }
