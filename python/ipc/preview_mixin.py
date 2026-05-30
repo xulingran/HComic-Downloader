@@ -17,6 +17,23 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _resolve_eps_id(image_url: str, comic_id: str = "") -> int:
+    """解析反混淆所需的 eps_id。
+
+    优先从图片 URL 路径提取（多章节专辑每章有独立 eps_id，这是正确值），
+    URL 无法提取时回退到传入的 comic_id。两者皆无则返回 0。
+    """
+    from sources.jmcomic.descrambler import _extract_eps_id
+
+    eps_id = _extract_eps_id(image_url)
+    if eps_id:
+        return eps_id
+    try:
+        return int(comic_id)
+    except (ValueError, TypeError):
+        return 0
+
+
 class PreviewMixin:
     """Mixin providing preview page image fetch methods."""
 
@@ -139,7 +156,8 @@ class PreviewMixin:
                 from sources.jmcomic.descrambler import descramble_image
                 b64_part = data_uri.split(",", 1)[1]
                 raw_bytes = _base64.b64decode(b64_part)
-                descrambled = descramble_image(raw_bytes, int(comic_id), image_url=url)
+                eps_id = _resolve_eps_id(url, comic_id)
+                descrambled = descramble_image(raw_bytes, eps_id, image_url=url)
                 if descrambled != raw_bytes:
                     content_type = _detect(descrambled)
                     if content_type:
