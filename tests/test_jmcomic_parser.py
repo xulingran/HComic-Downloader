@@ -168,3 +168,64 @@ def test_parse_search_item_skips_blank_cover():
 def test_clean_texts_dedupes_and_strips():
     """_clean_texts 应去除空白并按首次出现顺序去重。"""
     assert JmParser._clean_texts(["  a ", "b", "a", "", "  ", "c"]) == ["a", "b", "c"]
+
+
+def test_set_custom_domain():
+    """set_custom_domain 应当设置 _domain，空字符串清除自定义值。"""
+    parser = JmParser.__new__(JmParser)
+    parser._domain = None
+
+    parser.set_custom_domain("example.com")
+    assert parser._domain == "example.com"
+
+    parser.set_custom_domain("")
+    assert parser._domain is None
+
+    parser.set_custom_domain("   trimmed.com   ")
+    assert parser._domain == "trimmed.com"
+
+
+def test_verify_login_detects_cloudflare_challenge(monkeypatch):
+    """verify_login_status 应检测 Cloudflare 403 挑战页面。"""
+    from unittest.mock import MagicMock
+
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "test.one"
+    parser.timeout = 5
+    parser.session = MagicMock()
+
+    class FakeResp:
+        status_code = 403
+        text = "Just a moment... Please wait while we verify..."
+
+        @property
+        def url(self):
+            return "https://test.one/user/favorites"
+
+    parser.session.get.return_value = FakeResp()
+    valid, msg = parser.verify_login_status()
+    assert valid is False
+    assert "cf_clearance" in msg
+
+
+def test_verify_login_detects_login_redirect(monkeypatch):
+    """verify_login_status 应检测重定向到登录页。"""
+    from unittest.mock import MagicMock
+
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "test.one"
+    parser.timeout = 5
+    parser.session = MagicMock()
+
+    class FakeResp:
+        status_code = 200
+        text = ""
+
+        @property
+        def url(self):
+            return "https://test.one/login?next=/user/favorites"
+
+    parser.session.get.return_value = FakeResp()
+    valid, msg = parser.verify_login_status()
+    assert valid is False
+    assert "登录" in msg

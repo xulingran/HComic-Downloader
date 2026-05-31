@@ -84,6 +84,7 @@ export interface AppConfig {
   userAgent?: string
   hasAuth?: boolean
   hasJmcomicAuth?: boolean
+  jmcomicDomain?: string
 }
 
 export type TagBlacklist = AppConfig['tagBlacklist']
@@ -170,6 +171,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
   | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
+  | 'jmcomicDomain'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -189,6 +191,7 @@ export type ConfigValueMap = {
   sfwMode: boolean
   tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[] }
   previewCacheSizeLimitMB: number
+  jmcomicDomain: string
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -594,4 +597,5 @@ export const CONFIG_KEYS = [
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
   'fontName', 'fontSize', 'sfwMode', 'tagBlacklist', 'previewCacheSizeLimitMB',
+  'jmcomicDomain',
 ] as const

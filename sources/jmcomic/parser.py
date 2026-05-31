@@ -45,6 +45,10 @@ class JmParser:
             self._domain = resolver.resolve()
         return self._domain
 
+    def set_custom_domain(self, domain: str) -> None:
+        """设置自定义域名。传空字符串则清除自定义值，下次自动解析。"""
+        self._domain = domain.strip() if domain and domain.strip() else None
+
     @property
     def cdn_domain(self) -> str | None:
         """返回当前解析到的 CDN 域名（如 cdn-msp2.jmcomic-zzz.one）。"""
@@ -70,6 +74,9 @@ class JmParser:
         try:
             url = f"https://{domain}/user/favorites"
             resp = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+            # 检测 Cloudflare 拦截
+            if resp.status_code == 403 and "Just a moment" in resp.text[:200]:
+                return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
             if resp.url and "/login" in str(resp.url):
                 return False, "登录已失效，请重新登录"
             if resp.status_code == 200:

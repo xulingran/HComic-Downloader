@@ -1,30 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="64" height="64">
   <defs>
-    <!-- 主背景渐变 -->
     <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#6366f1;stop-opacity:1" />
       <stop offset="50%" style="stop-color:#8b5cf6;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#a855f7;stop-opacity:1" />
     </linearGradient>
-    
-    <!-- 书页渐变 -->
     <linearGradient id="pageGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#ffffff;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#f1f5f9;stop-opacity:1" />
     </linearGradient>
-    
-    <!-- 下载箭头渐变 -->
     <linearGradient id="arrowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
       <stop offset="0%" style="stop-color:#22d3ee;stop-opacity:1" />
       <stop offset="100%" style="stop-color:#06b6d4;stop-opacity:1" />
     </linearGradient>
-    
-    <!-- 阴影效果 -->
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
       <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.2"/>
     </filter>
-    
-    <!-- 内部阴影 -->
     <filter id="innerShadow">
       <feOffset dx="0" dy="2"/>
       <feGaussianBlur stdDeviation="3"/>
@@ -36,65 +27,39 @@
     </filter>
   </defs>
   
-  <!-- 主背景圆角矩形 -->
   <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#bgGrad)" filter="url(#shadow)"/>
-  
-  <!-- 装饰性圆形元素 -->
   <circle cx="400" cy="120" r="60" fill="#fff" opacity="0.1"/>
   <circle cx="440" cy="160" r="30" fill="#fff" opacity="0.08"/>
   
-  <!-- 漫画书主体 -->
   <g transform="translate(120, 100)">
-    <!-- 书页底部（阴影层） -->
     <rect x="20" y="20" width="240" height="300" rx="8" fill="#c4b5fd" opacity="0.5"/>
-    
-    <!-- 书页中间层 -->
     <rect x="10" y="10" width="240" height="300" rx="8" fill="#ddd6fe" opacity="0.7"/>
-    
-    <!-- 书页顶层 -->
     <rect x="0" y="0" width="240" height="300" rx="8" fill="url(#pageGrad)" filter="url(#innerShadow)"/>
-    
-    <!-- 漫画内容装饰线条 -->
     <rect x="30" y="40" width="180" height="12" rx="6" fill="#e2e8f0"/>
     <rect x="30" y="70" width="140" height="12" rx="6" fill="#e2e8f0"/>
     <rect x="30" y="100" width="160" height="12" rx="6" fill="#e2e8f0"/>
-    
-    <!-- 漫画图片占位区域 -->
     <rect x="30" y="140" width="180" height="120" rx="8" fill="#f0f9ff" stroke="#bfdbfe" stroke-width="2" stroke-dasharray="8 4"/>
-    
-    <!-- 图片中的漫画图标 -->
     <g transform="translate(90, 170)">
       <path d="M30 0 L60 20 L60 50 L0 50 L0 20 Z" fill="#93c5fd" opacity="0.5"/>
       <circle cx="20" cy="25" r="8" fill="#60a5fa"/>
       <path d="M35 35 L55 50 L15 50 Z" fill="#60a5fa"/>
     </g>
-    
-    <!-- 底部文字装饰 -->
     <rect x="30" y="280" width="100" height="8" rx="4" fill="#e2e8f0"/>
     <rect x="140" y="280" width="70" height="8" rx="4" fill="#e2e8f0"/>
   </g>
   
-  <!-- 下载箭头 -->
   <g transform="translate(300, 300)">
-    <!-- 箭头背景圆 -->
     <circle cx="60" cy="60" r="70" fill="#0891b2" opacity="0.9"/>
     <circle cx="60" cy="60" r="65" fill="url(#arrowGrad)"/>
-    
-    <!-- 下载箭头图标 -->
     <g transform="translate(25, 20)">
-      <!-- 箭头主体 -->
       <path d="M50 0 L50 50 L70 50 L35 90 L0 50 L20 50 L20 0 Z" fill="white" opacity="0.95"/>
-      
-      <!-- 底部横线 -->
       <rect x="0" y="95" width="70" height="8" rx="4" fill="white" opacity="0.95"/>
     </g>
   </g>
   
-  <!-- 装饰性小元素 -->
   <circle cx="100" cy="400" r="15" fill="#fbbf24" opacity="0.8"/>
   <circle cx="130" cy="420" r="10" fill="#f472b6" opacity="0.8"/>
   
-  <!-- 闪光效果 -->
   <g opacity="0.6">
     <path d="M380 80 L385 90 L395 90 L387 97 L390 107 L380 100 L370 107 L373 97 L365 90 L375 90 Z" fill="white"/>
     <path d="M420 200 L423 206 L430 206 L425 211 L427 218 L420 213 L413 218 L415 211 L410 206 L417 206 Z" fill="white" opacity="0.4"/>

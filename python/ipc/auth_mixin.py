@@ -28,7 +28,7 @@ class AuthMixin:
 
         from auth_parser import extract_auth_from_curl
 
-        cookie, user_agent, bearer_token = extract_auth_from_curl(curl_text.strip())
+        cookie, user_agent, bearer_token, _ = extract_auth_from_curl(curl_text.strip())
         self.config.set_source_auth(source, cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
         self.config.save(_get_config_path())
 

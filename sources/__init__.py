@@ -82,6 +82,12 @@ class MultiSourceParser:
             return jm_parser.cdn_domain
         return None
 
+    def set_jmcomic_domain(self, domain: str) -> None:
+        """设置 jmcomic 自定义域名。传空字符串则恢复自动选择。"""
+        jm = self.parsers.get("jmcomic")
+        if jm and hasattr(jm, 'set_custom_domain'):
+            jm.set_custom_domain(domain)
+
     def get_source_options(self) -> tuple[tuple[str, str], ...]:
         return self.SOURCE_OPTIONS
 

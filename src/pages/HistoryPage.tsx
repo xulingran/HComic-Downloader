@@ -39,6 +39,16 @@ function historyItemToComicInfo(item: HistoryItem) {
   }
 }
 
+function getSourceSiteLabel(sourceSite: string): string {
+  const labels: Record<string, string> = {
+    hcomic: 'HComic',
+    moeimg: 'Moeimg',
+    jmcomic: 'JMComic',
+  }
+
+  return labels[sourceSite] ?? sourceSite
+}
+
 export function HistoryPage() {
   const cache = useHistoryStore()
   const [items, setItems] = useState<HistoryItem[]>(cache.hasCache ? cache.items : [])
@@ -234,6 +244,7 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
 }) {
   const [hovered, setHovered] = useState(false)
   const comic = historyItemToComicInfo(item)
+  const sourceSiteLabel = getSourceSiteLabel(item.sourceSite)
 
   if (cardStyle === 'detailed') {
     return (
@@ -249,10 +260,12 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
             {item.title}
           </h3>
           <div className="text-xs text-[var(--text-secondary)] mt-0.5">
+            <span>{sourceSiteLabel}</span>
+            {item.totalPages > 0 && <span className="mx-1.5">·</span>}
             {item.totalPages > 0 && <span>第{item.lastPage}/{item.totalPages}页</span>}
             {item.lastChapterName && <span className="mx-1.5">·</span>}
             {item.lastChapterName && <span className="truncate">{item.lastChapterName}</span>}
-            {item.totalPages > 0 && <span className="mx-1.5">·</span>}
+            <span className="mx-1.5">·</span>
             <span>{formatRelativeTime(item.lastReadAt)}</span>
           </div>
         </div>
@@ -294,10 +307,12 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
       />
       <div className="px-2 pb-2 -mt-1">
         <div className="text-xs text-[var(--text-secondary)]">
+          <span>{sourceSiteLabel}</span>
+          {item.totalPages > 0 && <span className="mx-1">·</span>}
           {item.totalPages > 0 && <span>第{item.lastPage}/{item.totalPages}页</span>}
           {item.lastChapterName && <span className="mx-1">·</span>}
           {item.lastChapterName && <span>{item.lastChapterName}</span>}
-          {item.totalPages > 0 && <span className="mx-1">·</span>}
+          <span className="mx-1">·</span>
           <span>{formatRelativeTime(item.lastReadAt)}</span>
         </div>
       </div>

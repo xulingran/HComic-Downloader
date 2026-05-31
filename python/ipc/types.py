@@ -30,6 +30,7 @@ CONFIG_KEY_MAP = {
     'sfwMode': 'sfw_mode',
     'tagBlacklist': 'tag_blacklist',
     'previewCacheSizeLimitMB': 'preview_cache_size_limit_mb',
+    'jmcomicDomain': 'jmcomic_domain',
 }
 
 _COVER_CACHE_MAX_SIZE = 200

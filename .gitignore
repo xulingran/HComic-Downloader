@@ -27,6 +27,7 @@ coverage/
 .codebuddy/
 .superpowers/
 .trae/
+.playwright-mcp/
 *.swp
 *.swo
 *~

@@ -1,4 +1,5 @@
 """curl 认证信息提取模块"""
+import re
 import shlex
 
 
@@ -17,8 +18,8 @@ def _split_header(header_value: str) -> tuple[str, str]:
     return name.strip(), value.strip()
 
 
-def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str]:
-    """从 curl 命令中提取 Cookie、User-Agent 和 Bearer Token。
+def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str, str]:
+    """从 curl 命令中提取 Cookie、User-Agent、Bearer Token 和域名。
 
     支持:
     - `-b '...'` / `--cookie '...'`
@@ -26,6 +27,7 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str]:
     - `-H 'User-Agent: ...'`
     - `-A '...'` / `--user-agent '...'`
     - `-H 'Authorization: Bearer ...'`
+    - 从 URL 中提取域名
     """
     text = _normalize_curl_text(curl_text)
     if not text:
@@ -39,11 +41,18 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str]:
     cookie = ""
     user_agent = ""
     bearer_token = ""
+    domain = ""
     i = 0
     total = len(tokens)
 
     while i < total:
         token = tokens[i]
+
+        # 提取 URL 中的域名
+        if not domain and token.startswith("http"):
+            match = re.search(r"https?://([^/]+)", token)
+            if match:
+                domain = match.group(1)
 
         if token in ("-b", "--cookie"):
             if i + 1 < total:
@@ -93,7 +102,7 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str]:
     if missing:
         raise ValueError(f"curl 中缺少: {', '.join(missing)}")
 
-    return cookie, user_agent, bearer_token
+    return cookie, user_agent, bearer_token, domain
 
 
 def _extract_auth0_token(cookie: str) -> str:

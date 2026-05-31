@@ -31,6 +31,7 @@ interface ConfigState {
   notifyWhenForeground: NotifyWhenForeground
   defaultSource: string
   previewCacheSizeLimitMB: number
+  jmcomicDomain: string
 }
 
 interface SettingsPageProps {
@@ -59,6 +60,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     notifyWhenForeground: 'inactive',
     defaultSource: 'hcomic',
     previewCacheSizeLimitMB: 500,
+    jmcomicDomain: '',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -71,6 +73,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const { createHandler } = useOptimisticConfig(setConfig, setSaveError, setIsSaving)
   const [isMigrationOpen, setIsMigrationOpen] = useState(false)
   const migrationHook = useMigration()
+  const [jmcomicDomainInput, setJmcomicDomainInput] = useState('')
+  const [jmcomicDomainMode, setJmcomicDomainMode] = useState<'auto' | 'custom'>('auto')
 
   const SECTIONS = [
     { id: 'appearance', label: '外观设置', icon: '🎨' },
@@ -113,7 +117,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           notifyWhenForeground: result.config.notifyWhenForeground ?? 'inactive',
           defaultSource: result.config.defaultSource ?? 'hcomic',
           previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
+          jmcomicDomain: result.config.jmcomicDomain ?? '',
         })
+        setJmcomicDomainInput(result.config.jmcomicDomain ?? '')
+        setJmcomicDomainMode(result.config.jmcomicDomain ? 'custom' : 'auto')
         if (result.config.outputFormat) {
           setOutputFormat(result.config.outputFormat as OutputFormat)
         }
@@ -377,6 +384,66 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
                 </button>
               ))}
             </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">JMComic 域名</label>
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
+              默认从发布页自动获取可用域名，也可手动指定
+            </p>
+            <div className="flex gap-3 mb-3">
+              <button
+                onClick={async () => {
+                  setJmcomicDomainMode('auto')
+                  setJmcomicDomainInput('')
+                  if (config.jmcomicDomain) {
+                    handleConfigChange('jmcomicDomain', '')
+                  }
+                }}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                  jmcomicDomainMode === 'auto'
+                    ? 'bg-[var(--accent)] text-white'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
+                }`}
+              >
+                自动选择
+              </button>
+              <button
+                onClick={() => setJmcomicDomainMode('custom')}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                  jmcomicDomainMode === 'custom'
+                    ? 'bg-[var(--accent)] text-white'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
+                }`}
+              >
+                自定义
+              </button>
+            </div>
+            {jmcomicDomainMode === 'custom' && (
+              <div className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    value={jmcomicDomainInput}
+                    onChange={(e) => {
+                      setJmcomicDomainInput(e.target.value)
+                    }}
+                    onBlur={async () => {
+                      const domain = jmcomicDomainInput.trim()
+                      if (domain === config.jmcomicDomain) return
+                      handleConfigChange('jmcomicDomain', domain)
+                    }}
+                    onKeyDown={async (e) => {
+                      if (e.key === 'Enter') {
+                        e.currentTarget.blur()
+                      }
+                    }}
+                    placeholder="例如 18comic.vip"
+                    className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

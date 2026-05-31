@@ -205,7 +205,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           </select>
           <button
             onClick={() => {
-              cache.clearCache()
+              cache.clearCache(source)
               setComics([])
               loadFavourites(1)
             }}

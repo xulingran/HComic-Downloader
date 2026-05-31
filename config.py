@@ -46,6 +46,8 @@ class Config:
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
     tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []})
+    # jmcomic 自定义域名（空字符串表示自动选择）
+    jmcomic_domain: str = ""
     # 预览页面缓存大小上限（MB）
     preview_cache_size_limit_mb: int = 500
 

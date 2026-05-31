@@ -3,8 +3,10 @@ import { getPythonBridge } from './python-bridge'
 import { NOTIFICATION_CHANNELS } from '../shared/types'
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
-const LOGIN_COOKIE_SETTLE_MS = 1_000
+const LOGIN_COOKIE_SETTLE_MS = 2_000
 const LOGIN_COOKIE_SUCCESS_DELAY_MS = 3_000
+const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
+const JMCOMIC_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
 
 interface LoginWindowContext {
   settled: boolean
@@ -20,15 +22,45 @@ async function extractAndApplyCookies(
   domain: string = 'h-comic.com',
 ): Promise<{ success: boolean; message: string }> {
   try {
-    const cookies = await session.defaultSession.cookies.get({ url: `https://${domain}` })
+    let cookies: Electron.Cookie[] = []
+    let cookieDomain = domain
+
+    if (source === 'jmcomic') {
+      // jmcomic 可能有多个镜像域名，需要尝试所有可能的域名
+      const domains = [domain, ...JMCOMIC_MIRROR_DOMAINS]
+      for (const d of domains) {
+        const domainCookies = await session.defaultSession.cookies.get({ url: `https://${d}` })
+        if (domainCookies.length > 0) {
+          const cookieNames = domainCookies.map(c => c.name.toLowerCase())
+          if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+            cookies = domainCookies
+            cookieDomain = d
+            break
+          }
+        }
+      }
+    } else {
+      cookies = await session.defaultSession.cookies.get({ url: `https://${domain}` })
+    }
+
     if (cookies.length === 0) {
       return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口' }
     }
+
+    // 对 jmcomic 进行额外验证：检查是否包含登录态 cookie
+    if (source === 'jmcomic') {
+      const cookieNames = cookies.map(c => c.name.toLowerCase())
+      const hasLoginCookie = JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
+      if (!hasLoginCookie) {
+        return { success: false, message: '未检测到登录状态，请确认已成功登录后重试' }
+      }
+    }
+
     const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
 
     const bridge = getPythonBridge()
     await bridge.call('apply_auth', {
-      curl_text: `curl 'https://${domain}' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
+      curl_text: `curl 'https://${cookieDomain}' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
       source,
     })
     const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
@@ -112,22 +144,71 @@ function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext,
   })
 }
 
+async function hasJmcomicLoginCookie(domain: string): Promise<boolean> {
+  try {
+    // 获取所有可能的 jmcomic 域名的 cookie
+    const domains = [domain, 'jmcomic-zzz.one', '18comic.vip', '18comic.org']
+    for (const d of domains) {
+      const cookies = await session.defaultSession.cookies.get({ url: `https://${d}` })
+      const cookieNames = cookies.map(c => c.name.toLowerCase())
+      if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+        return true
+      }
+    }
+    return false
+  } catch {
+    return false
+  }
+}
+
 function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
+  // 用户必须先访问过登录页，再从登录页导航走（登录成功重定向回首页/个人页），才提取 cookie。
+  // 额外检查：目标页面不能是登录/注册/找回密码等页面，必须包含登录态 cookie。
+  let hasVisitedLogin = false
+  let timeoutPending = false
+  const skipPatterns = ['/login', '/register', '/forgot', '/reset', '/captcha', '/verify']
+  
   loginWin.webContents.on('did-navigate', (_event, url) => {
-    if (!url.includes('/login') && !url.includes('/user/login')) {
-      setTimeout(() => completeLoginFlow(loginWin, ctx, mainWindow, source, domain), LOGIN_COOKIE_SETTLE_MS)
+    const urlLower = url.toLowerCase()
+    if (urlLower.includes('/login') || urlLower.includes('/user/login')) {
+      hasVisitedLogin = true
+      return
+    }
+    if (hasVisitedLogin && !timeoutPending) {
+      // 检查是否跳转到了非登录相关页面（首页、个人页、漫画页等）
+      const isSkipPage = skipPatterns.some(pattern => urlLower.includes(pattern))
+      if (isSkipPage) {
+        // 跳转到了注册/找回密码等页面，重置标记但不提取 cookie
+        hasVisitedLogin = false
+        return
+      }
+      hasVisitedLogin = false
+      timeoutPending = true
+      // 增加等待时间，确保 cookie 完全设置
+      setTimeout(async () => {
+        // 验证是否真的有登录态 cookie
+        const hasLogin = await hasJmcomicLoginCookie(domain)
+        if (hasLogin) {
+          completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
+        } else {
+          // 没有登录态 cookie，可能是误触发，不关闭弹窗
+          console.log('[LoginWindow] jmcomic: 离开登录页但未检测到登录态 cookie，继续等待')
+        }
+        timeoutPending = false
+      }, LOGIN_COOKIE_SETTLE_MS)
     }
   })
 }
 
-export function openLoginWindow(mainWindow: BrowserWindow | null, source: string = 'hcomic'): Promise<{ success: boolean; message?: string }> {
+export function openLoginWindow(mainWindow: BrowserWindow | null, source: string = 'hcomic', resolvedDomain?: string): Promise<{ success: boolean; message?: string }> {
   if (!mainWindow) {
     return Promise.resolve({ success: false, message: '主窗口不存在' })
   }
 
-  const loginUrl = source === 'jmcomic' ? 'https://18comic.vip' : 'https://h-comic.com'
+  const jmcomicDomain = resolvedDomain || '18comic.vip'
+  const loginUrl = source === 'jmcomic' ? `https://${jmcomicDomain}` : 'https://h-comic.com'
   const loginTitle = source === 'jmcomic' ? '登录禁漫天堂' : '登录 H-Comic'
-  const loginDomain = source === 'jmcomic' ? '18comic.vip' : 'h-comic.com'
+  const loginDomain = source === 'jmcomic' ? jmcomicDomain : 'h-comic.com'
 
   return new Promise((resolve) => {
     const loginWin = createLoginBrowserWindow(mainWindow, loginTitle)

@@ -16,11 +16,12 @@ class TestExtractAuthFromCurl(unittest.TestCase):
             "-H 'User-Agent: Test-UA/1.0'"
         )
 
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
 
         self.assertEqual(cookie, "a=1; b=2")
         self.assertEqual(user_agent, "Test-UA/1.0")
         self.assertEqual(bearer, "")
+        self.assertEqual(domain, "h-comic.com")
 
     def test_extract_cookie_from_header(self):
         curl_text = (
@@ -29,24 +30,27 @@ class TestExtractAuthFromCurl(unittest.TestCase):
             "-H 'user-agent: Header-UA/2.0'"
         )
 
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
 
         self.assertEqual(cookie, "x=1; y=2")
         self.assertEqual(user_agent, "Header-UA/2.0")
         self.assertEqual(bearer, "")
+        self.assertEqual(domain, "h-comic.com")
 
     def test_extract_user_agent_from_short_and_long_flag(self):
         curl_text = "curl https://h-comic.com/ --cookie='foo=bar' -A 'UA-A'"
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
         self.assertEqual(cookie, "foo=bar")
         self.assertEqual(user_agent, "UA-A")
         self.assertEqual(bearer, "")
+        self.assertEqual(domain, "h-comic.com")
 
         curl_text = "curl https://h-comic.com/ -b 'foo=bar' --user-agent='UA-B'"
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
         self.assertEqual(cookie, "foo=bar")
         self.assertEqual(user_agent, "UA-B")
         self.assertEqual(bearer, "")
+        self.assertEqual(domain, "h-comic.com")
 
     def test_extract_from_multiline_curl(self):
         curl_text = (
@@ -55,11 +59,12 @@ class TestExtractAuthFromCurl(unittest.TestCase):
             "  -b 'token=abc; sid=xyz'"
         )
 
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
 
         self.assertEqual(cookie, "token=abc; sid=xyz")
         self.assertEqual(user_agent, "Multi-UA")
         self.assertEqual(bearer, "")
+        self.assertEqual(domain, "h-comic.com")
 
     def test_missing_cookie_or_user_agent_should_raise(self):
         with self.assertRaises(ValueError):
@@ -89,7 +94,7 @@ class TestExtractAuthFromCurl(unittest.TestCase):
 ])
 def test_extract_auth_from_curl_variations(curl_text, expected_cookie, expected_ua):
     """测试各种 curl 命令格式的解析"""
-    cookie, ua, bearer = extract_auth_from_curl(curl_text)
+    cookie, ua, bearer, domain = extract_auth_from_curl(curl_text)
     assert cookie == expected_cookie
     assert ua == expected_ua
     assert bearer == ""
@@ -118,7 +123,7 @@ class TestExtractBearerToken(unittest.TestCase):
             "-H 'User-Agent: Test-UA/1.0' "
             "-H 'Authorization: Bearer eyJhbGciOiJSUzI1NiI...' "
         )
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
         self.assertEqual(cookie, "session=abc")
         self.assertEqual(user_agent, "Test-UA/1.0")
         self.assertEqual(bearer, "eyJhbGciOiJSUzI1NiI...")
@@ -129,7 +134,7 @@ class TestExtractBearerToken(unittest.TestCase):
             "-b 'session=abc' "
             "-A 'UA'"
         )
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
         self.assertEqual(cookie, "session=abc")
         self.assertEqual(user_agent, "UA")
         self.assertEqual(bearer, "")
@@ -141,7 +146,7 @@ class TestExtractBearerToken(unittest.TestCase):
             "-A 'UA' "
             "-H 'Authorization: Basic abc123'"
         )
-        cookie, user_agent, bearer = extract_auth_from_curl(curl_text)
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
         self.assertEqual(cookie, "session=abc")
         self.assertEqual(user_agent, "UA")
         self.assertEqual(bearer, "")
