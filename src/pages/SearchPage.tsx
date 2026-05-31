@@ -15,6 +15,7 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
+import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 
 const searchModes = [
   { value: 'keyword', label: '关键词' },
@@ -81,6 +82,7 @@ export function SearchPage() {
   // clearPendingSearch also used by handleRandom below
   const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
+  const searchCache = useSearchCacheStore()
 
   const searchGenRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -91,6 +93,17 @@ export function SearchPage() {
   searchTagsRef.current = searchTags // eslint-disable-line react-hooks/refs
 
   useEffect(() => {
+    const cached = searchCache.cache
+    if (cached) {
+      setQuery(cached.query)
+      setMode(cached.mode)
+      setSource(cached.source)
+      setSearchTags(cached.searchTags)
+      setComics(cached.comics)
+      if (cached.pagination) setPagination(cached.pagination)
+      return
+    }
+
     let cancelled = false
     const gen = ++searchGenRef.current
     setLoading(true)
