@@ -182,6 +182,14 @@ export function SearchPage() {
       if (gen !== searchGenRef.current) return
       setComics(result.comics)
       setPagination(result.pagination)
+      searchCache.setCache({
+        query: finalQuery,
+        mode: searchMode === 'tag' && !finalQuery ? 'tag' : searchMode,
+        source,
+        searchTags: finalTags,
+        comics: result.comics,
+        pagination: result.pagination ?? null,
+      })
     }).catch(err => {
       if (gen !== searchGenRef.current) return
       setError(err instanceof Error ? err.message : 'Search failed')
@@ -211,6 +219,14 @@ export function SearchPage() {
       if (gen !== searchGenRef.current) return
       setComics(result.comics)
       if (result.pagination) setPagination(result.pagination)
+      searchCache.setCache({
+        query: queryRef.current,
+        mode,
+        source,
+        searchTags: searchTagsRef.current,
+        comics: result.comics,
+        pagination: result.pagination ?? null,
+      })
     } catch (err) {
       if (gen !== searchGenRef.current) return
       setError(err instanceof Error ? err.message : 'Request failed')
