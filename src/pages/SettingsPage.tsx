@@ -10,6 +10,7 @@ import { AuthSettings } from '../components/settings/AuthSettings'
 import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
 import { TagFilterSettings } from '../components/settings/TagFilterSettings'
+import { FavouriteTagSettings } from '../components/settings/FavouriteTagSettings'
 import { Toast } from '../components/common/Toast'
 import { CacheSettings } from '../components/settings/CacheSettings'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
@@ -82,6 +83,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     { id: 'download',   label: '下载设置', icon: '📥' },
     { id: 'source',     label: '来源',     icon: '🌐' },
     { id: 'tag-filter', label: '标签过滤', icon: '🏷️' },
+    { id: 'favourite-tags', label: '推荐标签', icon: '⭐' },
     { id: 'auth',       label: '认证设置', icon: '🔑' },
     { id: 'proxy',      label: '代理设置', icon: '🔌' },
     { id: 'notification', label: '通知设置', icon: '🔔' },
@@ -477,6 +479,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           addTag={addTag}
           removeTag={removeTag}
         />
+      </div>
+
+      <div id="section-favourite-tags">
+        <FavouriteTagSettings />
       </div>
 
       <div id="section-auth">
