@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 import { NotificationManager } from './notification-manager'
-import { openLoginWindow } from './login-window'
+import { openLoginWindow, cancelLoginAutoClose } from './login-window'
 import {
   SEARCH_MODES, COMIC_SOURCES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
@@ -684,6 +684,10 @@ function registerAuthHandlers(bridge: Bridge) {
       }
     }
     return openLoginWindow(mainWindow, source || 'hcomic', jmcomicMainDomain || undefined)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CANCEL_LOGIN_AUTO_CLOSE, () => {
+    return cancelLoginAutoClose()
   })
 
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {

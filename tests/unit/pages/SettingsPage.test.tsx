@@ -50,6 +50,7 @@ Object.defineProperty(window, 'hcomic', {
   value: {
     openLoginWindow: vi.fn().mockResolvedValue({ success: true, message: '登录成功' }),
     onLoginCookieSuccess: mockOnLoginCookieSuccess.mockReturnValue(vi.fn()),
+    cancelLoginAutoClose: vi.fn().mockResolvedValue(true),
     openUrl: vi.fn(),
   },
   writable: true,
@@ -615,7 +616,7 @@ describe('SettingsPage', () => {
         expect(screen.getByText('设置')).toBeInTheDocument()
       })
 
-      expect(screen.queryByText('已成功获取')).not.toBeInTheDocument()
+      expect(screen.queryByText(/已获取到 Cookie/)).not.toBeInTheDocument()
     })
 
     it('shows login toast when onLoginCookieSuccess fires', async () => {
@@ -637,7 +638,7 @@ describe('SettingsPage', () => {
       })
 
       await waitFor(() => {
-        expect(screen.getByText('已成功获取')).toBeInTheDocument()
+        expect(screen.getByText(/已获取到 Cookie，将在 5 秒后关闭弹窗/)).toBeInTheDocument()
       })
     })
   })

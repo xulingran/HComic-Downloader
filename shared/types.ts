@@ -478,6 +478,7 @@ export interface HcomicAPI {
   fetchCover(url: string): Promise<{ dataUri: string }>
   openUrl(url: string): Promise<void>
   openLoginWindow(source?: string): Promise<{ success: boolean; message?: string }>
+  cancelLoginAutoClose(): Promise<boolean>
   onDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void
   pauseTask(taskId: string): Promise<{ success: boolean }>
   resumeTask(taskId: string): Promise<{ success: boolean }>
@@ -547,6 +548,7 @@ export const IPC_CHANNELS = {
   FETCH_COVER: 'python:fetch-cover',
   OPEN_EXTERNAL: 'open-external',
   OPEN_LOGIN_WINDOW: 'open-login-window',
+  CANCEL_LOGIN_AUTO_CLOSE: 'cancel-login-auto-close',
   PAUSE_TASK: 'python:pause-task',
   RESUME_TASK: 'python:resume-task',
   RETRY_TASK: 'python:retry-task',

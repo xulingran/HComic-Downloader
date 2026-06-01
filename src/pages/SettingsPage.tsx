@@ -70,6 +70,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus | null>(null)
   const [proxyLoading, setProxyLoading] = useState(false)
   const [showLoginToast, setShowLoginToast] = useState(false)
+  const [loginToastCountdown, setLoginToastCountdown] = useState<number | null>(null)
   const { createHandler } = useOptimisticConfig(setConfig, setSaveError, setIsSaving)
   const [isMigrationOpen, setIsMigrationOpen] = useState(false)
   const migrationHook = useMigration()
@@ -164,16 +165,33 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   }, [getAvailableFonts, loadProxyStatus])
 
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | null = null
+    let countdownTimer: ReturnType<typeof setInterval> | null = null
+    let hideTimer: ReturnType<typeof setTimeout> | null = null
     const unsubscribe = window.hcomic?.onLoginCookieSuccess(() => {
+      setLoginToastCountdown(5)
       setShowLoginToast(true)
-      if (timer) clearTimeout(timer)
-      timer = setTimeout(() => setShowLoginToast(false), 3000)
+      countdownTimer = setInterval(() => {
+        setLoginToastCountdown(prev => {
+          if (prev === null || prev <= 1) {
+            if (countdownTimer) clearInterval(countdownTimer)
+            return null
+          }
+          return prev - 1
+        })
+      }, 1000)
+      hideTimer = setTimeout(() => setShowLoginToast(false), 5500)
     })
     return () => {
       unsubscribe?.()
-      if (timer) clearTimeout(timer)
+      if (countdownTimer) clearInterval(countdownTimer)
+      if (hideTimer) clearTimeout(hideTimer)
     }
+  }, [])
+
+  const handleCancelLoginAutoClose = useCallback(() => {
+    window.hcomic?.cancelLoginAutoClose()
+    setLoginToastCountdown(null)
+    setShowLoginToast(false)
   }, [])
 
   const handleThemeChange = createHandler('themeMode', () => themeMode, setThemeMode, (prev) => setThemeMode(prev))
@@ -277,7 +295,12 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-6">
-      <Toast message="已成功获取" visible={showLoginToast} />
+      <Toast
+        message={loginToastCountdown != null ? `已获取到 Cookie，将在 ${loginToastCountdown} 秒后关闭弹窗` : '已获取到 Cookie'}
+        actionLabel="取消"
+        onAction={handleCancelLoginAutoClose}
+        visible={showLoginToast}
+      />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">设置</h2>
         <div className="flex items-center gap-2">

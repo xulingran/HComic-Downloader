@@ -4,16 +4,29 @@ import { NOTIFICATION_CHANNELS } from '../shared/types'
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
 const LOGIN_COOKIE_SETTLE_MS = 2_000
-const LOGIN_COOKIE_SUCCESS_DELAY_MS = 3_000
+const LOGIN_COOKIE_SUCCESS_DELAY_MS = 5_000
 const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
 const JMCOMIC_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
+
+let cancelAutoCloseFn: (() => void) | null = null
+
+export function cancelLoginAutoClose(): boolean {
+  if (cancelAutoCloseFn) {
+    cancelAutoCloseFn()
+    return true
+  }
+  return false
+}
 
 interface LoginWindowContext {
   settled: boolean
   hasVisitedAuth0: boolean
   savedUserAgent: string
+  extractInProgress: boolean
   done: (result: { success: boolean; message?: string }) => void
   clearTimeout: () => void
+  clearSuccessTimeout: () => void
+  removeCspHandler: (() => void) | null
 }
 
 async function extractAndApplyCookies(
@@ -71,6 +84,48 @@ async function extractAndApplyCookies(
   }
 }
 
+function setupLoginWindowCSP(win: BrowserWindow): () => void {
+  const filter = { urls: ['*://*/*'] }
+  win.webContents.session.webRequest.onHeadersReceived(filter, (details, callback) => {
+    const headers = details.responseHeaders
+    if (!headers) {
+      callback({ responseHeaders: headers })
+      return
+    }
+
+    const cspKey = Object.keys(headers).find(
+      k => k.toLowerCase() === 'content-security-policy',
+    )
+    if (!cspKey) {
+      callback({ responseHeaders: headers })
+      return
+    }
+
+    const modifiedHeaders = { ...headers }
+    modifiedHeaders[cspKey] = headers[cspKey].map(header =>
+      header.replace(/script-src\s+([^;]+)/i, (match, sources) => {
+        if (sources.includes("'unsafe-eval'")) return match
+        return `script-src ${sources} 'unsafe-eval'`
+      }),
+    )
+
+    callback({ responseHeaders: modifiedHeaders })
+  })
+
+  // Return a cleanup function to remove the handler
+  let removed = false
+  return () => {
+    if (removed) return
+    removed = true
+    // NOTE: passing null removes ALL onHeadersReceived handlers on this session,
+    // not just the one registered above. Currently this is the only consumer,
+    // but if others are added later, use webRequest API's filter-based removal instead.
+    try {
+      win.webContents.session.webRequest.onHeadersReceived(null)
+    } catch { /* session or webContents may be gone during shutdown */ }
+  }
+}
+
 function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
   return new BrowserWindow({
     width: 500,
@@ -99,12 +154,22 @@ function completeLoginFlow(
     ctx.done({ success: false, message: '已取消' })
     return
   }
+  // Prevent concurrent extractAndApplyCookies calls (e.g. from closed event)
+  if (ctx.extractInProgress) return
+  ctx.extractInProgress = true
   extractAndApplyCookies(userAgent, source, domain).then((result) => {
+    if (ctx.settled) return
     if (result.success && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-      setTimeout(() => {
+      const successTimeout = setTimeout(() => {
+        cancelAutoCloseFn = null
         ctx.done(result)
       }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
+      ctx.clearSuccessTimeout = () => clearTimeout(successTimeout)
+      cancelAutoCloseFn = () => {
+        clearTimeout(successTimeout)
+        cancelAutoCloseFn = null
+      }
     } else {
       ctx.done(result)
     }
@@ -128,11 +193,20 @@ function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowCo
 function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string = 'hcomic', domain: string = 'h-comic.com') {
   loginWin.on('closed', () => {
     ctx.clearTimeout()
+    ctx.clearSuccessTimeout()
+    // Clean up CSP handler to prevent session-level leak
+    if (ctx.removeCspHandler) {
+      ctx.removeCspHandler()
+      ctx.removeCspHandler = null
+    }
     if (ctx.settled) return
     if (!ctx.savedUserAgent) {
       ctx.done({ success: false, message: '已取消' })
       return
     }
+    // If extractAndApplyCookies is already running from completeLoginFlow,
+    // its .then() will call ctx.done; don't start a second concurrent call.
+    if (ctx.extractInProgress) return
     extractAndApplyCookies(ctx.savedUserAgent, source, domain).then((result) => {
       if (result.success && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
@@ -212,21 +286,38 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
 
   return new Promise((resolve) => {
     const loginWin = createLoginBrowserWindow(mainWindow, loginTitle)
+    const removeCspHandler = setupLoginWindowCSP(loginWin)
 
     const ctx: LoginWindowContext = {
       settled: false,
       hasVisitedAuth0: false,
       savedUserAgent: '',
+      extractInProgress: false,
       clearTimeout: () => {},
+      clearSuccessTimeout: () => {},
+      removeCspHandler,
       done: (result) => {
         if (ctx.settled) return
         ctx.settled = true
+        cancelAutoCloseFn = null
+        ctx.clearSuccessTimeout()
+        // Clean up CSP handler
+        if (ctx.removeCspHandler) {
+          ctx.removeCspHandler()
+          ctx.removeCspHandler = null
+        }
         if (!loginWin.isDestroyed()) {
           loginWin.close()
         }
         resolve(result)
       },
     }
+
+    // Handle renderer process crash — prevents modal from locking the main window
+    loginWin.webContents.on('render-process-gone', (_event, details) => {
+      console.error(`[LoginWindow] renderer crashed: ${details.reason} (${details.exitCode})`)
+      ctx.done({ success: false, message: `登录页面崩溃 (${details.reason})，请重试` })
+    })
 
     const timeout = setTimeout(() => {
       ctx.done({ success: false, message: '登录超时，请重试' })
