@@ -83,6 +83,8 @@ export function SearchPage() {
   const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
   const searchCache = useSearchCacheStore()
+  const searchCacheRef = useRef(searchCache)
+  searchCacheRef.current = searchCache // eslint-disable-line react-hooks/refs
 
   const searchGenRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -93,7 +95,7 @@ export function SearchPage() {
   searchTagsRef.current = searchTags // eslint-disable-line react-hooks/refs
 
   useEffect(() => {
-    const cached = searchCache.cache
+    const cached = searchCacheRef.current.cache
     if (cached) {
       setQuery(cached.query)
       setMode(cached.mode)
@@ -182,7 +184,7 @@ export function SearchPage() {
       if (gen !== searchGenRef.current) return
       setComics(result.comics)
       setPagination(result.pagination)
-      searchCache.setCache({
+      searchCacheRef.current.setCache({
         query: finalQuery,
         mode: searchMode === 'tag' && !finalQuery ? 'tag' : searchMode,
         source,
@@ -219,7 +221,7 @@ export function SearchPage() {
       if (gen !== searchGenRef.current) return
       setComics(result.comics)
       if (result.pagination) setPagination(result.pagination)
-      searchCache.setCache({
+      searchCacheRef.current.setCache({
         query: queryRef.current,
         mode,
         source,

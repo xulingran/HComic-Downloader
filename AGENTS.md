@@ -62,14 +62,22 @@ npm run test:coverage
 # TypeScript 类型检查
 npx tsc --noEmit
 
-# 检查类型注解（如果配置了 mypy）
-mypy .
+# ESLint（src/electron/shared/tests）
+npm run lint
+# 自动修复可修问题
+npm run lint:fix
+# Python lint（封装 ruff，跨平台路径兼容）
+npm run lint:py
 
-# 代码格式化（如果配置了 black）
-black .
-
-# 代码质量检查（如果配置了 ruff）
-ruff check . --fix
+# Python 代码格式化与质量检查（venv 中已安装 ruff + black）
+# ruff 跨平台调用：
+#   - macOS/Linux:  venv/bin/ruff
+#   - Windows:      venv\Scripts\ruff.exe
+# 建议使用 npm run lint:py 包装脚本，跨平台路径自动适配
+ruff check .           # 检查
+ruff check . --fix     # 自动修复
+black .                # 格式化
+black --check .        # 仅检查不修改
 ```
 
 ### 项目打包
@@ -251,7 +259,7 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 
 ### 测试注意事项
 
-项目包含 Python 后端测试（pytest，304 个）和 TypeScript 前端测试（vitest，398 个）。手动测试关键流程：
+项目包含 Python 后端测试（pytest，369 个）和 TypeScript 前端测试（vitest，531 个）。手动测试关键流程：
 1. 搜索/翻页
 2. 单个下载
 3. 批量下载
@@ -269,9 +277,12 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 - **pytest-timeout**: 测试超时控制
 - **vitest**: TypeScript/React 测试框架
 - **TypeScript**: 类型检查（`strict: true`, `noUnusedLocals`, `noUnusedParameters`）
+- **ESLint**: `src/electron/shared/tests` 目录，封装为 `npm run lint`（`src/` 默认开启 `react-hooks` 规则）
+- **ruff**: Python lint（已在 `venv` 中，可直接调用或通过 `npm run lint:py`）
+- **black**: Python 格式化（已在 `venv` 中；目前仅对修改过的文件单独应用，未对全仓库强制）
 - **pyinstaller**: 应用打包
 
-虽然没有显式配置 ruff、black、mypy，但推荐在开发时使用这些工具。
+推荐在开发时引入 mypy，但目前未配置。
 
 ### 开发工作流
 
