@@ -210,6 +210,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   tagBlacklist: tagBlacklistValidator(),
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
   jmcomicDomain: and(string(), maxLength(256)),
+  favouriteTagHighlight: boolean(),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────
@@ -912,6 +913,36 @@ function registerHistoryHandlers(bridge: Bridge) {
   })
 }
 
+function registerFavouriteTagHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.GET_FAVOURITE_TAGS, async (_, source?: unknown) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'get_favourite_tags source')
+      params.source = source
+    }
+    return bridge.call('get_favourite_tags', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SYNC_FAVOURITE_TAGS, async (_, source?: unknown) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'sync_favourite_tags source')
+      params.source = source
+    }
+    return bridge.call('sync_favourite_tags', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REMOVE_FAVOURITE_TAG, async (_, tag: unknown, source?: unknown) => {
+    assert(and(string(), length(1, 64), noControlChars()), tag, 'remove_favourite_tag tag')
+    const params: Record<string, unknown> = { tag }
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'remove_favourite_tag source')
+      params.source = source
+    }
+    return bridge.call('remove_favourite_tag', params)
+  })
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
@@ -926,6 +957,7 @@ function registerIPCHandlers() {
   registerMigrationHandlers(bridge)
   registerCacheHandlers(bridge)
   registerHistoryHandlers(bridge)
+  registerFavouriteTagHandlers(bridge)
 }
 
 // ── Single instance lock ──

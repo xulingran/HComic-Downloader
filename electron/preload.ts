@@ -259,6 +259,22 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   clearHistory: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_HISTORY),
 
+  getFavouriteTags: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_FAVOURITE_TAGS, source ?? undefined)
+  },
+
+  syncFavouriteTags: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.SYNC_FAVOURITE_TAGS, source ?? undefined)
+  },
+
+  removeFavouriteTag: (tag: unknown, source?: unknown) => {
+    if (typeof tag !== 'string' || tag.length === 0 || tag.length > 64) throw new Error('Invalid tag')
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.REMOVE_FAVOURITE_TAG, tag, source ?? undefined)
+  },
+
   onMigrationProgress: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, callback)
   },

@@ -85,6 +85,7 @@ export interface AppConfig {
   hasAuth?: boolean
   hasJmcomicAuth?: boolean
   jmcomicDomain?: string
+  favouriteTagHighlight?: boolean
 }
 
 export type TagBlacklist = AppConfig['tagBlacklist']
@@ -171,7 +172,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
   | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
-  | 'jmcomicDomain'
+  | 'jmcomicDomain' | 'favouriteTagHighlight'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -192,6 +193,7 @@ export type ConfigValueMap = {
   tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[] }
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
+  favouriteTagHighlight: boolean
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -397,6 +399,18 @@ export interface IPCMethods {
     params: Record<string, never>
     result: { success: boolean }
   }
+  get_favourite_tags: {
+    params: { source?: string }
+    result: { tags: Array<{tag: string; count: number}> }
+  }
+  sync_favourite_tags: {
+    params: { source?: string }
+    result: { synced: number }
+  }
+  remove_favourite_tag: {
+    params: { tag: string; source?: string }
+    result: { success: boolean }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -444,6 +458,9 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:add-history': 'add_history',
   'python:delete-history': 'delete_history',
   'python:clear-history': 'clear_history',
+  'python:get-favourite-tags': 'get_favourite_tags',
+  'python:sync-favourite-tags': 'sync_favourite_tags',
+  'python:remove-favourite-tag': 'remove_favourite_tag',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -508,6 +525,9 @@ export interface HcomicAPI {
   addHistory(params: { comicId: string; title: string; coverUrl: string; source: string; sourceSite: string; mediaId: string; sourceUrl: string; lastPage: number; totalPages: number; lastChapterId?: string; lastChapterName?: string }): Promise<{ success: boolean }>
   deleteHistory(comicId: string, source: string): Promise<{ success: boolean }>
   clearHistory(): Promise<{ success: boolean }>
+  getFavouriteTags(source?: string): Promise<{ tags: Array<{tag: string; count: number}> }>
+  syncFavouriteTags(source?: string): Promise<{ synced: number }>
+  removeFavouriteTag(tag: string, source?: string): Promise<{ success: boolean }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
   onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
@@ -576,6 +596,9 @@ export const IPC_CHANNELS = {
   ADD_HISTORY: 'python:add-history',
   DELETE_HISTORY: 'python:delete-history',
   CLEAR_HISTORY: 'python:clear-history',
+  GET_FAVOURITE_TAGS: 'python:get-favourite-tags',
+  SYNC_FAVOURITE_TAGS: 'python:sync-favourite-tags',
+  REMOVE_FAVOURITE_TAG: 'python:remove-favourite-tag',
   SELECT_DIRECTORY: 'select-directory',
 } as const
 
@@ -599,5 +622,5 @@ export const CONFIG_KEYS = [
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
   'fontName', 'fontSize', 'sfwMode', 'tagBlacklist', 'previewCacheSizeLimitMB',
-  'jmcomicDomain',
+  'jmcomicDomain', 'favouriteTagHighlight',
 ] as const
