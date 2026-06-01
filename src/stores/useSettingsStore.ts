@@ -10,6 +10,7 @@ interface SettingsState {
   sfwToastDismissed: boolean
   tagBlacklist: TagBlacklist
   filterEnabled: boolean
+  favouriteTagHighlight: boolean
   setThemeMode: (mode: ThemeMode) => void
   setCardStyle: (style: CardStyle) => void
   setSfwMode: (enabled: boolean) => void
@@ -18,6 +19,7 @@ interface SettingsState {
   removeTag: (source: string, tag: string) => void
   setTagBlacklist: (blacklist: TagBlacklist) => void
   setFilterEnabled: (enabled: boolean) => void
+  setFavouriteTagHighlight: (enabled: boolean) => void
 }
 
 const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [] }
@@ -29,6 +31,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   sfwToastDismissed: false,
   tagBlacklist: { ...DEFAULT_TAG_BLACKLIST },
   filterEnabled: true,
+  favouriteTagHighlight: false,
   setThemeMode: (mode) => set({ themeMode: mode }),
   setCardStyle: (style) => set({ cardStyle: style }),
   setSfwMode: (enabled) => set({ sfwMode: enabled }),
@@ -62,6 +65,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
   setTagBlacklist: (blacklist) => set({ tagBlacklist: blacklist }),
   setFilterEnabled: (enabled) => set({ filterEnabled: enabled }),
+  setFavouriteTagHighlight: (enabled) => set({ favouriteTagHighlight: enabled }),
 }))
 
 /** Subscribe to tagBlacklist changes and persist via setConfig. */
