@@ -24,6 +24,7 @@ from ipc.config_mixin import ConfigMixin  # noqa: E402
 from ipc.cover_cache import CoverCacheDB  # noqa: E402
 from ipc.cover_mixin import CoverMixin  # noqa: E402
 from ipc.download_mixin import DownloadMixin  # noqa: E402
+from ipc.favourite_tags_mixin import FavouriteTagsMixin  # noqa: E402
 from ipc.history_mixin import HistoryMixin  # noqa: E402
 from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: E402,F401
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
@@ -49,6 +50,7 @@ class IPCServer(
     AuthMixin,
     MigrationMixin,
     HistoryMixin,
+    FavouriteTagsMixin,
 ):
 
     def __init__(self):
@@ -136,6 +138,9 @@ class IPCServer(
         # Reading history database
         self._init_reading_history()
 
+        # Favourite tags index database
+        self._init_favourite_tags()
+
     # ── backward-compatible static helpers (delegated to image_utils) ─────
 
     @staticmethod
@@ -198,6 +203,9 @@ class IPCServer(
         "add_history": "handle_add_history",
         "delete_history": "handle_delete_history",
         "clear_history": "handle_clear_history",
+        "get_favourite_tags": "handle_get_favourite_tags",
+        "sync_favourite_tags": "handle_sync_favourite_tags",
+        "remove_favourite_tag": "handle_remove_favourite_tag",
     }
 
     def handle_request(self, request: dict) -> dict:

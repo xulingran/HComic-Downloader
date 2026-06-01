@@ -134,3 +134,52 @@ class FavouriteTagsDB:
             (comic_id, source),
         ).fetchone()
         return json.loads(row["tags"]) if row else []
+
+
+class FavouriteTagsMixin:
+    """Mixin providing favourite tag recommendation IPC handlers."""
+
+    _favourite_tags_db: FavouriteTagsDB
+    parser: Any
+    _write_response: Any
+
+    def _init_favourite_tags(self) -> None:
+        db_path = os.path.join(
+            os.path.expanduser("~"), ".hcomic_downloader", "favourite_tags.db"
+        )
+        self._favourite_tags_db = FavouriteTagsDB(db_path)
+
+    def handle_get_favourite_tags(self, source: str = "hcomic") -> dict:
+        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        tags = self._favourite_tags_db.get_tags(effective_source)
+        return {"tags": tags}
+
+    def handle_sync_favourite_tags(self, source: str = "hcomic") -> dict:
+        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        self._favourite_tags_db.clear(effective_source)
+        synced = 0
+        page = 1
+        while True:
+            try:
+                comics, pagination, _needs_login = self.parser.favourites(
+                    page=page, raise_errors=True, source=effective_source
+                )
+            except Exception as e:
+                logger.error("sync_favourite_tags page %d error: %s", page, e)
+                break
+            for comic in comics:
+                tags = getattr(comic, "tags", None) or []
+                if tags:
+                    self._favourite_tags_db.upsert_comic(
+                        comic.id, effective_source, tags
+                    )
+                synced += 1
+            if not pagination or page >= pagination.total_pages:
+                break
+            page += 1
+        return {"synced": synced}
+
+    def handle_remove_favourite_tag(self, tag: str, source: str = "hcomic") -> dict:
+        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        self._favourite_tags_db.remove_tag(tag, effective_source)
+        return {"success": True}
