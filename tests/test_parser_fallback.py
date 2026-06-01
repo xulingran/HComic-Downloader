@@ -6,7 +6,7 @@ from sources.hcomic import HComicParser, ParserResponseError
 
 
 def test_extract_payload_data_primary_regex_fails():
-    html = '<html><body>no payload</body></html>'
+    html = "<html><body>no payload</body></html>"
     try:
         HComicParser._extract_payload_data(html)
         raised = False

@@ -1,4 +1,5 @@
 """测试 models.py 数据模型"""
+
 from models import ChapterInfo, ComicInfo, PaginationInfo
 
 
@@ -40,7 +41,9 @@ class TestComicInfo:
         assert comic.get_image_url(1) == "https://h-comic.link/api/nh/abcde/pages/1"
 
     def test_get_all_image_urls(self):
-        comic = ComicInfo(id="12345", media_id="abcde", comic_source="MMCG_SHORT", pages=3)
+        comic = ComicInfo(
+            id="12345", media_id="abcde", comic_source="MMCG_SHORT", pages=3
+        )
         urls = comic.get_all_image_urls()
         assert len(urls) == 3
         assert urls[0] == "https://h-comic.link/api/mms/abcde/pages/1"
@@ -90,8 +93,12 @@ class TestChapterInfo:
 
     def test_comic_info_chapters_not_in_hash(self):
         a = ComicInfo(id="1", source_site="jmcomic", comic_source="JMCOMIC")
-        b = ComicInfo(id="1", source_site="jmcomic", comic_source="JMCOMIC",
-                      chapters=[ChapterInfo(id="2", name="x", index=1)])
+        b = ComicInfo(
+            id="1",
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            chapters=[ChapterInfo(id="2", name="x", index=1)],
+        )
         assert hash(a) == hash(b)
         assert a == b
 

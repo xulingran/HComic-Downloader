@@ -1,4 +1,5 @@
 """认证信息注入应用测试"""
+
 import unittest
 
 from downloader import ComicDownloader

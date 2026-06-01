@@ -1,4 +1,5 @@
 """漫画来源子系统。"""
+
 from __future__ import annotations
 
 import logging
@@ -33,7 +34,9 @@ class MultiSourceParser:
         auth: AuthConfig | None = None,
     ):
         self.timeout = timeout
-        self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
+        self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(
+            source_auth
+        )
         # 兼容旧调用：若传了全局 auth，作为 hcomic 默认认证。
         _cookie = auth.cookie if auth else ""
         _user_agent = auth.user_agent if auth else ""
@@ -62,7 +65,9 @@ class MultiSourceParser:
                 user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
             ),
         }
-        self.current_source = default_source if default_source in self.parsers else "hcomic"
+        self.current_source = (
+            default_source if default_source in self.parsers else "hcomic"
+        )
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
@@ -73,19 +78,23 @@ class MultiSourceParser:
         return self.parsers[self.current_source].session
 
     def get_sessions(self) -> list[requests.Session]:
-        return [self.parsers["hcomic"].session, self.parsers["moeimg"].session, self.parsers["jmcomic"].session]
+        return [
+            self.parsers["hcomic"].session,
+            self.parsers["moeimg"].session,
+            self.parsers["jmcomic"].session,
+        ]
 
     def get_jmcomic_cdn_domain(self) -> str | None:
         """返回 jmcomic 当前解析到的 CDN 域名。"""
         jm_parser = self.parsers.get("jmcomic")
-        if jm_parser and hasattr(jm_parser, 'cdn_domain'):
+        if jm_parser and hasattr(jm_parser, "cdn_domain"):
             return jm_parser.cdn_domain
         return None
 
     def set_jmcomic_domain(self, domain: str) -> None:
         """设置 jmcomic 自定义域名。传空字符串则恢复自动选择。"""
         jm = self.parsers.get("jmcomic")
-        if jm and hasattr(jm, 'set_custom_domain'):
+        if jm and hasattr(jm, "set_custom_domain"):
             jm.set_custom_domain(domain)
 
     def get_source_options(self) -> tuple[tuple[str, str], ...]:
@@ -104,31 +113,49 @@ class MultiSourceParser:
         auth = self.source_auth.get(current, {"cookie": "", "user_agent": ""})
         return auth.get("cookie", ""), auth.get("user_agent", "")
 
-    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = "", source: str | None = None):
+    def configure_auth(
+        self,
+        cookie: str = "",
+        user_agent: str = "",
+        bearer_token: str = "",
+        source: str | None = None,
+    ):
         current = source or self.current_source
         if current not in self.parsers:
             return
         cookie = (cookie or "").strip()
         user_agent = (user_agent or "").strip()
         bearer_token = (bearer_token or "").strip()
-        self.source_auth[current] = {"cookie": cookie, "user_agent": user_agent, "bearer_token": bearer_token}
-        self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+        self.source_auth[current] = {
+            "cookie": cookie,
+            "user_agent": user_agent,
+            "bearer_token": bearer_token,
+        }
+        self.parsers[current].configure_auth(
+            cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
+        )
 
     def verify_login_status(self, source: str | None = None) -> tuple[bool, str]:
         src = source or self.current_source
         return self.parsers[src].verify_login_status()
 
-    def search(self, keyword: str, page: int = 1, source: str | None = None, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(
+        self, keyword: str, page: int = 1, source: str | None = None, *, tag: str = ""
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = source or self.current_source
         return self.parsers[src].search(keyword, page=page, tag=tag)
 
-    def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def random(
+        self, source: str | None = None
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = source or self.current_source
         if src not in ("hcomic", "jmcomic"):
             raise ValueError(f"Random is not supported for source: {src}")
         return self.parsers[src].random()
 
-    def favourites(self, page: int = 1, raise_errors: bool = False, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+    def favourites(
+        self, page: int = 1, raise_errors: bool = False, source: str | None = None
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         src = source or self.current_source
         if not self.source_supports_favourites(src):
             return [], None, False
@@ -152,7 +179,9 @@ class MultiSourceParser:
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 
-    def get_comic_detail(self, comic_id: str, slug: str = "", source: str | None = None) -> ComicInfo | None:
+    def get_comic_detail(
+        self, comic_id: str, slug: str = "", source: str | None = None
+    ) -> ComicInfo | None:
         src = source or self.current_source
         return self.parsers[src].get_comic_detail(comic_id, slug=slug)
 

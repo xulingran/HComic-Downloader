@@ -158,18 +158,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     await downloadWithConflictCheck(comic)
   }
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-[var(--text-secondary)]">加载中...</div>
-      </div>
-    )
-  }
-
-  if (error) {
-    return <ErrorDisplay message={error} />
-  }
-
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -236,7 +224,15 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         )}
       </div>
 
-      {needsLogin ? (
+      {isLoading && (
+        <div className="flex items-center justify-center py-12">
+          <div className="text-[var(--text-secondary)]">加载中...</div>
+        </div>
+      )}
+
+      {error && <ErrorDisplay message={error} />}
+
+      {!isLoading && !error && (needsLogin ? (
         <div className="text-center py-12">
           <div className="text-[var(--text-secondary)] mb-4">登录信息已过期或未配置，请前往设置页面重新登录</div>
           <div className="flex justify-center gap-3">
@@ -271,10 +267,8 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
               />
             ))}
           </div>
-
-
         </>
-      )}
+      ))}
 
       {/* ── Page jump dialog ── */}
       {showJumpDialog && (

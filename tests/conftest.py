@@ -1,4 +1,5 @@
 """pytest 共享 fixtures 和配置"""
+
 from pathlib import Path
 
 import pytest
@@ -13,11 +14,13 @@ def html_sample():
     Returns:
         工厂函数，接受文件名并返回 HTML 内容字符串
     """
+
     def _load(name: str) -> str:
         path = Path(__file__).parent / "fixtures" / "html" / name
         if not path.exists():
             pytest.fail(f"HTML sample not found: {name}")
         return path.read_text(encoding="utf-8")
+
     return _load
 
 

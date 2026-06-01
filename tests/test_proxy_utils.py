@@ -1,4 +1,5 @@
 """系统代理工具测试"""
+
 import unittest
 from unittest.mock import patch
 
@@ -13,7 +14,10 @@ class DummySession:
 
 class TestProxyUtils(unittest.TestCase):
     def test_get_system_proxies_normalizes_and_maps(self):
-        with patch("utils.getproxies", return_value={"http": "127.0.0.1:7890", "https": "http://127.0.0.1:7891"}):
+        with patch(
+            "utils.getproxies",
+            return_value={"http": "127.0.0.1:7890", "https": "http://127.0.0.1:7891"},
+        ):
             proxies = get_system_proxies()
 
         self.assertEqual(proxies["http"], "http://127.0.0.1:7890")

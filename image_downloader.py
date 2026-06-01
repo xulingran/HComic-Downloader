@@ -1,4 +1,5 @@
 """图片下载模块 - 会话池管理和图片下载逻辑"""
+
 import logging
 import os
 import queue
@@ -50,12 +51,14 @@ class ImageDownloader:
         """创建配置了重试和代理的会话"""
         session = requests.Session()
         apply_system_proxy_to_session(session)
-        session.headers.update({
-            "User-Agent": DEFAULT_USER_AGENT,
-            "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-            "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
-            "Referer": "https://h-comic.com/",
-        })
+        session.headers.update(
+            {
+                "User-Agent": DEFAULT_USER_AGENT,
+                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+                "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
+                "Referer": "https://h-comic.com/",
+            }
+        )
 
         retry_strategy = Retry(
             total=self.retry_times,
@@ -141,7 +144,13 @@ class ImageDownloader:
         self._init_session_pool()
         self.configure_auth(cookie=saved_cookie, user_agent=saved_ua)
 
-    def download(self, url: str, path: str, referer: str = "", session: requests.Session | None = None):
+    def download(
+        self,
+        url: str,
+        path: str,
+        referer: str = "",
+        session: requests.Session | None = None,
+    ):
         """下载单张图片，自动检测格式
 
         使用流式下载，设置单张图片大小上限（100MB），避免内存暴涨。
@@ -171,16 +180,24 @@ class ImageDownloader:
 
             final_url, s = self.url_validator.resolve_redirects(url, s, self.timeout)
 
-            with s.get(final_url, timeout=self.timeout, stream=True, headers=headers, allow_redirects=False) as response:
+            with s.get(
+                final_url,
+                timeout=self.timeout,
+                stream=True,
+                headers=headers,
+                allow_redirects=False,
+            ) as response:
                 response.raise_for_status()
 
                 ensure_dir(os.path.dirname(path))
 
-                fd, tmp_path_raw = tempfile.mkstemp(suffix='.tmp', dir=os.path.dirname(path))
+                fd, tmp_path_raw = tempfile.mkstemp(
+                    suffix=".tmp", dir=os.path.dirname(path)
+                )
                 tmp_path: str | None = tmp_path_raw
                 try:
                     total = 0
-                    with os.fdopen(fd, 'wb') as f:
+                    with os.fdopen(fd, "wb") as f:
                         for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
                             if chunk:
                                 total += len(chunk)
@@ -191,16 +208,19 @@ class ImageDownloader:
                                 f.write(chunk)
 
                     ext = None
-                    content_type = response.headers.get('Content-Type', '')
+                    content_type = response.headers.get("Content-Type", "")
                     ext = MIME_TO_EXT.get(content_type.lower())
 
                     if not ext:
                         try:
                             with Image.open(tmp_path) as img:  # type: ignore[arg-type]
-                                ext = PIL_FORMAT_TO_EXT.get(img.format or '', '.jpg')
+                                ext = PIL_FORMAT_TO_EXT.get(img.format or "", ".jpg")
                         except (OSError, SyntaxError, ValueError):
-                            logger.debug("Image format detection failed for %s, defaulting to .jpg", url)
-                            ext = '.jpg'
+                            logger.debug(
+                                "Image format detection failed for %s, defaulting to .jpg",
+                                url,
+                            )
+                            ext = ".jpg"
 
                     if not path.endswith(ext):
                         path = os.path.splitext(path)[0] + ext

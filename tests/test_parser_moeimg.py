@@ -1,4 +1,5 @@
 """MoeImgParser 单元测试"""
+
 from typing import Any
 
 from sources.moeimg import MoeImgParser
@@ -35,7 +36,9 @@ def test_search_success_maps_comic_fields(monkeypatch):
         },
     }
 
-    monkeypatch.setattr(parser.session, "get", lambda *args, **kwargs: _MockResponse(payload))
+    monkeypatch.setattr(
+        parser.session, "get", lambda *args, **kwargs: _MockResponse(payload)
+    )
 
     comics, pagination = parser.search("test", page=2)
     assert len(comics) == 1
@@ -129,7 +132,12 @@ def test_search_author_mode_resolves_id_and_uses_author_endpoint(monkeypatch):
     parser = MoeImgParser(timeout=5)
     lookup_payload = {
         "manga_list": [
-            {"manga_id": 11, "manga_name": "候选1", "manga_cover_img": "", "language": "japanese"},
+            {
+                "manga_id": 11,
+                "manga_name": "候选1",
+                "manga_cover_img": "",
+                "language": "japanese",
+            },
         ],
         "pagi": {"cur_page": 1, "pages": [{"page": 1}], "offset": 0},
     }
@@ -139,7 +147,12 @@ def test_search_author_mode_resolves_id_and_uses_author_endpoint(monkeypatch):
     }
     author_payload = {
         "manga_list": [
-            {"manga_id": 123, "manga_name": "作者结果", "manga_cover_img": "https://moeimg.fan/a.webp", "language": "chinese"},
+            {
+                "manga_id": 123,
+                "manga_name": "作者结果",
+                "manga_cover_img": "https://moeimg.fan/a.webp",
+                "language": "chinese",
+            },
         ],
         "pagi": {"cur_page": 2, "pages": [{"page": 1}, {"page": 2}], "offset": 40},
     }
@@ -176,7 +189,12 @@ def test_search_tag_mode_resolves_id_and_uses_genre_endpoint(monkeypatch):
     parser = MoeImgParser(timeout=5)
     lookup_payload = {
         "manga_list": [
-            {"manga_id": 22, "manga_name": "候选2", "manga_cover_img": "", "language": "english"},
+            {
+                "manga_id": 22,
+                "manga_name": "候选2",
+                "manga_cover_img": "",
+                "language": "english",
+            },
         ],
         "pagi": {"cur_page": 1, "pages": [{"page": 1}], "offset": 0},
     }
@@ -186,9 +204,18 @@ def test_search_tag_mode_resolves_id_and_uses_genre_endpoint(monkeypatch):
     }
     genre_payload = {
         "manga_list": [
-            {"manga_id": 456, "manga_name": "标签结果", "manga_cover_img": "https://moeimg.fan/t.webp", "language": "japanese"},
+            {
+                "manga_id": 456,
+                "manga_name": "标签结果",
+                "manga_cover_img": "https://moeimg.fan/t.webp",
+                "language": "japanese",
+            },
         ],
-        "pagi": {"cur_page": 3, "pages": [{"page": 1}, {"page": 2}, {"page": 3}], "offset": 80},
+        "pagi": {
+            "cur_page": 3,
+            "pages": [{"page": 1}, {"page": 2}, {"page": 3}],
+            "offset": 80,
+        },
     }
 
     def fake_get(url, params=None, timeout=30):
@@ -262,7 +289,10 @@ def test_get_comic_detail_builds_download_urls(monkeypatch):
     assert comic.source_site == "moeimg"
     assert comic.tags == ["tag1", "tag2", "parody1", "char1", "chapter-tag"]
     assert len(comic.image_urls) == 2
-    assert comic.image_urls[0] == "https://nvme1.cdndelivers.cloud/data/a5/0c/187476/189904/000-979x1331.webp"
+    assert (
+        comic.image_urls[0]
+        == "https://nvme1.cdndelivers.cloud/data/a5/0c/187476/189904/000-979x1331.webp"
+    )
 
 
 def test_get_comic_detail_supports_single_quote_data_url_and_preview_count(monkeypatch):

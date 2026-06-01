@@ -73,16 +73,22 @@ class PreviewMixin:
                 if key in self.downloader.session.headers:
                     session.headers[key] = self.downloader.session.headers[key]
 
-            final_url, session = self.downloader.url_validator.resolve_redirects(url, session, self.downloader.timeout)
+            final_url, session = self.downloader.url_validator.resolve_redirects(
+                url, session, self.downloader.timeout
+            )
             final_parsed = urlparse(final_url)
             final_hostname = final_parsed.hostname or ""
             if final_parsed.scheme != "https":
-                raise ValueError(f"Redirect target must use HTTPS, got: {final_parsed.scheme}")
+                raise ValueError(
+                    f"Redirect target must use HTTPS, got: {final_parsed.scheme}"
+                )
             if not any(
                 final_hostname == d or final_hostname.endswith("." + d)
                 for d in self.ALLOWED_PREVIEW_IMAGE_DOMAINS
             ):
-                raise ValueError(f"Redirect target domain not allowed: {final_hostname}")
+                raise ValueError(
+                    f"Redirect target domain not allowed: {final_hostname}"
+                )
 
             headers = {
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
@@ -117,81 +123,125 @@ class PreviewMixin:
         b64 = base64.b64encode(content).decode("ascii")
         return f"data:{content_type};base64,{b64}"
 
+    def _read_preview_cache(self, url: str) -> str | None:
+        """Return data-URI from persistent cache, or None on miss."""
+        import base64 as _base64
+
+        from .image_utils import detect_image_type as _detect
+
+        if not hasattr(self, "_preview_cache"):
+            return None
+        cached_path = self._preview_cache.get(url)
+        if not cached_path:
+            return None
+        try:
+            with open(cached_path, "rb") as f:
+                content = f.read()
+            content_type = _detect(content)
+            if content_type:
+                b64 = _base64.b64encode(content).decode("ascii")
+                logger.debug("Preview cache hit for %s", url)
+                return f"data:{content_type};base64,{b64}"
+        except Exception:
+            logger.debug(
+                "Preview cache read failed for %s, re-fetching", url, exc_info=True
+            )
+        return None
+
+    def _apply_descramble(self, data_uri: str, url: str, comic_id: str) -> str:
+        """Apply jmcomic descrambling to a data-URI, returning the result."""
+        import base64 as _base64
+
+        from .image_utils import detect_image_type as _detect
+
+        try:
+            from sources.jmcomic.descrambler import descramble_image
+
+            b64_part = data_uri.split(",", 1)[1]
+            raw_bytes = _base64.b64decode(b64_part)
+            eps_id = _resolve_eps_id(url, comic_id)
+            descrambled = descramble_image(raw_bytes, eps_id, image_url=url)
+            if descrambled != raw_bytes:
+                content_type = _detect(descrambled)
+                if content_type:
+                    data_uri = (
+                        f"data:{content_type};base64,"
+                        f"{_base64.b64encode(descrambled).decode('ascii')}"
+                    )
+                    logger.debug("Descrambled preview image for %s", url)
+        except Exception as e:
+            logger.warning("Descramble failed for %s: %s", url, e)
+        return data_uri
+
+    def _write_preview_cache(self, url: str, data_uri: str) -> None:
+        """Save image data to persistent cache (best-effort)."""
+        import base64 as _base64
+
+        if not hasattr(self, "_preview_cache"):
+            return
+        try:
+            b64_part = data_uri.split(",", 1)[1]
+            raw_bytes = _base64.b64decode(b64_part)
+            self._preview_cache.put(url, raw_bytes)
+        except Exception:
+            logger.debug("Failed to write preview cache for %s", url, exc_info=True)
+
     def _do_fetch_preview_image(
-        self, url: str, *, scramble_id: str = "", comic_id: str = "",
+        self,
+        url: str,
+        *,
+        scramble_id: str = "",
+        comic_id: str = "",
     ) -> str:
         """Fetch a preview page image, using cache when available.
 
         When *scramble_id* and *comic_id* are provided (jmcomic source),
         the fetched image is descrambled before caching.
         """
-        import base64 as _base64
-
-        from .image_utils import detect_image_type as _detect
-
         self._validate_preview_image_url(url)
 
         needs_descramble = bool(scramble_id and comic_id)
 
-        # Check persistent cache (only for non-descrambled images)
-        if not needs_descramble and hasattr(self, '_preview_cache'):
-            cached_path = self._preview_cache.get(url)
-            if cached_path:
-                try:
-                    with open(cached_path, 'rb') as f:
-                        content = f.read()
-                    content_type = _detect(content)
-                    if content_type:
-                        b64 = _base64.b64encode(content).decode('ascii')
-                        logger.debug("Preview cache hit for %s", url)
-                        return f"data:{content_type};base64,{b64}"
-                except Exception:
-                    logger.debug("Preview cache read failed for %s, re-fetching", url, exc_info=True)
+        if not needs_descramble:
+            cached = self._read_preview_cache(url)
+            if cached:
+                return cached
 
         data_uri = self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE)
 
-        # Apply jmcomic descrambling
         if needs_descramble:
-            try:
-                from sources.jmcomic.descrambler import descramble_image
-                b64_part = data_uri.split(",", 1)[1]
-                raw_bytes = _base64.b64decode(b64_part)
-                eps_id = _resolve_eps_id(url, comic_id)
-                descrambled = descramble_image(raw_bytes, eps_id, image_url=url)
-                if descrambled != raw_bytes:
-                    content_type = _detect(descrambled)
-                    if content_type:
-                        data_uri = f"data:{content_type};base64,{_base64.b64encode(descrambled).decode('ascii')}"
-                        logger.debug("Descrambled preview image for %s", url)
-            except Exception as e:
-                logger.warning("Descramble failed for %s: %s", url, e)
+            data_uri = self._apply_descramble(data_uri, url, comic_id)
 
-        # Save to persistent cache
-        if hasattr(self, '_preview_cache'):
-            try:
-                b64_part = data_uri.split(",", 1)[1]
-                raw_bytes = _base64.b64decode(b64_part)
-                self._preview_cache.put(url, raw_bytes)
-            except Exception:
-                logger.debug("Failed to write preview cache for %s", url, exc_info=True)
+        self._write_preview_cache(url, data_uri)
 
         return data_uri
 
     def _async_fetch_preview_image(
-        self, url: str, req_id: str, *, scramble_id: str = "", comic_id: str = "",
+        self,
+        url: str,
+        req_id: str,
+        *,
+        scramble_id: str = "",
+        comic_id: str = "",
     ) -> None:
         """Thread-pool target: fetch a reader page image and write response."""
         try:
-            data_uri = self._do_fetch_preview_image(url, scramble_id=scramble_id, comic_id=comic_id)
-            self._write_response({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"dataUri": data_uri},
-            })
+            data_uri = self._do_fetch_preview_image(
+                url, scramble_id=scramble_id, comic_id=comic_id
+            )
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"dataUri": data_uri},
+                }
+            )
         except Exception as e:
             logger.error("Preview image fetch error for %s: %s", url, e)
-            self._write_response({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32000, "message": str(e)},
-            })
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32000, "message": str(e)},
+                }
+            )

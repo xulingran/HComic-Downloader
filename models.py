@@ -1,4 +1,5 @@
 """数据模型"""
+
 import time
 from dataclasses import dataclass, field
 from enum import Enum
@@ -17,6 +18,7 @@ class ChapterInfo:
         index: 1-based 顺序
         pages: 页数（可选，懒填充）
     """
+
     id: str = ""
     name: str = ""
     index: int = 0
@@ -42,6 +44,7 @@ class ComicInfo:
         source_site: 来源站点标识 (hcomic/moeimg)
         image_urls: 直接可下载的图片链接列表（可选，优先于 media_id 规则）
     """
+
     id: str = ""
     title: str = ""
     author: str | None = None
@@ -57,8 +60,8 @@ class ComicInfo:
     scramble_id: str = ""
     image_urls: list[str] = field(default_factory=list)
     chapters: list[ChapterInfo] = field(default_factory=list)
-    album_id: str = ""              # 多章节时为专辑 id；单本时等于 id
-    album_total_chapters: int = 1   # 专辑总章数；单本/其他来源为 1
+    album_id: str = ""  # 多章节时为专辑 id；单本时等于 id
+    album_total_chapters: int = 1  # 专辑总章数；单本/其他来源为 1
 
     _IMAGE_URL_SUFFIX_MAP = {
         "MMCG_SHORT": "mms",
@@ -90,7 +93,9 @@ class ComicInfo:
         Returns:
             图片 URL
         """
-        suffix = self._IMAGE_URL_SUFFIX_MAP.get(self.comic_source.upper(), self._DEFAULT_IMAGE_URL_SUFFIX)
+        suffix = self._IMAGE_URL_SUFFIX_MAP.get(
+            self.comic_source.upper(), self._DEFAULT_IMAGE_URL_SUFFIX
+        )
         return f"{IMAGE_API_BASE}/{suffix}/{self.media_id}/pages/{page}"
 
     def get_all_image_urls(self) -> list[str]:
@@ -131,6 +136,7 @@ class PaginationInfo:
         limit: 每页限制
         total_items: 总结果数
     """
+
     current_page: int = 1
     total_pages: int = 1
     limit: int = 10
@@ -154,20 +160,23 @@ class DownloadCancelledError(Exception):
         temp_dir: 下载时使用的临时目录，用于取消后清理
     """
 
-    def __init__(self, message: str = "Download cancelled", temp_dir: str | None = None):
+    def __init__(
+        self, message: str = "Download cancelled", temp_dir: str | None = None
+    ):
         super().__init__(message)
         self.temp_dir = temp_dir
 
 
 class DownloadStatus(Enum):
     """下载任务状态"""
-    QUEUED = "queued"           # 等待中
-    DOWNLOADING = "downloading" # 下载中
-    PAUSING = "pausing"         # 暂停中（已请求暂停，等待当前批次完成）
-    PAUSED = "paused"           # 已暂停
-    COMPLETED = "completed"     # 已完成
-    FAILED = "failed"          # 失败
-    CANCELLED = "cancelled"    # 已取消
+
+    QUEUED = "queued"  # 等待中
+    DOWNLOADING = "downloading"  # 下载中
+    PAUSING = "pausing"  # 暂停中（已请求暂停，等待当前批次完成）
+    PAUSED = "paused"  # 已暂停
+    COMPLETED = "completed"  # 已完成
+    FAILED = "failed"  # 失败
+    CANCELLED = "cancelled"  # 已取消
 
 
 @dataclass
@@ -186,6 +195,7 @@ class DownloadTask:
         _pause_requested: 暂停请求标志（内部使用）
         _cancel_requested: 取消请求标志（内部使用）
     """
+
     comic: ComicInfo
     status: DownloadStatus
     progress_current: int = 0
@@ -237,6 +247,7 @@ class DownloadTask:
 @dataclass
 class AuthConfig:
     """认证配置，封装 cookie 和 user_agent。"""
+
     cookie: str = ""
     user_agent: str = ""
 
@@ -244,6 +255,7 @@ class AuthConfig:
 @dataclass
 class ArchiveBuildOptions:
     """压缩包构建选项，封装 build_archive 的所有参数。"""
+
     image_dir: str
     comic: "ComicInfo"
     output_path: str

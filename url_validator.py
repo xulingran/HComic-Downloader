@@ -61,7 +61,9 @@ class UrlValidator:
     def is_hcomic_url(cls, url: str) -> bool:
         try:
             host = url.split("://", 1)[1].split("/", 1)[0].split(":")[0].lower()
-            return host in cls._HCOMIC_DOMAINS or any(host.endswith("." + d) for d in cls._HCOMIC_DOMAINS)
+            return host in cls._HCOMIC_DOMAINS or any(
+                host.endswith("." + d) for d in cls._HCOMIC_DOMAINS
+            )
         except (IndexError, ValueError):
             return False
 
@@ -89,7 +91,9 @@ class UrlValidator:
         except ValueError:
             pass
         try:
-            addrs = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
+            addrs = socket.getaddrinfo(
+                hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM
+            )
         except socket.gaierror:
             raise DownloadError(f"Cannot resolve hostname: {hostname}") from None
         for _family, _type, _proto, _canon, sockaddr in addrs:
@@ -97,7 +101,9 @@ class UrlValidator:
             if UrlValidator.is_blocked_ip(ip):
                 raise DownloadError(f"Hostname {hostname} resolves to blocked IP: {ip}")
 
-    def resolve_redirects(self, url: str, session: requests.Session, timeout: int, max_hops: int = 10) -> tuple[str, requests.Session]:
+    def resolve_redirects(
+        self, url: str, session: requests.Session, timeout: int, max_hops: int = 10
+    ) -> tuple[str, requests.Session]:
         current_url = url
         ever_was_hcomic = self.is_hcomic_url(url)
         # Save original auth headers so we can restore them if redirecting back to hcomic
@@ -106,12 +112,16 @@ class UrlValidator:
         is_hcomic = ever_was_hcomic
         for _ in range(max_hops):
             self.validate_url(current_url)
-            resp = session.get(current_url, timeout=timeout, allow_redirects=False, stream=True)
+            resp = session.get(
+                current_url, timeout=timeout, allow_redirects=False, stream=True
+            )
             resp.close()
             if resp.is_redirect or resp.status_code in (301, 302, 303, 307, 308):
                 location = resp.headers.get("Location", "")
                 if not location:
-                    raise DownloadError(f"Redirect with no Location header from {current_url}")
+                    raise DownloadError(
+                        f"Redirect with no Location header from {current_url}"
+                    )
                 current_url = urljoin(current_url, location)
                 is_now_hcomic = self.is_hcomic_url(current_url)
                 if is_hcomic and not is_now_hcomic:

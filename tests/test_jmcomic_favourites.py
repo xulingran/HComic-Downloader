@@ -1,4 +1,5 @@
 """jmcomic 收藏夹解析测试"""
+
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -27,9 +28,9 @@ class TestJmcomicFavourites(unittest.TestCase):
         }.get(xpath, [])
         # 模拟链接和标题
         mock_item.xpath.side_effect = lambda xpath: {
-            './/a/@href': ['/album/12345'],
-            './/img/@title': ['测试漫画'],
-            './/img/@data-original': ['https://cdn.example.com/cover.jpg'],
+            ".//a/@href": ["/album/12345"],
+            ".//img/@title": ["测试漫画"],
+            ".//img/@data-original": ["https://cdn.example.com/cover.jpg"],
             './/span[contains(@class,"video-title")]/text()': [],
         }.get(xpath, [])
 
@@ -77,7 +78,9 @@ class TestJmcomicFavourites(unittest.TestCase):
 
     def test_favourites_handles_network_error(self):
         """测试网络错误处理"""
-        self.parser.session.get = MagicMock(side_effect=requests.ConnectionError("网络错误"))
+        self.parser.session.get = MagicMock(
+            side_effect=requests.ConnectionError("网络错误")
+        )
 
         comics, pagination, needs_login = self.parser.favourites(page=1)
 
@@ -87,7 +90,9 @@ class TestJmcomicFavourites(unittest.TestCase):
 
     def test_favourites_raises_when_raise_errors_true(self):
         """测试 raise_errors=True 时抛出异常"""
-        self.parser.session.get = MagicMock(side_effect=requests.ConnectionError("网络错误"))
+        self.parser.session.get = MagicMock(
+            side_effect=requests.ConnectionError("网络错误")
+        )
 
         with self.assertRaises(requests.ConnectionError):
             self.parser.favourites(page=1, raise_errors=True)
@@ -132,7 +137,9 @@ class TestJmcomicAddToFavourites(unittest.TestCase):
 
     def test_add_to_favourites_network_error(self):
         """测试网络错误"""
-        self.parser.session.post = MagicMock(side_effect=requests.ConnectionError("网络错误"))
+        self.parser.session.post = MagicMock(
+            side_effect=requests.ConnectionError("网络错误")
+        )
 
         with self.assertRaises(RuntimeError) as ctx:
             self.parser.add_to_favourites("12345")
@@ -180,7 +187,9 @@ class TestJmcomicCheckFavourite(unittest.TestCase):
 
     def test_check_favourite_network_error(self):
         """测试网络错误"""
-        self.parser.session.get = MagicMock(side_effect=requests.ConnectionError("网络错误"))
+        self.parser.session.get = MagicMock(
+            side_effect=requests.ConnectionError("网络错误")
+        )
 
         with self.assertRaises(RuntimeError) as ctx:
             self.parser.check_favourite("12345")
@@ -210,7 +219,9 @@ class TestJmcomicRemoveFromFavourites(unittest.TestCase):
 
     def test_remove_from_favourites_network_error(self):
         """测试网络错误"""
-        self.parser.session.post = MagicMock(side_effect=requests.ConnectionError("网络错误"))
+        self.parser.session.post = MagicMock(
+            side_effect=requests.ConnectionError("网络错误")
+        )
 
         with self.assertRaises(RuntimeError) as ctx:
             self.parser.remove_from_favourites("12345")

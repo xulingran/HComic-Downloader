@@ -20,12 +20,7 @@ def test_download_status_enum():
 
 def test_download_task_creation():
     """测试创建下载任务"""
-    comic = ComicInfo(
-        id="123",
-        title="Test Comic",
-        pages=10,
-        media_id="abc123"
-    )
+    comic = ComicInfo(id="123", title="Test Comic", pages=10, media_id="abc123")
     task = DownloadTask(comic=comic, status=DownloadStatus.QUEUED)
 
     assert task.comic == comic
@@ -268,7 +263,9 @@ class _FakeCBZBuilder:
 
 
 class _InstantDownloader:
-    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+    def download_comic_resume(
+        self, comic, output_dir, progress_callback=None, **kwargs
+    ):
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
         os.makedirs(temp_dir, exist_ok=True)
         with open(os.path.join(temp_dir, "001.jpg"), "wb") as f:
@@ -367,7 +364,9 @@ def test_pause_downloading_task_keeps_paused_state(tmp_path):
 
 
 class _MixedExtensionFailureDownloader:
-    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+    def download_comic_resume(
+        self, comic, output_dir, progress_callback=None, **kwargs
+    ):
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
         os.makedirs(temp_dir, exist_ok=True)
         for index, ext in enumerate((".jpg", ".png", ".webp", ".ico"), start=1):
@@ -468,7 +467,9 @@ def test_get_next_task_locked_mixed_states_finds_queued():
 
 
 class _AlwaysFailDownloader:
-    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+    def download_comic_resume(
+        self, comic, output_dir, progress_callback=None, **kwargs
+    ):
         if progress_callback:
             progress_callback(1, 3, "downloading", None)
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
@@ -486,7 +487,9 @@ class _AlwaysFailDownloader:
 
 
 class _SlowSuccessDownloader:
-    def download_comic_resume(self, comic, output_dir, progress_callback=None, **kwargs):
+    def download_comic_resume(
+        self, comic, output_dir, progress_callback=None, **kwargs
+    ):
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
         os.makedirs(temp_dir, exist_ok=True)
         total = max(1, comic.pages)
@@ -514,7 +517,11 @@ def test_task_lifecycle_queued_to_completed(tmp_path):
     task_id = dm.add_task(ComicInfo(id="life_ok", title="Lifecycle OK", pages=3))
 
     deadline = time.time() + 5
-    while dm.tasks[task_id].status not in (DownloadStatus.COMPLETED, DownloadStatus.FAILED) and time.time() < deadline:
+    while (
+        dm.tasks[task_id].status
+        not in (DownloadStatus.COMPLETED, DownloadStatus.FAILED)
+        and time.time() < deadline
+    ):
         time.sleep(0.05)
 
     task = dm.tasks[task_id]
@@ -539,7 +546,10 @@ def test_task_lifecycle_queued_to_failed_to_retry(tmp_path):
 
     assert dm.tasks[task_id].status == DownloadStatus.FAILED
     assert dm.retry_task(task_id) is True
-    assert dm.tasks[task_id].status in (DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING)
+    assert dm.tasks[task_id].status in (
+        DownloadStatus.QUEUED,
+        DownloadStatus.DOWNLOADING,
+    )
     dm.stop()
 
 
@@ -592,7 +602,11 @@ def test_auto_retry_respects_max_attempts(tmp_path):
     dm.start()
 
     deadline = time.time() + 2
-    while dm.tasks[task_id].status not in (DownloadStatus.FAILED, DownloadStatus.COMPLETED) and time.time() < deadline:
+    while (
+        dm.tasks[task_id].status
+        not in (DownloadStatus.FAILED, DownloadStatus.COMPLETED)
+        and time.time() < deadline
+    ):
         time.sleep(0.02)
 
     task = dm.tasks[task_id]
@@ -620,7 +634,10 @@ def test_add_task_auto_starts_stopped_manager(tmp_path):
     # Wait for completion
     deadline = time.time() + 5
     while time.time() < deadline:
-        if dm.tasks[task_id].status in (DownloadStatus.COMPLETED, DownloadStatus.FAILED):
+        if dm.tasks[task_id].status in (
+            DownloadStatus.COMPLETED,
+            DownloadStatus.FAILED,
+        ):
             break
         time.sleep(0.05)
 
@@ -663,5 +680,5 @@ def test_on_download_success_callback(tmp_path):
         cbz_builder=_FakeCBZBuilder(),
         output_dir=str(tmp_path),
     )
-    assert hasattr(dm, 'on_download_success')
+    assert hasattr(dm, "on_download_success")
     assert dm.on_download_success is None

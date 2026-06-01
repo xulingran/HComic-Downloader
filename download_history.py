@@ -1,4 +1,5 @@
 """下载历史数据库模块 — 使用 SQLite 持久化记录下载成功的漫画"""
+
 from __future__ import annotations
 
 import logging
@@ -38,7 +39,9 @@ class DownloadHistoryDB:
             )
         """)
         # 列迁移：为多章节专辑判定补充 album_id / album_total_chapters。
-        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(download_history)")}
+        existing = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(download_history)")
+        }
         if "album_id" not in existing:
             self._conn.execute(
                 "ALTER TABLE download_history ADD COLUMN album_id TEXT NOT NULL DEFAULT ''"
@@ -61,24 +64,27 @@ class DownloadHistoryDB:
     def record_download(self, comic: ComicInfo, output_path: str, output_format: str):
         """INSERT OR REPLACE a download record."""
         with self._lock:
-            self._conn.execute("""
+            self._conn.execute(
+                """
                 INSERT OR REPLACE INTO download_history
                     (source_site, comic_id, comic_source, title, author,
                      output_path, output_format, album_id, album_total_chapters,
                      downloaded_at)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                comic.source_site,
-                comic.id,
-                comic.comic_source,
-                comic.title,
-                comic.author or "",
-                output_path,
-                output_format,
-                getattr(comic, "album_id", "") or comic.id,
-                getattr(comic, "album_total_chapters", 1) or 1,
-                int(time.time()),
-            ))
+            """,
+                (
+                    comic.source_site,
+                    comic.id,
+                    comic.comic_source,
+                    comic.title,
+                    comic.author or "",
+                    output_path,
+                    output_format,
+                    getattr(comic, "album_id", "") or comic.id,
+                    getattr(comic, "album_total_chapters", 1) or 1,
+                    int(time.time()),
+                ),
+            )
             self._conn.commit()
 
     def check_downloaded_batch(
@@ -110,9 +116,13 @@ class DownloadHistoryDB:
         if len(comic_keys) <= BATCH_SIZE:
             batches = [comic_keys]
         else:
-            batches = [comic_keys[i:i + BATCH_SIZE] for i in range(0, len(comic_keys), BATCH_SIZE)]
+            batches = [
+                comic_keys[i : i + BATCH_SIZE]
+                for i in range(0, len(comic_keys), BATCH_SIZE)
+            ]
 
         from cbz_builder import CBZBuilder
+
         builder = CBZBuilder(filename_template=filename_template)
 
         result: dict[tuple[str, str, str], str] = {}
@@ -124,15 +134,19 @@ class DownloadHistoryDB:
                     flat_keys.extend(k)
 
                 # 以传入 comic_id 作为 album_id 查询同专辑所有章节行。
-                cursor = self._conn.execute(f"""
+                cursor = self._conn.execute(
+                    f"""
                     SELECT source_site, album_id, comic_source, output_path,
                            album_total_chapters, title, author
                     FROM download_history
                     WHERE (source_site, album_id, comic_source) IN ({placeholders})
-                """, flat_keys)
+                """,
+                    flat_keys,
+                )
 
                 # 按 (site, album_id, source) 聚合：统计仍存在的章数与总章数。
                 from collections import defaultdict
+
                 agg: dict[tuple[str, str, str], dict] = defaultdict(
                     lambda: {"have": 0, "total": 1, "rec": None}
                 )
@@ -140,7 +154,11 @@ class DownloadHistoryDB:
                     key = (row[0], row[1], row[2])
                     bucket = agg[key]
                     bucket["total"] = row[4] or 1
-                    bucket["rec"] = {"output_path": row[3], "title": row[5], "author": row[6]}
+                    bucket["rec"] = {
+                        "output_path": row[3],
+                        "title": row[5],
+                        "author": row[6],
+                    }
                     if row[3] and os.path.exists(row[3]):
                         bucket["have"] += 1
 
@@ -177,8 +195,16 @@ class DownloadHistoryDB:
                 "output_path, output_format, downloaded_at "
                 "FROM download_history"
             )
-            columns = ["source_site", "comic_id", "comic_source", "title",
-                        "author", "output_path", "output_format", "downloaded_at"]
+            columns = [
+                "source_site",
+                "comic_id",
+                "comic_source",
+                "title",
+                "author",
+                "output_path",
+                "output_format",
+                "downloaded_at",
+            ]
             return [dict(zip(columns, row, strict=True)) for row in cursor]
 
     def update_output_path(self, key: tuple[str, str, str], new_path: str):

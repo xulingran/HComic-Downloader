@@ -1,4 +1,5 @@
 """jmcomic 图片反混淆模块测试。"""
+
 import hashlib
 from io import BytesIO
 
@@ -54,8 +55,14 @@ def test_num_computed_for_new_ids():
 
 def test_extract_page_num():
     """从图片 URL 中提取页码。"""
-    assert _extract_page_num("https://cdn.example.com/media/photos/12345/00001.webp") == "00001"
-    assert _extract_page_num("https://cdn.example.com/media/photos/12345/00042.jpg") == "00042"
+    assert (
+        _extract_page_num("https://cdn.example.com/media/photos/12345/00001.webp")
+        == "00001"
+    )
+    assert (
+        _extract_page_num("https://cdn.example.com/media/photos/12345/00042.jpg")
+        == "00042"
+    )
     assert _extract_page_num("https://cdn.example.com/other/path") == "0"
 
 
@@ -140,9 +147,9 @@ def test_descramble_roundtrip():
 
         orig_img = Image.open(BytesIO(original))
         desc_img = Image.open(BytesIO(descrambled))
-        assert list(orig_img.getdata()) == list(desc_img.getdata()), (
-            f"Roundtrip failed for height={height}"
-        )
+        assert list(orig_img.getdata()) == list(
+            desc_img.getdata()
+        ), f"Roundtrip failed for height={height}"
 
 
 def test_descramble_roundtrip_various_pages():
@@ -170,9 +177,9 @@ def test_descramble_roundtrip_various_pages():
 
         orig_img = Image.open(BytesIO(original))
         desc_img = Image.open(BytesIO(descrambled))
-        assert list(orig_img.getdata()) == list(desc_img.getdata()), (
-            f"Roundtrip failed for page_num={page_num}, num={num}"
-        )
+        assert list(orig_img.getdata()) == list(
+            desc_img.getdata()
+        ), f"Roundtrip failed for page_num={page_num}, num={num}"
 
 
 def test_descramble_algorithm_matches_reference():

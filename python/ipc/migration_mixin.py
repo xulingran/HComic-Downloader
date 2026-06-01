@@ -42,17 +42,19 @@ class MigrationMixin:
         self._migration_paused_dm: bool = False
 
     def _migration_progress_callback(self, progress):
-        self._write_response({
-            "jsonrpc": "2.0",
-            "method": "migration_progress",
-            "params": {
-                "completed": progress.completed,
-                "total": progress.total,
-                "currentFile": progress.current_file,
-                "speed": progress.speed,
-                "phase": progress.phase,
-            },
-        })
+        self._write_response(
+            {
+                "jsonrpc": "2.0",
+                "method": "migration_progress",
+                "params": {
+                    "completed": progress.completed,
+                    "total": progress.total,
+                    "currentFile": progress.current_file,
+                    "speed": progress.speed,
+                    "phase": progress.phase,
+                },
+            }
+        )
 
     def _migration_complete_callback(self):
         state = self._migration_engine.state
@@ -64,30 +66,39 @@ class MigrationMixin:
 
         if succeeded > 0 and state.target_dir and state.status not in ("cancelled",):
             try:
-                self._apply_runtime('downloadDir', state.target_dir)
+                self._apply_runtime("downloadDir", state.target_dir)
                 self.config.download_dir = state.target_dir
                 self.config.save(_get_config_path())
-                logger.info("Download dir auto-updated to migration target: %s", state.target_dir)
+                logger.info(
+                    "Download dir auto-updated to migration target: %s",
+                    state.target_dir,
+                )
             except Exception as e:
-                logger.error("Failed to auto-update download_dir after migration: %s", e)
+                logger.error(
+                    "Failed to auto-update download_dir after migration: %s", e
+                )
 
-        self._write_response({
-            "jsonrpc": "2.0",
-            "method": "migration_complete",
-            "params": {
-                "total": state.total_items,
-                "succeeded": succeeded,
-                "failed": failed,
-                "elapsed": round(elapsed, 1),
-            },
-        })
+        self._write_response(
+            {
+                "jsonrpc": "2.0",
+                "method": "migration_complete",
+                "params": {
+                    "total": state.total_items,
+                    "succeeded": succeeded,
+                    "failed": failed,
+                    "elapsed": round(elapsed, 1),
+                },
+            }
+        )
 
     def _migration_error_callback(self, error_info):
-        self._write_response({
-            "jsonrpc": "2.0",
-            "method": "migration_error",
-            "params": error_info,
-        })
+        self._write_response(
+            {
+                "jsonrpc": "2.0",
+                "method": "migration_error",
+                "params": error_info,
+            }
+        )
 
     def _run_migration(self):
         try:
@@ -99,7 +110,7 @@ class MigrationMixin:
             logger.error("Migration engine error: %s", e)
         finally:
             self._migration_complete_callback()
-            if self._migration_paused_dm and hasattr(self, '_download_manager'):
+            if self._migration_paused_dm and hasattr(self, "_download_manager"):
                 try:
                     self._download_manager.toggle_global_pause()
                 except Exception as e:
@@ -134,9 +145,11 @@ class MigrationMixin:
             "totalItems": state.total_items,
             "sourceDir": state.source_dir,
             "targetDir": state.target_dir,
-            "isSameDrive": MigrationEngine._is_same_drive(
-                state.source_dir, state.target_dir
-            ) if state.source_dir else False,
+            "isSameDrive": (
+                MigrationEngine._is_same_drive(state.source_dir, state.target_dir)
+                if state.source_dir
+                else False
+            ),
         }
 
     def handle_confirm_migration(self, migration_id: str) -> dict:
@@ -147,7 +160,7 @@ class MigrationMixin:
             if state.status != "ready":
                 raise RuntimeError(f"Migration is in status: {state.status}")
 
-            if hasattr(self, '_download_manager'):
+            if hasattr(self, "_download_manager"):
                 self._download_manager.toggle_global_pause()
                 self._migration_paused_dm = True
 
@@ -189,7 +202,7 @@ class MigrationMixin:
             if state:
                 state.status = "cancelled"
                 self._migration_engine._save_state_if_needed()
-        if self._migration_paused_dm and hasattr(self, '_download_manager'):
+        if self._migration_paused_dm and hasattr(self, "_download_manager"):
             try:
                 self._download_manager.toggle_global_pause()
             except Exception as e:

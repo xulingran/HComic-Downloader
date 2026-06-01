@@ -1,4 +1,5 @@
 """工具函数模块"""
+
 import os
 import re
 from typing import Any
@@ -18,9 +19,9 @@ def sanitize_filename(name: str) -> str:
         return "unknown"
     # Windows 非法字符: < > : " / \ | ? *
     # 同时移除控制字符
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
+    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
     # 移除首尾空格和点
-    name = name.strip(' .')
+    name = name.strip(" .")
     # 限制长度
     if len(name) > 200:
         name = name[:200]
@@ -91,7 +92,7 @@ def sanitize_path_chars(name: str) -> str:
     """
     if not name:
         return "unknown"
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', '_', name)
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
 
 
 def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
@@ -114,8 +115,12 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         if source not in normalized or not isinstance(auth, dict):
             continue
         normalized[source]["cookie"] = str(auth.get("cookie", "") or "").strip()
-        normalized[source]["user_agent"] = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
-        normalized[source]["bearer_token"] = str(auth.get("bearer_token", "") or "").strip()
+        normalized[source]["user_agent"] = str(
+            auth.get("user_agent", auth.get("ua", "")) or ""
+        ).strip()
+        normalized[source]["bearer_token"] = str(
+            auth.get("bearer_token", "") or ""
+        ).strip()
     return normalized
 
 

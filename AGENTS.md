@@ -257,9 +257,36 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 | `is_batch_downloading` | 批量下载进行标志 |
 | `batch_select_mode_var` | 批量选择模式开关 |
 
-### 测试注意事项
+### 完整测试与检查流程
 
-项目包含 Python 后端测试（pytest，369 个）和 TypeScript 前端测试（vitest，531 个）。手动测试关键流程：
+代码变更后，运行以下全部检查确认无回归：
+
+```bash
+# 1. Python 单元测试（371 个）
+pytest
+
+# 2. TypeScript 类型检查
+npx tsc --noEmit
+
+# 3. 前端测试（531 个）
+npm test
+
+# 4. Python lint（ruff）
+npm run lint:py
+
+# 5. Python 格式检查（black，需从 venv 调用）
+#    macOS/Linux: venv/bin/black --check .
+#    Windows:     venv\Scripts\black.exe --check .
+black --check .
+
+# 6. JS/TS lint（ESLint）
+npm run lint
+```
+
+6 项全部通过后才可提交。
+
+### 手动测试关键流程
+
 1. 搜索/翻页
 2. 单个下载
 3. 批量下载
@@ -271,25 +298,19 @@ https://h-comic.link/api/{suffix}/{media_id}/pages/{page}
 ### 代码质量工具
 
 项目使用以下工具确保代码质量：
-- **pytest**: Python 单元测试框架
-- **pytest-mock**: 模拟测试依赖
-- **pytest-cov**: 代码覆盖率
-- **pytest-timeout**: 测试超时控制
+- **pytest**: Python 单元测试框架（pytest-mock、pytest-cov、pytest-timeout）
 - **vitest**: TypeScript/React 测试框架
 - **TypeScript**: 类型检查（`strict: true`, `noUnusedLocals`, `noUnusedParameters`）
 - **ESLint**: `src/electron/shared/tests` 目录，封装为 `npm run lint`（`src/` 默认开启 `react-hooks` 规则）
-- **ruff**: Python lint（已在 `venv` 中，可直接调用或通过 `npm run lint:py`）
-- **black**: Python 格式化（已在 `venv` 中；目前仅对修改过的文件单独应用，未对全仓库强制）
+- **ruff**: Python lint（封装为 `npm run lint:py`）
+- **black**: Python 格式化（venv 中；修改文件后需 `black --check .` 验证）
 - **pyinstaller**: 应用打包
-
-推荐在开发时引入 mypy，但目前未配置。
 
 ### 开发工作流
 
 1. **环境设置**: 创建虚拟环境并安装依赖
-2. **运行测试**: 确保现有功能正常
-3. **编写代码**: 遵循上述代码风格指南
-4. **添加测试**: 为新功能编写测试
-5. **运行测试**: 验证功能正确性
-6. **代码审查**: 检查代码质量和风格
-7. **提交代码**: 使用有意义的提交信息
+2. **编写代码**: 遵循上述代码风格指南
+3. **添加测试**: 为新功能编写测试
+4. **运行完整检查**: 执行上述 6 项测试与检查
+5. **代码审查**: 检查代码质量和风格
+6. **提交代码**: 使用有意义的提交信息

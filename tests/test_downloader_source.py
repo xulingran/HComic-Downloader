@@ -1,4 +1,5 @@
 """downloader 来源相关测试"""
+
 import pytest
 import requests
 
@@ -7,7 +8,9 @@ from models import ComicInfo
 from url_validator import DownloadError, UrlValidator
 
 
-def test_download_resume_uses_source_specific_temp_dir_and_referer(tmp_path, monkeypatch):
+def test_download_resume_uses_source_specific_temp_dir_and_referer(
+    tmp_path, monkeypatch
+):
     downloader = ComicDownloader(concurrent_downloads=1, timeout=5)
     comic = ComicInfo(
         id="123",
@@ -18,7 +21,9 @@ def test_download_resume_uses_source_specific_temp_dir_and_referer(tmp_path, mon
     )
 
     # referer is now passed as per-request header, not stored in session
-    monkeypatch.setattr(downloader.image_downloader, "download_task", lambda url, path, referer="": True)
+    monkeypatch.setattr(
+        downloader.image_downloader, "download_task", lambda url, path, referer="": True
+    )
     result = downloader.download_comic_resume(comic, str(tmp_path))
 
     assert result.success is True
@@ -36,7 +41,9 @@ def test_download_resume_defaults_hcomic_referer(tmp_path, monkeypatch):
         comic_source="NH",
     )
 
-    monkeypatch.setattr(downloader.image_downloader, "download_task", lambda url, path, referer="": True)
+    monkeypatch.setattr(
+        downloader.image_downloader, "download_task", lambda url, path, referer="": True
+    )
     result = downloader.download_comic_resume(comic, str(tmp_path))
 
     assert result.success is True
@@ -231,7 +238,9 @@ def test_resolve_redirects_blocks_redirect_to_localhost(monkeypatch):
 
     monkeypatch.setattr(session, "get", fake_get)
     with pytest.raises(DownloadError, match="Blocked"):
-        downloader.url_validator.resolve_redirects("https://h-comic.link/api/nh/123/pages/1", session, downloader.timeout)
+        downloader.url_validator.resolve_redirects(
+            "https://h-comic.link/api/nh/123/pages/1", session, downloader.timeout
+        )
 
 
 def test_resolve_redirects_blocks_redirect_to_private_ip(monkeypatch):
@@ -252,7 +261,9 @@ def test_resolve_redirects_blocks_redirect_to_private_ip(monkeypatch):
     monkeypatch.setattr(session, "get", fake_get)
     monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
     with pytest.raises(DownloadError, match="Blocked"):
-        downloader.url_validator.resolve_redirects("https://cdn.example.com/img.jpg", session, downloader.timeout)
+        downloader.url_validator.resolve_redirects(
+            "https://cdn.example.com/img.jpg", session, downloader.timeout
+        )
 
 
 def test_resolve_redirects_too_many_hops(monkeypatch):
@@ -265,7 +276,9 @@ def test_resolve_redirects_too_many_hops(monkeypatch):
 
     monkeypatch.setattr(session, "get", fake_get)
     with pytest.raises(DownloadError, match="Too many redirects"):
-        downloader.url_validator.resolve_redirects("https://example.com/img.jpg", session, downloader.timeout)
+        downloader.url_validator.resolve_redirects(
+            "https://example.com/img.jpg", session, downloader.timeout
+        )
 
 
 def test_is_hcomic_url():

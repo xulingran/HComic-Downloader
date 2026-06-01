@@ -38,7 +38,12 @@ class DownloadMixin:
         total = task.progress_total
         # Defensive: ensure current never exceeds total to avoid IPC validation errors
         if total > 0 and current > total:
-            logger.warning("progress current (%d) exceeds total (%d) for task %s, clamping", current, total, task.task_id)
+            logger.warning(
+                "progress current (%d) exceeds total (%d) for task %s, clamping",
+                current,
+                total,
+                task.task_id,
+            )
             current = total
         notification = {
             "jsonrpc": "2.0",
@@ -60,10 +65,17 @@ class DownloadMixin:
             self._history_db.record_download(comic, output_path, output_format)
             logger.info("Recorded download history for %s", comic.title)
         except Exception:
-            logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
+            logger.warning(
+                "Failed to record download history for %s", comic.title, exc_info=True
+            )
 
-    def handle_download(self, comic_id: str, comic_data: dict | None = None,
-                        overwrite: bool = False, chapter_ids: list | None = None) -> dict:
+    def handle_download(
+        self,
+        comic_id: str,
+        comic_data: dict | None = None,
+        overwrite: bool = False,
+        chapter_ids: list | None = None,
+    ) -> dict:
         comic_data = comic_data or {}
         if chapter_ids:
             return self._download_chapters(comic_id, comic_data, chapter_ids, overwrite)
@@ -75,7 +87,11 @@ class DownloadMixin:
                 comic, self.config.output_format, self.config.download_dir
             )
             if os.path.exists(output_path):
-                return {"taskId": None, "status": "conflict", "conflictPath": output_path}
+                return {
+                    "taskId": None,
+                    "status": "conflict",
+                    "conflictPath": output_path,
+                }
 
         task_id = self._download_manager.add_task(comic, overwrite=overwrite)
         task = self._download_manager.tasks.get(task_id)
@@ -84,14 +100,17 @@ class DownloadMixin:
             "status": task.status.value if task else "queued",
         }
 
-    def _download_chapters(self, album_id: str, comic_data: dict,
-                           chapter_ids: list, overwrite: bool) -> dict:
+    def _download_chapters(
+        self, album_id: str, comic_data: dict, chapter_ids: list, overwrite: bool
+    ) -> dict:
         """为选中的每个章节创建独立下载任务。"""
         from models import ComicInfo
 
         album_title = comic_data.get("title", "Unknown")
         total = int(comic_data.get("albumTotalChapters") or len(chapter_ids))
-        chapter_meta = {c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c}
+        chapter_meta = {
+            c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c
+        }
         jm = self.parser.parsers.get("jmcomic")
         if jm is None:
             raise ValueError("jmcomic source unavailable")
@@ -114,10 +133,14 @@ class DownloadMixin:
                     album_id=album_id,
                     album_total_chapters=total,
                 )
-                task_ids.append(self._download_manager.add_task(comic, overwrite=overwrite))
+                task_ids.append(
+                    self._download_manager.add_task(comic, overwrite=overwrite)
+                )
             except Exception as e:
                 # 单章失败不应中断其余章节：记录后继续，让调用方据 failedChapters 提示并保持前后端状态一致。
-                logger.warning("Failed to queue chapter %s (%s): %s", chap_id, chap_name, e)
+                logger.warning(
+                    "Failed to queue chapter %s (%s): %s", chap_id, chap_name, e
+                )
                 failed.append({"id": chap_id, "name": chap_name, "error": str(e)})
 
         status = "queued" if task_ids else "error"
@@ -138,15 +161,17 @@ class DownloadMixin:
         tasks = []
         for task in sorted_tasks:
             task_id = task.task_id
-            tasks.append({
-                "id": task_id,
-                "comic": self._comic_to_dict(task.comic),
-                "status": task.status.value,
-                "progress": task.progress_percentage,
-                "totalPages": task.progress_total,
-                "downloadedPages": task.progress_current,
-                "error": task.error_message,
-            })
+            tasks.append(
+                {
+                    "id": task_id,
+                    "comic": self._comic_to_dict(task.comic),
+                    "status": task.status.value,
+                    "progress": task.progress_percentage,
+                    "totalPages": task.progress_total,
+                    "downloadedPages": task.progress_current,
+                    "error": task.error_message,
+                }
+            )
         return {"tasks": tasks}
 
     def handle_cancel_download(self, task_id: str) -> dict:
@@ -163,7 +188,7 @@ class DownloadMixin:
                 self._download_manager.cancel_task(task_id)
                 cancelled_count += 1
         self._download_manager.stop()
-        worker = getattr(self._download_manager, '_worker_thread', None)
+        worker = getattr(self._download_manager, "_worker_thread", None)
         if worker and worker.is_alive():
             self._download_manager.wait_active_downloads(timeout=10.0)
         self._cover_executor.shutdown(cancel_futures=True, wait=False)
@@ -217,8 +242,8 @@ class DownloadMixin:
             )
         return {
             "taskId": task_id,
-            "tempDir": getattr(task, 'temp_dir', ''),
-            "errorMessage": getattr(task, 'error_message', ''),
+            "tempDir": getattr(task, "temp_dir", ""),
+            "errorMessage": getattr(task, "error_message", ""),
             "outputPath": output_path,
         }
 
@@ -262,6 +287,7 @@ class DownloadMixin:
         """Open the download directory in the OS file manager."""
         import platform
         import subprocess
+
         directory = self.config.download_dir
         if not directory or not os.path.isdir(directory):
             raise ValueError(f"Download directory does not exist: {directory}")

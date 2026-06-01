@@ -6,18 +6,18 @@ from urllib.parse import urlparse
 def detect_image_type(data: bytes) -> str:
     """Detect image MIME type from magic bytes."""
     if len(data) < 12:
-        return ''
-    if data[:8] == b'\x89PNG\r\n\x1a\n':
-        return 'image/png'
-    if data[:3] == b'\xff\xd8\xff':
-        return 'image/jpeg'
-    if data[:6] in (b'GIF87a', b'GIF89a'):
-        return 'image/gif'
-    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
-        return 'image/webp'
-    if data[4:8] == b'ftyp' and (b'avif' in data[8:32] or b'avis' in data[8:32]):
-        return 'image/avif'
-    return ''
+        return ""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[4:8] == b"ftyp" and (b"avif" in data[8:32] or b"avis" in data[8:32]):
+        return "image/avif"
+    return ""
 
 
 def referer_for_image_url(url: str) -> str:
@@ -32,4 +32,3 @@ def referer_for_image_url(url: str) -> str:
     ):
         return "https://moeimg.fan/"
     return "https://h-comic.com/"
-

@@ -5,6 +5,7 @@ import os
 
 class AuthRequiredError(Exception):
     """Raised when an operation requires authentication."""
+
     pass
 
 
@@ -13,24 +14,24 @@ def _get_config_path() -> str:
 
 
 CONFIG_KEY_MAP = {
-    'themeMode': 'theme_mode',
-    'outputFormat': 'output_format',
-    'downloadDir': 'download_dir',
-    'concurrentDownloads': 'concurrent_downloads',
-    'timeout': 'timeout',
-    'retryTimes': 'retry_times',
-    'cbzFilenameTemplate': 'cbz_filename_template',
-    'batchDownloadDelay': 'batch_download_delay',
-    'autoRetryMaxAttempts': 'auto_retry_max_attempts',
-    'notifyOnComplete': 'notify_on_complete',
-    'notifyWhenForeground': 'notify_when_foreground',
-    'defaultSource': 'default_source',
-    'fontName': 'font_name',
-    'fontSize': 'font_size',
-    'sfwMode': 'sfw_mode',
-    'tagBlacklist': 'tag_blacklist',
-    'previewCacheSizeLimitMB': 'preview_cache_size_limit_mb',
-    'jmcomicDomain': 'jmcomic_domain',
+    "themeMode": "theme_mode",
+    "outputFormat": "output_format",
+    "downloadDir": "download_dir",
+    "concurrentDownloads": "concurrent_downloads",
+    "timeout": "timeout",
+    "retryTimes": "retry_times",
+    "cbzFilenameTemplate": "cbz_filename_template",
+    "batchDownloadDelay": "batch_download_delay",
+    "autoRetryMaxAttempts": "auto_retry_max_attempts",
+    "notifyOnComplete": "notify_on_complete",
+    "notifyWhenForeground": "notify_when_foreground",
+    "defaultSource": "default_source",
+    "fontName": "font_name",
+    "fontSize": "font_size",
+    "sfwMode": "sfw_mode",
+    "tagBlacklist": "tag_blacklist",
+    "previewCacheSizeLimitMB": "preview_cache_size_limit_mb",
+    "jmcomicDomain": "jmcomic_domain",
 }
 
 _COVER_CACHE_MAX_SIZE = 200

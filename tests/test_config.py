@@ -1,4 +1,5 @@
 """Config 模块单元测试"""
+
 import json
 import os
 import tempfile
@@ -51,7 +52,7 @@ class TestConfigOtherFields(unittest.TestCase):
             auth_user_agent="UA-Config-Test/1.0",
         )
 
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
 
         try:
@@ -73,7 +74,7 @@ class TestThemeModeConfig(unittest.TestCase):
 
     def test_theme_mode_persists(self):
         """主题模式持久化"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
 
         try:
@@ -87,7 +88,7 @@ class TestThemeModeConfig(unittest.TestCase):
 
     def test_theme_mode_light_persists(self):
         """light 主题模式持久化"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
 
         try:
@@ -101,18 +102,21 @@ class TestThemeModeConfig(unittest.TestCase):
 
     def test_load_legacy_config_without_theme_mode(self):
         """测试加载旧版本配置（没有 theme_mode 字段）"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
             # 旧版本配置，没有 theme_mode 字段
-            json.dump({
-                'download_dir': '/tmp/test',
-                'concurrent_downloads': 4,
-                'timeout': 30,
-                'retry_times': 3,
-                'cbz_filename_template': '{author}-{title}.cbz',
-                'font_name': '',
-                'font_size': 12,
-            }, f)
+            json.dump(
+                {
+                    "download_dir": "/tmp/test",
+                    "concurrent_downloads": 4,
+                    "timeout": 30,
+                    "retry_times": 3,
+                    "cbz_filename_template": "{author}-{title}.cbz",
+                    "font_name": "",
+                    "font_size": 12,
+                },
+                f,
+            )
 
         try:
             config = Config.load(config_path)
@@ -134,7 +138,7 @@ class TestMultiSourceConfig(unittest.TestCase):
         self.assertEqual(config.source_auth["hcomic"]["user_agent"], "")
 
     def test_source_auth_round_trip(self):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
 
         try:
@@ -154,7 +158,7 @@ class TestMultiSourceConfig(unittest.TestCase):
             os.unlink(config_path)
 
     def test_legacy_auth_fields_migrate_to_source_auth(self):
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
             json.dump(
                 {
@@ -167,8 +171,12 @@ class TestMultiSourceConfig(unittest.TestCase):
 
         try:
             loaded = Config.load(config_path)
-            self.assertEqual(loaded.get_source_auth("hcomic")["cookie"], "legacy_cookie=1")
-            self.assertEqual(loaded.get_source_auth("hcomic")["user_agent"], "Legacy-UA/1.0")
+            self.assertEqual(
+                loaded.get_source_auth("hcomic")["cookie"], "legacy_cookie=1"
+            )
+            self.assertEqual(
+                loaded.get_source_auth("hcomic")["user_agent"], "Legacy-UA/1.0"
+            )
             self.assertEqual(loaded.get_source_auth("moeimg")["cookie"], "")
         finally:
             os.unlink(config_path)
@@ -191,7 +199,7 @@ class TestConfigLoadCorrupted(unittest.TestCase):
 
     def test_load_corrupted_json_returns_default(self):
         """损坏的 JSON 文件应返回默认配置"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
             f.write("{invalid json content!!!")
 
@@ -209,15 +217,14 @@ class TestConfigLoadCorrupted(unittest.TestCase):
 
     def test_load_corrupted_json_creates_backup(self):
         """损坏的 JSON 文件应被备份为 .corrupted"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
             f.write("not valid json {{{")
 
         backup_path = config_path + ".corrupted"
         try:
             Config.load(config_path)
-            self.assertTrue(os.path.exists(backup_path),
-                            "应创建 .corrupted 备份文件")
+            self.assertTrue(os.path.exists(backup_path), "应创建 .corrupted 备份文件")
         finally:
             if os.path.exists(backup_path):
                 os.unlink(backup_path)
@@ -226,7 +233,7 @@ class TestConfigLoadCorrupted(unittest.TestCase):
 
     def test_corrupted_backup_not_overwritten(self):
         """已存在 .corrupted 备份时不覆盖"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
             f.write("bad json 1")
 
@@ -239,15 +246,16 @@ class TestConfigLoadCorrupted(unittest.TestCase):
                 first_backup = f.read()
 
             # 创建新的损坏文件（模拟第二次损坏）
-            with open(config_path, 'w') as f:
+            with open(config_path, "w") as f:
                 f.write("bad json 2 different")
 
             # 第二次损坏：不应覆盖备份
             Config.load(config_path)
             with open(backup_path) as f:
                 second_backup = f.read()
-            self.assertEqual(first_backup, second_backup,
-                             "第二次损坏不应覆盖已有的 .corrupted 备份")
+            self.assertEqual(
+                first_backup, second_backup, "第二次损坏不应覆盖已有的 .corrupted 备份"
+            )
         finally:
             if os.path.exists(backup_path):
                 os.unlink(backup_path)
@@ -291,12 +299,15 @@ class TestThemeModeNormalization(unittest.TestCase):
 
     def test_invalid_theme_mode_from_file_normalized(self):
         """从文件加载的非法 theme_mode 应被归一化"""
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
-            json.dump({
-                'theme_mode': 'weird',
-                'download_dir': '/tmp/test',
-            }, f)
+            json.dump(
+                {
+                    "theme_mode": "weird",
+                    "download_dir": "/tmp/test",
+                },
+                f,
+            )
 
         try:
             config = Config.load(config_path)
@@ -305,5 +316,5 @@ class TestThemeModeNormalization(unittest.TestCase):
             os.unlink(config_path)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     unittest.main()

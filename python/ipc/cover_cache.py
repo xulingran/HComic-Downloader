@@ -35,14 +35,12 @@ class CoverCacheDB:
         self._lock = threading.Lock()
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute(
-            """CREATE TABLE IF NOT EXISTS cover_cache (
+        self._conn.execute("""CREATE TABLE IF NOT EXISTS cover_cache (
                 url_hash TEXT PRIMARY KEY,
                 url TEXT NOT NULL,
                 data_uri TEXT NOT NULL,
                 fetched_at REAL NOT NULL
-            )"""
-        )
+            )""")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_fetched_at ON cover_cache(fetched_at)"
         )
@@ -58,7 +56,8 @@ class CoverCacheDB:
             self._memory[url] = data_uri
         logger.info(
             "Cover cache DB opened (%s), pre-loaded %d entries",
-            db_path, len(self._memory),
+            db_path,
+            len(self._memory),
         )
 
     # ── public API ──────────────────────────────────────────────────────
@@ -122,4 +121,5 @@ class CoverCacheDB:
 
 def _now() -> float:
     import time
+
     return time.time()

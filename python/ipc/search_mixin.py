@@ -40,9 +40,9 @@ class SearchMixin:
             "source": comic.comic_source or "default",
             "sourceSite": comic.source_site or "hcomic",
             "mediaId": comic.media_id or "",
-            "tags": comic.tags if hasattr(comic, 'tags') else [],
-            "author": comic.author if hasattr(comic, 'author') else None,
-            "pages": comic.pages if hasattr(comic, 'pages') else None,
+            "tags": comic.tags if hasattr(comic, "tags") else [],
+            "author": comic.author if hasattr(comic, "author") else None,
+            "pages": comic.pages if hasattr(comic, "pages") else None,
             "chapters": [
                 {"id": c.id, "name": c.name, "index": c.index, "pages": c.pages}
                 for c in (getattr(comic, "chapters", None) or [])
@@ -59,6 +59,7 @@ class SearchMixin:
         actual download path exactly.
         """
         from models import ComicInfo
+
         comic = ComicInfo(
             id=comic_id or data.get("id", ""),
             title=data.get("title", "Unknown"),
@@ -80,8 +81,19 @@ class SearchMixin:
                 comic = prepared
         return comic
 
-    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str | None = None, tag: str = "") -> dict:
-        effective_source = source if source in ("hcomic", "moeimg", "jmcomic") else self.config.default_source
+    def handle_search(
+        self,
+        query: str,
+        mode: str = "keyword",
+        page: int = 1,
+        source: str | None = None,
+        tag: str = "",
+    ) -> dict:
+        effective_source = (
+            source
+            if source in ("hcomic", "moeimg", "jmcomic")
+            else self.config.default_source
+        )
         effective_query = query
         effective_tag = tag
         if effective_source == "hcomic" and mode == "tag":
@@ -93,7 +105,9 @@ class SearchMixin:
             effective_tag = ""
         elif effective_source == "jmcomic" and mode == "ranking":
             effective_tag = ""
-        comics, pagination = self.parser.search(effective_query, page=page, source=effective_source, tag=effective_tag)
+        comics, pagination = self.parser.search(
+            effective_query, page=page, source=effective_source, tag=effective_tag
+        )
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": {
@@ -117,6 +131,7 @@ class SearchMixin:
 
     def handle_get_favourites(self, page: int = 1, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
+
         valid_sources = ("hcomic", "jmcomic")
         effective_source = source if source in valid_sources else "hcomic"
         try:
@@ -134,7 +149,10 @@ class SearchMixin:
             }
         except ParserResponseError as e:
             msg = str(e)
-            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "login", "auth")):
+            if any(
+                kw in msg.lower()
+                for kw in ("401", "403", "unauthorized", "forbidden", "login", "auth")
+            ):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
         except (ValueError, json.JSONDecodeError, TypeError) as e:
@@ -146,6 +164,7 @@ class SearchMixin:
 
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
+
         valid_sources = ("hcomic", "jmcomic")
         effective_source = source if source in valid_sources else "hcomic"
         try:
@@ -153,33 +172,71 @@ class SearchMixin:
             return {"success": success}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
-            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
+            if any(
+                kw in msg.lower()
+                for kw in (
+                    "401",
+                    "403",
+                    "unauthorized",
+                    "forbidden",
+                    "认证已失效",
+                    "auth",
+                )
+            ):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
     def handle_check_favourite(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
+
         valid_sources = ("hcomic", "jmcomic")
         effective_source = source if source in valid_sources else "hcomic"
         try:
-            is_favourited = self.parser.check_favourite(comic_id, source=effective_source)
+            is_favourited = self.parser.check_favourite(
+                comic_id, source=effective_source
+            )
             return {"isFavourited": is_favourited}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
-            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
+            if any(
+                kw in msg.lower()
+                for kw in (
+                    "401",
+                    "403",
+                    "unauthorized",
+                    "forbidden",
+                    "认证已失效",
+                    "auth",
+                )
+            ):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
-    def handle_remove_from_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
+    def handle_remove_from_favourites(
+        self, comic_id: str, source: str = "hcomic"
+    ) -> dict:
         from sources import ParserResponseError
+
         valid_sources = ("hcomic", "jmcomic")
         effective_source = source if source in valid_sources else "hcomic"
         try:
-            success = self.parser.remove_from_favourites(comic_id, source=effective_source)
+            success = self.parser.remove_from_favourites(
+                comic_id, source=effective_source
+            )
             return {"success": success}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
-            if any(kw in msg.lower() for kw in ("401", "403", "unauthorized", "forbidden", "认证已失效", "auth")):
+            if any(
+                kw in msg.lower()
+                for kw in (
+                    "401",
+                    "403",
+                    "unauthorized",
+                    "forbidden",
+                    "认证已失效",
+                    "auth",
+                )
+            ):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
@@ -206,7 +263,10 @@ class SearchMixin:
         comic = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
 
         # 多章节专辑：不预取图片，返回章节列表供前端选章。
-        if comic.source_site == "jmcomic" and len(getattr(comic, "chapters", None) or []) > 1:
+        if (
+            comic.source_site == "jmcomic"
+            and len(getattr(comic, "chapters", None) or []) > 1
+        ):
             return {
                 "imageUrls": [],
                 "totalPages": comic.pages or 0,
@@ -239,7 +299,9 @@ class SearchMixin:
             result["comicId"] = comic.id
         return result
 
-    def handle_get_chapter_preview_urls(self, chapter_id: str, album_id: str = "") -> dict:
+    def handle_get_chapter_preview_urls(
+        self, chapter_id: str, album_id: str = ""
+    ) -> dict:
         """获取单个 jmcomic 章节的图片 URL 列表与 scramble_id。"""
         if not chapter_id or not isinstance(chapter_id, str):
             raise ValueError("Missing chapter id")
@@ -260,14 +322,25 @@ class SearchMixin:
         valid_sources = ("hcomic", "moeimg", "jmcomic")
         effective_source = source if source in valid_sources else "moeimg"
         if source not in valid_sources:
-            logger.warning("get_comic_detail: invalid source %r, falling back to moeimg", source)
+            logger.warning(
+                "get_comic_detail: invalid source %r, falling back to moeimg", source
+            )
         comic = self.parser.get_comic_detail(comic_id, source=effective_source)
         if comic is None:
             return {"comic": None}
         return {"comic": self._comic_to_dict(comic)}
 
-    def handle_fetch_preview_image(self, image_url: str, scramble_id: str = "", comic_id: str = "") -> dict:
+    def handle_fetch_preview_image(
+        self, image_url: str, scramble_id: str = "", comic_id: str = ""
+    ) -> dict:
         self._validate_preview_image_url(image_url)
-        logger.info("fetch_preview_image: url=%s scramble_id=%s comic_id=%s", image_url, scramble_id, comic_id)
-        data_uri = self._do_fetch_preview_image(image_url, scramble_id=scramble_id, comic_id=comic_id)
+        logger.info(
+            "fetch_preview_image: url=%s scramble_id=%s comic_id=%s",
+            image_url,
+            scramble_id,
+            comic_id,
+        )
+        data_uri = self._do_fetch_preview_image(
+            image_url, scramble_id=scramble_id, comic_id=comic_id
+        )
         return {"dataUri": data_uri}

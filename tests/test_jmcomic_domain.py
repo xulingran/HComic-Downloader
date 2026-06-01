@@ -1,4 +1,5 @@
 """jmcomic 域名发现模块测试。"""
+
 import time
 from unittest.mock import patch
 
@@ -19,7 +20,7 @@ def test_resolve_cache_expired_falls_back(tmp_path):
     cache_file = tmp_path / "jm_domain.txt"
     cache_file.write_text(f"old-domain.com\n{time.time() - 100000}\n")
     resolver = JmDomainResolver(cache_dir=str(tmp_path))
-    with patch.object(resolver, '_fetch_publish_domains', return_value=[]):
+    with patch.object(resolver, "_fetch_publish_domains", return_value=[]):
         domain = resolver.resolve()
     assert domain == JmDomainResolver.FALLBACK_DOMAIN
 
@@ -27,7 +28,7 @@ def test_resolve_cache_expired_falls_back(tmp_path):
 def test_resolve_no_cache_fallback(tmp_path):
     """无缓存且发布页失败时使用 fallback。"""
     resolver = JmDomainResolver(cache_dir=str(tmp_path))
-    with patch.object(resolver, '_fetch_publish_domains', return_value=[]):
+    with patch.object(resolver, "_fetch_publish_domains", return_value=[]):
         domain = resolver.resolve()
     assert domain == JmDomainResolver.FALLBACK_DOMAIN
 
@@ -35,8 +36,9 @@ def test_resolve_no_cache_fallback(tmp_path):
 def test_resolve_publish_success(tmp_path):
     """发布页返回可用域名时写入缓存。"""
     resolver = JmDomainResolver(cache_dir=str(tmp_path))
-    with patch.object(resolver, '_fetch_publish_domains', return_value=["new-domain.com"]), \
-         patch.object(resolver, '_test_domain', return_value=True):
+    with patch.object(
+        resolver, "_fetch_publish_domains", return_value=["new-domain.com"]
+    ), patch.object(resolver, "_test_domain", return_value=True):
         domain = resolver.resolve()
     assert domain == "new-domain.com"
     cache_file = tmp_path / "jm_domain.txt"

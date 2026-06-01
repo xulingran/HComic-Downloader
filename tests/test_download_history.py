@@ -1,4 +1,5 @@
 """Tests for download_history.py DownloadHistoryDB"""
+
 import os
 import time
 
@@ -10,6 +11,7 @@ from models import ComicInfo
 @pytest.fixture
 def db(tmp_path):
     from download_history import DownloadHistoryDB
+
     db_path = str(tmp_path / "test_history.db")
     history_db = DownloadHistoryDB(db_path)
     yield history_db
@@ -36,6 +38,7 @@ def test_init_creates_database(db, tmp_path):
 
 def test_init_creates_table(db):
     import sqlite3
+
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table' AND name='download_history'"
@@ -49,6 +52,7 @@ def test_record_download_inserts_row(db, sample_comic, tmp_path):
     db.record_download(sample_comic, output_path, "cbz")
 
     import sqlite3
+
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
         "SELECT title, author, output_path, output_format FROM download_history "
@@ -71,6 +75,7 @@ def test_record_download_upsert(db, sample_comic, tmp_path):
     db.record_download(sample_comic, path2, "cbz")
 
     import sqlite3
+
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
         "SELECT output_path FROM download_history "
@@ -88,6 +93,7 @@ def test_record_download_stores_timestamp(db, sample_comic, tmp_path):
     after = time.time()
 
     import sqlite3
+
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
         "SELECT downloaded_at FROM download_history "
@@ -102,18 +108,22 @@ def test_record_download_stores_timestamp(db, sample_comic, tmp_path):
 
 def test_check_batch_returns_downloaded_when_file_exists(db, sample_comic, tmp_path):
     output_path = str(tmp_path / "Test Author-Test Comic.cbz")
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write("fake cbz")
     db.record_download(sample_comic, output_path, "cbz")
 
     keys = [("hcomic", "12345", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    result = db.check_downloaded_batch(
+        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
+    )
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
 
 
 def test_check_batch_returns_unknown_when_no_record(db, tmp_path):
     keys = [("hcomic", "99999", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    result = db.check_downloaded_batch(
+        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
+    )
     assert result[("hcomic", "99999", "MMCG_SHORT")] == "unknown"
 
 
@@ -122,7 +132,9 @@ def test_check_batch_returns_unknown_when_file_missing(db, sample_comic, tmp_pat
     db.record_download(sample_comic, output_path, "cbz")
 
     keys = [("hcomic", "12345", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    result = db.check_downloaded_batch(
+        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
+    )
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "unknown"
 
 
@@ -131,20 +143,23 @@ def test_check_batch_fallback_to_expected_path(db, sample_comic, tmp_path):
     db.record_download(sample_comic, stale_path, "cbz")
 
     from cbz_builder import CBZBuilder
+
     builder = CBZBuilder(filename_template="{author}-{title}.cbz")
     expected_path = builder.get_output_path(sample_comic, str(tmp_path))
     os.makedirs(os.path.dirname(expected_path), exist_ok=True)
-    with open(expected_path, 'w') as f:
+    with open(expected_path, "w") as f:
         f.write("fake cbz")
 
     keys = [("hcomic", "12345", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    result = db.check_downloaded_batch(
+        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
+    )
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
 
 
 def test_check_batch_multiple_keys(db, sample_comic, tmp_path):
     output_path = str(tmp_path / "out.cbz")
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         f.write("fake")
     db.record_download(sample_comic, output_path, "cbz")
 
@@ -152,7 +167,9 @@ def test_check_batch_multiple_keys(db, sample_comic, tmp_path):
         ("hcomic", "12345", "MMCG_SHORT"),
         ("hcomic", "99999", "MMCG_SHORT"),
     ]
-    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    result = db.check_downloaded_batch(
+        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
+    )
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
     assert result[("hcomic", "99999", "MMCG_SHORT")] == "unknown"
 
@@ -172,7 +189,7 @@ def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
     builder = CBZBuilder(filename_template="{author}-{title}.cbz")
     expected_path = builder.get_output_path(comic, str(tmp_path))
     os.makedirs(os.path.dirname(expected_path), exist_ok=True)
-    with open(expected_path, 'w') as f:
+    with open(expected_path, "w") as f:
         f.write("fake cbz")
 
     key = ("hcomic", "67890", "MMCG_LONG")
@@ -180,12 +197,17 @@ def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
     comic_data_map = {key: {"title": "Fallback Comic", "author": "Fallback Author"}}
 
     # Without comic_data_map, fallback uses empty title/author → wrong path → unknown
-    result_without = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    result_without = db.check_downloaded_batch(
+        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
+    )
     assert result_without[key] == "unknown"
 
     # With comic_data_map, fallback uses correct title/author → finds file → downloaded
     result_with = db.check_downloaded_batch(
-        keys, str(tmp_path), "cbz", "{author}-{title}.cbz",
+        keys,
+        str(tmp_path),
+        "cbz",
+        "{author}-{title}.cbz",
         comic_data_map=comic_data_map,
     )
     assert result_with[key] == "downloaded"
@@ -193,7 +215,9 @@ def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
 
 def test_get_all_records_returns_all_rows(db, sample_comic, tmp_path):
     db.record_download(sample_comic, str(tmp_path / "a.cbz"), "cbz")
-    comic2 = ComicInfo(id="67890", title="Comic 2", source_site="hcomic", comic_source="NH")
+    comic2 = ComicInfo(
+        id="67890", title="Comic 2", source_site="hcomic", comic_source="NH"
+    )
     db.record_download(comic2, str(tmp_path / "b.cbz"), "cbz")
 
     records = db.get_all_records()
@@ -224,6 +248,7 @@ def test_update_output_path_changes_stored_path(db, sample_comic, tmp_path):
     db.update_output_path(("hcomic", "12345", "MMCG_SHORT"), new_path)
 
     import sqlite3
+
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
         "SELECT output_path FROM download_history "
@@ -240,8 +265,12 @@ def test_update_output_path_no_match_does_nothing(db):
 
 def _jm_chapter(chap_id, album_id, total):
     return ComicInfo(
-        id=chap_id, title="多章漫画", source_site="jmcomic",
-        comic_source="JMCOMIC", album_id=album_id, album_total_chapters=total,
+        id=chap_id,
+        title="多章漫画",
+        source_site="jmcomic",
+        comic_source="JMCOMIC",
+        album_id=album_id,
+        album_total_chapters=total,
     )
 
 
@@ -277,10 +306,14 @@ def test_legacy_single_record_still_downloaded(db, sample_comic, tmp_path):
         f.write("fake")
     # 模拟旧记录：album_id 为空，迁移逻辑应补齐
     db.record_download(sample_comic, output_path, "cbz")
-    db._conn.execute("UPDATE download_history SET album_id = '', album_total_chapters = 1")
+    db._conn.execute(
+        "UPDATE download_history SET album_id = '', album_total_chapters = 1"
+    )
     db._conn.commit()
     db._migrate_album_ids()
 
     key = ("hcomic", "12345", "MMCG_SHORT")
-    result = db.check_downloaded_batch([key], str(tmp_path), "cbz", "{author}-{title}.cbz")
+    result = db.check_downloaded_batch(
+        [key], str(tmp_path), "cbz", "{author}-{title}.cbz"
+    )
     assert result[key] == "downloaded"

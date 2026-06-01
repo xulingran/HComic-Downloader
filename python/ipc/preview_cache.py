@@ -54,16 +54,14 @@ class PreviewCacheDB:
 
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute(
-            """CREATE TABLE IF NOT EXISTS preview_cache (
+        self._conn.execute("""CREATE TABLE IF NOT EXISTS preview_cache (
                 url_hash   TEXT PRIMARY KEY,
                 url        TEXT NOT NULL,
                 file_path  TEXT NOT NULL,
                 size       INTEGER NOT NULL,
                 fetched_at REAL NOT NULL,
                 last_access REAL NOT NULL
-            )"""
-        )
+            )""")
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_preview_last_access ON preview_cache(last_access)"
         )
@@ -82,7 +80,9 @@ class PreviewCacheDB:
 
         logger.info(
             "Preview cache DB opened (%s), %d entries, max %d MB",
-            db_path, len(self._lru), max_size_mb,
+            db_path,
+            len(self._lru),
+            max_size_mb,
         )
 
     # ── public API ──────────────────────────────────────────────────────
@@ -166,16 +166,14 @@ class PreviewCacheDB:
     def clear_all(self) -> None:
         """Delete all cached files and database records."""
         with self._lock:
-            rows = self._conn.execute(
-                "SELECT file_path FROM preview_cache"
-            ).fetchall()
+            rows = self._conn.execute("SELECT file_path FROM preview_cache").fetchall()
             for (file_name,) in rows:
                 file_path = os.path.join(self._files_dir, file_name)
                 try:
                     if os.path.exists(file_path):
                         os.remove(file_path)
-                except OSError:
-                    pass
+                except OSError as e:
+                    logger.debug("Failed to delete cache file %s: %s", file_path, e)
             self._conn.execute("DELETE FROM preview_cache")
             self._conn.commit()
             self._lru.clear()
@@ -212,11 +210,9 @@ class PreviewCacheDB:
             try:
                 if os.path.exists(file_path):
                     os.remove(file_path)
-            except OSError:
-                pass
-            self._conn.execute(
-                "DELETE FROM preview_cache WHERE url = ?", (oldest_url,)
-            )
+            except OSError as e:
+                logger.debug("Failed to evict cache file %s: %s", file_path, e)
+            self._conn.execute("DELETE FROM preview_cache WHERE url = ?", (oldest_url,))
             self._conn.commit()
             self._lru.pop(oldest_url, None)
             total -= size

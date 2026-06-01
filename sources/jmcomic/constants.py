@@ -47,7 +47,10 @@ ORDER_MAP = {
 RANKING_MAPPINGS: dict[str, dict[str, str]] = {}
 for _time_label, _time_val in TIME_MAP.items():
     for _order_label, _order_val in ORDER_MAP.items():
-        RANKING_MAPPINGS[f"{_time_label}{_order_label}"] = {"t": _time_val, "o": _order_val}
+        RANKING_MAPPINGS[f"{_time_label}{_order_label}"] = {
+            "t": _time_val,
+            "o": _order_val,
+        }
 
 # 搜索 URL 模板
 SEARCH_URL_TEMPLATE = "https://{domain}/search/photos?main_tag=0&search_query={query}"

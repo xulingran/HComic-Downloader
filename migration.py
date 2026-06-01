@@ -1,4 +1,5 @@
 """漫画库迁移引擎"""
+
 import contextlib
 import json
 import logging
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class MigrationPlanItem:
     """迁移计划中的单个条目"""
+
     source: str
     target: str
     db_key: tuple[str, str, str]
@@ -42,6 +44,7 @@ class MigrationPlanItem:
 @dataclass
 class MigrationProgress:
     """迁移进度信息"""
+
     completed: int
     total: int
     current_file: str
@@ -52,6 +55,7 @@ class MigrationProgress:
 @dataclass
 class MigrationState:
     """迁移状态持久化"""
+
     id: str
     mode: str  # full | repair
     source_dir: str
@@ -130,10 +134,12 @@ class MigrationEngine:
         log_path = self._get_log_path()
         os.makedirs(os.path.dirname(log_path), exist_ok=True)
         self._log_handler = logging.FileHandler(log_path, encoding="utf-8")
-        self._log_handler.setFormatter(logging.Formatter(
-            "[%(asctime)s] [%(levelname)s] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        ))
+        self._log_handler.setFormatter(
+            logging.Formatter(
+                "[%(asctime)s] [%(levelname)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
         self._migration_logger.addHandler(self._log_handler)
         self._migration_logger.setLevel(logging.DEBUG)
 
@@ -173,7 +179,10 @@ class MigrationEngine:
 
         for record in records:
             output_path = os.path.normpath(record["output_path"])
-            if not output_path.startswith(source_dir + os.sep) and output_path != source_dir:
+            if (
+                not output_path.startswith(source_dir + os.sep)
+                and output_path != source_dir
+            ):
                 continue
             if not os.path.exists(output_path):
                 continue
@@ -181,11 +190,17 @@ class MigrationEngine:
             rel_path = os.path.relpath(output_path, source_dir)
             target_path = os.path.join(target_dir, rel_path)
 
-            plan.append(MigrationPlanItem(
-                source=output_path,
-                target=target_path,
-                db_key=(record["source_site"], record["comic_id"], record["comic_source"]),
-            ))
+            plan.append(
+                MigrationPlanItem(
+                    source=output_path,
+                    target=target_path,
+                    db_key=(
+                        record["source_site"],
+                        record["comic_id"],
+                        record["comic_source"],
+                    ),
+                )
+            )
 
         state = MigrationState(
             id=str(uuid.uuid4()),
@@ -215,7 +230,11 @@ class MigrationEngine:
             for entry in os.listdir(target_dir):
                 full_path = os.path.join(target_dir, entry)
                 ext = os.path.splitext(entry)[1].lower()
-                if os.path.isfile(full_path) and ext in (".cbz", ".zip") or os.path.isdir(full_path):
+                if (
+                    os.path.isfile(full_path)
+                    and ext in (".cbz", ".zip")
+                    or os.path.isdir(full_path)
+                ):
                     files_on_disk.append(full_path)
 
         plan: list[MigrationPlanItem] = []
@@ -230,11 +249,13 @@ class MigrationEngine:
                 files_on_disk, title, author, comic_id, filename_template
             )
             if best_match:
-                plan.append(MigrationPlanItem(
-                    source=record["output_path"],
-                    target=best_match,
-                    db_key=db_key,
-                ))
+                plan.append(
+                    MigrationPlanItem(
+                        source=record["output_path"],
+                        target=best_match,
+                        db_key=db_key,
+                    )
+                )
                 files_on_disk.remove(best_match)
 
         state = MigrationState(
@@ -317,17 +338,18 @@ class MigrationEngine:
                 self._state.completed_items += 1
                 self._write_log(
                     "INFO",
-                    f"Moved: {os.path.basename(item.source)} -> {os.path.basename(item.target)}"
+                    f"Moved: {os.path.basename(item.source)} -> {os.path.basename(item.target)}",
                 )
             except Exception as e:
                 item.status = "failed"
-                self._state.failed_items.append({
-                    "path": item.source,
-                    "error": str(e),
-                })
+                self._state.failed_items.append(
+                    {
+                        "path": item.source,
+                        "error": str(e),
+                    }
+                )
                 self._write_log(
-                    "ERROR",
-                    f"Failed: {os.path.basename(item.source)} — {e}"
+                    "ERROR", f"Failed: {os.path.basename(item.source)} — {e}"
                 )
                 logger.error("Migration failed for %s: %s", item.source, e)
                 if on_error:
@@ -336,12 +358,14 @@ class MigrationEngine:
             self._save_state_if_needed()
 
             if on_progress:
-                on_progress(MigrationProgress(
-                    completed=self._state.completed_items,
-                    total=self._state.total_items,
-                    current_file=os.path.basename(item.source),
-                    phase="moving",
-                ))
+                on_progress(
+                    MigrationProgress(
+                        completed=self._state.completed_items,
+                        total=self._state.total_items,
+                        current_file=os.path.basename(item.source),
+                        phase="moving",
+                    )
+                )
 
         self._state.status = "completed"
         self._save_state_if_needed()
@@ -373,11 +397,11 @@ class MigrationEngine:
                 except OSError as e:
                     logger.warning(
                         "跨盘迁移源目录删除失败（文件已在目标位置）: %s — %s",
-                        item.source, e,
+                        item.source,
+                        e,
                     )
                     self._write_log(
-                        "WARNING",
-                        f"Source dir removal failed: {item.source} — {e}"
+                        "WARNING", f"Source dir removal failed: {item.source} — {e}"
                     )
                     return
             else:
@@ -387,11 +411,11 @@ class MigrationEngine:
                 except OSError as e:
                     logger.warning(
                         "跨盘迁移源文件删除失败（文件已在目标位置）: %s — %s",
-                        item.source, e,
+                        item.source,
+                        e,
                     )
                     self._write_log(
-                        "WARNING",
-                        f"Source file removal failed: {item.source} — {e}"
+                        "WARNING", f"Source file removal failed: {item.source} — {e}"
                     )
                     return
 
@@ -427,8 +451,10 @@ class MigrationEngine:
             self._log_handler.close()
         log_path = self._get_log_path()
         self._log_handler = logging.FileHandler(log_path, encoding="utf-8")
-        self._log_handler.setFormatter(logging.Formatter(
-            "[%(asctime)s] [%(levelname)s] %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S",
-        ))
+        self._log_handler.setFormatter(
+            logging.Formatter(
+                "[%(asctime)s] [%(levelname)s] %(message)s",
+                datefmt="%Y-%m-%d %H:%M:%S",
+            )
+        )
         self._migration_logger.addHandler(self._log_handler)

@@ -103,10 +103,14 @@ class ReadingHistoryDB:
             )
         """)
         # Migrate: add columns if they don't exist (for existing databases)
-        existing_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(reading_history)")}
+        existing_cols = {
+            row[1] for row in self._conn.execute("PRAGMA table_info(reading_history)")
+        }
         for col in ("source_site", "media_id", "last_chapter_id", "last_chapter_name"):
             if col not in existing_cols:
-                self._conn.execute(f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''")
+                self._conn.execute(
+                    f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''"
+                )
         self._conn.commit()
 
     def upsert(
@@ -140,7 +144,21 @@ class ReadingHistoryDB:
                 last_chapter_name = excluded.last_chapter_name,
                 last_read_at = excluded.last_read_at
             """,
-            (comic_id, title, cover_url, source, source_site, media_id, source_url, last_page, total_pages, last_chapter_id, last_chapter_name, now, now),
+            (
+                comic_id,
+                title,
+                cover_url,
+                source,
+                source_site,
+                media_id,
+                source_url,
+                last_page,
+                total_pages,
+                last_chapter_id,
+                last_chapter_name,
+                now,
+                now,
+            ),
         )
         self._conn.commit()
 
@@ -159,22 +177,24 @@ class ReadingHistoryDB:
         ).fetchall()
         items = []
         for row in rows:
-            items.append({
-                "id": row["id"],
-                "comicId": row["comic_id"],
-                "title": row["title"],
-                "coverUrl": row["cover_url"] or "",
-                "source": row["source"],
-                "sourceSite": row["source_site"] or "",
-                "mediaId": row["media_id"] or "",
-                "sourceUrl": row["source_url"] or "",
-                "lastPage": row["last_page"],
-                "totalPages": row["total_pages"],
-                "lastChapterId": row["last_chapter_id"] or "",
-                "lastChapterName": row["last_chapter_name"] or "",
-                "lastReadAt": row["last_read_at"],
-                "createdAt": row["created_at"],
-            })
+            items.append(
+                {
+                    "id": row["id"],
+                    "comicId": row["comic_id"],
+                    "title": row["title"],
+                    "coverUrl": row["cover_url"] or "",
+                    "source": row["source"],
+                    "sourceSite": row["source_site"] or "",
+                    "mediaId": row["media_id"] or "",
+                    "sourceUrl": row["source_url"] or "",
+                    "lastPage": row["last_page"],
+                    "totalPages": row["total_pages"],
+                    "lastChapterId": row["last_chapter_id"] or "",
+                    "lastChapterName": row["last_chapter_name"] or "",
+                    "lastReadAt": row["last_read_at"],
+                    "createdAt": row["created_at"],
+                }
+            )
         return items, total
 
     def delete(self, comic_id: str, source: str) -> None:

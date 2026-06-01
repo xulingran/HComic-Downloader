@@ -1,11 +1,15 @@
 """Tests for PreviewCacheDB — hybrid file-system + SQLite cache for preview images."""
+
 import os
 import sys
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "python"))
+sys.path.insert(
+    0,
+    os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "python"),
+)
 
 from ipc.preview_cache import PreviewCacheDB
 
@@ -80,7 +84,10 @@ def test_get_stats(cache):
 def test_clear_all(cache):
     cache.put("https://example.com/a.webp", b"aaa")
     cache.put("https://example.com/b.webp", b"bbb")
-    paths = [cache.get("https://example.com/a.webp"), cache.get("https://example.com/b.webp")]
+    paths = [
+        cache.get("https://example.com/a.webp"),
+        cache.get("https://example.com/b.webp"),
+    ]
 
     cache.clear_all()
 

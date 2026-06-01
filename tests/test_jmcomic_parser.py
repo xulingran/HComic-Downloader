@@ -1,4 +1,5 @@
 """jmcomic parser 单元测试。"""
+
 from pathlib import Path
 
 from sources.jmcomic.constants import RANKING_MAPPINGS
@@ -76,7 +77,16 @@ def test_parse_detail_merges_tags_works_actors():
     parser = _make_parser()
     comic = parser._parse_detail(html, comic_id="430371", domain="test.one")
 
-    assert comic.tags == ["無修正", "全彩", "劇情向", "馬尾", "巨乳", "中文", "原神", "神里綾華"]
+    assert comic.tags == [
+        "無修正",
+        "全彩",
+        "劇情向",
+        "馬尾",
+        "巨乳",
+        "中文",
+        "原神",
+        "神里綾華",
+    ]
     # 无重复
     assert len(comic.tags) == len(set(comic.tags))
 
@@ -87,7 +97,9 @@ def test_parse_detail_generates_image_urls():
     parser = _make_parser()
     comic = parser._parse_detail(html, comic_id="430371", domain="test.one")
 
-    assert comic.cover_url.startswith("https://cdn-msp2.test.one/media/albums/430371.jpg")
+    assert comic.cover_url.startswith(
+        "https://cdn-msp2.test.one/media/albums/430371.jpg"
+    )
 
 
 def test_parse_detail_multi_chapter():

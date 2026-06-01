@@ -20,6 +20,14 @@ PIL_FORMAT_TO_EXT = {
     "ICO": ".ico",
 }
 
-SUPPORTED_IMAGE_EXTENSIONS = frozenset({
-    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".ico",
-})
+SUPPORTED_IMAGE_EXTENSIONS = frozenset(
+    {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".webp",
+        ".bmp",
+        ".ico",
+    }
+)

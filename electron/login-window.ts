@@ -240,12 +240,31 @@ function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowConte
   // 额外检查：目标页面不能是登录/注册/找回密码等页面，必须包含登录态 cookie。
   let hasVisitedLogin = false
   let timeoutPending = false
+  let pollingTimer: ReturnType<typeof setInterval> | null = null
   const skipPatterns = ['/login', '/register', '/forgot', '/reset', '/captcha', '/verify']
-  
+
+  // Cookie 轮询兜底：当导航事件无法可靠检测登录成功时（如 SPA 风格跳转），
+  // 定期检查登录态 cookie 以确保 Toast 和自动关闭逻辑正常触发。
+  const startCookiePolling = () => {
+    if (pollingTimer) return
+    pollingTimer = setInterval(async () => {
+      if (ctx.settled || ctx.extractInProgress) {
+        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
+        return
+      }
+      const hasLogin = await hasJmcomicLoginCookie(domain)
+      if (hasLogin) {
+        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
+        completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
+      }
+    }, 3000)
+  }
+
   loginWin.webContents.on('did-navigate', (_event, url) => {
     const urlLower = url.toLowerCase()
     if (urlLower.includes('/login') || urlLower.includes('/user/login')) {
       hasVisitedLogin = true
+      startCookiePolling()
       return
     }
     if (hasVisitedLogin && !timeoutPending) {
@@ -263,6 +282,7 @@ function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowConte
         // 验证是否真的有登录态 cookie
         const hasLogin = await hasJmcomicLoginCookie(domain)
         if (hasLogin) {
+          if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
           completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
         } else {
           // 没有登录态 cookie，可能是误触发，不关闭弹窗
@@ -271,6 +291,10 @@ function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowConte
         timeoutPending = false
       }, LOGIN_COOKIE_SETTLE_MS)
     }
+  })
+
+  loginWin.on('closed', () => {
+    if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
   })
 }
 

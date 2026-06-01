@@ -1,4 +1,5 @@
 """漫画下载模块"""
+
 from __future__ import annotations
 
 import logging
@@ -19,7 +20,12 @@ from constants import DEFAULT_USER_AGENT
 from image_downloader import ImageDownloader
 from models import ComicInfo, DownloadCancelledError
 from url_validator import UrlValidator
-from utils import apply_system_proxy_to_session, configure_session_auth, ensure_dir, sanitize_filename
+from utils import (
+    apply_system_proxy_to_session,
+    configure_session_auth,
+    ensure_dir,
+    sanitize_filename,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +44,7 @@ class DownloadResult:
 @dataclass
 class _DownloadRun:
     """Mutable state for an in-progress download batch."""
+
     future_to_page: dict
     remaining_pages: list
     submitted_idx: int
@@ -91,19 +98,23 @@ class ComicDownloader:
         """创建配置了重试的会话（用于主 Session，与 parser 等共享）"""
         session = requests.Session()
         apply_system_proxy_to_session(session)
-        session.headers.update({
-            "User-Agent": DEFAULT_USER_AGENT,
-            "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-            "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
-            "Referer": "https://h-comic.com/",
-        })
+        session.headers.update(
+            {
+                "User-Agent": DEFAULT_USER_AGENT,
+                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+                "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
+                "Referer": "https://h-comic.com/",
+            }
+        )
 
         retry_strategy = Retry(
             total=self.retry_times,
             backoff_factor=1,
             status_forcelist=[429, 500, 502, 503, 504],
         )
-        adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=10)
+        adapter = HTTPAdapter(
+            max_retries=retry_strategy, pool_connections=10, pool_maxsize=10
+        )
         session.mount("https://", adapter)
         session.mount("http://", adapter)
 
@@ -113,9 +124,17 @@ class ComicDownloader:
         """Create an independent session (public wrapper for _create_session)."""
         return self._create_session()
 
-    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
+    def configure_auth(
+        self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
+    ):
         """配置登录相关请求头，同步更新主 Session 和图片下载器池"""
-        configure_session_auth(self.session, {"User-Agent": self.default_user_agent}, cookie, user_agent, bearer_token)
+        configure_session_auth(
+            self.session,
+            {"User-Agent": self.default_user_agent},
+            cookie,
+            user_agent,
+            bearer_token,
+        )
         self.image_downloader.configure_auth(cookie=cookie, user_agent=user_agent)
 
     def rebuild_session(self):
@@ -147,13 +166,17 @@ class ComicDownloader:
         self.close()
 
     def _build_temp_dir_name(self, comic: ComicInfo) -> str:
-        site = self.url_validator.safe_source_site(getattr(comic, "source_site", "hcomic"))
+        site = self.url_validator.safe_source_site(
+            getattr(comic, "source_site", "hcomic")
+        )
         raw_id = str(comic.id or "unknown")
         comic_id = sanitize_filename(raw_id)
         return f"temp_{site}_{comic_id}"
 
     def _build_referer(self, comic: ComicInfo) -> str:
-        site = self.url_validator.safe_source_site(getattr(comic, "source_site", "hcomic"))
+        site = self.url_validator.safe_source_site(
+            getattr(comic, "source_site", "hcomic")
+        )
         if site == "moeimg":
             return "https://moeimg.fan/"
         if site == "jmcomic":
@@ -186,7 +209,9 @@ class ComicDownloader:
                 logger.warning("Descramble failed for %s: %s", img_file.name, e)
 
     @staticmethod
-    def _compute_pages_to_download(total: int, completed_pages: list[int], failed_pages: list[int]) -> list[int]:
+    def _compute_pages_to_download(
+        total: int, completed_pages: list[int], failed_pages: list[int]
+    ) -> list[int]:
         """计算需要下载的页面列表。
 
         排序策略：失败页面优先重试（保持原顺序），然后按页码顺序追加未完成页面。
@@ -216,7 +241,9 @@ class ComicDownloader:
             return
         logger.info("Waiting %ds before next download", delay_after)
         if progress_callback:
-            progress_callback(downloaded_count, total, f"等待 {delay_after} 秒...", comic_info)
+            progress_callback(
+                downloaded_count, total, f"等待 {delay_after} 秒...", comic_info
+            )
         if cancel_event is not None:
             if cancel_event.wait(delay_after):
                 logger.info("Cancel requested during delay after")
@@ -224,7 +251,9 @@ class ComicDownloader:
         else:
             time.sleep(delay_after)
 
-    def _submit_download_batch(self, executor, pages, image_urls, temp_dir, download_referer, cancel_event=None):
+    def _submit_download_batch(
+        self, executor, pages, image_urls, temp_dir, download_referer, cancel_event=None
+    ):
         future_to_page = {}
         for page_num in pages:
             if cancel_event and cancel_event.is_set():
@@ -244,14 +273,24 @@ class ComicDownloader:
             future_to_page[future] = page_num
         return future_to_page
 
-    def _try_report_progress(self, progress_callback, last_progress_ts, downloaded_count, total, new_failed, comic_info):
+    def _try_report_progress(
+        self,
+        progress_callback,
+        last_progress_ts,
+        downloaded_count,
+        total,
+        new_failed,
+        comic_info,
+    ):
         if not progress_callback:
             return last_progress_ts
         now = time.monotonic()
         status = f"下载中... ({downloaded_count}/{total})"
         if new_failed:
             status += f"，失败: {len(new_failed)}"
-        if (now - last_progress_ts) >= PROGRESS_THROTTLE_SEC or downloaded_count >= total:
+        if (
+            now - last_progress_ts
+        ) >= PROGRESS_THROTTLE_SEC or downloaded_count >= total:
             progress_callback(downloaded_count, total, status, comic_info)
             return now
         return last_progress_ts
@@ -284,8 +323,12 @@ class ComicDownloader:
                     run.new_failed.append(page_num)
 
                 run.last_progress_ts = self._try_report_progress(
-                    run.progress_callback, run.last_progress_ts,
-                    run.downloaded_count, run.total, run.new_failed, run.comic_info
+                    run.progress_callback,
+                    run.last_progress_ts,
+                    run.downloaded_count,
+                    run.total,
+                    run.new_failed,
+                    run.comic_info,
                 )
 
                 is_paused = run.pause_event and run.pause_event.is_set()
@@ -347,10 +390,12 @@ class ComicDownloader:
                 completed_pages=[],
                 failed_pages=[],
                 temp_dir=str(temp_dir),
-                error_message="No images to download"
+                error_message="No images to download",
             )
 
-        pages_to_download = self._compute_pages_to_download(total, completed_pages, failed_pages)
+        pages_to_download = self._compute_pages_to_download(
+            total, completed_pages, failed_pages
+        )
 
         if not pages_to_download:
             logger.info("All pages already downloaded: %s", comic.title)
@@ -360,10 +405,15 @@ class ComicDownloader:
                 success=True,
                 completed_pages=list(range(1, total + 1)),
                 failed_pages=[],
-                temp_dir=str(temp_dir)
+                temp_dir=str(temp_dir),
             )
 
-        logger.info("Resuming download: %s (%d/%d pages remaining)", comic.title, len(pages_to_download), total)
+        logger.info(
+            "Resuming download: %s (%d/%d pages remaining)",
+            comic.title,
+            len(pages_to_download),
+            total,
+        )
 
         new_completed: list[int] = []
         new_failed: list[int] = []
@@ -372,10 +422,14 @@ class ComicDownloader:
 
         with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
             remaining_pages = list(pages_to_download)
-            initial_batch = remaining_pages[:self.concurrent_downloads]
+            initial_batch = remaining_pages[: self.concurrent_downloads]
             future_to_page = self._submit_download_batch(
-                executor, initial_batch, image_urls, temp_dir,
-                download_referer, cancel_event
+                executor,
+                initial_batch,
+                image_urls,
+                temp_dir,
+                download_referer,
+                cancel_event,
             )
             submitted_idx = len(initial_batch)
 
@@ -414,22 +468,46 @@ class ComicDownloader:
             if progress_callback:
                 progress_callback(downloaded_count, total, "下载完成", comic_info)
         elif pause_event and pause_event.is_set():
-            logger.info("Download paused: %s (%d/%d pages)", comic.title, len(all_completed), total)
+            logger.info(
+                "Download paused: %s (%d/%d pages)",
+                comic.title,
+                len(all_completed),
+                total,
+            )
             if progress_callback:
-                progress_callback(downloaded_count, total, f"已暂停 ({len(all_completed)}/{total} 页)", comic_info)
+                progress_callback(
+                    downloaded_count,
+                    total,
+                    f"已暂停 ({len(all_completed)}/{total} 页)",
+                    comic_info,
+                )
         else:
             logger.warning("Download completed with %d failures", len(all_failed))
             if progress_callback:
-                progress_callback(downloaded_count, total, f"完成，{len(all_failed)} 页失败", comic_info)
+                progress_callback(
+                    downloaded_count,
+                    total,
+                    f"完成，{len(all_failed)} 页失败",
+                    comic_info,
+                )
 
-        self._apply_delay_after(delay_after, progress_callback, downloaded_count, total, cancel_event, comic_info)
+        self._apply_delay_after(
+            delay_after,
+            progress_callback,
+            downloaded_count,
+            total,
+            cancel_event,
+            comic_info,
+        )
 
         return DownloadResult(
             success=success,
             completed_pages=all_completed,
             failed_pages=all_failed,
             temp_dir=str(temp_dir),
-            error_message=None if success else f"下载不完整: {len(all_failed)}/{total} 页下载失败"
+            error_message=(
+                None if success else f"下载不完整: {len(all_failed)}/{total} 页下载失败"
+            ),
         )
 
     def cleanup_temp_dir(self, temp_dir: str):

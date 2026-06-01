@@ -1,4 +1,5 @@
 """配置管理模块"""
+
 import json
 import logging
 import os
@@ -14,11 +15,14 @@ logger = logging.getLogger(__name__)
 @dataclass
 class Config:
     """应用配置"""
+
     CONCURRENT_RANGE = (1, 10)
     TIMEOUT_RANGE = (5, 300)
     RETRY_RANGE = (0, 10)
 
-    download_dir: str = field(default_factory=lambda: str(Path.home() / "Downloads" / "hcomic"))
+    download_dir: str = field(
+        default_factory=lambda: str(Path.home() / "Downloads" / "hcomic")
+    )
     concurrent_downloads: int = 4
     timeout: int = 30
     retry_times: int = 3
@@ -45,7 +49,9 @@ class Config:
     notify_on_complete: bool = True  # 是否发送系统通知
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
-    tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []})
+    tag_blacklist: dict[str, list[str]] = field(
+        default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []}
+    )
     # jmcomic 自定义域名（空字符串表示自动选择）
     jmcomic_domain: str = ""
     # 预览页面缓存大小上限（MB）
@@ -105,7 +111,13 @@ class Config:
         auth.setdefault("bearer_token", "")
         return auth
 
-    def set_source_auth(self, source: str, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
+    def set_source_auth(
+        self,
+        source: str,
+        cookie: str = "",
+        user_agent: str = "",
+        bearer_token: str = "",
+    ):
         """设置来源认证信息。"""
         self.source_auth[source] = {
             "cookie": (cookie or "").strip(),
@@ -121,12 +133,13 @@ class Config:
         """从文件加载配置，如果不存在则返回默认配置"""
         if config_path and os.path.exists(config_path):
             try:
-                with open(config_path, encoding='utf-8') as f:
+                with open(config_path, encoding="utf-8") as f:
                     data = json.load(f)
             except (json.JSONDecodeError, OSError) as e:
                 logger.warning(
                     "Config file %s is corrupted (%s); backing up and using defaults",
-                    config_path, e,
+                    config_path,
+                    e,
                 )
                 try:
                     backup_path = config_path + ".corrupted"
@@ -137,6 +150,7 @@ class Config:
                             idx += 1
                             if idx > 1000:
                                 import tempfile
+
                                 fd, backup_path = tempfile.mkstemp(
                                     dir=os.path.dirname(config_path),
                                     prefix=".config_corrupted_",
@@ -155,7 +169,9 @@ class Config:
                 return cls()
             # 迁移旧配置：auth_cookie/auth_user_agent -> source_auth.hcomic
             data.setdefault("source_auth", {})
-            hcomic_auth = data["source_auth"].setdefault("hcomic", {"cookie": "", "user_agent": ""})
+            hcomic_auth = data["source_auth"].setdefault(
+                "hcomic", {"cookie": "", "user_agent": ""}
+            )
             data["source_auth"].setdefault("moeimg", {"cookie": "", "user_agent": ""})
             # 如果旧的顶层字段有值而 hcomic 条目缺失，则填充之
             old_cookie = str(data.get("auth_cookie", "") or "").strip()
@@ -173,7 +189,9 @@ class Config:
             known_fields = {f.name for f in dc_fields(cls)}
             unknown = [k for k in data if k not in known_fields]
             if unknown:
-                logger.warning("Ignoring unknown config keys in %s: %s", config_path, unknown)
+                logger.warning(
+                    "Ignoring unknown config keys in %s: %s", config_path, unknown
+                )
             data = {k: v for k, v in data.items() if k in known_fields}
             return cls(**data)
         return cls()
@@ -198,7 +216,7 @@ class Config:
             suffix=".json",
         )
         try:
-            with os.fdopen(tmp_fd, 'w', encoding='utf-8') as f:
+            with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
                 json.dump(asdict(self), f, ensure_ascii=False, indent=2)
             os.replace(tmp_path, config_path)
         except Exception:
@@ -206,7 +224,7 @@ class Config:
                 os.unlink(tmp_path)
             raise
 
-        if sys.platform != 'win32':
+        if sys.platform != "win32":
             os.chmod(config_path, 0o600)
         else:
             _restrict_file_permissions_win32(config_path)
@@ -219,27 +237,43 @@ def _restrict_file_permissions_win32(filepath: str) -> None:
     the current user read+write access. Errors are non-fatal.
     """
     import subprocess
+
     try:
-        username = os.environ.get('USERNAME', os.environ.get('USER', 'CURRENT'))
+        username = os.environ.get("USERNAME", os.environ.get("USER", "CURRENT"))
         result = subprocess.run(
             [
-                "icacls", filepath,
+                "icacls",
+                filepath,
                 "/inheritance:r",
-                "/grant", f"{username}:(R,W)",
+                "/grant",
+                f"{username}:(R,W)",
             ],
             capture_output=True,
             check=False,
             timeout=5,
         )
         if result.returncode != 0:
-            stderr = result.stderr.decode('utf-8', errors='replace').strip() if result.stderr else ""
+            stderr = (
+                result.stderr.decode("utf-8", errors="replace").strip()
+                if result.stderr
+                else ""
+            )
             logger.warning(
                 "Failed to restrict file permissions for %s (exit code %d): %s",
-                filepath, result.returncode, stderr,
+                filepath,
+                result.returncode,
+                stderr,
             )
     except FileNotFoundError:
-        logger.warning("icacls not found on PATH; cannot restrict file permissions for %s", filepath)
+        logger.warning(
+            "icacls not found on PATH; cannot restrict file permissions for %s",
+            filepath,
+        )
     except subprocess.TimeoutExpired:
-        logger.warning("icacls timed out while restricting permissions for %s", filepath)
+        logger.warning(
+            "icacls timed out while restricting permissions for %s", filepath
+        )
     except Exception as e:
-        logger.warning("Unexpected error restricting file permissions for %s: %s", filepath, e)
+        logger.warning(
+            "Unexpected error restricting file permissions for %s: %s", filepath, e
+        )

@@ -1,4 +1,5 @@
 """Parser 分页与 JS 对象解析单元测试"""
+
 import unittest
 
 from sources.hcomic import HComicParser
@@ -46,11 +47,13 @@ class TestJsObjectParsing(unittest.TestCase):
 
     def test_jsobj_to_dict_keeps_colon_inside_string(self):
         """字符串里的 `super:nova` 不应被错误当成 key:value"""
-        js_obj_text = r'''{data:{title:{english:"[HEATWAVE, super:nova] test"}, pages:{pages:1,total:1,limit:10}}}'''
+        js_obj_text = r"""{data:{title:{english:"[HEATWAVE, super:nova] test"}, pages:{pages:1,total:1,limit:10}}}"""
 
         data = HComicParser._jsobj_to_dict(js_obj_text)
 
-        self.assertEqual(data["data"]["title"]["english"], "[HEATWAVE, super:nova] test")
+        self.assertEqual(
+            data["data"]["title"]["english"], "[HEATWAVE, super:nova] test"
+        )
         self.assertEqual(data["data"]["pages"]["pages"], 1)
 
 

@@ -1,4 +1,5 @@
 """h-comic 页面解析模块"""
+
 from __future__ import annotations
 
 import contextlib
@@ -42,16 +43,28 @@ class HComicParser:
         re.compile(r"data:\s*\[null,\s*(\{.*?\})\s*](?:\s|$)", re.S),
     )
 
-    def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
+    def __init__(
+        self,
+        timeout: int = 30,
+        cookie: str = "",
+        user_agent: str = "",
+        bearer_token: str = "",
+    ):
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
         apply_system_proxy_to_session(self.session)
-        self.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+        self.configure_auth(
+            cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
+        )
 
-    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
+    def configure_auth(
+        self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
+    ):
         """配置登录相关请求头。"""
-        configure_session_auth(self.session, self.HEADERS, cookie, user_agent, bearer_token)
+        configure_session_auth(
+            self.session, self.HEADERS, cookie, user_agent, bearer_token
+        )
 
     def close(self):
         """关闭底层会话连接。"""
@@ -70,7 +83,9 @@ class HComicParser:
             response = self._request_text(url)
             data = self._extract_payload_data(response)
             favourites_data = data.get("favourites")
-            if isinstance(favourites_data, dict) and all(k in favourites_data for k in ("docs", "pages", "total")):
+            if isinstance(favourites_data, dict) and all(
+                k in favourites_data for k in ("docs", "pages", "total")
+            ):
                 return True, "登录校验通过"
             return False, "登录已失效，请重新登录"
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError):
@@ -94,8 +109,11 @@ class HComicParser:
         # 强制使用 UTF-8 编码（服务器返回的编码信息可能不正确）
         # 必须在访问 response.text 之前设置编码
         try:
-            if not response.encoding or response.encoding.lower() in ('iso-8859-1', 'latin-1'):
-                response.encoding = 'utf-8'
+            if not response.encoding or response.encoding.lower() in (
+                "iso-8859-1",
+                "latin-1",
+            ):
+                response.encoding = "utf-8"
             return response.text
         except Exception as e:
             raise ParserResponseError(f"响应文本解码失败: {e}") from e
@@ -113,7 +131,9 @@ class HComicParser:
         except requests.RequestException as e:
             raise ParserResponseError(f"请求失败: {url} ({e})") from e
 
-    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(
+        self, keyword: str, page: int = 1, *, tag: str = ""
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画
 
         Args:
@@ -139,7 +159,9 @@ class HComicParser:
             logger.error("Random failed: %s", e)
             return [], None
 
-    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+    def favourites(
+        self, page: int = 1, raise_errors: bool = False
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         """获取收藏夹漫画。
 
         Args:
@@ -151,7 +173,9 @@ class HComicParser:
         """
         url = self._build_favourites_url(page)
         try:
-            return self.parse_favourites_page(self._request_text(url), requested_page=page)
+            return self.parse_favourites_page(
+                self._request_text(url), requested_page=page
+            )
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error("Load favourites failed: %s", e)
             if raise_errors:
@@ -164,7 +188,13 @@ class HComicParser:
     }
 
     def _authenticated_request(
-        self, method: str, url: str, *, error_prefix: str, log_name: str = "", **kwargs,
+        self,
+        method: str,
+        url: str,
+        *,
+        error_prefix: str,
+        log_name: str = "",
+        **kwargs,
     ) -> requests.Response:
         """发送认证相关的 HTTP 请求，统一处理超时、认证失效和网络错误。"""
         kwargs.setdefault("timeout", self.timeout)
@@ -199,8 +229,10 @@ class HComicParser:
             ParserResponseError: 请求失败或认证失效
         """
         response = self._authenticated_request(
-            "POST", "https://api.h-comic.com/api/favourites",
-            error_prefix="加入收藏夹", log_name="add_to_favourites",
+            "POST",
+            "https://api.h-comic.com/api/favourites",
+            error_prefix="加入收藏夹",
+            log_name="add_to_favourites",
             json={"comicId": comic_id},
         )
         response.raise_for_status()
@@ -220,7 +252,9 @@ class HComicParser:
         """
         url = f"https://api.h-comic.com/api/favourites/{comic_id}"
         response = self._authenticated_request(
-            "GET", url, error_prefix="检查收藏状态",
+            "GET",
+            url,
+            error_prefix="检查收藏状态",
         )
         if response.status_code == 200:
             try:
@@ -246,7 +280,10 @@ class HComicParser:
         """
         url = f"https://api.h-comic.com/api/favourites/{comic_id}"
         response = self._authenticated_request(
-            "DELETE", url, error_prefix="移除收藏夹", log_name="remove_from_favourites",
+            "DELETE",
+            url,
+            error_prefix="移除收藏夹",
+            log_name="remove_from_favourites",
         )
         response.raise_for_status()
         return True
@@ -268,7 +305,9 @@ class HComicParser:
             logger.error("Get comic detail failed: %s", e)
             return None
 
-    def parse_search_page(self, html: str, requested_page: int = 1) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def parse_search_page(
+        self, html: str, requested_page: int = 1
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """解析搜索页面
 
         Args:
@@ -323,7 +362,9 @@ class HComicParser:
             return [], None, True
 
         # 空字典表示 Cookie 过期或收藏夹为空，统一返回 needs_login=True
-        if not favourites_data or not all(k in favourites_data for k in ("docs", "pages", "total")):
+        if not favourites_data or not all(
+            k in favourites_data for k in ("docs", "pages", "total")
+        ):
             return [], None, True
 
         docs = favourites_data.get("docs")
@@ -390,22 +431,21 @@ class HComicParser:
         tags = data.get("tags") or []
 
         # 提取作者
-        artist = next(
-            (t.get("name") for t in tags if t.get("type") == "artist"),
-            None
-        )
+        artist = next((t.get("name") for t in tags if t.get("type") == "artist"), None)
 
         # 提取分类
         category = next(
-            (t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "category"),
-            None
+            (
+                t.get("name_zh") or t.get("name")
+                for t in tags
+                if t.get("type") == "category"
+            ),
+            None,
         )
 
         # 提取标签
         tag_names = [
-            t.get("name_zh") or t.get("name")
-            for t in tags
-            if t.get("type") == "tag"
+            t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "tag"
         ]
 
         # 构建 URL
@@ -451,7 +491,9 @@ class HComicParser:
         """
         if tag:
             q = quote(keyword) if keyword else ""
-            return cls._build_paginated_url(f"{cls.INDEX}/?q={q}&tag={quote(tag)}", page)
+            return cls._build_paginated_url(
+                f"{cls.INDEX}/?q={q}&tag={quote(tag)}", page
+            )
         return cls._build_paginated_url(f"{cls.INDEX}/?q={quote(keyword)}", page)
 
     @classmethod
@@ -480,7 +522,9 @@ class HComicParser:
         return f"{base}{sep}page={page}"
 
     @classmethod
-    def _parse_pagination_info(cls, data: dict, requested_page: int = 1) -> PaginationInfo | None:
+    def _parse_pagination_info(
+        cls, data: dict, requested_page: int = 1
+    ) -> PaginationInfo | None:
         """解析分页信息
 
         Args:
@@ -516,9 +560,7 @@ class HComicParser:
         title_info = comic.get("title") or {}
         comic_id = comic.get("id")
         slug_source = (
-            title_info.get("japanese")
-            or title_info.get("english")
-            or str(comic_id)
+            title_info.get("japanese") or title_info.get("english") or str(comic_id)
         )
         slug = quote(slug_source, safe="")
         preview_url = f"{cls.INDEX}/comics/{slug}?id={comic_id}"
@@ -549,16 +591,14 @@ class HComicParser:
     def _format_public_date(cls, unix_ts) -> str | None:
         """格式化发布日期"""
         try:
-            return datetime.fromtimestamp(
-                int(unix_ts), tz=UTC
-            ).strftime("%Y-%m-%d")
+            return datetime.fromtimestamp(int(unix_ts), tz=UTC).strftime("%Y-%m-%d")
         except (TypeError, ValueError):
             return None
 
     @classmethod
     def _extract_payload_data(cls, resp_text: str) -> dict:
         """从页面中提取 payload 数据"""
-        resp_bytes = len(resp_text.encode('utf-8'))
+        resp_bytes = len(resp_text.encode("utf-8"))
         if resp_bytes > MAX_PAYLOAD_SIZE:
             raise ValueError(f"Response too large ({resp_bytes} bytes), limit is 2MB")
         m = cls.PAYLOAD_REGEX.search(resp_text)
@@ -579,7 +619,9 @@ class HComicParser:
         return data
 
     @classmethod
-    def _scan_string_literal(cls, text: str, i: int, quote_char: str, out: list[str]) -> tuple[int, bool]:
+    def _scan_string_literal(
+        cls, text: str, i: int, quote_char: str, out: list[str]
+    ) -> tuple[int, bool]:
         """处理字符串字面量内部内容，返回 (新的位置索引, 是否仍在字符串内)。"""
         while i < len(text):
             ch = text[i]
@@ -625,16 +667,18 @@ class HComicParser:
     def _quote_unquoted_js_keys(cls, js_obj_text: str) -> str:
         """仅在字符串外侧，为未加引号的对象键补双引号。"""
         out: list[str] = []
-        i = 0
+        pos = 0
         n = len(js_obj_text)
         in_string = False
         quote_char = ""
 
-        while i < n:
-            ch = js_obj_text[i]
+        while pos < n:
+            ch = js_obj_text[pos]
 
             if in_string:
-                i, in_string = cls._scan_string_literal(js_obj_text, i, quote_char, out)
+                pos, in_string = cls._scan_string_literal(
+                    js_obj_text, pos, quote_char, out
+                )
                 if not in_string:
                     quote_char = ""
                 continue
@@ -643,16 +687,16 @@ class HComicParser:
                 in_string = True
                 quote_char = ch
                 out.append(ch)
-                i += 1
+                pos += 1
                 continue
 
             if ch in "{,":
                 out.append(ch)
-                i = cls._try_quote_object_key(js_obj_text, i + 1, out)
+                pos = cls._try_quote_object_key(js_obj_text, pos + 1, out)
                 continue
 
             out.append(ch)
-            i += 1
+            pos += 1
 
         return "".join(out)
 
@@ -661,5 +705,3 @@ class HComicParser:
         """将 JavaScript 对象文本转换为 Python 字典"""
         json_ready = cls._quote_unquoted_js_keys(js_obj_text)
         return json.loads(json_ready)
-
-

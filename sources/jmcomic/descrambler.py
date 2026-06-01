@@ -3,6 +3,7 @@
 禁漫天堂的图片会根据漫画 ID 和页码进行分块打乱。
 本模块实现逆变换算法，将打乱的图片还原为正确排列。
 """
+
 from __future__ import annotations
 
 import hashlib

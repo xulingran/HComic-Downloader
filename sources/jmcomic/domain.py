@@ -1,4 +1,5 @@
 """jmcomic 域名发现模块。"""
+
 from __future__ import annotations
 
 import logging
@@ -6,6 +7,7 @@ import os
 import re
 import time
 
+import requests
 from lxml import etree
 
 from .constants import DEFAULT_DOMAIN, HEADERS, PUBLISH_URL
@@ -25,7 +27,9 @@ class JmDomainResolver:
     TEST_TIMEOUT = 5
 
     def __init__(self, cache_dir: str | None = None):
-        self._cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
+        self._cache_dir = cache_dir or os.path.join(
+            os.path.expanduser("~"), ".hcomic_downloader"
+        )
         self._cache_path = os.path.join(self._cache_dir, self.CACHE_FILENAME)
         self._session = create_session()
 
@@ -37,7 +41,7 @@ class JmDomainResolver:
 
         try:
             domains = self._fetch_publish_domains()
-        except Exception as e:
+        except (requests.RequestException, ValueError) as e:
             logger.warning("Failed to fetch publish domains: %s", e)
             domains = []
 
@@ -46,7 +50,9 @@ class JmDomainResolver:
                 self._write_cache(domain)
                 return domain
 
-        logger.warning("No available domain found, using fallback: %s", self.FALLBACK_DOMAIN)
+        logger.warning(
+            "No available domain found, using fallback: %s", self.FALLBACK_DOMAIN
+        )
         return self.FALLBACK_DOMAIN
 
     def _read_cache(self) -> str | None:
@@ -79,10 +85,15 @@ class JmDomainResolver:
 
     def _fetch_publish_domains(self) -> list[str]:
         """从发布页解析域名列表。"""
-        resp = self._session.get(self.PUBLISH_URL, headers={
-            "User-Agent": HEADERS["User-Agent"],
-            "Accept": HEADERS["Accept"],
-        }, timeout=10, allow_redirects=True)
+        resp = self._session.get(
+            self.PUBLISH_URL,
+            headers={
+                "User-Agent": HEADERS["User-Agent"],
+                "Accept": HEADERS["Accept"],
+            },
+            timeout=10,
+            allow_redirects=True,
+        )
         resp.raise_for_status()
         html_doc = etree.HTML(resp.text)
         ps = html_doc.xpath('//div[@class="wrap"]//p')
@@ -92,14 +103,23 @@ class JmDomainResolver:
             return "".join(p.xpath(".//text()"))
 
         idx_start = next((i for i, p in enumerate(ps) if "內地" in get_text(p)), None)
-        idx_end = next((i for i, p in enumerate(ps) if get_text(p).strip().lower().startswith("app")), len(ps))
+        idx_end = next(
+            (
+                i
+                for i, p in enumerate(ps)
+                if get_text(p).strip().lower().startswith("app")
+            ),
+            len(ps),
+        )
         if idx_start is not None:
             if idx_end <= idx_start:
                 idx_end = len(ps)
             for p in ps[idx_start:idx_end]:
                 for raw_domain in p.xpath("./following-sibling::div//text()"):
                     domain = raw_domain.strip()
-                    if "." in domain and not bool(re.search(r"discord|\.work|@|＠|<", domain)):
+                    if "." in domain and not bool(
+                        re.search(r"discord|\.work|@|＠|<", domain)
+                    ):
                         domain = re.sub(r"^https?://", "", domain).split("/", 1)[0]
                         if domain:
                             domains.append(domain)

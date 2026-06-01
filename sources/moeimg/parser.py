@@ -1,4 +1,5 @@
 """moeimg.fan 页面解析模块"""
+
 from __future__ import annotations
 
 import logging
@@ -27,7 +28,9 @@ class MoeImgParser:
     BASE_URL = "https://moeimg.fan"
     _MAX_CACHE_SIZE = 500
     _MAX_SEARCH_ITEMS = 5
-    QUERY_MODE_REGEX = re.compile(r"^\s*(author|artist|tag)\s*:\s*(.*?)\s*$", re.IGNORECASE)
+    QUERY_MODE_REGEX = re.compile(
+        r"^\s*(author|artist|tag)\s*:\s*(.*?)\s*$", re.IGNORECASE
+    )
     ENTITY_ID_IN_TEXT_REGEX = re.compile(r"(?:^|/)(?:fa)?(\d+)(?:/|$)")
     HEADERS = {
         "User-Agent": DEFAULT_USER_AGENT,
@@ -47,9 +50,13 @@ class MoeImgParser:
         self._author_id_cache: dict[str, str] = OrderedDict()
         self._tag_id_cache: dict[str, str] = OrderedDict()
 
-    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
+    def configure_auth(
+        self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
+    ):
         """配置登录相关请求头。"""
-        configure_session_auth(self.session, self.HEADERS, cookie, user_agent, bearer_token)
+        configure_session_auth(
+            self.session, self.HEADERS, cookie, user_agent, bearer_token
+        )
 
     def close(self):
         """关闭底层会话连接。"""
@@ -65,7 +72,9 @@ class MoeImgParser:
         """moeimg 当前接入范围不依赖登录。"""
         return True, "当前来源无需登录校验"
 
-    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(
+        self, keyword: str, page: int = 1, *, tag: str = ""
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。"""
         mode, keyword = self._parse_query_mode(keyword)
         try:
@@ -76,9 +85,13 @@ class MoeImgParser:
         try:
             data: dict | None = None
             if mode == "keyword" and not keyword:
-                data = self._request_json("/spa/latest-manga", params={"page": page_num})
+                data = self._request_json(
+                    "/spa/latest-manga", params={"page": page_num}
+                )
             elif mode == "keyword":
-                data = self._request_json("/spa/search", params={"query": keyword, "page": page_num})
+                data = self._request_json(
+                    "/spa/search", params={"query": keyword, "page": page_num}
+                )
             else:
                 data = self._search_entity(mode=mode, keyword=keyword, page=page_num)
         except ParserResponseError:
@@ -96,7 +109,9 @@ class MoeImgParser:
         )
         return comics, pagination
 
-    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+    def favourites(
+        self, page: int = 1, raise_errors: bool = False
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
         """moeimg 当前版本不支持收藏夹。"""
         return [], None, False
 
@@ -121,13 +136,21 @@ class MoeImgParser:
             or "未知标题"
         )
 
-        authors_data = detail_data.get("authors") or detail.get("authors") or detail_data.get("author") or []
+        authors_data = (
+            detail_data.get("authors")
+            or detail.get("authors")
+            or detail_data.get("author")
+            or []
+        )
         author = self._extract_first_name(authors_data, "author_name")
-        tags = self._extract_manga_tags(detail_data, detail, chapter_detail=chapter_detail)
+        tags = self._extract_manga_tags(
+            detail_data, detail, chapter_detail=chapter_detail
+        )
         category = (detail.get("category") or "").strip() or None
 
         publish_date = self._format_iso_date(
-            chapter_detail.get("chapter_date_published") or detail.get("manga_date_published")
+            chapter_detail.get("chapter_date_published")
+            or detail.get("manga_date_published")
         )
 
         cover_url = detail.get("manga_cover_img") or detail.get("manga_cover_img_full")
@@ -180,7 +203,9 @@ class MoeImgParser:
         chapter_content = chapter_detail.get("chapter_content") or ""
         image_paths = self.CHAPTER_IMAGE_REGEX.findall(chapter_content)
         if not image_paths and chapter_content:
-            image_paths = re.findall(r'(?:data-url|data-src|src)=["\']([^"\']+)["\']', chapter_content)
+            image_paths = re.findall(
+                r'(?:data-url|data-src|src)=["\']([^"\']+)["\']', chapter_content
+            )
 
         image_urls: list[str] = []
         seen: set[str] = set()
@@ -188,7 +213,11 @@ class MoeImgParser:
             path = (raw_path or "").strip()
             if not path or path.startswith(("data:", "javascript:")):
                 continue
-            image_url = path if path.startswith(("http://", "https://")) else urljoin(server, path)
+            image_url = (
+                path
+                if path.startswith(("http://", "https://"))
+                else urljoin(server, path)
+            )
             if not image_url or image_url in seen:
                 continue
             seen.add(image_url)
@@ -196,7 +225,9 @@ class MoeImgParser:
         return image_urls
 
     @staticmethod
-    def _resolve_total_pages(chapter_detail: dict[str, Any], image_urls: list[str], preview_pages: int) -> int:
+    def _resolve_total_pages(
+        chapter_detail: dict[str, Any], image_urls: list[str], preview_pages: int
+    ) -> int:
         """根据多种来源计算总页数。"""
         try:
             total_pages = int(chapter_detail.get("total") or 0)
@@ -253,7 +284,9 @@ class MoeImgParser:
         时间复杂度为 O(n*m*k)。为避免无限制搜索，最多处理前 5 条结果。
         """
         try:
-            search_data = self._request_json("/spa/search", params={"query": keyword, "page": 1})
+            search_data = self._request_json(
+                "/spa/search", params={"query": keyword, "page": 1}
+            )
         except ParserResponseError:
             return None
         if not isinstance(search_data, dict):
@@ -271,7 +304,7 @@ class MoeImgParser:
         id_key = "author_id" if mode == "author" else "tag_id"
 
         # 限制搜索范围，避免对大量结果逐个请求详情
-        for item in manga_list[:self._MAX_SEARCH_ITEMS]:
+        for item in manga_list[: self._MAX_SEARCH_ITEMS]:
             if not isinstance(item, dict):
                 continue
             manga_id = item.get("manga_id")
@@ -283,7 +316,9 @@ class MoeImgParser:
                 continue
             if not isinstance(detail, dict):
                 continue
-            entity_items = detail.get("authors") if mode == "author" else detail.get("tags")
+            entity_items = (
+                detail.get("authors") if mode == "author" else detail.get("tags")
+            )
             if not isinstance(entity_items, list):
                 continue
 
@@ -401,7 +436,9 @@ class MoeImgParser:
         tag_values.extend(cls._extract_names(detail.get("characters"), "tag_name"))
 
         if isinstance(chapter_detail, dict):
-            tag_values.extend(cls._extract_names(chapter_detail.get("tags"), "tag_name"))
+            tag_values.extend(
+                cls._extract_names(chapter_detail.get("tags"), "tag_name")
+            )
 
         language = (detail.get("language") or detail_data.get("language") or "").strip()
         if language:
@@ -430,7 +467,13 @@ class MoeImgParser:
                 continue
             if not isinstance(item, dict):
                 continue
-            name = (item.get(key) or item.get("name") or item.get("tag_name") or item.get("author_name") or "").strip()
+            name = (
+                item.get(key)
+                or item.get("name")
+                or item.get("tag_name")
+                or item.get("author_name")
+                or ""
+            ).strip()
             if name:
                 names.append(name)
         return MoeImgParser._dedupe_keep_order(names)
@@ -455,7 +498,9 @@ class MoeImgParser:
     @staticmethod
     def _count_preview_images(preview_data: Any) -> int:
         if isinstance(preview_data, list):
-            return sum(1 for item in preview_data if isinstance(item, str) and item.strip())
+            return sum(
+                1 for item in preview_data if isinstance(item, str) and item.strip()
+            )
         if not isinstance(preview_data, dict):
             return 0
 
@@ -466,7 +511,9 @@ class MoeImgParser:
         total = 0
         for value in pages.values():
             if isinstance(value, list):
-                total += sum(1 for item in value if isinstance(item, str) and item.strip())
+                total += sum(
+                    1 for item in value if isinstance(item, str) and item.strip()
+                )
         return total
 
     @staticmethod
@@ -493,7 +540,9 @@ class MoeImgParser:
             return None
         cur_page = max(1, int(pagi.get("cur_page") or requested_page or 1))
         pages_data = pagi.get("pages") or []
-        total_pages = max(1, len(pages_data) if isinstance(pages_data, list) else cur_page)
+        total_pages = max(
+            1, len(pages_data) if isinstance(pages_data, list) else cur_page
+        )
         limit = max(1, int(pagi.get("limit") or current_count or 1))
         offset = max(0, int(pagi.get("offset") or 0))
         total_items = max(current_count, offset + current_count)
@@ -503,4 +552,3 @@ class MoeImgParser:
             limit=limit,
             total_items=total_items,
         )
-

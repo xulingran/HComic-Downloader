@@ -1,4 +1,5 @@
 """CBZ 打包和元数据生成模块"""
+
 import logging
 import os
 import re
@@ -22,13 +23,19 @@ logger = logging.getLogger(__name__)
 ALLOWED_FILENAME_PLACEHOLDERS = {"author", "title", "id"}
 
 # XML 1.0 不允许的字符：控制字符 (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F) + 代理对 (0xD800-0xDFFF)
-_XML_INVALID_CHARS_RE = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff]')
+_XML_INVALID_CHARS_RE = re.compile(
+    r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff]"
+)
 
 
 class CBZBuilder:
     """CBZ 文件构建器"""
 
-    def __init__(self, filename_template: str = "{author}-{title}.cbz", config: Optional["Config"] = None):
+    def __init__(
+        self,
+        filename_template: str = "{author}-{title}.cbz",
+        config: Optional["Config"] = None,
+    ):
         self.validate_filename_template(filename_template)
         self._filename_template = filename_template
         self._config = config
@@ -49,7 +56,9 @@ class CBZBuilder:
         Raises ValueError if the template is invalid.
         """
         if not isinstance(template, str) or len(template) == 0 or len(template) > 256:
-            raise ValueError("Filename template must be a non-empty string ≤ 256 characters")
+            raise ValueError(
+                "Filename template must be a non-empty string ≤ 256 characters"
+            )
         if "/" in template or "\\" in template or ".." in template:
             raise ValueError("Filename template must not contain path separators")
 
@@ -76,7 +85,9 @@ class CBZBuilder:
 
         # Reject bare {} positional placeholder
         if "{}" in template:
-            raise ValueError("Filename template must not contain positional placeholders")
+            raise ValueError(
+                "Filename template must not contain positional placeholders"
+            )
 
         # Only allow whitelisted placeholders
         parts = re.findall(r"\{[^{}]+\}", template)
@@ -95,6 +106,7 @@ class CBZBuilder:
         if self._config:
             return self._config.download_dir
         from config import Config
+
         return Config.load().download_dir
 
     @staticmethod
@@ -107,9 +119,7 @@ class CBZBuilder:
         real_path = os.path.realpath(path)
         real_parent = os.path.realpath(parent_dir)
         if real_path != real_parent and not real_path.startswith(real_parent + os.sep):
-            raise ValueError(
-                f"Path {path!r} escapes download directory {parent_dir!r}"
-            )
+            raise ValueError(f"Path {path!r} escapes download directory {parent_dir!r}")
         return real_path
 
     def build_archive(self, options: ArchiveBuildOptions) -> str:
@@ -138,16 +148,20 @@ class CBZBuilder:
         logger.info("Building %s: %s", options.log_label, options.output_path)
 
         basename = os.path.basename(options.output_path)
-        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
+        fd, tmp_path = tempfile.mkstemp(
+            dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp"
+        )
         os.close(fd)
         try:
-            with zipfile.ZipFile(tmp_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 if options.include_comic_info_xml:
                     comic_info_xml = self.generate_comic_info_xml(options.comic)
-                    zf.writestr('ComicInfo.xml', comic_info_xml)
+                    zf.writestr("ComicInfo.xml", comic_info_xml)
 
                 for i, img_path in enumerate(image_files, 1):
-                    arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
+                    arcname = PAGE_FILENAME_FORMAT.format(
+                        page=i, ext=os.path.splitext(img_path)[1]
+                    )
                     zf.write(img_path, arcname)
                     logger.debug("Added: %s", arcname)
 
@@ -202,62 +216,62 @@ class CBZBuilder:
         Returns:
             XML 字符串
         """
-        root = Element('ComicInfo')
-        root.set('xmlns:xsd', 'http://www.w3.org/2001/XMLSchema')
-        root.set('xmlns:xsi', 'http://www.w3.org/2001/XMLSchema-instance')
+        root = Element("ComicInfo")
+        root.set("xmlns:xsd", "http://www.w3.org/2001/XMLSchema")
+        root.set("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance")
 
         # 标题
         if comic.title:
-            self._add_element(root, 'Title', comic.title)
-            self._add_element(root, 'Series', comic.title)
+            self._add_element(root, "Title", comic.title)
+            self._add_element(root, "Series", comic.title)
 
         # 作者 -> Writer
         if comic.author:
-            self._add_element(root, 'Writer', comic.author)
+            self._add_element(root, "Writer", comic.author)
 
         # 分类 -> Genre
         if comic.category:
-            self._add_element(root, 'Genre', comic.category)
+            self._add_element(root, "Genre", comic.category)
 
         # 标签
         if comic.tags:
-            tags_str = ', '.join(str(tag) for tag in comic.tags if tag)
-            self._add_element(root, 'Tags', tags_str)
+            tags_str = ", ".join(str(tag) for tag in comic.tags if tag)
+            self._add_element(root, "Tags", tags_str)
 
         # 页数
         if comic.pages > 0:
-            self._add_element(root, 'PageCount', str(comic.pages))
+            self._add_element(root, "PageCount", str(comic.pages))
 
         # 发布日期
         if comic.publish_date:
             year, month, day = self._parse_date(comic.publish_date)
             if year:
-                self._add_element(root, 'Year', year)
+                self._add_element(root, "Year", year)
             if month:
-                self._add_element(root, 'Month', month)
+                self._add_element(root, "Month", month)
             if day:
-                self._add_element(root, 'Day', day)
+                self._add_element(root, "Day", day)
 
         # 预览 URL
         if comic.preview_url:
-            self._add_element(root, 'Web', comic.preview_url)
+            self._add_element(root, "Web", comic.preview_url)
 
         # 页码（固定为1）
-        self._add_element(root, 'Number', '1')
+        self._add_element(root, "Number", "1")
 
         # 格式化 XML
-        xml_bytes = tostring(root, encoding='utf-8')
+        xml_bytes = tostring(root, encoding="utf-8")
         dom = minidom.parseString(xml_bytes)
-        pretty_xml = dom.toprettyxml(indent='    ')
+        pretty_xml = dom.toprettyxml(indent="    ")
 
         # 移除多余的空行
-        lines = [line for line in pretty_xml.split('\n') if line.strip()]
-        return '\n'.join(lines) + '\n'
+        lines = [line for line in pretty_xml.split("\n") if line.strip()]
+        return "\n".join(lines) + "\n"
 
     @staticmethod
     def _sanitize_xml_text(text: str) -> str:
         """移除 XML 1.0 不允许的字符（控制字符和非法代理对）"""
-        return _XML_INVALID_CHARS_RE.sub('', text)
+        return _XML_INVALID_CHARS_RE.sub("", text)
 
     def _add_element(self, parent: Element, tag: str, text: str):
         """添加子元素"""
@@ -274,18 +288,20 @@ class CBZBuilder:
             (year, month, day) 元组
         """
         try:
-            parts = date_str.split('-')
+            parts = date_str.split("-")
             if len(parts) >= 3:
                 return parts[0], parts[1], parts[2]
             elif len(parts) == 2:
-                return parts[0], parts[1], ''
+                return parts[0], parts[1], ""
             elif len(parts) == 1:
-                return parts[0], '', ''
+                return parts[0], "", ""
         except Exception:
             pass
-        return '', '', ''
+        return "", "", ""
 
-    def _generate_output_path(self, comic: ComicInfo, download_dir: str | None = None) -> str:
+    def _generate_output_path(
+        self, comic: ComicInfo, download_dir: str | None = None
+    ) -> str:
         """生成输出路径
 
         Args:
@@ -301,8 +317,8 @@ class CBZBuilder:
             id=comic.safe_id,
         )
         # 确保以 .cbz 结尾
-        if not filename.endswith('.cbz'):
-            filename += '.cbz'
+        if not filename.endswith(".cbz"):
+            filename += ".cbz"
 
         download_dir = self._get_download_dir(download_dir)
         return os.path.join(download_dir, filename)
@@ -404,10 +420,14 @@ class CBZBuilder:
             if not overwrite:
                 raise FileExistsError(f"Output folder already exists: {output_path}")
             # 用唯一临时目录名做备份，避免误删已有的同名 .tmp_old
-            backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
+            backup_path = tempfile.mkdtemp(
+                dir=output_dir, prefix=f".{folder_name}.old."
+            )
             # mkdtemp 会创建目录，但我们需要 move 到它上面，所以先删掉空目录
             os.rmdir(backup_path)
-            logger.info("Target folder exists, backing up: %s -> %s", output_path, backup_path)
+            logger.info(
+                "Target folder exists, backing up: %s -> %s", output_path, backup_path
+            )
             shutil.move(output_path, backup_path)
             try:
                 logger.info("Moving folder: %s -> %s", image_dir, output_path)
@@ -460,11 +480,11 @@ class CBZBuilder:
         )
         # 去掉 .cbz / .zip 扩展名
         base, ext = os.path.splitext(folder_name)
-        if ext.lower() in ('.cbz', '.zip'):
+        if ext.lower() in (".cbz", ".zip"):
             folder_name = base
         # 清理非法字符
         folder_name = sanitize_path_chars(folder_name)
-        folder_name = folder_name.strip('. ')
+        folder_name = folder_name.strip(". ")
         if not folder_name:
             folder_name = f"comic_{comic.safe_id}"
         return folder_name
@@ -492,11 +512,14 @@ class CBZBuilder:
                     download_dir = self._config.download_dir
                 else:
                     from config import Config
+
                     download_dir = Config.load().download_dir
             folder_name = self._generate_folder_name(comic)
             output_path = os.path.join(download_dir, folder_name)
         elif output_format == "zip":
-            output_path = self._generate_output_path_for_format(comic, "zip", download_dir)
+            output_path = self._generate_output_path_for_format(
+                comic, "zip", download_dir
+            )
         else:  # cbz
             output_path = self._generate_output_path(comic, download_dir)
         # 校验路径在下载目录内
