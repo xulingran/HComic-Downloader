@@ -112,19 +112,21 @@ interface ComicCardProps {
   onDownload?: (comic: ComicInfo) => void
   onOpenReader?: (comic: ComicInfo) => void
   downloadStatus?: 'downloaded' | 'unknown'
+  isRecommended?: boolean
+  recommendedTags?: Set<string>
 }
 
-export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus }: ComicCardProps) {
+export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, isRecommended, recommendedTags }: ComicCardProps) {
   const { cardStyle } = useSettingsStore()
   const { openDrawer } = useDrawerStore()
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} />
   }
-  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} />
+  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} />
 }
 
-function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
+function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
@@ -145,7 +147,8 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
       onClick={handleClick}
       className={`bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-all duration-200
                  cursor-pointer overflow-hidden group relative
-                 ${selected ? 'ring-2 ring-[var(--accent)] shadow-[var(--accent)]/20 shadow-lg' : ''}`}
+                 ${selected ? 'ring-2 ring-[var(--accent)] shadow-[var(--accent)]/20 shadow-lg' : ''}
+                 ${isRecommended ? 'border-l-2 border-l-amber-400/70' : ''}`}
     >
       {batchMode && (
         <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center
@@ -200,7 +203,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer }: ComicCardProps & { onOpenDrawer: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, recommendedTags }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
@@ -222,7 +225,8 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
       onClick={handleClick}
       className={`flex items-center px-4 py-2.5 cursor-pointer transition-colors duration-150
                   border-b border-[var(--border)] hover:bg-[var(--bg-secondary)]
-                  ${selected ? 'border-l-2 border-l-[var(--accent)] bg-[var(--accent)]/5' : ''}`}
+                  ${selected ? 'border-l-2 border-l-[var(--accent)] bg-[var(--accent)]/5' : ''}
+                  ${isRecommended && !selected ? 'border-l-2 border-l-amber-400/70' : ''}`}
     >
       {batchMode && (
         <div className={`mr-2 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
@@ -263,14 +267,21 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
         </div>
         {comic.tags && comic.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">
-            {(showAllTags ? comic.tags : comic.tags.slice(0, 3)).map((tag, i) => (
-              <span
-                key={i}
-                className="text-[10px] px-1.5 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]"
-              >
-                {tag}
-              </span>
-            ))}
+            {(showAllTags ? comic.tags : comic.tags.slice(0, 3)).map((tag, i) => {
+              const isRecTag = recommendedTags && recommendedTags.has(tag.toLowerCase())
+              return (
+                <span
+                  key={i}
+                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                    isRecTag
+                      ? 'bg-amber-500/15 text-amber-600'
+                      : 'bg-[var(--accent)]/10 text-[var(--accent)]'
+                  }`}
+                >
+                  {tag}
+                </span>
+              )
+            })}
             {comic.tags.length > 3 && !showAllTags && (
               <button
                 onClick={(e) => { e.stopPropagation(); setShowAllTags(true) }}

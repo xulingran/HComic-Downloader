@@ -16,6 +16,7 @@ import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore } from '../stores/useSearchCacheStore'
+import { useFavouriteTags } from '../hooks/useIpc'
 
 const searchModes = [
   { value: 'keyword', label: '关键词' },
@@ -82,6 +83,9 @@ export function SearchPage() {
   // clearPendingSearch also used by handleRandom below
   const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
+  const { favouriteTagHighlight } = useSettingsStore()
+  const { getFavouriteTags } = useFavouriteTags()
+  const [favTags, setFavTags] = useState<Array<{tag: string; count: number}>>([])
   const searchCache = useSearchCacheStore()
   const searchCacheRef = useRef(searchCache)
   searchCacheRef.current = searchCache // eslint-disable-line react-hooks/refs
@@ -200,15 +204,29 @@ export function SearchPage() {
     })
   }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode])
 
+  useEffect(() => {
+    if (!favouriteTagHighlight || source !== 'hcomic') {
+      setFavTags([])
+      return
+    }
+    getFavouriteTags('hcomic').then(result => setFavTags(result.tags)).catch(() => setFavTags([]))
+  }, [favouriteTagHighlight, source, getFavouriteTags])
+
+  const recommendedTags = useMemo(() => {
+    if (!favouriteTagHighlight || source !== 'hcomic') return new Set<string>()
+    return new Set(favTags.map(t => t.tag.toLowerCase()))
+  }, [favouriteTagHighlight, source, favTags])
+
   const filteredComics = useMemo(() => {
     const key = effectiveSourceKey(source)
     const blocked = new Set(tagBlacklist[key].map(t => t.toLowerCase()))
     const hasBlockedTags = blocked.size > 0
-    return comics.map(c => ({
-      comic: c,
-      isBlocked: filterEnabled && hasBlockedTags && (c.tags?.some(t => blocked.has(t.toLowerCase())) ?? false)
-    }))
-  }, [comics, filterEnabled, tagBlacklist, source])
+    return comics.map(c => {
+      const isBlocked = filterEnabled && hasBlockedTags && (c.tags?.some(t => blocked.has(t.toLowerCase())) ?? false)
+      const isRecommended = !isBlocked && recommendedTags.size > 0 && (c.tags?.some(t => recommendedTags.has(t.toLowerCase())) ?? false)
+      return { comic: c, isBlocked, isRecommended }
+    })
+  }, [comics, filterEnabled, tagBlacklist, source, recommendedTags])
 
   const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
@@ -411,7 +429,7 @@ export function SearchPage() {
           ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
           : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
         }>
-          {filteredComics.map(({ comic, isBlocked }) => (
+          {filteredComics.map(({ comic, isBlocked, isRecommended }) => (
             isBlocked ? (
               <BlockedPlaceholder key={getComicKey(comic)} comic={comic} cardStyle={cardStyle} />
             ) : (
@@ -423,6 +441,8 @@ export function SearchPage() {
                 selected={selectedIds.has(getComicKey(comic))}
                 onToggleSelect={toggleSelect}
                 onDownload={handleDownload}
+                isRecommended={isRecommended}
+                recommendedTags={recommendedTags}
               />
             )
           ))}
