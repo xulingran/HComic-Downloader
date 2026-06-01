@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, shell, crashReporter } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 import { NotificationManager } from './notification-manager'
@@ -29,6 +29,17 @@ import {
   assert,
   tagBlacklist as tagBlacklistValidator,
 } from './validators'
+
+// ── Windows crash workarounds ──
+// Prevent Windows Code Integrity from killing renderer/gpu processes on
+// certain configurations (common cause of silent "no terminal output" crashes).
+app.commandLine.appendSwitch('disable-features', 'RendererCodeIntegrity')
+app.commandLine.appendSwitch('disable-gpu-sandbox')
+
+// Crash reporter captures native crash dumps for post-mortem analysis.
+try {
+  crashReporter.start({ uploadToServer: false })
+} catch { /* crash reporter unsupported in this build */ }
 
 let mainWindow: BrowserWindow | null = null
 let isQuitting = false
@@ -965,6 +976,20 @@ const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
   app.quit()
 }
+
+// ── Global renderer crash guard ──
+// Prevent sub-window renderer crashes (e.g. login popup) from silently
+// taking down the entire app. The login-window already has its own
+// render-process-gone handler; this is the last-resort safety net.
+app.on('render-process-gone', (_event, _webContents, details) => {
+  console.error(`[App] renderer process gone: ${details.reason} (exit code ${details.exitCode})`)
+})
+
+// GPU process crash is a common cause of silent native crashes on Windows
+// when loading complex web content (e.g. Auth0). Log it so we can triage.
+app.on('gpu-process-crashed', (_event, killed) => {
+  console.error(`[App] GPU process crashed (killed=${killed})`)
+})
 
 app.whenReady().then(() => {
   try {

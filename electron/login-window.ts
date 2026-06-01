@@ -1,4 +1,7 @@
-import { BrowserWindow, session } from 'electron'
+import { BrowserWindow, session, type Session } from 'electron'
+import { writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { join } from 'path'
 import { getPythonBridge } from './python-bridge'
 import { NOTIFICATION_CHANNELS } from '../shared/types'
 
@@ -7,6 +10,15 @@ const LOGIN_COOKIE_SETTLE_MS = 2_000
 const LOGIN_COOKIE_SUCCESS_DELAY_MS = 5_000
 const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
 const JMCOMIC_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
+
+const DIAG_LOG = join(tmpdir(), 'hcomic-login-diag.log')
+
+function diag(msg: string) {
+  const ts = new Date().toISOString()
+  const line = `[${ts}] ${msg}\n`
+  try { writeFileSync(DIAG_LOG, line, { flag: 'as' }) } catch { /* ignore */ }
+  console.log(`[LoginWindow] ${msg}`)
+}
 
 let cancelAutoCloseFn: (() => void) | null = null
 
@@ -33,16 +45,16 @@ async function extractAndApplyCookies(
   userAgent: string,
   source: string = 'hcomic',
   domain: string = 'h-comic.com',
+  cookieSession: Session = session.defaultSession,
 ): Promise<{ success: boolean; message: string }> {
   try {
     let cookies: Electron.Cookie[] = []
     let cookieDomain = domain
 
     if (source === 'jmcomic') {
-      // jmcomic 可能有多个镜像域名，需要尝试所有可能的域名
       const domains = [domain, ...JMCOMIC_MIRROR_DOMAINS]
       for (const d of domains) {
-        const domainCookies = await session.defaultSession.cookies.get({ url: `https://${d}` })
+        const domainCookies = await cookieSession.cookies.get({ url: `https://${d}` })
         if (domainCookies.length > 0) {
           const cookieNames = domainCookies.map(c => c.name.toLowerCase())
           if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
@@ -53,14 +65,13 @@ async function extractAndApplyCookies(
         }
       }
     } else {
-      cookies = await session.defaultSession.cookies.get({ url: `https://${domain}` })
+      cookies = await cookieSession.cookies.get({ url: `https://${domain}` })
     }
 
     if (cookies.length === 0) {
       return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口' }
     }
 
-    // 对 jmcomic 进行额外验证：检查是否包含登录态 cookie
     if (source === 'jmcomic') {
       const cookieNames = cookies.map(c => c.name.toLowerCase())
       const hasLoginCookie = JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
@@ -86,7 +97,8 @@ async function extractAndApplyCookies(
 
 function setupLoginWindowCSP(win: BrowserWindow): () => void {
   const filter = { urls: ['*://*/*'] }
-  win.webContents.session.webRequest.onHeadersReceived(filter, (details, callback) => {
+  const loginSession = win.webContents.session
+  loginSession.webRequest.onHeadersReceived(filter, (details, callback) => {
     const headers = details.responseHeaders
     if (!headers) {
       callback({ responseHeaders: headers })
@@ -112,22 +124,24 @@ function setupLoginWindowCSP(win: BrowserWindow): () => void {
     callback({ responseHeaders: modifiedHeaders })
   })
 
-  // Return a cleanup function to remove the handler
   let removed = false
   return () => {
     if (removed) return
     removed = true
-    // NOTE: passing null removes ALL onHeadersReceived handlers on this session,
-    // not just the one registered above. Currently this is the only consumer,
-    // but if others are added later, use webRequest API's filter-based removal instead.
     try {
-      win.webContents.session.webRequest.onHeadersReceived(null)
-    } catch { /* session or webContents may be gone during shutdown */ }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      loginSession.webRequest.onHeadersReceived(filter, null as any)
+    } catch { /* session may be gone during shutdown */ }
   }
 }
 
 function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
-  return new BrowserWindow({
+  diag('createLoginBrowserWindow: start')
+  // Use default session to avoid session.fromPartition side effects.
+  // CSP modifications and cleanup are filter-based so they won't
+  // interfere with the main window's setupCSP handler.
+  diag('createLoginBrowserWindow: creating BrowserWindow')
+  const win = new BrowserWindow({
     width: 500,
     height: 700,
     title,
@@ -136,9 +150,14 @@ function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      // Disable OS-level sandbox — it causes silent native crashes on
+      // Windows when loading complex SPAs like Auth0. The login window
+      // only loads trusted remote content (h-comic.com / auth0.com).
+      sandbox: false,
     },
   })
+  diag('createLoginBrowserWindow: BrowserWindow created')
+  return win
 }
 
 function completeLoginFlow(
@@ -154,10 +173,10 @@ function completeLoginFlow(
     ctx.done({ success: false, message: '已取消' })
     return
   }
-  // Prevent concurrent extractAndApplyCookies calls (e.g. from closed event)
   if (ctx.extractInProgress) return
   ctx.extractInProgress = true
-  extractAndApplyCookies(userAgent, source, domain).then((result) => {
+  const cookieSession = loginWin.webContents.session
+  extractAndApplyCookies(userAgent, source, domain, cookieSession).then((result) => {
     if (ctx.settled) return
     if (result.success && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
@@ -180,6 +199,7 @@ function completeLoginFlow(
 
 function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
   loginWin.webContents.on('did-navigate', (_event, url) => {
+    diag(`did-navigate: ${url}`)
     if (url.includes('auth0.com')) {
       ctx.hasVisitedAuth0 = true
     }
@@ -191,10 +211,14 @@ function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowCo
 }
 
 function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string = 'hcomic', domain: string = 'h-comic.com') {
+  // Capture session before window is destroyed — 'closed' fires after the
+  // native BrowserWindow is gone, so accessing webContents inside the
+  // callback throws "Object has been destroyed".
+  const cookieSession = loginWin.webContents.session
   loginWin.on('closed', () => {
+    diag('login window closed event')
     ctx.clearTimeout()
     ctx.clearSuccessTimeout()
-    // Clean up CSP handler to prevent session-level leak
     if (ctx.removeCspHandler) {
       ctx.removeCspHandler()
       ctx.removeCspHandler = null
@@ -204,10 +228,8 @@ function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext,
       ctx.done({ success: false, message: '已取消' })
       return
     }
-    // If extractAndApplyCookies is already running from completeLoginFlow,
-    // its .then() will call ctx.done; don't start a second concurrent call.
     if (ctx.extractInProgress) return
-    extractAndApplyCookies(ctx.savedUserAgent, source, domain).then((result) => {
+    extractAndApplyCookies(ctx.savedUserAgent, source, domain, cookieSession).then((result) => {
       if (result.success && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
       }
@@ -218,12 +240,11 @@ function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext,
   })
 }
 
-async function hasJmcomicLoginCookie(domain: string): Promise<boolean> {
+async function hasJmcomicLoginCookie(domain: string, cookieSession: Session = session.defaultSession): Promise<boolean> {
   try {
-    // 获取所有可能的 jmcomic 域名的 cookie
     const domains = [domain, 'jmcomic-zzz.one', '18comic.vip', '18comic.org']
     for (const d of domains) {
-      const cookies = await session.defaultSession.cookies.get({ url: `https://${d}` })
+      const cookies = await cookieSession.cookies.get({ url: `https://${d}` })
       const cookieNames = cookies.map(c => c.name.toLowerCase())
       if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
         return true
@@ -236,15 +257,12 @@ async function hasJmcomicLoginCookie(domain: string): Promise<boolean> {
 }
 
 function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
-  // 用户必须先访问过登录页，再从登录页导航走（登录成功重定向回首页/个人页），才提取 cookie。
-  // 额外检查：目标页面不能是登录/注册/找回密码等页面，必须包含登录态 cookie。
   let hasVisitedLogin = false
   let timeoutPending = false
   let pollingTimer: ReturnType<typeof setInterval> | null = null
   const skipPatterns = ['/login', '/register', '/forgot', '/reset', '/captcha', '/verify']
+  const cookieSession = loginWin.webContents.session
 
-  // Cookie 轮询兜底：当导航事件无法可靠检测登录成功时（如 SPA 风格跳转），
-  // 定期检查登录态 cookie 以确保 Toast 和自动关闭逻辑正常触发。
   const startCookiePolling = () => {
     if (pollingTimer) return
     pollingTimer = setInterval(async () => {
@@ -252,7 +270,7 @@ function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowConte
         if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
         return
       }
-      const hasLogin = await hasJmcomicLoginCookie(domain)
+      const hasLogin = await hasJmcomicLoginCookie(domain, cookieSession)
       if (hasLogin) {
         if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
         completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
@@ -261,6 +279,7 @@ function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowConte
   }
 
   loginWin.webContents.on('did-navigate', (_event, url) => {
+    diag(`jmcomic did-navigate: ${url}`)
     const urlLower = url.toLowerCase()
     if (urlLower.includes('/login') || urlLower.includes('/user/login')) {
       hasVisitedLogin = true
@@ -268,24 +287,19 @@ function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowConte
       return
     }
     if (hasVisitedLogin && !timeoutPending) {
-      // 检查是否跳转到了非登录相关页面（首页、个人页、漫画页等）
       const isSkipPage = skipPatterns.some(pattern => urlLower.includes(pattern))
       if (isSkipPage) {
-        // 跳转到了注册/找回密码等页面，重置标记但不提取 cookie
         hasVisitedLogin = false
         return
       }
       hasVisitedLogin = false
       timeoutPending = true
-      // 增加等待时间，确保 cookie 完全设置
       setTimeout(async () => {
-        // 验证是否真的有登录态 cookie
-        const hasLogin = await hasJmcomicLoginCookie(domain)
+        const hasLogin = await hasJmcomicLoginCookie(domain, cookieSession)
         if (hasLogin) {
           if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
           completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
         } else {
-          // 没有登录态 cookie，可能是误触发，不关闭弹窗
           console.log('[LoginWindow] jmcomic: 离开登录页但未检测到登录态 cookie，继续等待')
         }
         timeoutPending = false
@@ -299,6 +313,7 @@ function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowConte
 }
 
 export function openLoginWindow(mainWindow: BrowserWindow | null, source: string = 'hcomic', resolvedDomain?: string): Promise<{ success: boolean; message?: string }> {
+  diag(`openLoginWindow called: source=${source}`)
   if (!mainWindow) {
     return Promise.resolve({ success: false, message: '主窗口不存在' })
   }
@@ -309,7 +324,9 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
   const loginDomain = source === 'jmcomic' ? jmcomicDomain : 'h-comic.com'
 
   return new Promise((resolve) => {
+    diag('openLoginWindow: creating window')
     const loginWin = createLoginBrowserWindow(mainWindow, loginTitle)
+    diag('openLoginWindow: setting up CSP')
     const removeCspHandler = setupLoginWindowCSP(loginWin)
 
     const ctx: LoginWindowContext = {
@@ -321,11 +338,11 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
       clearSuccessTimeout: () => {},
       removeCspHandler,
       done: (result) => {
+        diag(`done called: settled=${ctx.settled} success=${result.success}`)
         if (ctx.settled) return
         ctx.settled = true
         cancelAutoCloseFn = null
         ctx.clearSuccessTimeout()
-        // Clean up CSP handler
         if (ctx.removeCspHandler) {
           ctx.removeCspHandler()
           ctx.removeCspHandler = null
@@ -337,20 +354,53 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
       },
     }
 
-    // Handle renderer process crash — prevents modal from locking the main window
+    diag('openLoginWindow: registering render-process-gone')
     loginWin.webContents.on('render-process-gone', (_event, details) => {
+      diag(`render-process-gone: ${details.reason} (exit ${details.exitCode})`)
       console.error(`[LoginWindow] renderer crashed: ${details.reason} (${details.exitCode})`)
       ctx.done({ success: false, message: `登录页面崩溃 (${details.reason})，请重试` })
     })
 
+    diag('openLoginWindow: registering did-fail-load')
+    loginWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+      diag(`did-fail-load: ${errorCode} ${errorDescription} url=${validatedURL}`)
+      console.error(`[LoginWindow] page load failed: ${errorCode} ${errorDescription}`)
+      // Don't close — let the user retry or the timeout fire
+    })
+
+    diag('openLoginWindow: registering unresponsive')
+    loginWin.on('unresponsive', () => {
+      diag('login window unresponsive')
+      console.error('[LoginWindow] login window became unresponsive')
+    })
+
     const timeout = setTimeout(() => {
+      diag('login window timed out')
       ctx.done({ success: false, message: '登录超时，请重试' })
     }, LOGIN_WINDOW_TIMEOUT_MS)
     ctx.clearTimeout = () => clearTimeout(timeout)
 
     loginWin.webContents.on('did-finish-load', () => {
+      diag('did-finish-load')
       if (!ctx.savedUserAgent && !loginWin.isDestroyed()) {
         ctx.savedUserAgent = loginWin.webContents.userAgent
+      }
+    })
+
+    // Block ad redirects — h-comic.com has ad scripts (juicyads.com etc.)
+    // that attempt page-level redirects. These cause loadURL to reject with
+    // ERR_ABORTED, which the old code treated as a fatal error and closed the
+    // window, causing the perceived "crash".
+    const ALLOWED_NAV_DOMAINS = ['h-comic.com', 'www.h-comic.com', 'auth0.com']
+    loginWin.webContents.on('will-navigate', (event, url) => {
+      let hostname: string
+      try { hostname = new URL(url).hostname } catch { return }
+      const allowed = ALLOWED_NAV_DOMAINS.some(
+        d => hostname === d || hostname.endsWith('.' + d),
+      )
+      if (!allowed) {
+        diag(`blocked navigation to: ${hostname}`)
+        event.preventDefault()
       }
     })
 
@@ -361,8 +411,13 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
     }
     bindLoginWindowClosed(loginWin, ctx, mainWindow, source, loginDomain)
 
-    loginWin.loadURL(loginUrl).catch(() => {
-      ctx.done({ success: false, message: '无法打开登录页面' })
+    diag(`openLoginWindow: loading URL ${loginUrl}`)
+    loginWin.loadURL(loginUrl).catch((err) => {
+      // ERR_ABORTED is typically triggered by blocked ad redirects —
+      // the main page likely loaded fine via did-navigate. Don't close
+      // the window so the user can still log in.
+      diag(`loadURL rejected (non-fatal): ${err}`)
     })
+    diag('openLoginWindow: loadURL called')
   })
 }

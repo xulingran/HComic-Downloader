@@ -20,7 +20,14 @@ export const mockApp = {
   isPackaged: false,
   on: vi.fn(),
   whenReady: vi.fn().mockResolvedValue(undefined),
-  quit: vi.fn()
+  quit: vi.fn(),
+  commandLine: {
+    appendSwitch: vi.fn(),
+  },
+}
+
+const mockCrashReporter = {
+  start: vi.fn(),
 }
 
 export const mockIpcRenderer = {
@@ -49,6 +56,17 @@ vi.mock('electron', () => ({
   shell: {
     openExternal: vi.fn().mockResolvedValue(undefined),
     openPath: vi.fn().mockResolvedValue(''),
+  },
+  crashReporter: mockCrashReporter,
+  session: {
+    defaultSession: {
+      cookies: { get: vi.fn().mockResolvedValue([]) },
+      webRequest: { onHeadersReceived: vi.fn() },
+    },
+    fromPartition: vi.fn().mockReturnValue({
+      cookies: { get: vi.fn().mockResolvedValue([]) },
+      webRequest: { onHeadersReceived: vi.fn() },
+    }),
   },
 }))
 

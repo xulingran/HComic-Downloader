@@ -78,3 +78,14 @@ export function subscribeToBlacklistChanges(setConfig: (key: 'tagBlacklist', val
     }
   })
 }
+
+/** Subscribe to favouriteTagHighlight changes and persist via setConfig. */
+export function subscribeToFavouriteTagHighlightChanges(setConfig: (key: 'favouriteTagHighlight', value: boolean) => Promise<unknown>) {
+  let prev = useSettingsStore.getState().favouriteTagHighlight
+  return useSettingsStore.subscribe((state) => {
+    if (state.favouriteTagHighlight !== prev) {
+      prev = state.favouriteTagHighlight
+      setConfig('favouriteTagHighlight', state.favouriteTagHighlight).catch(() => {})
+    }
+  })
+}

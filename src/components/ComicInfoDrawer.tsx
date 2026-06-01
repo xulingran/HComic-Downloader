@@ -2,16 +2,17 @@ import { useEffect, useState, useCallback, useMemo } from 'react'
 import { SearchMode, IPC_ERROR_CODES, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
-import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail } from '../hooks/useIpc'
+import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
 import { Toast } from './common/Toast'
 
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
-  const { tagBlacklist, addTag, removeTag } = useSettingsStore()
+  const { tagBlacklist, favouriteTagHighlight, addTag, removeTag } = useSettingsStore()
   const { addToFavourites } = useAddToFavourites()
   const { removeFromFavourites } = useRemoveFromFavourites()
   const { checkFavourite } = useCheckFavourite()
   const { getComicDetail } = useComicDetail()
+  const { getFavouriteTags } = useFavouriteTags()
   const [mounted, setMounted] = useState(false)
   const [visible, setVisible] = useState(false)
   const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' } | null>(null)
@@ -19,8 +20,14 @@ export function ComicInfoDrawer() {
   const [favToastMessage, setFavToastMessage] = useState('')
   const [showFavToast, setShowFavToast] = useState(false)
   const [enrichedComic, setEnrichedComic] = useState<ComicInfo | null>(null)
+  const [drawerFavTags, setDrawerFavTags] = useState<{ tag: string; count: number }[]>([])
 
   const comicSource = drawerComic?.sourceSite || 'hcomic'
+
+  const recommendedTagSet = useMemo(() => {
+    if (!favouriteTagHighlight || comicSource !== 'hcomic') return new Set<string>()
+    return new Set(drawerFavTags.slice(0, 10).map(t => t.tag.toLowerCase()))
+  }, [favouriteTagHighlight, comicSource, drawerFavTags])
 
   const displayComic = useMemo(() => {
     if (!drawerComic) return null
@@ -42,6 +49,14 @@ export function ComicInfoDrawer() {
       setVisible(false)
     }
   }, [isOpen])
+
+  useEffect(() => {
+    if (!isOpen || !favouriteTagHighlight || comicSource !== 'hcomic') {
+      setDrawerFavTags([])
+      return
+    }
+    getFavouriteTags('hcomic').then(result => setDrawerFavTags(result.tags)).catch(() => setDrawerFavTags([]))
+  }, [isOpen, favouriteTagHighlight, comicSource, getFavouriteTags])
 
   // Fetch full detail for sources where search results lack complete metadata.
   // moeimg/jmcomic search cards omit some fields (full tag set, page count,
@@ -271,6 +286,7 @@ export function ComicInfoDrawer() {
               <div className="flex flex-wrap gap-1.5 mt-2">
                 {displayComic.tags.map((tag, i) => {
                   const blocked = isTagBlocked(tag)
+                  const isRec = !blocked && recommendedTagSet.has(tag.toLowerCase())
                   return (
                     <span key={i} className="relative group">
                       <button
@@ -278,7 +294,9 @@ export function ComicInfoDrawer() {
                         className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
                           blocked
                             ? 'bg-[var(--error)]/10 text-[var(--error)] line-through opacity-60'
-                            : 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
+                            : isRec
+                              ? 'bg-amber-500/15 text-amber-600 hover:bg-amber-500/25'
+                              : 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
                         }`}
                       >
                         {tag}

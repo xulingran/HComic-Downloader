@@ -61,6 +61,9 @@ vi.mock('electron', () => {
       getName: vi.fn().mockReturnValue('HComicDownloader'),
       setAsDefaultProtocolClient: vi.fn(),
       requestSingleInstanceLock: vi.fn().mockReturnValue(true),
+      commandLine: {
+        appendSwitch: vi.fn(),
+      },
     },
     BrowserWindow: MockBrowserWindow,
     ipcMain: {
@@ -74,6 +77,19 @@ vi.mock('electron', () => {
       showMessageBoxSync: vi.fn().mockReturnValue(1),
     },
     Notification: MockNotification,
+    crashReporter: {
+      start: vi.fn(),
+    },
+    session: {
+      defaultSession: {
+        cookies: { get: vi.fn().mockResolvedValue([]) },
+        webRequest: { onHeadersReceived: vi.fn() },
+      },
+      fromPartition: vi.fn().mockReturnValue({
+        cookies: { get: vi.fn().mockResolvedValue([]) },
+        webRequest: { onHeadersReceived: vi.fn() },
+      }),
+    },
   }
 })
 

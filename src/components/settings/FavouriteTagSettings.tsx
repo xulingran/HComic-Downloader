@@ -104,8 +104,8 @@ export function FavouriteTagSettings() {
       ) : tags.length === 0 ? (
         <p className="text-sm text-[var(--text-secondary)] py-4 text-center">请先同步收藏夹数据以生成推荐标签</p>
       ) : (
-        <div className="flex flex-wrap gap-2">
-          {tags.map(({ tag, count }) => (
+        <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto content-start">
+          {tags.slice(0, 10).map(({ tag, count }) => (
             <span
               key={tag}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full

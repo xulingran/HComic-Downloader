@@ -215,7 +215,7 @@ export function SearchPage() {
 
   const recommendedTags = useMemo(() => {
     if (!favouriteTagHighlight || source !== 'hcomic') return new Set<string>()
-    return new Set(favTags.map(t => t.tag.toLowerCase()))
+    return new Set(favTags.slice(0, 10).map(t => t.tag.toLowerCase()))
   }, [favouriteTagHighlight, source, favTags])
 
   const filteredComics = useMemo(() => {

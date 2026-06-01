@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTheme } from './hooks/useTheme'
-import { useSettingsStore, subscribeToBlacklistChanges } from './stores/useSettingsStore'
+import { useSettingsStore, subscribeToBlacklistChanges, subscribeToFavouriteTagHighlightChanges } from './stores/useSettingsStore'
 import { useConfig } from './hooks/useIpc'
 import { Sidebar } from './components/Sidebar'
 import { SearchPage } from './pages/SearchPage'
@@ -17,7 +17,7 @@ import { useReaderStore } from './stores/useReaderStore'
 function App() {
   const {
     sfwToastDismissed,
-    setThemeMode, setSfwMode, dismissSfwToast, setTagBlacklist,
+    setThemeMode, setSfwMode, dismissSfwToast, setTagBlacklist, setFavouriteTagHighlight,
   } = useSettingsStore()
   const { getConfig, setConfig } = useConfig()
   useTheme()
@@ -51,10 +51,19 @@ function App() {
         }
         setTagBlacklist(normalized)
       }
-      // Subscribe to blacklist changes for persistence
+      // Load favouriteTagHighlight from config
+      if (typeof result.config?.favouriteTagHighlight === 'boolean') {
+        setFavouriteTagHighlight(result.config.favouriteTagHighlight)
+      }
+      // Subscribe to setting changes for persistence
       if (!subscribedRef.current) {
         subscribedRef.current = true
-        unsubRef.current = subscribeToBlacklistChanges(setConfig)
+        const unsubBlacklist = subscribeToBlacklistChanges(setConfig)
+        const unsubHighlight = subscribeToFavouriteTagHighlightChanges(setConfig)
+        unsubRef.current = () => {
+          unsubBlacklist()
+          unsubHighlight()
+        }
       }
     }).catch(() => {
       setSfwMode(true)
@@ -65,7 +74,7 @@ function App() {
       unsubRef.current = null
       subscribedRef.current = false
     }
-  }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist])
+  }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist, setFavouriteTagHighlight])
 
   const handleDisableSfw = useCallback(() => {
     setSfwMode(false)
