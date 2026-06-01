@@ -33,16 +33,44 @@ class CoverMixin:
         "jmcomic-zzz.one",
     }
 
-    def _build_cover_session(self):
-        """Create a thread-safe requests session with auth headers copied from parser."""
-        import requests as _requests
-        session = _requests.Session()
+    def _build_cover_session(self, referer_domain: str = ""):
+        """Create a thread-safe requests session with auth, cookies, and TLS fingerprinting.
+
+        Uses curl_cffi for TLS fingerprint impersonation (required by jmcomic CDN),
+        copies cookies from all parser sessions, and sets a Referer header for
+        hotlinking protection bypass.
+        """
+        # Use curl_cffi for TLS fingerprint impersonation if available
+        try:
+            from curl_cffi import requests as cf_requests
+
+            session = cf_requests.Session(impersonate="chrome136")
+        except ImportError:
+            import requests as _requests
+
+            session = _requests.Session()
+
+        # Copy headers from parser (User-Agent, Accept, etc.)
         try:
             src_headers = dict(self.parser.session.headers)
         except Exception:
             src_headers = {}
         if src_headers:
             session.headers.update(src_headers)
+
+        # Copy cookies from all parser sessions — critical for jmcomic
+        # which relies on cookie jar (not Cookie header) for auth.
+        try:
+            for ps in self.parser.get_sessions():
+                for cookie in ps.cookies:
+                    session.cookies.set_cookie(cookie)
+        except Exception:
+            pass
+
+        # Set Referer for hotlinking protection bypass (jmcomic CDN requires this)
+        if referer_domain:
+            session.headers["Referer"] = f"https://{referer_domain}/"
+
         return session
 
     def _validate_cover_url(self, url: str) -> None:
@@ -69,14 +97,19 @@ class CoverMixin:
         except Exception:
             pass
 
-        session = self._build_cover_session()
+        # Extract domain from cover URL for Referer header (required by jmcomic CDN)
+        referer_domain = urlparse(url).hostname or ""
+
+        session = self._build_cover_session(referer_domain=referer_domain)
         response = session.get(url, timeout=10, headers=headers, stream=True)
         response.raise_for_status()
 
         # Validate final URL after redirects is still on an allowed domain and HTTPS
         final_parsed = urlparse(response.url)
         if final_parsed.scheme != "https":
-            raise ValueError(f"Redirect target must use HTTPS, got: {final_parsed.scheme}")
+            raise ValueError(
+                f"Redirect target must use HTTPS, got: {final_parsed.scheme}"
+            )
         final_hostname = final_parsed.hostname or ""
         if not any(
             final_hostname == d or final_hostname.endswith("." + d)
@@ -107,25 +140,31 @@ class CoverMixin:
         try:
             cached = self._cover_cache.get(url)
             if cached is not None:
-                self._write_response({
-                    "jsonrpc": "2.0",
-                    "id": req_id,
-                    "result": {"dataUri": cached},
-                })
+                self._write_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "result": {"dataUri": cached},
+                    }
+                )
                 return
 
             data_uri = self._do_fetch_cover(url)
             self._cover_cache.put(url, data_uri)
 
-            self._write_response({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "result": {"dataUri": data_uri},
-            })
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "result": {"dataUri": data_uri},
+                }
+            )
         except Exception as e:
             logger.error("Cover fetch error for %s: %s", url, e)
-            self._write_response({
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32000, "message": str(e)},
-            })
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32000, "message": str(e)},
+                }
+            )

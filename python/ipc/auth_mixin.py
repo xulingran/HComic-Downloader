@@ -28,16 +28,38 @@ class AuthMixin:
 
         from auth_parser import extract_auth_from_curl
 
-        cookie, user_agent, bearer_token, _ = extract_auth_from_curl(curl_text.strip())
-        self.config.set_source_auth(source, cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+        cookie, user_agent, bearer_token, domain = extract_auth_from_curl(
+            curl_text.strip()
+        )
+        self.config.set_source_auth(
+            source, cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
+        )
         self.config.save(_get_config_path())
 
-        self.parser.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token, source=source)
+        self.parser.configure_auth(
+            cookie=cookie,
+            user_agent=user_agent,
+            bearer_token=bearer_token,
+            source=source,
+        )
+
+        # jmcomic 使用多镜像域名，必须将 parser 域名锁定为登录时获取 cookie 的域名，
+        # 否则 JmDomainResolver 自动解析可能返回不同域名，导致 cookie 不匹配。
+        if source == "jmcomic" and domain:
+            self.parser.set_jmcomic_domain(domain)
 
         if source == "hcomic":
-            self.downloader.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+            self.downloader.configure_auth(
+                cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
+            )
 
-        logger.info("Auth applied for %s: cookie length=%d, ua length=%d, bearer length=%d", source, len(cookie), len(user_agent), len(bearer_token))
+        logger.info(
+            "Auth applied for %s: cookie length=%d, ua length=%d, bearer length=%d",
+            source,
+            len(cookie),
+            len(user_agent),
+            len(bearer_token),
+        )
         return {"success": True}
 
     def handle_verify_auth(self, source: str = "hcomic") -> dict:
