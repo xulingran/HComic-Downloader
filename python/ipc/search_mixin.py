@@ -138,6 +138,7 @@ class SearchMixin:
             comics, pagination, needs_login = self.parser.favourites(
                 page=page, raise_errors=True, source=effective_source
             )
+            self._update_tags_from_favourites_page(comics, effective_source)
             return {
                 "comics": [self._comic_to_dict(c) for c in comics],
                 "pagination": {
@@ -169,6 +170,8 @@ class SearchMixin:
         effective_source = source if source in valid_sources else "hcomic"
         try:
             success = self.parser.add_to_favourites(comic_id, source=effective_source)
+            if success:
+                self._update_tags_on_favourite_add(comic_id, effective_source)
             return {"success": success}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
@@ -223,6 +226,8 @@ class SearchMixin:
             success = self.parser.remove_from_favourites(
                 comic_id, source=effective_source
             )
+            if success:
+                self._favourite_tags_db.remove_comic(comic_id, effective_source)
             return {"success": success}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
@@ -344,3 +349,22 @@ class SearchMixin:
             image_url, scramble_id=scramble_id, comic_id=comic_id
         )
         return {"dataUri": data_uri}
+
+    def _update_tags_on_favourite_add(self, comic_id: str, source: str) -> None:
+        """Attempt to fetch full comic detail and update the tag index after adding to favourites."""
+        try:
+            comic = self.parser.get_comic_detail(comic_id, source=source)
+            if comic and hasattr(comic, "tags") and comic.tags:
+                self._favourite_tags_db.upsert_comic(comic_id, source, comic.tags)
+        except Exception as e:
+            logger.debug("Failed to update tags on favourite add: %s", e)
+
+    def _update_tags_from_favourites_page(self, comics: list, source: str) -> None:
+        """Compare comic tags against stored snapshots and update index if they differ."""
+        for comic in comics:
+            tags = getattr(comic, "tags", None) or []
+            if not tags:
+                continue
+            existing = self._favourite_tags_db.get_comic_tags(comic.id, source)
+            if set(existing) != set(tags):
+                self._favourite_tags_db.upsert_comic(comic.id, source, tags)

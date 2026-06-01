@@ -56,6 +56,8 @@ class Config:
     jmcomic_domain: str = ""
     # 预览页面缓存大小上限（MB）
     preview_cache_size_limit_mb: int = 500
+    # 推荐标签高亮开关
+    favourite_tag_highlight: bool = False
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)

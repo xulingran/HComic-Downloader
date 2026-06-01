@@ -32,6 +32,7 @@ CONFIG_KEY_MAP = {
     "tagBlacklist": "tag_blacklist",
     "previewCacheSizeLimitMB": "preview_cache_size_limit_mb",
     "jmcomicDomain": "jmcomic_domain",
+    "favouriteTagHighlight": "favourite_tag_highlight",
 }
 
 _COVER_CACHE_MAX_SIZE = 200
