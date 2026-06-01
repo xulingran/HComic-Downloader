@@ -1,6 +1,5 @@
 """Tests for FavouriteTagsDB (favourite tag index persistence)."""
 
-import json
 import os
 import sys
 

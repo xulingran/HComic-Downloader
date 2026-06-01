@@ -206,6 +206,7 @@ export function SearchPage() {
 
   useEffect(() => {
     if (!favouriteTagHighlight || source !== 'hcomic') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setFavTags([])
       return
     }

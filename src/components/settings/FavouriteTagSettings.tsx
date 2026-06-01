@@ -29,6 +29,7 @@ export function FavouriteTagSettings() {
   }, [getFavouriteTags])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadTags()
   }, [loadTags])
 
@@ -50,7 +51,9 @@ export function FavouriteTagSettings() {
     try {
       await removeFavouriteTag(tag, 'hcomic')
       setTags(prev => prev.filter(t => t.tag !== tag))
-    } catch {}
+    } catch {
+      // Ignore removal errors — user can retry
+    }
     setConfirmTag(null)
   }
 

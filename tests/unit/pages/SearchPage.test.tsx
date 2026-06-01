@@ -52,6 +52,11 @@ vi.mock('@/hooks/useIpc', () => ({
   }),
   useComicDetail: vi.fn().mockReturnValue({
     getComicDetail: vi.fn().mockResolvedValue({ comic: null })
+  }),
+  useFavouriteTags: vi.fn().mockReturnValue({
+    getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
+    syncFavouriteTags: vi.fn(),
+    removeFavouriteTag: vi.fn()
   })
 }))
 
@@ -60,7 +65,7 @@ vi.mock('@/stores/useComicStore', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), favouriteTagHighlight: false, setFavouriteTagHighlight: vi.fn() })
 }))
 
 const { mockSearchCacheStore } = vi.hoisted(() => {

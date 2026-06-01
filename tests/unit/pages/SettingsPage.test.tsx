@@ -26,6 +26,11 @@ vi.mock('@/hooks/useIpc', () => ({
   useAuth: vi.fn().mockReturnValue({ applyAuth: mockApplyAuth, verifyAuth: mockVerifyAuth }),
   useProxyStatus: vi.fn().mockReturnValue({ getProxyStatus: vi.fn().mockResolvedValue({ http: '', https: '', noProxy: '' }) }),
   useAvailableFonts: vi.fn().mockReturnValue({ getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }) }),
+  useFavouriteTags: vi.fn().mockReturnValue({
+    getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
+    syncFavouriteTags: vi.fn(),
+    removeFavouriteTag: vi.fn()
+  }),
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
@@ -39,6 +44,8 @@ vi.mock('@/stores/useSettingsStore', () => ({
     setSfwMode: mockSetSfwMode,
     addTag: vi.fn(),
     removeTag: vi.fn(),
+    favouriteTagHighlight: false,
+    setFavouriteTagHighlight: vi.fn(),
   }))
 }))
 
