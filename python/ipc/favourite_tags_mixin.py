@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sqlite3
+import threading
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,10 @@ class FavouriteTagsDB:
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
-        os.makedirs(os.path.dirname(db_path), exist_ok=True)
+        self._lock = threading.Lock()
+        parent = os.path.dirname(db_path)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
         self._conn = sqlite3.connect(db_path, check_same_thread=False)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -42,6 +46,12 @@ class FavouriteTagsDB:
 
     def upsert_comic(self, comic_id: str, source: str, tags: list[str]) -> None:
         """Add or update a comic's tag snapshot, adjusting counts incrementally."""
+        with self._lock:
+            self._upsert_comic_unlocked(comic_id, source, tags)
+
+    def _upsert_comic_unlocked(
+        self, comic_id: str, source: str, tags: list[str]
+    ) -> None:
         row = self._conn.execute(
             "SELECT tags FROM favourite_tag_comics WHERE comic_id = ? AND source = ?",
             (comic_id, source),
@@ -78,6 +88,10 @@ class FavouriteTagsDB:
 
     def remove_comic(self, comic_id: str, source: str) -> None:
         """Remove a comic and decrement its tag counts."""
+        with self._lock:
+            self._remove_comic_unlocked(comic_id, source)
+
+    def _remove_comic_unlocked(self, comic_id: str, source: str) -> None:
         row = self._conn.execute(
             "SELECT tags FROM favourite_tag_comics WHERE comic_id = ? AND source = ?",
             (comic_id, source),
@@ -90,11 +104,10 @@ class FavouriteTagsDB:
                 "UPDATE favourite_tag_index SET count = count - 1 WHERE tag = ? AND source = ?",
                 (tag, source),
             )
-        # Clean up zero-count entries
-        self._conn.execute(
-            "DELETE FROM favourite_tag_index WHERE source = ? AND count <= 0",
-            (source,),
-        )
+            self._conn.execute(
+                "DELETE FROM favourite_tag_index WHERE tag = ? AND source = ? AND count <= 0",
+                (tag, source),
+            )
         self._conn.execute(
             "DELETE FROM favourite_tag_comics WHERE comic_id = ? AND source = ?",
             (comic_id, source),
@@ -103,37 +116,41 @@ class FavouriteTagsDB:
 
     def remove_tag(self, tag: str, source: str) -> None:
         """Remove a specific tag from the index entirely."""
-        self._conn.execute(
-            "DELETE FROM favourite_tag_index WHERE tag = ? AND source = ?",
-            (tag, source),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM favourite_tag_index WHERE tag = ? AND source = ?",
+                (tag, source),
+            )
+            self._conn.commit()
 
     def get_tags(self, source: str) -> list[dict[str, Any]]:
         """Return all tags for a source sorted by count descending."""
-        rows = self._conn.execute(
-            "SELECT tag, count FROM favourite_tag_index WHERE source = ? ORDER BY count DESC, tag ASC",
-            (source,),
-        ).fetchall()
-        return [{"tag": r["tag"], "count": r["count"]} for r in rows]
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT tag, count FROM favourite_tag_index WHERE source = ? ORDER BY count DESC, tag ASC",
+                (source,),
+            ).fetchall()
+            return [{"tag": r["tag"], "count": r["count"]} for r in rows]
 
     def clear(self, source: str) -> None:
         """Clear all tag data for a source."""
-        self._conn.execute(
-            "DELETE FROM favourite_tag_index WHERE source = ?", (source,)
-        )
-        self._conn.execute(
-            "DELETE FROM favourite_tag_comics WHERE source = ?", (source,)
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM favourite_tag_index WHERE source = ?", (source,)
+            )
+            self._conn.execute(
+                "DELETE FROM favourite_tag_comics WHERE source = ?", (source,)
+            )
+            self._conn.commit()
 
     def get_comic_tags(self, comic_id: str, source: str) -> list[str]:
         """Get stored tags for a specific comic."""
-        row = self._conn.execute(
-            "SELECT tags FROM favourite_tag_comics WHERE comic_id = ? AND source = ?",
-            (comic_id, source),
-        ).fetchone()
-        return json.loads(row["tags"]) if row else []
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT tags FROM favourite_tag_comics WHERE comic_id = ? AND source = ?",
+                (comic_id, source),
+            ).fetchone()
+            return json.loads(row["tags"]) if row else []
 
 
 class FavouriteTagsMixin:
@@ -142,6 +159,8 @@ class FavouriteTagsMixin:
     _favourite_tags_db: FavouriteTagsDB
     parser: Any
     _write_response: Any
+
+    MAX_SYNC_PAGES = 200
 
     def _init_favourite_tags(self) -> None:
         db_path = os.path.join(
@@ -159,7 +178,7 @@ class FavouriteTagsMixin:
         self._favourite_tags_db.clear(effective_source)
         synced = 0
         page = 1
-        while True:
+        while page <= self.MAX_SYNC_PAGES:
             try:
                 comics, pagination, _needs_login = self.parser.favourites(
                     page=page, raise_errors=True, source=effective_source
@@ -177,6 +196,12 @@ class FavouriteTagsMixin:
             if not pagination or page >= pagination.total_pages:
                 break
             page += 1
+        if page > self.MAX_SYNC_PAGES:
+            logger.warning(
+                "sync_favourite_tags hit MAX_SYNC_PAGES=%d limit for source=%s",
+                self.MAX_SYNC_PAGES,
+                effective_source,
+            )
         return {"synced": synced}
 
     def handle_remove_favourite_tag(self, tag: str, source: str = "hcomic") -> dict:
