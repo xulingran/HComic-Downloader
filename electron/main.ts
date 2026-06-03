@@ -680,6 +680,16 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('moeimg_login', { username: username.trim(), password: password.trim() })
   })
 
+  ipcMain.handle('python:bika-login', async (_, username, password) => {
+    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) {
+      throw new Error('Invalid bika username')
+    }
+    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) {
+      throw new Error('Invalid bika password')
+    }
+    return bridge.call('bika_login', { username: username.trim(), password: password.trim() })
+  })
+
   ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
     // 对 jmcomic，先获取配置以更新域名
     if (source === 'jmcomic' && !jmcomicMainDomain) {

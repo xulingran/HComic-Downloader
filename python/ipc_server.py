@@ -170,6 +170,7 @@ class IPCServer(
         "apply_auth": "handle_apply_auth",
         "verify_auth": "handle_verify_auth",
         "moeimg_login": "handle_moeimg_login",
+        "bika_login": "handle_bika_login",
         "get_config": "handle_get_config",
         "set_config": "handle_set_config",
         "get_downloads": "handle_get_downloads",

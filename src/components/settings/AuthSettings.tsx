@@ -9,10 +9,14 @@ interface AuthSettingsProps {
   moeimgLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   moeimgLoginMessage: string
   moeimgSavedUsername: string
+  bikaLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
+  bikaLoginMessage: string
+  bikaSavedUsername: string
   onApplyAuth: (curlText: string, source?: string) => Promise<void>
   onTestAuth: (source?: string) => Promise<void>
   onOpenLoginWindow: (source?: string) => Promise<void>
   onMoeimgLogin: (username: string, password: string) => Promise<void>
+  onBikaLogin: (username: string, password: string) => Promise<void>
 }
 
 type AuthStatus = AuthSettingsProps['loginStatus']
@@ -26,10 +30,14 @@ export function AuthSettings({
   moeimgLoginStatus,
   moeimgLoginMessage,
   moeimgSavedUsername,
+  bikaLoginStatus,
+  bikaLoginMessage,
+  bikaSavedUsername,
   onApplyAuth,
   onTestAuth,
   onOpenLoginWindow,
   onMoeimgLogin,
+  onBikaLogin,
 }: AuthSettingsProps) {
   const [curlText, setCurlText] = useState('')
   const [jmcomicCurlText, setJmcomicCurlText] = useState('')
@@ -37,6 +45,9 @@ export function AuthSettings({
   const [moeimgPassword, setMoeimgPassword] = useState('')
   const [moeimgCurlText, setMoeimgCurlText] = useState('')
   const [showMoeimgPassword, setShowMoeimgPassword] = useState(false)
+  const [bikaUsername, setBikaUsername] = useState(bikaSavedUsername || '')
+  const [bikaPassword, setBikaPassword] = useState('')
+  const [showBikaPassword, setShowBikaPassword] = useState(false)
 
   return (
     <div ref={loginSectionRef} className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
@@ -243,6 +254,71 @@ export function AuthSettings({
             {moeimgLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
           </button>
         </div>
+      </AuthSourceCard>
+
+      <AuthSourceCard
+        label="哔咔 (Bika)"
+        status={bikaLoginStatus}
+        message={bikaLoginMessage}
+      >
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="block text-xs text-[var(--text-secondary)] mb-1">用户名</label>
+            <input
+              type="text"
+              value={bikaUsername}
+              onChange={(e) => setBikaUsername(e.target.value)}
+              placeholder="哔咔用户名"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs text-[var(--text-secondary)] mb-1">密码</label>
+            <div className="relative">
+              <input
+                type={showBikaPassword ? 'text' : 'password'}
+                value={bikaPassword}
+                onChange={(e) => setBikaPassword(e.target.value)}
+                placeholder="哔咔密码"
+                className="w-full px-3 py-2 pr-10 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                onMouseDown={() => setShowBikaPassword(true)}
+                onMouseUp={() => setShowBikaPassword(false)}
+                onMouseLeave={() => setShowBikaPassword(false)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1"
+                aria-label={showBikaPassword ? '隐藏密码' : '显示密码'}
+              >
+                {showBikaPassword ? (
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              await onBikaLogin(bikaUsername, bikaPassword)
+            }}
+            disabled={!bikaUsername.trim() || !bikaPassword.trim() || bikaLoginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--accent)] text-white hover:opacity-90
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {bikaLoginStatus === 'verifying' ? '登录中...' : '登录'}
+          </button>
+        </div>
+        <p className="text-xs text-[var(--text-secondary)] mt-2">
+          使用哔咔用户名和密码登录
+        </p>
       </AuthSourceCard>
     </div>
   )

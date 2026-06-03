@@ -117,6 +117,12 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.MOEIMG_LOGIN, username, password)
   },
 
+  bikaLogin: (username: unknown, password: unknown) => {
+    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
+    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')
+    return ipcRenderer.invoke('python:bika-login', username, password)
+  },
+
   shutdown: () => ipcRenderer.invoke(IPC_CHANNELS.SHUTDOWN),
 
   openUrl: (url: unknown) => {

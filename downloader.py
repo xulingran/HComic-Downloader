@@ -181,6 +181,8 @@ class ComicDownloader:
             return "https://moeimg.fan/"
         if site == "jmcomic":
             return "https://18comic.vip/"
+        if site == "bika":
+            return "https://picaapi.picacomic.com/"
         return "https://h-comic.com/"
 
     @staticmethod

@@ -8,6 +8,7 @@ const sources = [
   { value: 'hcomic', label: 'HComic' },
   { value: 'moeimg', label: 'MoeImg' },
   { value: 'jmcomic', label: '禁漫天堂' },
+  { value: 'bika', label: '哔咔' },
 ]
 
 type DetectionStatus = 'idle' | 'fetching' | 'computing' | 'done'

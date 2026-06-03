@@ -232,6 +232,9 @@ export function ComicInfoDrawer() {
                 {displayComic?.pages != null && displayComic.pages > 0 && (
                   <> · {displayComic.pages} 页</>
                 )}
+                {displayComic?.albumTotalChapters != null && displayComic.albumTotalChapters > 1 && (
+                  <> · {displayComic.albumTotalChapters} 章</>
+                )}
               </p>
               {displayComic?.url && (
                 <button
@@ -246,7 +249,7 @@ export function ComicInfoDrawer() {
             </div>
           </div>
 
-          {comicSource === 'hcomic' && (
+          {(comicSource === 'hcomic' || comicSource === 'bika') && (
             <div>
               <button
                 onClick={handleToggleFavourites}

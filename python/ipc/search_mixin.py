@@ -91,7 +91,7 @@ class SearchMixin:
     ) -> dict:
         effective_source = (
             source
-            if source in ("hcomic", "moeimg", "jmcomic")
+            if source in ("hcomic", "moeimg", "jmcomic", "bika")
             else self.config.default_source
         )
         effective_query = query
@@ -132,7 +132,7 @@ class SearchMixin:
     def handle_get_favourites(self, page: int = 1, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic", "moeimg")
+        valid_sources = ("hcomic", "jmcomic", "moeimg", "bika")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             comics, pagination, needs_login = self.parser.favourites(
@@ -180,7 +180,7 @@ class SearchMixin:
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic", "moeimg")
+        valid_sources = ("hcomic", "jmcomic", "moeimg", "bika")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             success = self.parser.add_to_favourites(comic_id, source=effective_source)
@@ -206,7 +206,7 @@ class SearchMixin:
     def handle_check_favourite(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic", "moeimg")
+        valid_sources = ("hcomic", "jmcomic", "moeimg", "bika")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             is_favourited = self.parser.check_favourite(
@@ -234,7 +234,7 @@ class SearchMixin:
     ) -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic", "moeimg")
+        valid_sources = ("hcomic", "jmcomic", "moeimg", "bika")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             success = self.parser.remove_from_favourites(
@@ -283,7 +283,7 @@ class SearchMixin:
 
         # 多章节专辑：不预取图片，返回章节列表供前端选章。
         if (
-            comic.source_site == "jmcomic"
+            comic.source_site in ("jmcomic", "bika")
             and len(getattr(comic, "chapters", None) or []) > 1
         ):
             return {
@@ -319,11 +319,33 @@ class SearchMixin:
         return result
 
     def handle_get_chapter_preview_urls(
-        self, chapter_id: str, album_id: str = ""
+        self, chapter_id: str, album_id: str = "", source_site: str = ""
     ) -> dict:
-        """获取单个 jmcomic 章节的图片 URL 列表与 scramble_id。"""
+        """获取单个章节的图片 URL 列表（支持 jmcomic 和 bika）。"""
         if not chapter_id or not isinstance(chapter_id, str):
             raise ValueError("Missing chapter id")
+        site = source_site or "jmcomic"
+        if site == "bika":
+            parser = self.parser.parsers.get("bika")
+            if parser is None:
+                raise ValueError("bika source unavailable")
+            comic_id = album_id or chapter_id
+            order = 1
+            try:
+                chapters = parser.get_chapters(comic_id)
+                for ch in chapters:
+                    if ch.id == chapter_id:
+                        order = ch.index
+                        break
+            except Exception:
+                pass
+            image_urls = parser.get_chapter_images(comic_id, order)
+            result = {
+                "imageUrls": image_urls,
+                "totalPages": len(image_urls),
+                "comicId": chapter_id,
+            }
+            return result
         jm = self.parser.parsers.get("jmcomic")
         if jm is None:
             raise ValueError("jmcomic source unavailable")
@@ -338,7 +360,7 @@ class SearchMixin:
         return result
 
     def handle_get_comic_detail(self, comic_id: str, source: str = "moeimg") -> dict:
-        valid_sources = ("hcomic", "moeimg", "jmcomic")
+        valid_sources = ("hcomic", "moeimg", "jmcomic", "bika")
         effective_source = source if source in valid_sources else "moeimg"
         if source not in valid_sources:
             logger.warning(

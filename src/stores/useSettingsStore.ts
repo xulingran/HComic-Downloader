@@ -22,7 +22,7 @@ interface SettingsState {
   setFavouriteTagHighlight: (enabled: boolean) => void
 }
 
-const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [] }
+const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [], bika: [] }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   themeMode: 'auto',
@@ -40,7 +40,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const trimmed = tag.trim()
     if (!trimmed) return
     set((state) => {
-      const key = (source === 'moeimg' ? 'moeimg' : 'hcomic') as keyof TagBlacklist
+      const key = (source === 'moeimg' ? 'moeimg' : source === 'jmcomic' ? 'jmcomic' : source === 'bika' ? 'bika' : 'hcomic') as keyof TagBlacklist
       const list = state.tagBlacklist[key]
       if (list.some(t => t.toLowerCase() === trimmed.toLowerCase())) return state
       return {
@@ -53,7 +53,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
   removeTag: (source, tag) => {
     set((state) => {
-      const key = (source === 'moeimg' ? 'moeimg' : 'hcomic') as keyof TagBlacklist
+      const key = (source === 'moeimg' ? 'moeimg' : source === 'jmcomic' ? 'jmcomic' : source === 'bika' ? 'bika' : 'hcomic') as keyof TagBlacklist
       const lower = tag.toLowerCase()
       return {
         tagBlacklist: {

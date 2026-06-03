@@ -31,6 +31,7 @@ interface ConfigState {
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
   moeimgUsername: string
+  bikaUsername?: string
 }
 
 interface SettingsPageProps {
@@ -45,6 +46,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const hcomicAuth = useAuthState('hcomic')
   const jmcomicAuth = useAuthState('jmcomic')
   const moeimgAuth = useAuthState('moeimg')
+  const bikaAuth = useAuthState('bika')
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
   const { getJmcomicDomains } = useJmcomicDomains()
@@ -253,6 +255,22 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
+  const handleBikaLogin = async (username: string, password: string) => {
+    bikaAuth.setStatus('verifying')
+    bikaAuth.setMessage('')
+    try {
+      const result = await window.hcomic?.bikaLogin(username, password)
+      if (result?.success) {
+        await bikaAuth.test()
+      }
+    } catch (err) {
+      bikaAuth.setStatus('error')
+      bikaAuth.setMessage(
+        (err instanceof Error ? err.message : String(err)) || '登录失败',
+      )
+    }
+  }
+
   const handleSectionClick = (sectionId: string) => {
     setActiveSection(sectionId)
     document.getElementById(`section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -378,7 +396,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">默认来源</label>
             <div className="flex gap-3">
-              {['hcomic', 'moeimg'].map((source) => (
+              {['hcomic', 'moeimg', 'bika'].map((source) => (
                 <button
                   key={source}
                   onClick={() => handleConfigChange('defaultSource', source)}
@@ -388,7 +406,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
                       : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
                   }`}
                 >
-                  {source === 'hcomic' ? 'HComic' : 'Moeimg'}
+                  {source === 'hcomic' ? 'HComic' : source === 'moeimg' ? 'Moeimg' : '哔咔'}
                 </button>
               ))}
             </div>
@@ -455,10 +473,14 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           moeimgLoginStatus={moeimgAuth.status}
           moeimgLoginMessage={moeimgAuth.message}
           moeimgSavedUsername={config.moeimgUsername}
+          bikaLoginStatus={bikaAuth.status}
+          bikaLoginMessage={bikaAuth.message}
+          bikaSavedUsername={config.bikaUsername || ''}
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}
           onMoeimgLogin={handleMoeimgLogin}
+          onBikaLogin={handleBikaLogin}
         />
       </div>
 

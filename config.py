@@ -114,6 +114,9 @@ class Config:
         if source == "moeimg":
             auth.setdefault("username", "")
             auth.setdefault("password", "")
+        if source == "bika":
+            auth.setdefault("username", "")
+            auth.setdefault("password", "")
         return auth
 
     def set_source_auth(
@@ -132,6 +135,9 @@ class Config:
             "bearer_token": (bearer_token or "").strip(),
         }
         if source == "moeimg":
+            self.source_auth[source]["username"] = (username or "").strip()
+            self.source_auth[source]["password"] = (password or "").strip()
+        if source == "bika":
             self.source_auth[source]["username"] = (username or "").strip()
             self.source_auth[source]["password"] = (password or "").strip()
         if source == "hcomic":

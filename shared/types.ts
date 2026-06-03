@@ -77,7 +77,7 @@ export interface AppConfig {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[] }
+  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[] }
   previewCacheSizeLimitMB: number
   proxy?: string
   cookie?: string
@@ -85,6 +85,7 @@ export interface AppConfig {
   hasAuth?: boolean
   hasJmcomicAuth?: boolean
   hasMoeimgAuth?: boolean
+  hasBikaAuth?: boolean
   jmcomicDomain?: string
   moeimgUsername?: string
   favouriteTagHighlight?: boolean
@@ -192,7 +193,7 @@ export type ConfigValueMap = {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[] }
+  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[] }
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
   favouriteTagHighlight: boolean
@@ -286,6 +287,10 @@ export interface IPCMethods {
     result: { valid: boolean; message: string }
   }
   moeimg_login: {
+    params: { username: string; password: string }
+    result: { success: boolean; message: string }
+  }
+  bika_login: {
     params: { username: string; password: string }
     result: { success: boolean; message: string }
   }
@@ -440,6 +445,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:apply-auth': 'apply_auth',
   'python:verify-auth': 'verify_auth',
   'python:moeimg-login': 'moeimg_login',
+  'python:bika-login': 'bika_login',
   'python:shutdown': 'shutdown',
   'python:fetch-cover': 'fetch_cover',
   'python:pause-task': 'pause_task',
@@ -504,6 +510,7 @@ export interface HcomicAPI {
   applyAuth(curlText: string, source?: string): Promise<{ success: boolean }>
   verifyAuth(source?: string): Promise<{ valid: boolean; message: string }>
   moeimgLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
+  bikaLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   fetchCover(url: string): Promise<{ dataUri: string }>
   openUrl(url: string): Promise<void>
@@ -552,7 +559,7 @@ export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking'] as const
 export type SearchMode = typeof SEARCH_MODES[number]
 
 /** Valid comic sources — shared between preload and main */
-export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic'] as const
+export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic', 'bika'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
 
 /** JSON-RPC application error codes (Python backend) */

@@ -28,7 +28,8 @@ const searchModes = [
 const sources = [
   { value: 'hcomic', label: 'HComic' },
   { value: 'moeimg', label: 'Moeimg' },
-  { value: 'jmcomic', label: '禁漫天堂' }
+  { value: 'jmcomic', label: '禁漫天堂' },
+  { value: 'bika', label: '哔咔' }
 ]
 
 const rankingOptions = [
@@ -50,9 +51,10 @@ const rankingOptions = [
   { value: '总收藏', label: '总收藏' },
 ]
 
-function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' {
+function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' | 'bika' {
   if (source === 'moeimg') return 'moeimg'
   if (source === 'jmcomic') return 'jmcomic'
+  if (source === 'bika') return 'bika'
   return 'hcomic'
 }
 

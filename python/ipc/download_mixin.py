@@ -106,33 +106,52 @@ class DownloadMixin:
         """为选中的每个章节创建独立下载任务。"""
         from models import ComicInfo
 
+        source_site = comic_data.get("sourceSite", "hcomic") or "hcomic"
         album_title = comic_data.get("title", "Unknown")
         total = int(comic_data.get("albumTotalChapters") or len(chapter_ids))
         chapter_meta = {
             c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c
         }
-        jm = self.parser.parsers.get("jmcomic")
-        if jm is None:
-            raise ValueError("jmcomic source unavailable")
 
         task_ids = []
         failed = []
         for chap_id in chapter_ids:
             chap_name = chapter_meta.get(chap_id, {}).get("name", chap_id)
             try:
-                image_urls, scramble_id = jm.get_chapter_images(chap_id)
-                comic = ComicInfo(
-                    id=chap_id,
-                    title=f"{album_title} - {chap_name}",
-                    source_site="jmcomic",
-                    comic_source="JMCOMIC",
-                    media_id=chap_id,
-                    image_urls=image_urls,
-                    pages=len(image_urls),
-                    scramble_id=scramble_id,
-                    album_id=album_id,
-                    album_total_chapters=total,
-                )
+                if source_site == "bika":
+                    chap_order = chapter_meta.get(chap_id, {}).get("index", 1)
+                    parser = self.parser.parsers.get("bika")
+                    if parser is None:
+                        raise ValueError("bika source unavailable")
+                    image_urls = parser.get_chapter_images(album_id, chap_order)
+                    comic = ComicInfo(
+                        id=chap_id,
+                        title=f"{album_title} - {chap_name}",
+                        source_site="bika",
+                        comic_source="BIKA",
+                        media_id=chap_id,
+                        image_urls=image_urls,
+                        pages=len(image_urls),
+                        album_id=album_id,
+                        album_total_chapters=total,
+                    )
+                else:
+                    jm = self.parser.parsers.get("jmcomic")
+                    if jm is None:
+                        raise ValueError("jmcomic source unavailable")
+                    image_urls, scramble_id = jm.get_chapter_images(chap_id)
+                    comic = ComicInfo(
+                        id=chap_id,
+                        title=f"{album_title} - {chap_name}",
+                        source_site="jmcomic",
+                        comic_source="JMCOMIC",
+                        media_id=chap_id,
+                        image_urls=image_urls,
+                        pages=len(image_urls),
+                        scramble_id=scramble_id,
+                        album_id=album_id,
+                        album_total_chapters=total,
+                    )
                 task_ids.append(
                     self._download_manager.add_task(comic, overwrite=overwrite)
                 )

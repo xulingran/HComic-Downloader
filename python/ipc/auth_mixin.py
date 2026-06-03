@@ -94,3 +94,22 @@ class AuthMixin:
         moeimg_parser.set_stored_credentials(username, password)
         logger.info("moeimg login successful for user %s", username)
         return {"success": True, "message": "登录成功"}
+
+    def handle_bika_login(self, username: str, password: str) -> dict:
+        if not username or not username.strip():
+            raise ValueError("请输入用户名")
+        if not password or not password.strip():
+            raise ValueError("请输入密码")
+        username = username.strip()
+        password = password.strip()
+        bika_parser = self.parser.parsers.get("bika")
+        if not bika_parser:
+            raise ValueError("bika 来源不可用")
+        token = bika_parser.login(username, password)
+        self.config.set_source_auth(
+            "bika", bearer_token=token, username=username, password=password
+        )
+        self.config.save(_get_config_path())
+        self.parser.configure_auth(bearer_token=token, source="bika")
+        logger.info("bika login successful for user %s", username)
+        return {"success": True, "message": "登录成功"}
