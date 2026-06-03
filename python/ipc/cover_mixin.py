@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 MAX_COVER_SIZE = 10 * 1024 * 1024  # 10MB — high-res manga covers
+_COVER_SIZE_MB = MAX_COVER_SIZE // 1024 // 1024
 
 
 class CoverMixin:
@@ -25,13 +26,6 @@ class CoverMixin:
     parser: MultiSourceParser
     _cover_cache: CoverCacheDB
     _write_response: Callable[[dict], None]
-
-    ALLOWED_COVER_DOMAINS = {
-        "h-comic.link",
-        "moeimg.fan",
-        "moeimg.net",
-        "jmcomic-zzz.one",
-    }
 
     def _build_cover_session(self, referer_domain: str = ""):
         """Create a thread-safe requests session with auth, cookies, and TLS fingerprinting.
@@ -81,12 +75,6 @@ class CoverMixin:
         parsed = urlparse(url)
         if parsed.scheme != "https":
             raise ValueError("Only HTTPS URLs are allowed")
-        hostname = parsed.hostname or ""
-        if not any(
-            hostname == d or hostname.endswith("." + d)
-            for d in self.ALLOWED_COVER_DOMAINS
-        ):
-            raise ValueError(f"Domain not allowed: {hostname}")
 
     def _do_fetch_cover(self, url: str) -> str:
         """Fetch cover image and return base64 data URI (thread-safe, called from pool)."""
@@ -104,18 +92,12 @@ class CoverMixin:
         response = session.get(url, timeout=10, headers=headers, stream=True)
         response.raise_for_status()
 
-        # Validate final URL after redirects is still on an allowed domain and HTTPS
+        # Validate final URL after redirects is still HTTPS
         final_parsed = urlparse(response.url)
         if final_parsed.scheme != "https":
             raise ValueError(
                 f"Redirect target must use HTTPS, got: {final_parsed.scheme}"
             )
-        final_hostname = final_parsed.hostname or ""
-        if not any(
-            final_hostname == d or final_hostname.endswith("." + d)
-            for d in self.ALLOWED_COVER_DOMAINS
-        ):
-            raise ValueError(f"Redirect target domain not allowed: {final_hostname}")
 
         # Read up to MAX_COVER_SIZE + 1 byte - if we get more, the image is too large
         max_size = MAX_COVER_SIZE
@@ -124,7 +106,9 @@ class CoverMixin:
         for chunk in response.iter_content(chunk_size=8192):
             total += len(chunk)
             if total > max_size:
-                raise ValueError("Image too large")
+                raise ValueError(
+                    f"Cover image too large (exceeds {_COVER_SIZE_MB} MB limit)"
+                )
             chunks.append(chunk)
         content = b"".join(chunks)
 

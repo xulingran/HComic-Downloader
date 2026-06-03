@@ -11,6 +11,8 @@ from urllib.parse import urlparse
 from .image_utils import detect_image_type, referer_for_image_url
 from .types import _PREVIEW_IMAGE_MAX_SIZE
 
+_PREVIEW_SIZE_MB = _PREVIEW_IMAGE_MAX_SIZE // 1024 // 1024
+
 if TYPE_CHECKING:
     from downloader import ComicDownloader
 
@@ -110,7 +112,9 @@ class PreviewMixin:
                         continue
                     total += len(chunk)
                     if total > max_size:
-                        raise ValueError("Image too large")
+                        raise ValueError(
+                            f"Preview image too large (exceeds {_PREVIEW_SIZE_MB} MB limit)"
+                        )
                     chunks.append(chunk)
             content = b"".join(chunks)
         finally:
