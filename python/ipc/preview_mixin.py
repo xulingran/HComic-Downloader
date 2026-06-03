@@ -49,6 +49,8 @@ class PreviewMixin:
         "moeimg.net",
         "cdndelivers.cloud",
         "bunnyssd.com",
+        "18comic.vip",
+        "18comic.org",
         "jmcomic-zzz.one",
     }
 
