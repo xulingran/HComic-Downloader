@@ -13,12 +13,12 @@ from models import ChapterInfo, ComicInfo, PaginationInfo
 from utils import configure_session_auth
 
 from .constants import (
+    DEFAULT_DOMAIN,
     HEADERS,
     RANDOM_URL_TEMPLATE,
     RANKING_MAPPINGS,
     SEARCH_URL_TEMPLATE,
 )
-from .domain import JmDomainResolver
 from .session import create_session
 
 logger = logging.getLogger(__name__)
@@ -36,6 +36,7 @@ class JmParser:
         self._user_agent = user_agent
         self._domain: str | None = None
         self._cdn_domain: str | None = None
+        self._username: str | None = None  # 从收藏夹页面发现，用于构造规范 URL
         self._cookie_synced = False
         self.session = create_session()
         self.session.headers.update(HEADERS)
@@ -43,16 +44,15 @@ class JmParser:
 
     def _ensure_domain(self) -> str:
         if not self._domain:
-            resolver = JmDomainResolver()
-            self._domain = resolver.resolve()
+            self._domain = DEFAULT_DOMAIN
         self._sync_cookies_to_jar()
         return self._domain
 
     def _sync_cookies_to_jar(self):
         """将 self._cookie 中的 cookies 设置到 session cookie jar 中。
 
-        curl_cffi/libcurl 不认可 session.headers['Cookie']，
-        必须通过 cookie jar 设置才能随请求发送。
+        使用 http.cookiejar.Cookie 对象 + set_cookie() 方式设置，
+        确保与 curl_cffi/libcurl 的 cookie engine 兼容。
         """
         if (
             getattr(self, "_cookie_synced", False)
@@ -61,17 +61,53 @@ class JmParser:
         ):
             return
         try:
+            from http.cookiejar import Cookie
+
+            # 兼容 curl_cffi 与 requests 两种 cookie 容器：
+            # - requests.RequestsCookieJar 直接提供 set_cookie()
+            # - curl_cffi.requests.cookies.Cookies 不提供 set_cookie()，
+            #   但其底层 .jar 是标准 http.cookiejar.CookieJar，提供 set_cookie()
+            cookies_obj = self.session.cookies
+            if hasattr(cookies_obj, "set_cookie"):
+                jar = cookies_obj
+            elif hasattr(cookies_obj, "jar") and hasattr(cookies_obj.jar, "set_cookie"):
+                jar = cookies_obj.jar
+            else:
+                raise AttributeError(
+                    "session.cookies 不支持 set_cookie，无法同步认证 cookie"
+                )
+
+            count = 0
             for part in self._cookie.split(";"):
                 part = part.strip()
-                if "=" in part:
-                    name, value = part.split("=", 1)
-                    self.session.cookies.set(
-                        name.strip(), value.strip(), domain=self._domain
-                    )
+                if "=" not in part:
+                    continue
+                name, value = part.split("=", 1)
+                cookie = Cookie(
+                    version=0,
+                    name=name.strip(),
+                    value=value.strip(),
+                    port=None,
+                    port_specified=False,
+                    domain=self._domain,
+                    domain_specified=True,
+                    domain_initial_dot=False,
+                    path="/",
+                    path_specified=True,
+                    secure=True,
+                    expires=None,
+                    discard=False,
+                    comment=None,
+                    comment_url=None,
+                    rest={},
+                    rfc2109=False,
+                )
+                jar.set_cookie(cookie)
+                count += 1
             self._cookie_synced = True
             logger.info(
                 "Synced %d cookies to jar for domain %s",
-                self._cookie.count(";") + 1,
+                count,
                 self._domain,
             )
         except Exception:
@@ -115,20 +151,76 @@ class JmParser:
         self.close()
 
     def verify_login_status(self) -> tuple[bool, str]:
-        """通过访问需要登录的页面验证 Cookie 有效性。"""
+        """通过访问首页导航栏验证 Cookie 有效性并提取用户名。
+
+        /user/favorites 旧路径已被服务端废弃（直接返回 403），
+        改为请求首页并从导航栏判断是否已登录。已登录时导航栏包含
+        /user/{username}/favorite 形式的链接，可同时发现用户名。
+        """
         domain = self._ensure_domain()
         try:
-            url = f"https://{domain}/user/favorites"
-            resp = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+            url = f"https://{domain}/"
+            resp = self.session.get(
+                url,
+                timeout=self.timeout,
+                allow_redirects=True,
+                headers={"Referer": f"https://{domain}/"},
+            )
             # 检测 Cloudflare 拦截
             if resp.status_code == 403 and "Just a moment" in resp.text[:200]:
                 return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
-            if resp.url and "/login" in str(resp.url):
-                return False, "登录已失效，请重新登录"
-            if resp.status_code == 200:
+            if resp.status_code != 200:
+                logger.warning(
+                    "jmcomic verify_login: unexpected status=%d url=%s",
+                    resp.status_code,
+                    resp.url,
+                )
+                return False, "登录校验失败，请确认 Cookie 是否有效"
+            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
+                resp.encoding = "utf-8"
+            html = resp.text
+            doc = etree.HTML(html)
+            # 已登录：导航栏含 /user/{username}/favorite 链接
+            fav_links = doc.xpath('//a[contains(@href,"/favorite")]/@href')
+            for href in fav_links:
+                m = re.search(r"/user/([^/?#]+)/favorite", href)
+                if m:
+                    username = m.group(1)
+                    if self._username != username:
+                        self._username = username
+                        logger.info(
+                            "Discovered jmcomic username from navbar: %s", username
+                        )
+                    return True, "登录校验通过"
+            # 次级检测：导航栏含登出链接也表示已登录
+            logout_links = doc.xpath(
+                '//a[contains(@href,"logout") or contains(@href,"sign_out")]'
+            )
+            if logout_links:
+                # 尝试从 /user/{username} 链接补充用户名
+                for href in doc.xpath('//a[contains(@href,"/user/")]/@href'):
+                    m = re.search(r"/user/([^/?#]+)", href)
+                    if m and m.group(1) not in ("profile", "favorites", "setting"):
+                        self._username = self._username or m.group(1)
+                        break
                 return True, "登录校验通过"
-            return False, "登录已失效，请重新登录"
+            # 页面含「登入」链接，说明未登录
+            login_links = doc.xpath(
+                '//a[contains(@href,"/login") or contains(text(),"登入") '
+                'or contains(text(),"登录")]'
+            )
+            if login_links:
+                return False, "登录已失效，请重新登录"
+            logger.warning(
+                "jmcomic verify_login: cannot determine login state "
+                "(status=%d, fav_links=%d, login_links=%d)",
+                resp.status_code,
+                len(fav_links),
+                len(login_links),
+            )
+            return False, "登录校验失败，请确认 Cookie 是否有效"
         except requests.RequestException as e:
+            logger.warning("jmcomic verify_login request failed: %s", e)
             return False, f"登录校验失败: {e}"
 
     def add_to_favourites(self, comic_id: str) -> bool:
@@ -288,6 +380,71 @@ class JmParser:
         detail = self._parse_detail(html, comic_id=chapter_id, domain=domain)
         return detail.image_urls, detail.scramble_id
 
+    def _build_favourites_url(self, domain: str, page: int) -> str:
+        """构造收藏夹请求 URL。
+
+        jmcomic 真实收藏夹 URL 格式为：
+            https://{domain}/user/{username}/favorite/albums?page=N
+
+        /user/favorites 旧路径已被服务端废弃，直接返回 403，不再使用。
+        用户名必须在调用前通过 _ensure_username() 先行发现。
+        """
+        if not self._username:
+            raise RuntimeError(
+                "jmcomic 用户名未知，无法构造收藏夹 URL。"
+                "请先确保 verify_login_status() 或 _ensure_username() 已被调用。"
+            )
+        base = f"https://{domain}/user/{self._username}/favorite/albums"
+        return base if page <= 1 else f"{base}?page={page}"
+
+    def _ensure_username(self, domain: str) -> bool:
+        """确保 _username 已被发现。若未知则请求首页提取。
+
+        返回 True 表示成功发现用户名，False 表示未登录或发现失败。
+        """
+        if self._username:
+            return True
+        try:
+            resp = self.session.get(
+                f"https://{domain}/",
+                timeout=self.timeout,
+                allow_redirects=True,
+                headers={"Referer": f"https://{domain}/"},
+            )
+            if resp.status_code != 200:
+                return False
+            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
+                resp.encoding = "utf-8"
+            doc = etree.HTML(resp.text)
+            for href in doc.xpath('//a[contains(@href,"/favorite")]/@href'):
+                m = re.search(r"/user/([^/?#]+)/favorite", href)
+                if m:
+                    self._username = m.group(1)
+                    logger.info(
+                        "Discovered jmcomic username from homepage navbar: %s",
+                        self._username,
+                    )
+                    return True
+            # 次级：从任意 /user/{name} 链接提取（排除通用路径）
+            _GENERIC = {"profile", "favorites", "setting", "my_favourite"}
+            for href in doc.xpath('//a[contains(@href,"/user/")]/@href'):
+                m = re.search(r"/user/([^/?#]+)", href)
+                if m and m.group(1) not in _GENERIC:
+                    self._username = m.group(1)
+                    logger.info(
+                        "Discovered jmcomic username from user link: %s",
+                        self._username,
+                    )
+                    return True
+            logger.warning(
+                "Could not discover jmcomic username from homepage "
+                "(not logged in or navbar structure changed)"
+            )
+            return False
+        except Exception as e:
+            logger.warning("_ensure_username request failed: %s", e)
+            return False
+
     def favourites(
         self, page: int = 1, raise_errors: bool = False
     ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
@@ -301,10 +458,15 @@ class JmParser:
             (漫画信息列表, 分页信息, 是否需要登录)
         """
         domain = self._ensure_domain()
-        url = f"https://{domain}/user/favorites"
-        if page > 1:
-            url += f"?page={page}"
+        # 用户名未知时，先从首页导航栏发现（verify_login_status 通常已完成此步骤）
+        if not self._username and not self._ensure_username(domain):
+            logger.warning(
+                "jmcomic favourites: username unknown and homepage discovery failed "
+                "(not logged in?)"
+            )
+            return [], None, True
         try:
+            url = self._build_favourites_url(domain, page)
             resp = self.session.get(
                 url,
                 timeout=self.timeout,
@@ -314,16 +476,42 @@ class JmParser:
             # 检查是否重定向到登录页面
             if resp.url and "/login" in str(resp.url):
                 return [], None, True
+            resp.raise_for_status()
             if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
                 resp.encoding = "utf-8"
             html = resp.text
+            if not html or not html.strip():
+                logger.warning(
+                    "jmcomic favourites returned empty response (status=%d)",
+                    resp.status_code,
+                )
+                return [], None, False
+            # 检测 Cloudflare / 反爬页面
+            if len(html) < 500 and (
+                "cloudflare" in html.lower()
+                or "captcha" in html.lower()
+                or "cf-" in html.lower()
+            ):
+                logger.warning(
+                    "jmcomic favourites page looks like a challenge page (%d bytes)",
+                    len(html),
+                )
+                return [], None, False
             doc = etree.HTML(html)
             # 检查是否需要登录（页面包含登录提示）
             login_prompt = doc.xpath('//div[contains(text(),"請先登入")]')
             if login_prompt:
                 return [], None, True
-            comics = self._parse_favourites_items(doc, domain=domain)
-            pagination = self._parse_pagination(doc)
+            try:
+                comics = self._parse_favourites_items(doc, domain=domain)
+            except Exception:
+                comics = []
+                logger.warning("Failed to parse favourites items", exc_info=True)
+            try:
+                pagination = self._parse_pagination(doc)
+            except Exception:
+                pagination = None
+                logger.warning("Failed to parse favourites pagination", exc_info=True)
             # 部分条目标题由 JS 懒加载，HTML 中不存在；
             # 通过并发获取专辑详情页来补全缺失的标题。
             self._fill_missing_titles(comics, domain)
@@ -346,11 +534,15 @@ class JmParser:
                 '//div[contains(@class,"thumb") and not(contains(@class,"thumb-overlay"))]'
             )
         comics = []
+        seen: set[str] = set()
         for item in items:
             try:
                 comic = self._parse_search_item(item, domain=domain)
-                if comic:
+                if comic and comic.id not in seen:
+                    seen.add(comic.id)
                     comics.append(comic)
+                elif comic:
+                    logger.debug("Skipped duplicate favourites item: id=%s", comic.id)
             except Exception as e:
                 logger.debug("Parse favourites item skipped: %s", e)
         if comics:
@@ -393,13 +585,24 @@ class JmParser:
             len(comics),
         )
 
-        # 将主 session 的 cookies 预先序列化，供各线程独立注入
+        # 将主 session 的 cookies 预先序列化，供各线程独立注入。
+        # 注意：curl_cffi 的 Cookies 对象迭代产出的是 cookie 名（str），
+        # 没有 .name/.value 属性；requests 的 RequestsCookieJar 迭代产出 Cookie 对象。
+        # 统一用 get_dict() 取键值对，兼容两种库。
         main_cookies: list[tuple[str, str]] = []
         try:
-            for cookie in self.session.cookies:
-                main_cookies.append((cookie.name, cookie.value))
+            cookie_dict = self.session.cookies.get_dict()
+            main_cookies = list(cookie_dict.items())
         except Exception:
-            pass
+            logger.warning(
+                "Failed to serialize main session cookies for title fetch",
+                exc_info=True,
+            )
+        if not main_cookies:
+            logger.warning(
+                "No cookies available for title-fetch threads; "
+                "age-restricted albums may redirect to login"
+            )
 
         def _fetch_title(cid: str) -> tuple[str, str, str]:
             """线程安全：独立 session + 完整 headers 上下文。
@@ -427,18 +630,70 @@ class JmParser:
                 # 检查是否被重定向到登录页（限制级漫画需要登录）
                 if r.url and "/login" in str(r.url):
                     return cid, "", "redirected to login (age-restricted?)"
+                # 检查是否被重定向到错误页（专辑已下架/不存在）
+                if r.url and "/error/" in str(r.url):
+                    return cid, "", "album error page (missing/removed)"
                 r.raise_for_status()
                 if not r.encoding or r.encoding.lower() in ("iso-8859-1", "latin-1"):
                     r.encoding = "utf-8"
                 doc = etree.HTML(r.text)
                 title_el = doc.xpath('//h1[@id="book-name"]/text()')
-                if title_el:
+                if title_el and title_el[0].strip():
                     return cid, title_el[0].strip(), ""
-                # 页面加载成功但未找到标题元素
                 h1_fallback = doc.xpath("//h1/text()")
-                if h1_fallback:
+                if h1_fallback and h1_fallback[0].strip():
                     return cid, h1_fallback[0].strip(), ""
-                return cid, "", "h1#book-name not found in page"
+                og_title = doc.xpath('//meta[@property="og:title"]/@content')
+                if og_title and og_title[0].strip():
+                    return cid, og_title[0].strip(), ""
+                twitter_title = doc.xpath('//meta[@name="twitter:title"]/@content')
+                if twitter_title and twitter_title[0].strip():
+                    return cid, twitter_title[0].strip(), ""
+                page_title = doc.xpath("//title/text()")
+                if page_title and page_title[0].strip():
+                    raw = page_title[0].strip()
+                    for sep in (" | ", " - ", " – ", " — "):
+                        if sep in raw:
+                            raw = raw.split(sep, 1)[0].strip()
+                    if raw and raw.lower() not in (
+                        "禁漫天堂",
+                        "18comic",
+                        "jmcomic",
+                        "18comic.vip",
+                        "jmcomic-zzz.one",
+                    ):
+                        return cid, raw, ""
+                # JSON-LD 结构化数据（如 ComicSeries / Book 等 schema）
+                import json as _json
+
+                for script in doc.xpath('//script[@type="application/ld+json"]/text()'):
+                    try:
+                        data = _json.loads(script)
+                        if isinstance(data, dict):
+                            name = data.get("name", "")
+                            if name and name.strip():
+                                return cid, name.strip(), ""
+                            headline = data.get("headline", "")
+                            if headline and headline.strip():
+                                return cid, headline.strip(), ""
+                        if isinstance(data, list):
+                            for item in data:
+                                name = (
+                                    item.get("name", "")
+                                    if isinstance(item, dict)
+                                    else ""
+                                )
+                                if name and name.strip():
+                                    return cid, name.strip(), ""
+                    except (_json.JSONDecodeError, TypeError, ValueError):
+                        continue
+                body_snippet = (doc.xpath("//body//text()") or [])[:20]
+                logger.warning(
+                    "_fetch_title: h1/og/title not found for %s (body_sample=%s)",
+                    cid,
+                    " ".join(t[:60] for t in body_snippet if t.strip()),
+                )
+                return cid, "", "title not found in page"
             except Exception as e:
                 err_msg = str(e)[:120]
                 return cid, "", err_msg
@@ -456,6 +711,8 @@ class JmParser:
                     fetched += 1
                 elif error and cid in cid_to_idx:
                     failures.append((cid, error))
+                elif cid in cid_to_idx:
+                    failures.append((cid, "title not found"))
 
         if fetched:
             logger.info("Filled %d missing titles from album detail pages", fetched)
@@ -623,21 +880,52 @@ class JmParser:
         )
 
     def _parse_pagination(self, doc) -> PaginationInfo | None:
-        """解析分页信息。"""
-        page_links = doc.xpath('//ul[@class="pagination"]/li/a/text()')
-        if not page_links:
+        """解析分页信息。
+
+        jmcomic 分页结构（实测）：
+          <ul class="pagination">
+            <li><a href="...?page=1">«</a></li>   <!-- 上一页 -->
+            <li class=""><a href="...?page=1">1</a></li>
+            <li class="active">2</li>              <!-- 当前页：只有文本，无 <a> -->
+            <li class=""><a href="...?page=3">3</a></li>
+            ...
+            <li class="hidden-xs"><a href="...?page=125">125</a></li>
+            <li><a href="...?page=3">»</a></li>   <!-- 下一页 -->
+          </ul>
+
+        当前页在 class="active" 的 <li> 文本中，其余页码从 <a href> 中的
+        ?page=N 提取，因此不能依赖链接文本（«/» 等非数字文本会干扰）。
+        """
+        pag_uls = doc.xpath('//ul[contains(@class,"pagination")]')
+        if not pag_uls:
             return None
-        pages = []
-        for text in page_links:
+        ul = pag_uls[0]
+
+        # 从 href 中提取所有数字页码
+        pages: set[int] = set()
+        for href in ul.xpath(".//a/@href"):
+            m = re.search(r"[?&]page=(\d+)", href)
+            if m:
+                pages.add(int(m.group(1)))
+
+        # 当前页：class="active" 的 <li> 的文本内容
+        current_page = 1
+        for li in ul.xpath('./li[contains(@class,"active")]'):
+            raw = "".join(li.itertext()).strip()
             try:
-                pages.append(int(text.strip()))
+                current_page = int(raw)
+                break
             except ValueError:
                 continue
-        if not pages:
-            return None
-        total_pages = max(pages)
+
+        if not pages and current_page == 1:
+            # 只有一页，pagination 存在但无翻页链接
+            return PaginationInfo(current_page=1, total_pages=1, total_items=0)
+
+        # total_pages = max(href 中的页码, current_page)
+        total_pages = max(max(pages, default=1), current_page)
         return PaginationInfo(
-            current_page=pages[0] if pages else 1,
+            current_page=current_page,
             total_pages=total_pages,
             total_items=0,
         )
@@ -651,7 +939,31 @@ class JmParser:
         """
         doc = etree.HTML(html)
         title_el = doc.xpath('//h1[@id="book-name"]/text()') or doc.xpath("//h1/text()")
-        title = title_el[0].strip() if title_el else "未知标题"
+        title_from_h1 = title_el[0].strip() if title_el else ""
+        if not title_from_h1:
+            og_title = doc.xpath('//meta[@property="og:title"]/@content')
+            if og_title and og_title[0].strip():
+                title_from_h1 = og_title[0].strip()
+        if not title_from_h1:
+            twitter_title = doc.xpath('//meta[@name="twitter:title"]/@content')
+            if twitter_title and twitter_title[0].strip():
+                title_from_h1 = twitter_title[0].strip()
+        if not title_from_h1:
+            page_title = doc.xpath("//title/text()")
+            if page_title and page_title[0].strip():
+                raw = page_title[0].strip()
+                for sep in (" | ", " - ", " – ", " — "):
+                    if sep in raw:
+                        raw = raw.split(sep, 1)[0].strip()
+                if raw and raw.lower() not in (
+                    "禁漫天堂",
+                    "18comic",
+                    "jmcomic",
+                    "18comic.vip",
+                    "jmcomic-zzz.one",
+                ):
+                    title_from_h1 = raw
+        title = title_from_h1 or "未知标题"
 
         # 定位信息区块：封面块之后的第一个兄弟 div
         info_el = None

@@ -137,3 +137,25 @@ class JmDomainResolver:
             return resp.status_code < 500
         except Exception:
             return False
+
+    def fetch_available_domains(self) -> list[str]:
+        """从发布页获取域名列表（不自动选择，纯列表供设置页展示）。"""
+        try:
+            domains = self._fetch_publish_domains()
+        except (requests.RequestException, ValueError) as e:
+            logger.warning("Failed to fetch publish domains: %s", e)
+            domains = []
+        # 默认域名始终排在第一位
+        result: list[str] = []
+        if DEFAULT_DOMAIN not in domains:
+            result.append(DEFAULT_DOMAIN)
+        for d in domains:
+            if d not in result:
+                result.append(d)
+        return result
+
+
+def get_jmcomic_domain_list() -> list[str]:
+    """获取 jmcomic 可用域名列表，供设置页展示。"""
+    resolver = JmDomainResolver()
+    return resolver.fetch_available_domains()
