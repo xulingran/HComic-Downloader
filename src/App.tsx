@@ -8,6 +8,7 @@ import { DownloadPage } from './pages/DownloadPage'
 import { FavouritesPage } from './pages/FavouritesPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { ToolboxPage } from './pages/ToolboxPage'
 import { Toast } from './components/common/Toast'
 import { ComicInfoDrawer } from './components/ComicInfoDrawer'
 import { ComicReaderModal } from './components/ComicReaderModal'
@@ -112,6 +113,8 @@ function App() {
         return <HistoryPage />
       case 'settings':
         return <SettingsPage scrollTarget={scrollTarget} onScrollDone={() => setScrollTarget(null)} />
+      case 'toolbox':
+        return <ToolboxPage />
       default:
         return <div className="text-[var(--text-primary)]">Unknown page</div>
     }

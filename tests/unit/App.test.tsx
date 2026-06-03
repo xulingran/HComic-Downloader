@@ -31,6 +31,11 @@ vi.mock('@/hooks/useIpc', () => ({
   }),
   useComicDetail: vi.fn().mockReturnValue({
     getComicDetail: vi.fn().mockResolvedValue({ comic: null })
+  }),
+  useFavouriteTags: vi.fn().mockReturnValue({
+    getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
+    syncFavouriteTags: vi.fn().mockResolvedValue({ synced: 0 }),
+    removeFavouriteTag: vi.fn().mockResolvedValue({ success: true })
   })
 }))
 
@@ -45,6 +50,8 @@ vi.mock('@/components/Sidebar', () => ({
       <button onClick={() => onPageChange('search')}>Search</button>
       <button onClick={() => onPageChange('downloads')}>Downloads</button>
       <button onClick={() => onPageChange('favourites')}>Favourites</button>
+      <button onClick={() => onPageChange('history')}>History</button>
+      <button onClick={() => onPageChange('toolbox')}>Toolbox</button>
       <button onClick={() => onPageChange('settings')}>Settings</button>
     </div>
   )
@@ -64,6 +71,14 @@ vi.mock('@/pages/FavouritesPage', () => ({
 
 vi.mock('@/pages/SettingsPage', () => ({
   SettingsPage: () => <div data-testid="settings-page">Settings Page</div>
+}))
+
+vi.mock('@/pages/ToolboxPage', () => ({
+  ToolboxPage: () => <div data-testid="toolbox-page">Toolbox Page</div>
+}))
+
+vi.mock('@/pages/HistoryPage', () => ({
+  HistoryPage: () => <div data-testid="history-page">History Page</div>
 }))
 
 // Import App after all mocks
@@ -175,5 +190,14 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.queryByText('当前处于 SFW 模式，封面已隐藏')).toBeNull()
     })
+  })
+
+  it('switches to toolbox page when Toolbox button clicked', async () => {
+    render(<App />)
+
+    await userEvent.click(screen.getByText('Toolbox'))
+
+    expect(screen.getByTestId('toolbox-page')).toBeInTheDocument()
+    expect(screen.getByTestId('active-page')).toHaveTextContent('toolbox')
   })
 })
