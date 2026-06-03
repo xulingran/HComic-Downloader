@@ -10,9 +10,10 @@ import time
 import requests
 from lxml import etree
 
+from utils import apply_system_proxy_to_session
+
 from .constants import DEFAULT_DOMAIN, HEADERS, PUBLISH_URL
 from .session import create_session
-from utils import apply_system_proxy_to_session
 
 logger = logging.getLogger(__name__)
 

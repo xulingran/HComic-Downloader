@@ -45,14 +45,16 @@ class PreviewMixin:
     _write_response: Callable[[dict], None]
 
     # 静态基础白名单，jmcomic 动态域名在校验时从 parser 实时获取
-    _BASE_PREVIEW_IMAGE_DOMAINS = frozenset({
-        "h-comic.com",
-        "h-comic.link",
-        "moeimg.fan",
-        "moeimg.net",
-        "cdndelivers.cloud",
-        "bunnyssd.com",
-    })
+    _BASE_PREVIEW_IMAGE_DOMAINS = frozenset(
+        {
+            "h-comic.com",
+            "h-comic.link",
+            "moeimg.fan",
+            "moeimg.net",
+            "cdndelivers.cloud",
+            "bunnyssd.com",
+        }
+    )
 
     def _get_allowed_preview_domains(self) -> set[str]:
         """合并静态白名单与 jmcomic 动态域名（主域名 + CDN 域名）。
@@ -63,6 +65,7 @@ class PreviewMixin:
         domains = set(self._BASE_PREVIEW_IMAGE_DOMAINS)
         # 默认域名始终允许
         from sources.jmcomic.constants import DEFAULT_DOMAIN
+
         domains.add(DEFAULT_DOMAIN)
         jm = self.parser.parsers.get("jmcomic")
         if jm:
@@ -84,10 +87,7 @@ class PreviewMixin:
             raise ValueError("Only HTTPS URLs are allowed")
         hostname = parsed.hostname or ""
         allowed = self._get_allowed_preview_domains()
-        if not any(
-            hostname == d or hostname.endswith("." + d)
-            for d in allowed
-        ):
+        if not any(hostname == d or hostname.endswith("." + d) for d in allowed):
             raise ValueError(f"Domain not allowed: {hostname}")
 
     def _fetch_image_as_data_uri(self, url: str, max_size: int) -> str:

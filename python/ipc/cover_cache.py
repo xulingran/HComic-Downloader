@@ -50,7 +50,9 @@ class CoverCacheDB:
         ex = self._conn.execute("PRAGMA table_info(cover_cache)").fetchall()
         cols = {r[1] for r in ex}
         if "size" not in cols:
-            self._conn.execute("ALTER TABLE cover_cache ADD COLUMN size INTEGER NOT NULL DEFAULT 0")
+            self._conn.execute(
+                "ALTER TABLE cover_cache ADD COLUMN size INTEGER NOT NULL DEFAULT 0"
+            )
         self._conn.commit()
 
         self._memory: OrderedDict[str, tuple[str, int]] = OrderedDict()
@@ -171,9 +173,7 @@ class CoverCacheDB:
         ).fetchall()
         freed = 0
         for rhash, rsize in rows:
-            self._conn.execute(
-                "DELETE FROM cover_cache WHERE url_hash = ?", (rhash,)
-            )
+            self._conn.execute("DELETE FROM cover_cache WHERE url_hash = ?", (rhash,))
             freed += rsize
             if freed >= excess:
                 break
