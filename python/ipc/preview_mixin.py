@@ -15,6 +15,7 @@ _PREVIEW_SIZE_MB = _PREVIEW_IMAGE_MAX_SIZE // 1024 // 1024
 
 if TYPE_CHECKING:
     from downloader import ComicDownloader
+    from sources import MultiSourceParser
 
 logger = logging.getLogger(__name__)
 
@@ -40,19 +41,38 @@ class PreviewMixin:
     """Mixin providing preview page image fetch methods."""
 
     downloader: ComicDownloader
+    parser: MultiSourceParser
     _write_response: Callable[[dict], None]
 
-    ALLOWED_PREVIEW_IMAGE_DOMAINS = {
+    # 静态基础白名单，jmcomic 动态域名在校验时从 parser 实时获取
+    _BASE_PREVIEW_IMAGE_DOMAINS = frozenset({
         "h-comic.com",
         "h-comic.link",
         "moeimg.fan",
         "moeimg.net",
         "cdndelivers.cloud",
         "bunnyssd.com",
-        "18comic.vip",
-        "18comic.org",
-        "jmcomic-zzz.one",
-    }
+    })
+
+    def _get_allowed_preview_domains(self) -> set[str]:
+        """合并静态白名单与 jmcomic 动态域名（主域名 + CDN 域名）。
+
+        jmcomic 镜像域名频繁变更，CDN 子域名在解析漫画详情时才被
+        发现（如 cdn-msp.18comic.vip），硬编码无法覆盖所有情况。
+        """
+        domains = set(self._BASE_PREVIEW_IMAGE_DOMAINS)
+        # 默认域名始终允许
+        from sources.jmcomic.constants import DEFAULT_DOMAIN
+        domains.add(DEFAULT_DOMAIN)
+        jm = self.parser.parsers.get("jmcomic")
+        if jm:
+            domain = getattr(jm, "_domain", None)
+            if isinstance(domain, str):
+                domains.add(domain)
+            cdn = getattr(jm, "cdn_domain", None)
+            if isinstance(cdn, str):
+                domains.add(cdn)
+        return domains
 
     def _validate_preview_image_url(self, url: str) -> None:
         if not url or not isinstance(url, str):
@@ -63,9 +83,10 @@ class PreviewMixin:
         if parsed.scheme != "https":
             raise ValueError("Only HTTPS URLs are allowed")
         hostname = parsed.hostname or ""
+        allowed = self._get_allowed_preview_domains()
         if not any(
             hostname == d or hostname.endswith("." + d)
-            for d in self.ALLOWED_PREVIEW_IMAGE_DOMAINS
+            for d in allowed
         ):
             raise ValueError(f"Domain not allowed: {hostname}")
 
@@ -88,7 +109,7 @@ class PreviewMixin:
                 )
             if not any(
                 final_hostname == d or final_hostname.endswith("." + d)
-                for d in self.ALLOWED_PREVIEW_IMAGE_DOMAINS
+                for d in self._get_allowed_preview_domains()
             ):
                 raise ValueError(
                     f"Redirect target domain not allowed: {final_hostname}"
