@@ -31,7 +31,6 @@ from ipc.migration_mixin import MigrationMixin  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
 from ipc.search_mixin import SearchMixin  # noqa: E402
 from ipc.types import (  # noqa: E402,F401
-    _COVER_CACHE_MAX_SIZE,
     _COVER_POOL_MAX_WORKERS,
     _PREVIEW_IMAGE_MAX_SIZE,
     _PREVIEW_POOL_MAX_WORKERS,
@@ -122,8 +121,7 @@ class IPCServer(
             raise
         self._stdout_lock = threading.Lock()
         self._cover_cache = CoverCacheDB(
-            preload=_COVER_CACHE_MAX_SIZE,
-            max_disk=_COVER_CACHE_MAX_SIZE * 2 + 100,
+            max_size_mb=getattr(self.config, "preview_cache_size_limit_mb", 500),
         )
 
         from ipc.preview_cache import PreviewCacheDB
@@ -171,6 +169,7 @@ class IPCServer(
         "remove_from_favourites": "handle_remove_from_favourites",
         "apply_auth": "handle_apply_auth",
         "verify_auth": "handle_verify_auth",
+        "moeimg_login": "handle_moeimg_login",
         "get_config": "handle_get_config",
         "set_config": "handle_set_config",
         "get_downloads": "handle_get_downloads",
@@ -182,6 +181,7 @@ class IPCServer(
         "toggle_global_pause": "handle_toggle_global_pause",
         "get_proxy_status": "handle_get_proxy_status",
         "get_available_fonts": "handle_get_available_fonts",
+        "get_jmcomic_domains": "handle_get_jmcomic_domains",
         "open_download_dir": "handle_open_download_dir",
         "get_download_detail": "handle_get_download_detail",
         "get_preview_urls": "handle_get_preview_urls",
@@ -276,9 +276,9 @@ class IPCServer(
 
     def run(self):
         logger.info(
-            "IPC Server started (cover fetches: thread pool, %d workers, cache max %d)",
+            "IPC Server started (cover fetches: thread pool, %d workers, cache max %d MB)",
             _COVER_POOL_MAX_WORKERS,
-            _COVER_CACHE_MAX_SIZE,
+            getattr(self.config, "preview_cache_size_limit_mb", 500),
         )
         for line in sys.stdin:
             line = line.strip()

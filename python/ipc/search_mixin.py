@@ -132,15 +132,29 @@ class SearchMixin:
     def handle_get_favourites(self, page: int = 1, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic")
+        valid_sources = ("hcomic", "jmcomic", "moeimg")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             comics, pagination, needs_login = self.parser.favourites(
                 page=page, raise_errors=True, source=effective_source
             )
             self._update_tags_from_favourites_page(comics, effective_source)
+            # 去重：同一漫画可能在页面 DOM 中重复出现
+            deduped: list = []
+            seen: set[tuple] = set()
+            for c in comics:
+                key = (c.source_site, c.id, c.comic_source)
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(c)
+            if len(deduped) < len(comics):
+                logger.info(
+                    "Deduplicated favourites: %d -> %d",
+                    len(comics),
+                    len(deduped),
+                )
             return {
-                "comics": [self._comic_to_dict(c) for c in comics],
+                "comics": [self._comic_to_dict(c) for c in deduped],
                 "pagination": {
                     "currentPage": pagination.current_page if pagination else page,
                     "totalPages": pagination.total_pages if pagination else 1,
@@ -166,7 +180,7 @@ class SearchMixin:
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic")
+        valid_sources = ("hcomic", "jmcomic", "moeimg")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             success = self.parser.add_to_favourites(comic_id, source=effective_source)
@@ -192,7 +206,7 @@ class SearchMixin:
     def handle_check_favourite(self, comic_id: str, source: str = "hcomic") -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic")
+        valid_sources = ("hcomic", "jmcomic", "moeimg")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             is_favourited = self.parser.check_favourite(
@@ -220,7 +234,7 @@ class SearchMixin:
     ) -> dict:
         from sources import ParserResponseError
 
-        valid_sources = ("hcomic", "jmcomic")
+        valid_sources = ("hcomic", "jmcomic", "moeimg")
         effective_source = source if source in valid_sources else "hcomic"
         try:
             success = self.parser.remove_from_favourites(

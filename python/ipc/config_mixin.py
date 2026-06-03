@@ -85,9 +85,16 @@ class ConfigMixin:
             "defaultSource": lambda v: self.parser.set_source(v),
             "jmcomicDomain": self._apply_jmcomic_domain,
             "previewCacheSizeLimitMB": lambda v: (
-                self._preview_cache.update_max_size(v)
-                if hasattr(self, "_preview_cache")
-                else None
+                (
+                    self._preview_cache.update_max_size(v)
+                    if hasattr(self, "_preview_cache")
+                    else None
+                ),
+                (
+                    self._cover_cache.update_max_size(v)
+                    if hasattr(self, "_cover_cache")
+                    else None
+                ),
             ),
         }
         applier = _RUNTIME_APPLIERS.get(key)
@@ -132,6 +139,12 @@ class ConfigMixin:
         )
         config["hasJmcomicAuth"] = bool(
             self.config.source_auth.get("jmcomic", {}).get("cookie")
+        )
+        config["hasMoeimgAuth"] = bool(
+            self.config.source_auth.get("moeimg", {}).get("cookie")
+        )
+        config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get(
+            "username", ""
         )
         # 返回 jmcomic CDN 域名，供前端动态更新白名单
         jmcomic_cdn = self.parser.get_jmcomic_cdn_domain()
@@ -186,6 +199,17 @@ class ConfigMixin:
         except Exception as e:
             logger.error("Get proxy status error: %s", e)
             return {"http": "", "https": "", "noProxy": ""}
+
+    def handle_get_jmcomic_domains(self) -> dict:
+        """从发布页获取 jmcomic 可用域名列表，供设置页展示。"""
+        try:
+            from sources.jmcomic.domain import get_jmcomic_domain_list
+
+            domains = get_jmcomic_domain_list()
+            return {"domains": domains}
+        except Exception as e:
+            logger.error("Get jmcomic domains error: %s", e)
+            return {"domains": ["18comic.vip"]}
 
     def handle_get_available_fonts(self) -> dict:
         """Return platform-aware CJK font recommendations."""

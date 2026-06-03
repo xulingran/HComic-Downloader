@@ -65,3 +65,23 @@ class AuthMixin:
     def handle_verify_auth(self, source: str = "hcomic") -> dict:
         is_valid, message = self.parser.verify_login_status(source=source)
         return {"valid": is_valid, "message": message}
+
+    def handle_moeimg_login(self, username: str, password: str) -> dict:
+        if not username or not username.strip():
+            raise ValueError("请输入用户名")
+        if not password or not password.strip():
+            raise ValueError("请输入密码")
+        username = username.strip()
+        password = password.strip()
+        moeimg_parser = self.parser.parsers.get("moeimg")
+        if not moeimg_parser:
+            raise ValueError("moeimg 来源不可用")
+        cookie = moeimg_parser.login(username, password)
+        self.config.set_source_auth(
+            "moeimg", cookie=cookie, username=username, password=password
+        )
+        self.config.save(_get_config_path())
+        self.parser.configure_auth(cookie=cookie, source="moeimg")
+        moeimg_parser.set_stored_credentials(username, password)
+        logger.info("moeimg login successful for user %s", username)
+        return {"success": True, "message": "登录成功"}

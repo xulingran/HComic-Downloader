@@ -35,7 +35,6 @@ CONFIG_KEY_MAP = {
     "favouriteTagHighlight": "favourite_tag_highlight",
 }
 
-_COVER_CACHE_MAX_SIZE = 200
 _COVER_POOL_MAX_WORKERS = 4
 _PREVIEW_POOL_MAX_WORKERS = 4
 _PREVIEW_IMAGE_MAX_SIZE = 12 * 1024 * 1024
