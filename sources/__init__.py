@@ -65,6 +65,14 @@ class MultiSourceParser:
                 user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
             ),
         }
+        # 为 moeimg 恢复存储的用户名密码（用于懒登录）
+        moeimg_auth = self.source_auth.get("moeimg", {})
+        moeimg_parser = self.parsers["moeimg"]
+        if isinstance(moeimg_parser, MoeImgParser):
+            moeimg_parser.set_stored_credentials(
+                moeimg_auth.get("username", ""),
+                moeimg_auth.get("password", ""),
+            )
         self.current_source = (
             default_source if default_source in self.parsers else "hcomic"
         )
@@ -106,7 +114,7 @@ class MultiSourceParser:
 
     def source_supports_favourites(self, source: str | None = None) -> bool:
         current = source or self.current_source
-        return current in ("hcomic", "jmcomic")
+        return current in ("hcomic", "jmcomic", "moeimg")
 
     def get_auth(self, source: str | None = None) -> tuple[str, str]:
         current = source or self.current_source
@@ -163,19 +171,19 @@ class MultiSourceParser:
 
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
-        if src not in ("hcomic", "jmcomic"):
+        if src not in ("hcomic", "jmcomic", "moeimg"):
             return False
         return self.parsers[src].add_to_favourites(comic_id)
 
     def check_favourite(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
-        if src not in ("hcomic", "jmcomic"):
+        if src not in ("hcomic", "jmcomic", "moeimg"):
             return False
         return self.parsers[src].check_favourite(comic_id)
 
     def remove_from_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = source or self.current_source
-        if src not in ("hcomic", "jmcomic"):
+        if src not in ("hcomic", "jmcomic", "moeimg"):
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 

@@ -111,6 +111,9 @@ class Config:
         auth.setdefault("cookie", "")
         auth.setdefault("user_agent", "")
         auth.setdefault("bearer_token", "")
+        if source == "moeimg":
+            auth.setdefault("username", "")
+            auth.setdefault("password", "")
         return auth
 
     def set_source_auth(
@@ -119,6 +122,8 @@ class Config:
         cookie: str = "",
         user_agent: str = "",
         bearer_token: str = "",
+        username: str = "",
+        password: str = "",
     ):
         """设置来源认证信息。"""
         self.source_auth[source] = {
@@ -126,6 +131,9 @@ class Config:
             "user_agent": (user_agent or "").strip(),
             "bearer_token": (bearer_token or "").strip(),
         }
+        if source == "moeimg":
+            self.source_auth[source]["username"] = (username or "").strip()
+            self.source_auth[source]["password"] = (password or "").strip()
         if source == "hcomic":
             self.auth_cookie = self.source_auth[source]["cookie"]
             self.auth_user_agent = self.source_auth[source]["user_agent"]

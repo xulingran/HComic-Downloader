@@ -22,6 +22,10 @@ class ParserResponseError(RuntimeError):
     """响应读取/解析相关异常。"""
 
 
+class AuthRequiredError(RuntimeError):
+    """需要登录但未提供凭据。"""
+
+
 class MoeImgParser:
     """moeimg.fan 解析器。"""
 
@@ -49,6 +53,8 @@ class MoeImgParser:
         self._manga_detail_cache: dict[str, dict] = OrderedDict()
         self._author_id_cache: dict[str, str] = OrderedDict()
         self._tag_id_cache: dict[str, str] = OrderedDict()
+        self._stored_username: str = ""
+        self._stored_password: str = ""
 
     def configure_auth(
         self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
@@ -69,8 +75,64 @@ class MoeImgParser:
         self.close()
 
     def verify_login_status(self) -> tuple[bool, str]:
-        """moeimg 当前接入范围不依赖登录。"""
-        return True, "当前来源无需登录校验"
+        """验证 moeimg 登录状态。"""
+        try:
+            self._ensure_session()
+        except AuthRequiredError:
+            return False, "未登录，请输入用户名密码或粘贴 curl"
+        try:
+            resp = self.session.get(
+                f"{self.BASE_URL}/member/bookmarks",
+                timeout=self.timeout,
+                allow_redirects=False,
+            )
+            if resp.status_code == 200 and "u-fav-item" in resp.text:
+                return True, "已登录"
+            return False, "登录已过期，请重新登录"
+        except requests.RequestException:
+            return False, "网络错误，无法验证登录状态"
+
+    def login(self, username: str, password: str) -> str:
+        """通过 API 登录 moeimg，返回 session cookie 字符串。"""
+        resp = self.session.post(
+            f"{self.BASE_URL}/auth/login",
+            files={"username": (None, username), "password": (None, password)},
+            timeout=self.timeout,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        if not data.get("success"):
+            raise ValueError("登录失败，请检查用户名和密码")
+        session_value = self.session.cookies.get("__SESSION")
+        if not session_value:
+            raise ValueError("登录成功但未获取到 session cookie")
+        return f"__SESSION={session_value}"
+
+    def _ensure_session(self):
+        """懒登录：确保 session cookie 存在，否则自动登录。"""
+        if self.session.cookies.get("__SESSION"):
+            return
+        cookie_header = (self.session.headers.get("Cookie") or "").strip()
+        if cookie_header and "__SESSION" in cookie_header:
+            from http.cookies import SimpleCookie
+
+            parsed = SimpleCookie(cookie_header)
+            for key, morsel in parsed.items():
+                self.session.cookies.set(
+                    key, morsel.value, domain="moeimg.fan", path="/"
+                )
+            if self.session.cookies.get("__SESSION"):
+                logger.info("Restored __SESSION cookie from header into jar")
+                return
+        if self._stored_username and self._stored_password:
+            self.login(self._stored_username, self._stored_password)
+            return
+        raise AuthRequiredError("需要登录 moeimg")
+
+    def set_stored_credentials(self, username: str, password: str):
+        """存储用户名密码用于懒登录。"""
+        self._stored_username = username or ""
+        self._stored_password = password or ""
 
     def search(
         self, keyword: str, page: int = 1, *, tag: str = ""
@@ -112,23 +174,209 @@ class MoeImgParser:
     def favourites(
         self, page: int = 1, raise_errors: bool = False
     ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
-        """moeimg 当前版本不支持收藏夹。"""
-        return [], None, False
+        """获取 moeimg 收藏夹漫画列表。
+
+        Returns:
+            (漫画列表, 分页信息, 是否需要登录)
+        """
+        try:
+            self._ensure_session()
+        except AuthRequiredError:
+            return [], None, True
+        try:
+            page_num = max(1, int(page))
+            resp = self.session.get(
+                f"{self.BASE_URL}/member/bookmarks",
+                params={"page": page_num},
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            html = resp.text
+            if not html or "u-fav-item" not in html:
+                if page_num > 1:
+                    return [], None, False
+                return [], None, False
+            comics = self._parse_bookmarks_html(html)
+            pagination = self._parse_bookmarks_pagination(html, page_num, len(comics))
+            return comics, pagination, False
+        except Exception as e:
+            logger.error("moeimg favourites failed: %s", e)
+            if raise_errors:
+                raise
+            return [], None, False
+
+    def _parse_bookmarks_html(self, html: str) -> list[ComicInfo]:
+        """解析收藏夹页面 HTML，提取漫画列表。"""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        comics: list[ComicInfo] = []
+        for item in soup.select(".u-fav-item"):
+            try:
+                btn = item.select_one(".u-fav-btn a[data-manga-id]")
+                if not btn:
+                    continue
+                manga_id = btn.get("data-manga-id", "")
+                if not manga_id:
+                    continue
+                link_el = item.select_one(".u-img-holder a")
+                title_el = item.select_one(".u-manga-title a")
+                img_el = item.select_one(".u-img-holder img")
+                title = (
+                    (
+                        title_el.get("title") or title_el.get_text(strip=True) or ""
+                    ).strip()
+                    if title_el
+                    else "未知标题"
+                )
+                cover_url = (img_el.get("src") or "").strip() if img_el else None
+                preview_url = (
+                    f"{self.BASE_URL}{link_el['href']}"
+                    if link_el and link_el.get("href")
+                    else f"{self.BASE_URL}/post/fa{manga_id}"
+                )
+                comics.append(
+                    ComicInfo(
+                        id=str(manga_id),
+                        title=title,
+                        author=None,
+                        pages=0,
+                        category=None,
+                        tags=[],
+                        publish_date=None,
+                        cover_url=cover_url,
+                        preview_url=preview_url,
+                        media_id=str(manga_id),
+                        comic_source="MOEIMG",
+                        source_site="moeimg",
+                    )
+                )
+            except Exception as e:
+                logger.debug("Failed to parse bookmark item: %s", e)
+                continue
+        return comics
+
+    @staticmethod
+    def _parse_bookmarks_pagination(
+        html: str, requested_page: int, current_count: int
+    ) -> PaginationInfo | None:
+        """解析收藏夹分页信息。"""
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(html, "html.parser")
+        page_links = soup.select(".pagination a")
+        if not page_links:
+            if current_count == 0 and requested_page > 1:
+                return None
+            return PaginationInfo(
+                current_page=requested_page,
+                total_pages=requested_page,
+                limit=current_count or 20,
+                total_items=current_count,
+            )
+        max_page = requested_page
+        for link in page_links:
+            try:
+                num = int(link.get_text(strip=True))
+                max_page = max(max_page, num)
+            except ValueError:
+                continue
+        return PaginationInfo(
+            current_page=requested_page,
+            total_pages=max_page,
+            limit=current_count or 20,
+            total_items=max(current_count, (max_page - 1) * 20 + current_count),
+        )
+
+    def check_favourite(self, manga_id: str) -> bool:
+        """检查指定漫画是否已收藏。"""
+        try:
+            self._ensure_session()
+        except AuthRequiredError:
+            return False
+        try:
+            resp = self.session.get(
+                f"{self.BASE_URL}/ajax/bookmark-status/{manga_id}",
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("status") == 1
+        except Exception as e:
+            logger.error("moeimg check_favourite failed for %s: %s", manga_id, e)
+            return False
+
+    def add_to_favourites(self, manga_id: str) -> bool:
+        """添加漫画到收藏夹。toggle 模式，先检查状态避免重复。"""
+        try:
+            self._ensure_session()
+        except AuthRequiredError:
+            return False
+        try:
+            if self.check_favourite(manga_id):
+                return True
+            resp = self.session.get(
+                f"{self.BASE_URL}/ajax/bookmark/{manga_id}",
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("status") == 1
+        except Exception as e:
+            logger.error("moeimg add_to_favourites failed for %s: %s", manga_id, e)
+            return False
+
+    def remove_from_favourites(self, manga_id: str) -> bool:
+        """从收藏夹移除漫画。toggle 模式，先检查状态避免误添加。"""
+        try:
+            self._ensure_session()
+        except AuthRequiredError:
+            return False
+        try:
+            if not self.check_favourite(manga_id):
+                return True
+            resp = self.session.get(
+                f"{self.BASE_URL}/ajax/bookmark/{manga_id}",
+                timeout=self.timeout,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("status") == -1
+        except Exception as e:
+            logger.error("moeimg remove_from_favourites failed for %s: %s", manga_id, e)
+            return False
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
-        """获取漫画详情并补全可下载图片地址。"""
+        """获取漫画详情并补全可下载图片地址。
+
+        优先使用 SPA API，失败时回退到 HTML 页面解析。
+        """
         try:
             detail_data = self._get_manga_detail_payload(comic_id)
-            if not isinstance(detail_data, dict):
-                return None
+        except ParserResponseError:
+            detail_data = None
 
-            detail = detail_data.get("detail") or {}
-            if not isinstance(detail, dict):
-                detail = {}
+        if not isinstance(detail_data, dict):
+            return self._get_comic_detail_from_html(comic_id)
 
+        detail = detail_data.get("detail") or {}
+        if not isinstance(detail, dict):
+            detail = {}
+
+        try:
             chapter_detail = self._fetch_read_data(comic_id)
         except ParserResponseError:
-            return None
+            chapter_detail = {}
+
+        tags = self._extract_manga_tags(
+            detail_data, detail, chapter_detail=chapter_detail
+        )
+
+        has_images = bool(chapter_detail.get("chapter_content"))
+        has_title = bool((detail.get("manga_name") or "").strip())
+
+        if not has_title and not has_images:
+            return self._get_comic_detail_from_html(comic_id)
 
         title = (
             (detail.get("manga_name") or "").strip()
@@ -143,9 +391,6 @@ class MoeImgParser:
             or []
         )
         author = self._extract_first_name(authors_data, "author_name")
-        tags = self._extract_manga_tags(
-            detail_data, detail, chapter_detail=chapter_detail
-        )
         category = (detail.get("category") or "").strip() or None
 
         publish_date = self._format_iso_date(
@@ -171,6 +416,99 @@ class MoeImgParser:
             cover_url=cover_url,
             preview_url=preview_url,
             media_id=str(detail.get("manga_id") or comic_id),
+            comic_source="MOEIMG",
+            source_site="moeimg",
+            image_urls=image_urls,
+        )
+
+    def _get_comic_detail_from_html(
+        self,
+        comic_id: str,
+        fallback_tags: list[str] | None = None,
+        fallback_images: list[str] | None = None,
+    ) -> ComicInfo | None:
+        """通过解析 HTML 详情页获取漫画信息。
+
+        当 SPA API 不可用或返回数据不完整时作为回退方案。
+
+        Args:
+            comic_id: 漫画 ID
+            fallback_tags: SPA API 已获取的标签（可为空）
+            fallback_images: SPA API 已获取的图片地址（可为空）
+        """
+        from bs4 import BeautifulSoup
+
+        url = f"{self.BASE_URL}/post/fa{comic_id}"
+        try:
+            resp = self.session.get(url, timeout=self.timeout)
+            resp.raise_for_status()
+            html = resp.text
+        except requests.RequestException as e:
+            logger.error("MoeImg HTML detail fetch failed: %s (%s)", url, e)
+            return None
+
+        soup = BeautifulSoup(html, "html.parser")
+
+        title_el = soup.select_one("h1.manga-title")
+        title = (
+            (title_el.get_text(strip=True) or "未知标题") if title_el else "未知标题"
+        )
+
+        author: str | None = None
+        category: str | None = None
+        tags: list[str] = list(fallback_tags) if fallback_tags else []
+        cover_url: str | None = None
+
+        for li in soup.select(".manga-detail li"):
+            md_title_el = li.select_one(".md-title")
+            if not md_title_el:
+                continue
+            md_title = md_title_el.get_text(strip=True).rstrip(":")
+            md_content_el = li.select_one(".md-content")
+            if not md_content_el:
+                continue
+
+            if md_title == "Category":
+                a = md_content_el.select_one("a")
+                category = (
+                    a.get_text(strip=True) if a else md_content_el.get_text(strip=True)
+                ) or None
+            elif md_title == "Author":
+                a = md_content_el.select_one("a")
+                author = (
+                    a.get_text(strip=True) if a else md_content_el.get_text(strip=True)
+                ) or None
+            elif md_title == "Tags":
+                if not tags:
+                    for a in md_content_el.select("a"):
+                        tag_text = a.get_text(strip=True)
+                        if tag_text:
+                            tags.append(tag_text)
+
+        img_el = soup.select_one(".manga-img img")
+        if img_el:
+            cover_url = (img_el.get("src") or "").strip() or None
+
+        time_el = soup.select_one(".manga-detail time")
+        publish_date = None
+        if time_el and time_el.get("datetime"):
+            publish_date = self._format_iso_date(time_el["datetime"])
+
+        image_urls = list(fallback_images) if fallback_images else []
+        preview_count = len(soup.select(".preview-imgs img[data-src]"))
+        pages = max(preview_count, len(image_urls))
+
+        return ComicInfo(
+            id=str(comic_id),
+            title=title,
+            author=author,
+            pages=pages,
+            category=category,
+            tags=tags,
+            publish_date=publish_date,
+            cover_url=cover_url,
+            preview_url=url,
+            media_id=str(comic_id),
             comic_source="MOEIMG",
             source_site="moeimg",
             image_urls=image_urls,
@@ -385,9 +723,6 @@ class MoeImgParser:
             title = (item.get("manga_name") or "").strip() or "未知标题"
             cover_url = item.get("manga_cover_img")
             preview_url = f"{self.BASE_URL}/post/fa{manga_id}"
-            language = (item.get("language") or "").strip()
-            tags = [language] if language else []
-
             comics.append(
                 ComicInfo(
                     id=str(manga_id),
@@ -395,7 +730,7 @@ class MoeImgParser:
                     author=None,
                     pages=0,
                     category=None,
-                    tags=tags,
+                    tags=[],
                     publish_date=None,
                     cover_url=cover_url,
                     preview_url=preview_url,
@@ -439,10 +774,6 @@ class MoeImgParser:
             tag_values.extend(
                 cls._extract_names(chapter_detail.get("tags"), "tag_name")
             )
-
-        language = (detail.get("language") or detail_data.get("language") or "").strip()
-        if language:
-            tag_values.append(language)
 
         return cls._dedupe_keep_order(tag_values)
 
