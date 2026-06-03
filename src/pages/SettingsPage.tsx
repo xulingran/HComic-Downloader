@@ -238,13 +238,18 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   }
 
   const handleMoeimgLogin = async (username: string, password: string) => {
+    moeimgAuth.setStatus('verifying')
+    moeimgAuth.setMessage('')
     try {
       const result = await window.hcomic?.moeimgLogin(username, password)
       if (result?.success) {
         await moeimgAuth.test()
       }
     } catch (err) {
-      console.error('moeimg login failed:', err)
+      moeimgAuth.setStatus('error')
+      moeimgAuth.setMessage(
+        (err instanceof Error ? err.message : String(err)) || '登录失败',
+      )
     }
   }
 

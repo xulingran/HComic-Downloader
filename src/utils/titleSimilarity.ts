@@ -10,9 +10,11 @@ export function normalizeTitle(title: string): string {
   let s = title.trim()
   s = s.replace(/\u3000/g, ' ')
   let prev = ''
-  while (prev !== s) {
+  let guard = 0
+  while (prev !== s && guard < 10) {
     prev = s
     s = s.replace(/[（(\x5b][^（）()\x5b\]]*[）)\]]/g, '')
+    guard++
   }
   s = s.replace(/[\uff01-\uff5e]/g, c =>
     String.fromCharCode(c.charCodeAt(0) - 0xfee0)

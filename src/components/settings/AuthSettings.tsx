@@ -262,6 +262,9 @@ function AuthSourceCard({
   children: React.ReactNode
 }) {
   const needsAttention = status === 'invalid' || status === 'error'
+  // Default expanded when attention is needed (first render only).
+  // User-controlled: once manually toggled, only auto-expands on
+  // invalid/error transitions — never auto-collapses on success.
   const [expanded, setExpanded] = useState(needsAttention)
   const prevNeedsAttention = useRef(needsAttention)
 
