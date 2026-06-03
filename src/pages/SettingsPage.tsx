@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
-import { useConfig, useProxyStatus, useAvailableFonts } from '../hooks/useIpc'
+import { useConfig, useProxyStatus, useAvailableFonts, useJmcomicDomains } from '../hooks/useIpc'
 import { useOptimisticConfig } from '../hooks/useOptimisticConfig'
 import { useAuthState } from '../hooks/useAuthState'
 import type { ConfigKey, ConfigValueMap, FontInfo, ProxyStatus } from '@shared/types'
@@ -9,9 +9,6 @@ import { DownloadSettings } from '../components/settings/DownloadSettings'
 import { AuthSettings } from '../components/settings/AuthSettings'
 import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
-import { TagFilterSettings } from '../components/settings/TagFilterSettings'
-import { FavouriteTagSettings } from '../components/settings/FavouriteTagSettings'
-import { Toast } from '../components/common/Toast'
 import { CacheSettings } from '../components/settings/CacheSettings'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
 import { useMigration } from '../hooks/useMigration'
@@ -33,6 +30,7 @@ interface ConfigState {
   defaultSource: string
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
+  moeimgUsername: string
 }
 
 interface SettingsPageProps {
@@ -41,13 +39,15 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) {
-  const { themeMode, cardStyle, sfwMode, setThemeMode, setCardStyle, setSfwMode, tagBlacklist, addTag, removeTag } = useSettingsStore()
+  const { themeMode, cardStyle, sfwMode, setThemeMode, setCardStyle, setSfwMode } = useSettingsStore()
   const loginSectionRef = useRef<HTMLDivElement>(null!)
   const { getConfig, setConfig, openDownloadDir, selectDirectory } = useConfig()
   const hcomicAuth = useAuthState('hcomic')
   const jmcomicAuth = useAuthState('jmcomic')
+  const moeimgAuth = useAuthState('moeimg')
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
+  const { getJmcomicDomains } = useJmcomicDomains()
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('cbz')
   const [config, setConfigState] = useState<ConfigState>({
     downloadDir: '',
@@ -62,16 +62,16 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     defaultSource: 'hcomic',
     previewCacheSizeLimitMB: 500,
     jmcomicDomain: '',
+    moeimgUsername: '',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [availableFonts, setAvailableFonts] = useState<FontInfo[]>([])
+  const [jmcomicDomains, setJmcomicDomains] = useState<string[]>([])
   const [fontName, setFontName] = useState('')
   const [fontSize, setFontSize] = useState(14)
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus | null>(null)
   const [proxyLoading, setProxyLoading] = useState(false)
-  const [showLoginToast, setShowLoginToast] = useState(false)
-  const [loginToastCountdown, setLoginToastCountdown] = useState<number | null>(null)
   const { createHandler } = useOptimisticConfig(setConfig, setSaveError, setIsSaving)
   const [isMigrationOpen, setIsMigrationOpen] = useState(false)
   const migrationHook = useMigration()
@@ -82,8 +82,6 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     { id: 'appearance', label: '外观设置', icon: '🎨' },
     { id: 'download',   label: '下载设置', icon: '📥' },
     { id: 'source',     label: '来源',     icon: '🌐' },
-    { id: 'tag-filter', label: '标签过滤', icon: '🏷️' },
-    { id: 'favourite-tags', label: '推荐标签', icon: '⭐' },
     { id: 'auth',       label: '认证设置', icon: '🔑' },
     { id: 'proxy',      label: '代理设置', icon: '🔌' },
     { id: 'notification', label: '通知设置', icon: '🔔' },
@@ -121,6 +119,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           defaultSource: result.config.defaultSource ?? 'hcomic',
           previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
           jmcomicDomain: result.config.jmcomicDomain ?? '',
+          moeimgUsername: result.config.moeimgUsername ?? '',
         })
         setJmcomicDomainInput(result.config.jmcomicDomain ?? '')
         setJmcomicDomainMode(result.config.jmcomicDomain ? 'custom' : 'auto')
@@ -135,6 +134,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         }
         if (result.config.hasJmcomicAuth) {
           jmcomicAuth.verifyFromConfig(true)
+        }
+        if (result.config.hasMoeimgAuth) {
+          moeimgAuth.verifyFromConfig(true)
         }
         if (result.config.fontName) setFontName(result.config.fontName)
         if (result.config.fontSize) setFontSize(result.config.fontSize)
@@ -162,39 +164,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   useEffect(() => {
     getAvailableFonts().then((result) => setAvailableFonts(result.fonts)).catch(() => {})
+    getJmcomicDomains().then((result) => setJmcomicDomains(result.domains)).catch(() => {})
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProxyStatus()
-  }, [getAvailableFonts, loadProxyStatus])
-
-  useEffect(() => {
-    let countdownTimer: ReturnType<typeof setInterval> | null = null
-    let hideTimer: ReturnType<typeof setTimeout> | null = null
-    const unsubscribe = window.hcomic?.onLoginCookieSuccess(() => {
-      setLoginToastCountdown(5)
-      setShowLoginToast(true)
-      countdownTimer = setInterval(() => {
-        setLoginToastCountdown(prev => {
-          if (prev === null || prev <= 1) {
-            if (countdownTimer) clearInterval(countdownTimer)
-            return null
-          }
-          return prev - 1
-        })
-      }, 1000)
-      hideTimer = setTimeout(() => setShowLoginToast(false), 5500)
-    })
-    return () => {
-      unsubscribe?.()
-      if (countdownTimer) clearInterval(countdownTimer)
-      if (hideTimer) clearTimeout(hideTimer)
-    }
-  }, [])
-
-  const handleCancelLoginAutoClose = useCallback(() => {
-    window.hcomic?.cancelLoginAutoClose()
-    setLoginToastCountdown(null)
-    setShowLoginToast(false)
-  }, [])
+  }, [getAvailableFonts, getJmcomicDomains, loadProxyStatus])
 
   const handleThemeChange = createHandler('themeMode', () => themeMode, setThemeMode, (prev) => setThemeMode(prev))
 
@@ -250,18 +223,29 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   }
 
   const handleApplyAuth = async (curlText: string, source: string = 'hcomic') => {
-    const auth = source === 'jmcomic' ? jmcomicAuth : hcomicAuth
+    const auth = source === 'jmcomic' ? jmcomicAuth : source === 'moeimg' ? moeimgAuth : hcomicAuth
     await auth.apply(curlText)
   }
 
   const handleTestAuth = async (source: string = 'hcomic') => {
-    const auth = source === 'jmcomic' ? jmcomicAuth : hcomicAuth
+    const auth = source === 'jmcomic' ? jmcomicAuth : source === 'moeimg' ? moeimgAuth : hcomicAuth
     await auth.test()
   }
 
   const handleOpenLoginWindow = async (source: string = 'hcomic') => {
     const auth = source === 'jmcomic' ? jmcomicAuth : hcomicAuth
     await auth.openWindow(auth.status)
+  }
+
+  const handleMoeimgLogin = async (username: string, password: string) => {
+    try {
+      const result = await window.hcomic?.moeimgLogin(username, password)
+      if (result?.success) {
+        await moeimgAuth.test()
+      }
+    } catch (err) {
+      console.error('moeimg login failed:', err)
+    }
   }
 
   const handleSectionClick = (sectionId: string) => {
@@ -297,12 +281,6 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
       {/* Content */}
       <div className="flex-1 min-w-0 space-y-6">
-      <Toast
-        message={loginToastCountdown != null ? `已获取到 Cookie，将在 ${loginToastCountdown} 秒后关闭弹窗` : '已获取到 Cookie'}
-        actionLabel="取消"
-        onAction={handleCancelLoginAutoClose}
-        visible={showLoginToast}
-      />
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--text-primary)]">设置</h2>
         <div className="flex items-center gap-2">
@@ -414,75 +392,52 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">JMComic 域名</label>
             <p className="text-xs text-[var(--text-secondary)] mb-3">
-              默认从发布页自动获取可用域名，也可手动指定
+              默认使用 18comic.vip，以下列表来自发布页，可手动切换
             </p>
-            <div className="flex gap-3 mb-3">
-              <button
-                onClick={async () => {
-                  setJmcomicDomainMode('auto')
-                  setJmcomicDomainInput('')
-                  if (config.jmcomicDomain) {
-                    handleConfigChange('jmcomicDomain', '')
-                  }
-                }}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  jmcomicDomainMode === 'auto'
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
-                }`}
-              >
-                自动选择
-              </button>
-              <button
-                onClick={() => setJmcomicDomainMode('custom')}
-                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                  jmcomicDomainMode === 'custom'
-                    ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
-                }`}
-              >
-                自定义
-              </button>
+            <div className="flex gap-2 items-start">
+              <div className="flex-1">
+                <select
+                  value={jmcomicDomainInput || '18comic.vip'}
+                  onChange={async (e) => {
+                    const domain = e.target.value
+                    setJmcomicDomainInput(domain === '18comic.vip' ? '' : domain)
+                    setJmcomicDomainMode(domain === '18comic.vip' ? 'auto' : 'custom')
+                    handleConfigChange('jmcomicDomain', domain === '18comic.vip' ? '' : domain)
+                  }}
+                  className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+                >
+                  <option value="18comic.vip">18comic.vip (默认)</option>
+                  {jmcomicDomains.map((d) => (
+                    <option key={d} value={d}>{d}</option>
+                  ))}
+                  <option value="__custom__">自定义域名…</option>
+                </select>
+              </div>
             </div>
-            {jmcomicDomainMode === 'custom' && (
-              <div className="flex gap-2 items-start">
+            {jmcomicDomainInput === '__custom__' || (jmcomicDomainMode === 'custom' && !jmcomicDomains.includes(jmcomicDomainInput) && jmcomicDomainInput !== '18comic.vip') ? (
+              <div className="flex gap-2 items-start mt-2">
                 <div className="flex-1">
                   <input
                     type="text"
-                    value={jmcomicDomainInput}
-                    onChange={(e) => {
-                      setJmcomicDomainInput(e.target.value)
-                    }}
+                    value={jmcomicDomainInput === '__custom__' ? '' : jmcomicDomainInput}
+                    onChange={(e) => setJmcomicDomainInput(e.target.value)}
                     onBlur={async () => {
                       const domain = jmcomicDomainInput.trim()
+                      if (!domain || domain === '__custom__') return
                       if (domain === config.jmcomicDomain) return
                       handleConfigChange('jmcomicDomain', domain)
                     }}
                     onKeyDown={async (e) => {
-                      if (e.key === 'Enter') {
-                        e.currentTarget.blur()
-                      }
+                      if (e.key === 'Enter') e.currentTarget.blur()
                     }}
                     placeholder="例如 18comic.vip"
                     className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
                   />
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
-      </div>
-
-      <div id="section-tag-filter">
-        <TagFilterSettings
-          tagBlacklist={tagBlacklist}
-          addTag={addTag}
-          removeTag={removeTag}
-        />
-      </div>
-
-      <div id="section-favourite-tags">
-        <FavouriteTagSettings />
       </div>
 
       <div id="section-auth">
@@ -492,9 +447,13 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           loginMessage={hcomicAuth.message}
           jmcomicLoginStatus={jmcomicAuth.status}
           jmcomicLoginMessage={jmcomicAuth.message}
+          moeimgLoginStatus={moeimgAuth.status}
+          moeimgLoginMessage={moeimgAuth.message}
+          moeimgSavedUsername={config.moeimgUsername}
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}
+          onMoeimgLogin={handleMoeimgLogin}
         />
       </div>
 

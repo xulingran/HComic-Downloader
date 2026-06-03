@@ -170,6 +170,16 @@ export function useAvailableFonts() {
   return { getAvailableFonts }
 }
 
+export function useJmcomicDomains() {
+  const { invoke } = useIpc()
+
+  const getJmcomicDomains = useCallback(async () => {
+    return invoke(() => window.hcomic!.getJmcomicDomains())
+  }, [invoke])
+
+  return { getJmcomicDomains }
+}
+
 export function useAuth() {
   const { invoke } = useIpc()
 

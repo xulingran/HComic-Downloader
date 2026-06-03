@@ -146,6 +146,9 @@ export function CacheSettings({ onSizeLimitChange, sizeLimitMB }: CacheSettingsP
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
               缓存上限
             </label>
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
+              覆盖封面图和预览页面的缓存总量上限
+            </p>
             <div className="flex items-center gap-3">
               <input
                 type="range"
