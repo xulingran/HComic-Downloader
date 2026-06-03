@@ -2,7 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain, shell, crashReporter } from 'elect
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 import { NotificationManager } from './notification-manager'
-import { openLoginWindow, cancelLoginAutoClose } from './login-window'
+import { openLoginWindow } from './login-window'
 import {
   SEARCH_MODES, COMIC_SOURCES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
@@ -58,19 +58,6 @@ const ALLOWED_EXTERNAL_DOMAINS = [
   '18comic.vip',
   '18comic.org',
   'jmcomic.me',
-  // jmcomic mirror domains — need periodic maintenance as mirrors change frequently
-  'jmcomic-zzz.one',
-  'jmcomic-zzz.xyz',
-  'jmcomic-ne.net',
-  'comic18j-robo.me',
-  '18comic-cpp.com',
-]
-
-const ALLOWED_COVER_DOMAINS = [
-  'h-comic.link',
-  'moeimg.fan',
-  'moeimg.net',
-  '18comic.vip',
   // jmcomic mirror domains — need periodic maintenance as mirrors change frequently
   'jmcomic-zzz.one',
   'jmcomic-zzz.xyz',
@@ -683,6 +670,16 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('verify_auth', params)
   })
 
+  ipcMain.handle(IPC_CHANNELS.MOEIMG_LOGIN, async (_, username, password) => {
+    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) {
+      throw new Error('Invalid moeimg username')
+    }
+    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) {
+      throw new Error('Invalid moeimg password')
+    }
+    return bridge.call('moeimg_login', { username: username.trim(), password: password.trim() })
+  })
+
   ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
     // 对 jmcomic，先获取配置以更新域名
     if (source === 'jmcomic' && !jmcomicMainDomain) {
@@ -696,10 +693,6 @@ function registerAuthHandlers(bridge: Bridge) {
       }
     }
     return openLoginWindow(mainWindow, source || 'hcomic', jmcomicMainDomain || undefined)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.CANCEL_LOGIN_AUTO_CLOSE, () => {
-    return cancelLoginAutoClose()
   })
 
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
@@ -729,6 +722,10 @@ function registerSystemHandlers(bridge: Bridge) {
     return bridge.call('get_available_fonts')
   })
 
+  ipcMain.handle(IPC_CHANNELS.GET_JMCOMIC_DOMAINS, async () => {
+    return bridge.call('get_jmcomic_domains')
+  })
+
   ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async () => {
     return bridge.call('open_download_dir')
   })
@@ -747,15 +744,9 @@ function registerSystemHandlers(bridge: Bridge) {
 
 function registerPreviewHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.FETCH_COVER, async (_, url: string) => {
-    // 动态添加 jmcomic CDN 域名
-    const allowedDomains = [...ALLOWED_COVER_DOMAINS]
-    if (jmcomicCdnDomain && !allowedDomains.includes(jmcomicCdnDomain)) {
-      allowedDomains.push(jmcomicCdnDomain)
-    }
-    if (jmcomicMainDomain && !allowedDomains.includes(jmcomicMainDomain)) {
-      allowedDomains.push(jmcomicMainDomain)
-    }
-    validateHttpsUrlWithDomains(url, allowedDomains, 'cover image URL')
+    validateUrlFormat(url, 'cover image URL')
+    const parsed = new URL(url as string)
+    if (parsed.protocol !== 'https:') throw new Error('Only HTTPS URLs are allowed')
     return bridge.call('fetch_cover', { url })
   })
 

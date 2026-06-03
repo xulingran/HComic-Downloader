@@ -111,6 +111,12 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.VERIFY_AUTH, source ?? undefined)
   },
 
+  moeimgLogin: (username: unknown, password: unknown) => {
+    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
+    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')
+    return ipcRenderer.invoke(IPC_CHANNELS.MOEIMG_LOGIN, username, password)
+  },
+
   shutdown: () => ipcRenderer.invoke(IPC_CHANNELS.SHUTDOWN),
 
   openUrl: (url: unknown) => {
@@ -121,10 +127,6 @@ contextBridge.exposeInMainWorld('hcomic', {
   openLoginWindow: (source?: unknown) => {
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_LOGIN_WINDOW, source ?? undefined)
-  },
-
-  cancelLoginAutoClose: () => {
-    return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_LOGIN_AUTO_CLOSE)
   },
 
   fetchCover: (url: unknown) => {
@@ -156,6 +158,8 @@ contextBridge.exposeInMainWorld('hcomic', {
   getProxyStatus: () => ipcRenderer.invoke(IPC_CHANNELS.GET_PROXY_STATUS),
 
   getAvailableFonts: () => ipcRenderer.invoke(IPC_CHANNELS.GET_AVAILABLE_FONTS),
+
+  getJmcomicDomains: () => ipcRenderer.invoke(IPC_CHANNELS.GET_JMCOMIC_DOMAINS),
 
   openDownloadDir: () => ipcRenderer.invoke(IPC_CHANNELS.OPEN_DOWNLOAD_DIR),
 

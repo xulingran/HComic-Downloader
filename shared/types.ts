@@ -84,7 +84,9 @@ export interface AppConfig {
   userAgent?: string
   hasAuth?: boolean
   hasJmcomicAuth?: boolean
+  hasMoeimgAuth?: boolean
   jmcomicDomain?: string
+  moeimgUsername?: string
   favouriteTagHighlight?: boolean
 }
 
@@ -283,6 +285,10 @@ export interface IPCMethods {
     params: Record<string, never>
     result: { valid: boolean; message: string }
   }
+  moeimg_login: {
+    params: { username: string; password: string }
+    result: { success: boolean; message: string }
+  }
   shutdown: {
     params: Record<string, never>
     result: { success: boolean; cancelledTasks: number }
@@ -411,6 +417,10 @@ export interface IPCMethods {
     params: { tag: string; source?: string }
     result: { success: boolean }
   }
+  get_jmcomic_domains: {
+    params: Record<string, never>
+    result: { domains: string[] }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -429,6 +439,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:cancel-download': 'cancel_download',
   'python:apply-auth': 'apply_auth',
   'python:verify-auth': 'verify_auth',
+  'python:moeimg-login': 'moeimg_login',
   'python:shutdown': 'shutdown',
   'python:fetch-cover': 'fetch_cover',
   'python:pause-task': 'pause_task',
@@ -461,6 +472,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-favourite-tags': 'get_favourite_tags',
   'python:sync-favourite-tags': 'sync_favourite_tags',
   'python:remove-favourite-tag': 'remove_favourite_tag',
+  'python:get-jmcomic-domains': 'get_jmcomic_domains',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -491,11 +503,11 @@ export interface HcomicAPI {
   cancelDownload(taskId: string): Promise<{ success: boolean }>
   applyAuth(curlText: string, source?: string): Promise<{ success: boolean }>
   verifyAuth(source?: string): Promise<{ valid: boolean; message: string }>
+  moeimgLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   fetchCover(url: string): Promise<{ dataUri: string }>
   openUrl(url: string): Promise<void>
   openLoginWindow(source?: string): Promise<{ success: boolean; message?: string }>
-  cancelLoginAutoClose(): Promise<boolean>
   onDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void
   pauseTask(taskId: string): Promise<{ success: boolean }>
   resumeTask(taskId: string): Promise<{ success: boolean }>
@@ -503,6 +515,7 @@ export interface HcomicAPI {
   toggleGlobalPause(): Promise<{ isPaused: boolean }>
   getProxyStatus(): Promise<ProxyStatus>
   getAvailableFonts(): Promise<{ fonts: FontInfo[] }>
+  getJmcomicDomains(): Promise<{ domains: string[] }>
   openDownloadDir(): Promise<{ success: boolean }>
   selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
@@ -564,17 +577,18 @@ export const IPC_CHANNELS = {
   CANCEL_DOWNLOAD: 'python:cancel-download',
   APPLY_AUTH: 'python:apply-auth',
   VERIFY_AUTH: 'python:verify-auth',
+  MOEIMG_LOGIN: 'python:moeimg-login',
   SHUTDOWN: 'python:shutdown',
   FETCH_COVER: 'python:fetch-cover',
   OPEN_EXTERNAL: 'open-external',
   OPEN_LOGIN_WINDOW: 'open-login-window',
-  CANCEL_LOGIN_AUTO_CLOSE: 'cancel-login-auto-close',
   PAUSE_TASK: 'python:pause-task',
   RESUME_TASK: 'python:resume-task',
   RETRY_TASK: 'python:retry-task',
   TOGGLE_GLOBAL_PAUSE: 'python:toggle-global-pause',
   GET_PROXY_STATUS: 'python:get-proxy-status',
   GET_AVAILABLE_FONTS: 'python:get-available-fonts',
+  GET_JMCOMIC_DOMAINS: 'python:get-jmcomic-domains',
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
   GET_PREVIEW_URLS: 'python:get-preview-urls',
