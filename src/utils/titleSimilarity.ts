@@ -8,9 +8,12 @@ export interface DuplicateGroup {
 /** Remove common bracket suffixes, whitespace, and normalize full-width chars. */
 export function normalizeTitle(title: string): string {
   let s = title.trim()
-  // Remove common bracket patterns: （...） [...] (...) etc.
-  s = s.replace(/[（(\[][^）)\]]*[）)\]]/g, '')
-  // Full-width ASCII -> half-width
+  s = s.replace(/\u3000/g, ' ')
+  let prev = ''
+  while (prev !== s) {
+    prev = s
+    s = s.replace(/[（(\x5b][^（）()\x5b\]]*[）)\]]/g, '')
+  }
   s = s.replace(/[\uff01-\uff5e]/g, c =>
     String.fromCharCode(c.charCodeAt(0) - 0xfee0)
   )
@@ -75,6 +78,9 @@ export function findDuplicateGroups(
   if (comics.length < 2) return []
 
   const normalized = comics.map(c => ({ comic: c, norm: normalizeTitle(c.title) }))
+  const normByComicId = new Map<string, string>()
+  for (const { comic, norm } of normalized) normByComicId.set(comic.id, norm)
+
   const uf = new UnionFind(comics.map(c => c.id))
   const maxScore = new Map<string, number>()
 
@@ -83,7 +89,9 @@ export function findDuplicateGroups(
       const score = lcsRatio(normalized[i].norm, normalized[j].norm)
       if (score >= threshold) {
         uf.union(normalized[i].comic.id, normalized[j].comic.id)
-        const key = `${normalized[i].comic.id}:${normalized[j].comic.id}`
+        const key = normalized[i].comic.id < normalized[j].comic.id
+          ? `${normalized[i].comic.id}:${normalized[j].comic.id}`
+          : `${normalized[j].comic.id}:${normalized[i].comic.id}`
         maxScore.set(key, score)
       }
     }
@@ -106,7 +114,7 @@ export function findDuplicateGroups(
       for (const c2 of groupComics) {
         if (c.id === c2.id) continue
         const key = c.id < c2.id ? `${c.id}:${c2.id}` : `${c2.id}:${c.id}`
-        best = Math.max(best, maxScore.get(key) ?? lcsRatio(normalizeTitle(c.title), normalizeTitle(c2.title)))
+        best = Math.max(best, maxScore.get(key) ?? lcsRatio(normByComicId.get(c.id)!, normByComicId.get(c2.id)!))
       }
       scores.set(c.id, best)
     }

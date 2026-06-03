@@ -19,11 +19,15 @@ export function DuplicateDetector() {
   const [progress, setProgress] = useState('')
   const [groups, setGroups] = useState<DuplicateGroup[]>([])
   const [totalFetched, setTotalFetched] = useState(0)
+  const [error, setError] = useState<string | null>(null)
+  const [skippedPages, setSkippedPages] = useState(0)
 
   const handleDetect = useCallback(async () => {
     setStatus('fetching')
     setGroups([])
     setTotalFetched(0)
+    setError(null)
+    setSkippedPages(0)
 
     try {
       const first = await getFavourites(1, source)
@@ -37,7 +41,7 @@ export function DuplicateDetector() {
           allComics.push(...result.comics)
           setProgress(`正在获取第 ${page}/${totalPages} 页...`)
         } catch {
-          // Skip failed pages
+          setSkippedPages(prev => prev + 1)
         }
       }
 
@@ -49,6 +53,7 @@ export function DuplicateDetector() {
       setGroups(duplicateGroups)
       setStatus('done')
     } catch {
+      setError('获取收藏数据失败，请检查登录状态和网络连接')
       setStatus('done')
     }
   }, [getFavourites, source])
@@ -98,6 +103,16 @@ export function DuplicateDetector() {
         </p>
       )}
 
+      {error && (
+        <p className="text-sm text-red-500 py-2">{error}</p>
+      )}
+
+      {skippedPages > 0 && (
+        <p className="text-sm text-yellow-600 py-2">
+          警告：{skippedPages} 页数据获取失败，结果可能不完整
+        </p>
+      )}
+
       {status === 'done' && groups.length === 0 && totalFetched > 0 && (
         <p className="text-sm text-[var(--text-secondary)] py-4 text-center">
           未发现疑似重复的漫画
@@ -107,7 +122,7 @@ export function DuplicateDetector() {
       {groups.length > 0 && (
         <div className="space-y-3">
           {groups.map((group, i) => (
-            <DuplicateGroupView key={i} groupIndex={i} group={group} />
+            <DuplicateGroupView key={group.comics[0]?.id ?? i} groupIndex={i} group={group} />
           ))}
         </div>
       )}

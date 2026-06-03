@@ -16,6 +16,7 @@ import { useReaderStore } from '../stores/useReaderStore'
 
 const sources = [
   { value: 'hcomic', label: 'HComic' },
+  { value: 'moeimg', label: 'MoeImg' },
   { value: 'jmcomic', label: '禁漫天堂' }
 ]
 

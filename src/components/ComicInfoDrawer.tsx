@@ -52,6 +52,7 @@ export function ComicInfoDrawer() {
 
   useEffect(() => {
     if (!isOpen || !favouriteTagHighlight || comicSource !== 'hcomic') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDrawerFavTags([])
       return
     }
@@ -84,14 +85,14 @@ export function ComicInfoDrawer() {
   }, [isOpen, drawerComic?.id, comicSource])
 
   useEffect(() => {
-    if (!isOpen || !drawerComic?.id || comicSource !== 'hcomic') {
+    if (!isOpen || !drawerComic?.id || (comicSource !== 'hcomic' && comicSource !== 'moeimg')) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFavouritesState('idle')
       return
     }
     let cancelled = false
     setFavouritesState('loading')
-    checkFavourite(drawerComic.id)
+    checkFavourite(drawerComic.id, comicSource)
       .then((result: { isFavourited: boolean }) => {
         if (!cancelled) {
           setFavouritesState(result.isFavourited ? 'success' : 'idle')
@@ -132,11 +133,11 @@ export function ComicInfoDrawer() {
     setFavouritesState('loading')
     try {
       if (isFavourited) {
-        await removeFromFavourites(drawerComic.id)
+        await removeFromFavourites(drawerComic.id, comicSource)
         setFavouritesState('idle')
         setFavToastMessage('已移除收藏')
       } else {
-        await addToFavourites(drawerComic.id)
+        await addToFavourites(drawerComic.id, comicSource)
         setFavouritesState('success')
         setFavToastMessage('已加入收藏夹')
       }

@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import type { ComicInfo } from '@shared/types'
 import type { DuplicateGroup as DuplicateGroupType } from '@/utils/titleSimilarity'
 import { useDrawerStore } from '@/stores/useDrawerStore'
+import { useReaderStore } from '@/stores/useReaderStore'
 
 interface DuplicateGroupProps {
   groupIndex: number
@@ -11,6 +11,7 @@ interface DuplicateGroupProps {
 export function DuplicateGroup({ groupIndex, group }: DuplicateGroupProps) {
   const [expanded, setExpanded] = useState(true)
   const openDrawer = useDrawerStore(s => s.openDrawer)
+  const openReader = useReaderStore(s => s.openReader)
 
   return (
     <div className="bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden">
@@ -30,24 +31,34 @@ export function DuplicateGroup({ groupIndex, group }: DuplicateGroupProps) {
       {expanded && (
         <div className="border-t border-[var(--border)] divide-y divide-[var(--border)]">
           {group.comics.map(comic => (
-            <button
+            <div
               key={comic.id}
-              onClick={() => openDrawer(comic)}
               className="w-full flex items-center gap-3 px-4 py-2
-                         hover:bg-[var(--bg-secondary)] transition-colors text-left"
+                         hover:bg-[var(--bg-secondary)] transition-colors"
             >
-              <img
-                src={comic.coverUrl}
-                alt=""
-                className="w-10 h-14 object-cover rounded flex-shrink-0 bg-[var(--bg-secondary)]"
-              />
-              <span className="flex-1 text-sm text-[var(--text-primary)] break-all">
+              <button
+                onClick={() => openReader(comic)}
+                className="flex-shrink-0 cursor-pointer"
+                title="预览漫画"
+              >
+                <img
+                  src={comic.coverUrl}
+                  alt=""
+                  className="w-10 h-14 object-cover rounded bg-[var(--bg-secondary)]"
+                  onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                />
+              </button>
+              <button
+                onClick={() => openDrawer(comic)}
+                className="flex-1 text-sm text-[var(--text-primary)] break-all text-left cursor-pointer"
+                title="查看详情"
+              >
                 {comic.title}
-              </span>
+              </button>
               <span className="text-xs text-[var(--text-secondary)] flex-shrink-0">
                 {Math.round((group.scores.get(comic.id) ?? 0) * 100)}%
               </span>
-            </button>
+            </div>
           ))}
         </div>
       )}
