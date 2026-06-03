@@ -45,6 +45,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const {
     imageCacheRef,
     cacheVersion,
+    preloadedRanges,
     preloadTarget,
     setPreloadTarget,
     clearCache,
@@ -108,6 +109,15 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
     loadingState, imageUrls.length, freezePageTrackingRef,
   )
+
+  // Keep preload target in sync with current page during scroll mode
+  // so usePreloadManager preloads pages ahead/behind the visible viewport
+  // Only enable for comics with enough pages to make preloading meaningful
+  useEffect(() => {
+    if (displayMode === 'scroll' && loadingState === 'loaded' && imageUrls.length > 9) {
+      setPreloadTarget(currentPage)
+    }
+  }, [displayMode, currentPage, loadingState, imageUrls.length, setPreloadTarget])
 
   // Jump to initial page when opening from history
   useEffect(() => {
@@ -471,7 +481,19 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
             onLostPointerCapture={cancelDrag}
           >
             <div className="w-full relative" style={{ height: '4px' }}>
-              <div className="absolute inset-0 rounded-full" style={{ background: 'rgba(255,255,255,0.1)' }} />
+              <div className="absolute inset-0 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.1)' }} />
+              {preloadedRanges.map((range, i) => {
+                const total = effectiveTotalPages
+                const left = ((range.start - 1) / total) * 100
+                const width = ((range.end - range.start + 1) / total) * 100
+                return (
+                  <div
+                    key={i}
+                    className="absolute top-0 bottom-0 rounded-full pointer-events-none"
+                    style={{ left: `${left}%`, width: `${Math.max(width, 0.3)}%`, background: 'rgba(108,140,255,0.25)' }}
+                  />
+                )
+              })}
               <div
                 className="absolute left-0 top-0 bottom-0 rounded-full"
                 style={{ width: `${progress}%`, background: '#6c8cff' }}

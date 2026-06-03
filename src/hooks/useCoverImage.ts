@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 
 const coverCache = new Map<string, string | null>()
 const pendingRequests = new Map<string, Promise<string | null>>()
-const MAX_CACHE_SIZE = 200
 
 // Shared IntersectionObserver for all cover images
 let sharedObserver: IntersectionObserver | null = null
@@ -97,10 +96,6 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
       try {
         const result = await window.hcomic!.fetchCover(url)
         const uri = result.dataUri as string | null
-        if (coverCache.size >= MAX_CACHE_SIZE) {
-          const firstKey = coverCache.keys().next().value
-          if (firstKey !== undefined) coverCache.delete(firstKey)
-        }
         coverCache.set(url, uri)
         return uri
       } catch {
