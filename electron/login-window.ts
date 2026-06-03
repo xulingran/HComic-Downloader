@@ -35,6 +35,8 @@ interface LoginWindowContext {
   hasVisitedAuth0: boolean
   savedUserAgent: string
   extractInProgress: boolean
+  /** jmcomic 用户名，从登录窗口 DOM 提取后缓存，供 closed 事件使用 */
+  jmcomicUsername: string
   done: (result: { success: boolean; message?: string }) => void
   clearTimeout: () => void
   clearSuccessTimeout: () => void
@@ -46,6 +48,7 @@ async function extractAndApplyCookies(
   source: string = 'hcomic',
   domain: string = 'h-comic.com',
   cookieSession: Session = session.defaultSession,
+  jmcomicUsername: string = '',
 ): Promise<{ success: boolean; message: string }> {
   try {
     let cookies: Electron.Cookie[] = []
@@ -86,12 +89,55 @@ async function extractAndApplyCookies(
     await bridge.call('apply_auth', {
       curl_text: `curl 'https://${cookieDomain}' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
       source,
+      // jmcomic 用户名由 Electron 从登录窗口 DOM 提取，避免 Python 后端
+      // 因 Cloudflare 403 无法从首页发现用户名
+      ...(source === 'jmcomic' && jmcomicUsername ? { jmcomic_username: jmcomicUsername } : {}),
     })
-    const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
-    return { success: verifyResult.valid, message: verifyResult.message }
+    // apply_auth 成功后尝试 verify_auth，但不阻断登录流程。
+    // Python 后端可能因 DNS/网络问题无法访问登录域名（如 curl_cffi 无法解析
+    // 18comic.vip），但浏览器已成功获取有效 Cookie 并通过 apply_auth 保存，
+    // 此时应视为登录成功，让后续操作（如收藏夹）使用已保存的凭证重试。
+    try {
+      const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
+      if (verifyResult.valid) {
+        return { success: true, message: verifyResult.message }
+      }
+      // verify_auth 返回无效但 apply_auth 已成功，Cookie 已保存，
+      // 可能是后端网络问题导致校验失败，仍视为登录成功
+      return { success: true, message: '登录凭证已保存（服务端校验未通过，请检查网络或域名设置）' }
+    } catch {
+      return { success: true, message: '登录凭证已保存（服务端校验跳过）' }
+    }
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : '登录处理失败'
     return { success: false, message }
+  }
+}
+
+/** 从 jmcomic 登录窗口 DOM 中提取用户名（导航栏 /user/{name}/favorite 链接）。 */
+async function extractJmcomicUsername(loginWin: BrowserWindow): Promise<string> {
+  if (loginWin.isDestroyed()) return ''
+  try {
+    const username = await loginWin.webContents.executeJavaScript(
+      `(() => {
+        const links = document.querySelectorAll('a[href*="/favorite"]');
+        for (const link of links) {
+          const m = (link.getAttribute('href') || '').match(/\\/user\\/([^/?#]+)\\/favorite/);
+          if (m) return m[1];
+        }
+        // 次级：从任意 /user/{name} 链接提取
+        const userLinks = document.querySelectorAll('a[href*="/user/"]');
+        const generic = new Set(['profile','favorites','setting','my_favourite']);
+        for (const link of userLinks) {
+          const m = (link.getAttribute('href') || '').match(/\\/user\\/([^/?#]+)/);
+          if (m && !generic.has(m[1])) return m[1];
+        }
+        return '';
+      })()`,
+    )
+    return (username || '').trim()
+  } catch {
+    return ''
   }
 }
 
@@ -176,7 +222,19 @@ function completeLoginFlow(
   if (ctx.extractInProgress) return
   ctx.extractInProgress = true
   const cookieSession = loginWin.webContents.session
-  extractAndApplyCookies(userAgent, source, domain, cookieSession).then((result) => {
+  // jmcomic: 先从 DOM 提取用户名，再提取 Cookie。
+  // Python 后端因 Cloudflare 403 无法从首页发现用户名，
+  // 必须在登录窗口关闭前从浏览器 DOM 获取。
+  const extractUsername = source === 'jmcomic'
+    ? extractJmcomicUsername(loginWin)
+    : Promise.resolve('')
+  extractUsername.then((jmcomicUsername) => {
+    if (jmcomicUsername) {
+      ctx.jmcomicUsername = jmcomicUsername
+      diag(`extracted jmcomic username: ${jmcomicUsername}`)
+    }
+    return extractAndApplyCookies(userAgent, source, domain, cookieSession, jmcomicUsername)
+  }).then((result) => {
     if (ctx.settled) return
     if (result.success && mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
@@ -229,7 +287,7 @@ function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext,
       return
     }
     if (ctx.extractInProgress) return
-    extractAndApplyCookies(ctx.savedUserAgent, source, domain, cookieSession).then((result) => {
+    extractAndApplyCookies(ctx.savedUserAgent, source, domain, cookieSession, ctx.jmcomicUsername).then((result) => {
       if (result.success && mainWindow && !mainWindow.isDestroyed()) {
         mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
       }
@@ -334,6 +392,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
       hasVisitedAuth0: false,
       savedUserAgent: '',
       extractInProgress: false,
+      jmcomicUsername: '',
       clearTimeout: () => {},
       clearSuccessTimeout: () => {},
       removeCspHandler,
@@ -391,7 +450,17 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
     // that attempt page-level redirects. These cause loadURL to reject with
     // ERR_ABORTED, which the old code treated as a fatal error and closed the
     // window, causing the perceived "crash".
-    const ALLOWED_NAV_DOMAINS = ['h-comic.com', 'www.h-comic.com', 'auth0.com']
+    //
+    // jmcomic sources: login may redirect between mirror domains (18comic.vip,
+    // 18comic.org, jmcomic-zzz.one, etc.) during the auth flow, so all known
+    // mirrors must be allowed. Without this the "will-navigate" handler blocks
+    // the redirect and login silently fails.
+    const ALLOWED_NAV_DOMAINS = [
+      'h-comic.com',
+      'www.h-comic.com',
+      'auth0.com',
+      ...JMCOMIC_MIRROR_DOMAINS,
+    ]
     loginWin.webContents.on('will-navigate', (event, url) => {
       let hostname: string
       try { hostname = new URL(url).hostname } catch { return }

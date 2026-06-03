@@ -10,7 +10,7 @@ import requests
 from lxml import etree
 
 from models import ChapterInfo, ComicInfo, PaginationInfo
-from utils import configure_session_auth
+from utils import apply_system_proxy_to_session, configure_session_auth
 
 from .constants import (
     DEFAULT_DOMAIN,
@@ -40,9 +40,15 @@ class JmParser:
         self._cookie_synced = False
         self.session = create_session()
         self.session.headers.update(HEADERS)
+        # 注入系统代理，与 hcomic/moeimg parser 保持一致。
+        # 未注入时 curl_cffi 直连网络，若本机依赖代理访问外网则 DNS 解析失败。
+        apply_system_proxy_to_session(self.session)
         self.configure_auth(cookie=cookie, user_agent=user_agent)
 
     def _ensure_domain(self) -> str:
+        # jmcomic 始终使用 18comic.vip 作为默认域名（DEFAULT_DOMAIN）。
+        # 发布页自动发现的镜像域名仅用于设置页的手动切换选项，
+        # 不自动替换默认值，避免解析到不可达域名导致请求失败。
         if not self._domain:
             self._domain = DEFAULT_DOMAIN
         self._sync_cookies_to_jar()
@@ -124,6 +130,15 @@ class JmParser:
             and hasattr(self, "_cookie_synced")
         ):
             self._cookie_synced = False
+
+    def set_username(self, username: str) -> None:
+        """直接设置用户名（由 Electron 登录窗口从 DOM 提取后传入）。
+
+        避免 Python 后端因 Cloudflare 403 无法从首页发现用户名。
+        """
+        if username and username.strip():
+            self._username = username.strip()
+            logger.info("Username set from login window: %s", self._username)
 
     @property
     def cdn_domain(self) -> str | None:
@@ -219,7 +234,9 @@ class JmParser:
                 len(login_links),
             )
             return False, "登录校验失败，请确认 Cookie 是否有效"
-        except requests.RequestException as e:
+        except Exception as e:
+            # curl_cffi 的网络异常不继承 requests.RequestException，
+            # 需用 Exception 基类捕获（如 DNS 解析失败、连接超时等）
             logger.warning("jmcomic verify_login request failed: %s", e)
             return False, f"登录校验失败: {e}"
 
@@ -412,10 +429,25 @@ class JmParser:
                 headers={"Referer": f"https://{domain}/"},
             )
             if resp.status_code != 200:
+                logger.warning(
+                    "_ensure_username: unexpected status=%d url=%s",
+                    resp.status_code,
+                    resp.url,
+                )
                 return False
             if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
                 resp.encoding = "utf-8"
-            doc = etree.HTML(resp.text)
+            html = resp.text
+            doc = etree.HTML(html)
+            # 检测 Cloudflare 挑战页面
+            if len(html) < 500 and (
+                "just a moment" in html.lower() or "cloudflare" in html.lower()
+            ):
+                logger.warning(
+                    "_ensure_username: got Cloudflare challenge page (%d bytes)",
+                    len(html),
+                )
+                return False
             for href in doc.xpath('//a[contains(@href,"/favorite")]/@href'):
                 m = re.search(r"/user/([^/?#]+)/favorite", href)
                 if m:
@@ -425,7 +457,6 @@ class JmParser:
                         self._username,
                     )
                     return True
-            # 次级：从任意 /user/{name} 链接提取（排除通用路径）
             _GENERIC = {"profile", "favorites", "setting", "my_favourite"}
             for href in doc.xpath('//a[contains(@href,"/user/")]/@href'):
                 m = re.search(r"/user/([^/?#]+)", href)
@@ -438,7 +469,11 @@ class JmParser:
                     return True
             logger.warning(
                 "Could not discover jmcomic username from homepage "
-                "(not logged in or navbar structure changed)"
+                "(not logged in or navbar structure changed). "
+                "Response URL: %s, HTML length: %d, first 200 chars: %s",
+                resp.url,
+                len(html),
+                html[:200],
             )
             return False
         except Exception as e:

@@ -12,6 +12,7 @@ from lxml import etree
 
 from .constants import DEFAULT_DOMAIN, HEADERS, PUBLISH_URL
 from .session import create_session
+from utils import apply_system_proxy_to_session
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class JmDomainResolver:
         )
         self._cache_path = os.path.join(self._cache_dir, self.CACHE_FILENAME)
         self._session = create_session()
+        apply_system_proxy_to_session(self._session)
 
     def resolve(self) -> str:
         """返回当前可用域名。优先缓存，其次发布页，最后 fallback。"""

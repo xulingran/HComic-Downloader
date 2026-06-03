@@ -412,7 +412,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
                   className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
                 >
                   <option value="18comic.vip">18comic.vip (默认)</option>
-                  {jmcomicDomains.map((d) => (
+                  {jmcomicDomains.filter(d => d !== '18comic.vip').map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                   <option value="__custom__">自定义域名…</option>
