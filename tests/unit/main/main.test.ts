@@ -135,8 +135,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 33 previous + 1 random + 3 cache + 1 add_to_favourites + 1 check_favourite + 1 remove_from_favourites + 4 history + 1 get_comic_detail + 1 get_chapter_preview_urls + 1 cancel_login_auto_close + 3 favourite_tags = 50 total
-      expect(handleCalls.length).toBe(50)
+      // 51 total
+      expect(handleCalls.length).toBe(51)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -227,6 +227,7 @@ describe('main.ts', () => {
         'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
         'get_history', 'add_history', 'delete_history', 'clear_history',
         'get_comic_detail', 'get_favourite_tags', 'sync_favourite_tags', 'remove_favourite_tag',
+        'moeimg_login', 'get_jmcomic_domains',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),

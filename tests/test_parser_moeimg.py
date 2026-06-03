@@ -2,13 +2,16 @@
 
 from typing import Any
 
+import requests as _requests
+
 from sources.moeimg import MoeImgParser
 
 
 class _MockResponse:
-    def __init__(self, payload: Any, status_code: int = 200):
+    def __init__(self, payload: Any, status_code: int = 200, text: str = ""):
         self._payload = payload
         self.status_code = status_code
+        self.text = text
 
     def raise_for_status(self):
         if self.status_code >= 400:
@@ -48,7 +51,7 @@ def test_search_success_maps_comic_fields(monkeypatch):
     assert comic.source_site == "moeimg"
     assert comic.preview_url.endswith("/post/fa123")
     assert comic.cover_url == "https://moeimg.fan/img/thumb/1.webp"
-    assert comic.tags == ["chinese"]
+    assert comic.tags == []
     assert pagination is not None
     assert pagination.current_page == 2
     assert pagination.total_pages == 3
@@ -87,7 +90,7 @@ def test_search_empty_keyword_uses_latest_manga_endpoint(monkeypatch):
     assert comics[0].author is None
     assert comics[0].category is None
     assert comics[0].publish_date is None
-    assert comics[0].tags == ["japanese"]
+    assert comics[0].tags == []
     assert pagination is not None
     assert pagination.total_pages == 2
     assert called_urls == [f"{parser.BASE_URL}/spa/latest-manga"]
@@ -124,7 +127,7 @@ def test_search_does_not_request_detail_immediately(monkeypatch):
     assert comic.category is None
     assert comic.publish_date is None
     assert comic.pages == 0
-    assert comic.tags == ["chinese"]
+    assert comic.tags == []
     assert called_urls == [f"{parser.BASE_URL}/spa/search"]
 
 
@@ -341,3 +344,105 @@ def test_get_comic_detail_supports_single_quote_data_url_and_preview_count(monke
         "https://cdn.example/data/path/001.webp",
         "https://cdn.example/data/path/002.webp",
     ]
+
+
+def test_get_comic_detail_falls_back_to_html_on_spa_failure(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+
+    html_page = """
+    <html><body>
+    <div class="manga-detail">
+        <h1 class="manga-title">HTML标题</h1>
+        <ul>
+            <li class="br">
+                <div class="md-title">Category:</div>
+                <div class="md-content"><a href="/category/artist%20cg">artist cg</a></div>
+            </li>
+            <li class="br">
+                <div class="md-title">Language:</div>
+                <div class="md-content"><a href="/language/chinese">chinese</a></div>
+            </li>
+            <li class="br">
+                <div class="md-title">Author:</div>
+                <div class="md-content"><a href="/artist/fa5888/lemon%20tea">lemon tea</a></div>
+            </li>
+            <li class="br">
+                <div class="md-title">Tags:</div>
+                <div class="md-content">
+                    <a href="/genre/fa1/tag1">tag1</a>
+                    <a href="/genre/fa2/tag2">tag2</a>
+                </div>
+            </li>
+        </ul>
+    </div>
+    <div class="manga-img">
+        <img src="https://moeimg.fan/img/thumb/test.webp">
+    </div>
+    <div class="preview-imgs">
+        <ul>
+            <li><img data-src="https://preview/1.webp"></li>
+            <li><img data-src="https://preview/2.webp"></li>
+            <li><img data-src="https://preview/3.webp"></li>
+        </ul>
+    </div>
+    </body></html>
+    """
+
+    def fake_get(url, params=None, timeout=30):
+        if "/spa/manga/999" in url and "/read" not in url:
+            raise _requests.ConnectionError("SPA API down")
+        if url.endswith("/post/fa999"):
+            return _MockResponse({}, text=html_page)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comic = parser.get_comic_detail("999")
+    assert comic is not None
+    assert comic.title == "HTML标题"
+    assert comic.author == "lemon tea"
+    assert comic.category == "artist cg"
+    assert comic.tags == ["tag1", "tag2"]
+    assert comic.pages == 3
+    assert comic.source_site == "moeimg"
+    assert "chinese" not in comic.tags
+
+
+def test_get_comic_detail_excludes_language_from_tags(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    detail_payload = {
+        "detail": {
+            "manga_id": 281587,
+            "manga_name": "测试漫画",
+            "manga_cover_img": "https://moeimg.fan/img/thumb/test.webp",
+            "category": "artist cg",
+            "language": "chinese",
+        },
+        "authors": [{"author_name": "lemon tea", "author_id": 5888}],
+        "tags": [
+            {"tag_name": "rough translation", "tag_id": 5409},
+            {"tag_name": "sex toys", "tag_id": 2463},
+        ],
+    }
+    read_payload = {
+        "chapter_detail": {
+            "manga_id": 281587,
+            "total": 57,
+            "server": "https://nvme2.bunnyssd.com/",
+            "chapter_content": '<img data-url="data/8b/9f/281587/287093/000.webp">',
+        }
+    }
+
+    def fake_get(url, params=None, timeout=30):
+        if url.endswith("/spa/manga/281587/read"):
+            return _MockResponse(read_payload)
+        if url.endswith("/spa/manga/281587"):
+            return _MockResponse(detail_payload)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comic = parser.get_comic_detail("281587")
+    assert comic is not None
+    assert comic.tags == ["rough translation", "sex toys"]
+    assert "chinese" not in comic.tags

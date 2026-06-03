@@ -167,6 +167,7 @@ def test_parse_search_results_extracts_cards():
 
     assert pagination is not None
     assert pagination.total_pages == 3
+    assert pagination.current_page == 2
 
 
 def test_parse_search_item_skips_blank_cover():
@@ -203,41 +204,64 @@ def test_verify_login_detects_cloudflare_challenge(monkeypatch):
 
     parser = JmParser.__new__(JmParser)
     parser._domain = "test.one"
+    parser._username = None
     parser.timeout = 5
     parser.session = MagicMock()
 
-    class FakeResp:
-        status_code = 403
-        text = "Just a moment... Please wait while we verify..."
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.text = "Just a moment... Please wait while we verify..."
+    mock_resp.url = "https://test.one/"
+    parser.session.get.return_value = mock_resp
 
-        @property
-        def url(self):
-            return "https://test.one/user/favorites"
-
-    parser.session.get.return_value = FakeResp()
     valid, msg = parser.verify_login_status()
     assert valid is False
     assert "cf_clearance" in msg
 
 
-def test_verify_login_detects_login_redirect(monkeypatch):
-    """verify_login_status 应检测重定向到登录页。"""
+def test_verify_login_detects_not_logged_in(monkeypatch):
+    """verify_login_status 应检测未登录状态（首页无收藏夹链接，含登入链接）。"""
     from unittest.mock import MagicMock
 
     parser = JmParser.__new__(JmParser)
     parser._domain = "test.one"
+    parser._username = None
     parser.timeout = 5
     parser.session = MagicMock()
 
-    class FakeResp:
-        status_code = 200
-        text = ""
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.encoding = "utf-8"
+    mock_resp.url = "https://test.one/"
+    mock_resp.text = '<html><body><a href="/login">登入</a></body></html>'
+    parser.session.get.return_value = mock_resp
 
-        @property
-        def url(self):
-            return "https://test.one/login?next=/user/favorites"
-
-    parser.session.get.return_value = FakeResp()
     valid, msg = parser.verify_login_status()
     assert valid is False
     assert "登录" in msg
+
+
+def test_verify_login_succeeds_and_discovers_username(monkeypatch):
+    """verify_login_status 成功时应从导航栏提取并缓存用户名。"""
+    from unittest.mock import MagicMock
+
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "test.one"
+    parser._username = None
+    parser.timeout = 5
+    parser.session = MagicMock()
+
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.encoding = "utf-8"
+    mock_resp.url = "https://test.one/"
+    mock_resp.text = (
+        "<html><body>"
+        '<a href="/user/xulingran/favorite/albums">收藏夹</a>'
+        "</body></html>"
+    )
+    parser.session.get.return_value = mock_resp
+
+    valid, msg = parser.verify_login_status()
+    assert valid is True
+    assert parser._username == "xulingran"

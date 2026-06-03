@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, act } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const {
@@ -26,6 +26,7 @@ vi.mock('@/hooks/useIpc', () => ({
   useAuth: vi.fn().mockReturnValue({ applyAuth: mockApplyAuth, verifyAuth: mockVerifyAuth }),
   useProxyStatus: vi.fn().mockReturnValue({ getProxyStatus: vi.fn().mockResolvedValue({ http: '', https: '', noProxy: '' }) }),
   useAvailableFonts: vi.fn().mockReturnValue({ getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }) }),
+  useJmcomicDomains: vi.fn().mockReturnValue({ getJmcomicDomains: vi.fn().mockResolvedValue({ domains: [] }) }),
   useFavouriteTags: vi.fn().mockReturnValue({
     getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
     syncFavouriteTags: vi.fn(),
@@ -57,7 +58,6 @@ Object.defineProperty(window, 'hcomic', {
   value: {
     openLoginWindow: vi.fn().mockResolvedValue({ success: true, message: '登录成功' }),
     onLoginCookieSuccess: mockOnLoginCookieSuccess.mockReturnValue(vi.fn()),
-    cancelLoginAutoClose: vi.fn().mockResolvedValue(true),
     openUrl: vi.fn(),
   },
   writable: true,
@@ -168,7 +168,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getByText('登录')).toBeInTheDocument()
+      expect(screen.getAllByText(/登录/).length).toBeGreaterThanOrEqual(1)
     })
   })
 
@@ -256,17 +256,21 @@ describe('SettingsPage', () => {
   it('renders apply and test auth buttons', async () => {
     render(<SettingsPage />)
 
+    await userEvent.click(screen.getAllByText('▶')[0])
+
     await waitFor(() => {
-      expect(screen.getAllByText('应用登录信息').length).toBeGreaterThanOrEqual(2)
-      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getAllByText('应用登录信息').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(1)
     })
   })
 
   it('apply auth button is disabled when curl text is empty', async () => {
     render(<SettingsPage />)
 
+    await userEvent.click(screen.getAllByText('▶')[0])
+
     await waitFor(() => {
-      expect(screen.getAllByText('应用登录信息').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getAllByText('应用登录信息').length).toBeGreaterThanOrEqual(1)
     })
 
     const applyBtns = screen.getAllByText('应用登录信息').map(el => el.closest('button')!)
@@ -278,6 +282,8 @@ describe('SettingsPage', () => {
     mockVerifyAuth.mockResolvedValue({ valid: true, message: 'OK' })
 
     render(<SettingsPage />)
+
+    await userEvent.click(screen.getAllByText('▶')[0])
 
     await waitFor(() => {
       expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
@@ -303,6 +309,8 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />)
 
+    await userEvent.click(screen.getAllByText('▶')[0])
+
     await waitFor(() => {
       expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
     })
@@ -323,6 +331,8 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />)
 
+    await userEvent.click(screen.getAllByText('▶')[0])
+
     await waitFor(() => {
       expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
     })
@@ -341,6 +351,8 @@ describe('SettingsPage', () => {
     mockApplyAuth.mockRejectedValue(new Error('Network error'))
 
     render(<SettingsPage />)
+
+    await userEvent.click(screen.getAllByText('▶')[0])
 
     await waitFor(() => {
       expect(screen.getAllByPlaceholderText(/从浏览器获取 curl 命令/).length).toBeGreaterThanOrEqual(1)
@@ -361,8 +373,10 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />)
 
+    await userEvent.click(screen.getAllByText('▶')[0])
+
     await waitFor(() => {
-      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(1)
     })
 
     await userEvent.click(screen.getAllByText('测试登录')[0])
@@ -377,8 +391,10 @@ describe('SettingsPage', () => {
 
     render(<SettingsPage />)
 
+    await userEvent.click(screen.getAllByText('▶')[0])
+
     await waitFor(() => {
-      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(2)
+      expect(screen.getAllByText('测试登录').length).toBeGreaterThanOrEqual(1)
     })
 
     await userEvent.click(screen.getAllByText('测试登录')[0])
@@ -609,44 +625,4 @@ describe('SettingsPage', () => {
     })
   })
 
-  describe('Login toast', () => {
-    beforeEach(() => {
-      vi.clearAllMocks()
-      mockGetConfig.mockResolvedValue({ config: defaultConfig })
-      mockSetConfig.mockResolvedValue({ success: true })
-    })
-
-    it('does not show login toast initially', async () => {
-      render(<SettingsPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText('设置')).toBeInTheDocument()
-      })
-
-      expect(screen.queryByText(/已获取到 Cookie/)).not.toBeInTheDocument()
-    })
-
-    it('shows login toast when onLoginCookieSuccess fires', async () => {
-      let storedCallback: (() => void) | null = null
-      mockOnLoginCookieSuccess.mockImplementation((callback: () => void) => {
-        storedCallback = callback
-        return vi.fn()
-      })
-
-      render(<SettingsPage />)
-
-      await waitFor(() => {
-        expect(screen.getByText('设置')).toBeInTheDocument()
-      })
-
-      expect(storedCallback).not.toBeNull()
-      act(() => {
-        storedCallback!()
-      })
-
-      await waitFor(() => {
-        expect(screen.getByText(/已获取到 Cookie，将在 5 秒后关闭弹窗/)).toBeInTheDocument()
-      })
-    })
-  })
 })

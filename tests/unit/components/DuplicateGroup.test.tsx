@@ -5,9 +5,14 @@ import { DuplicateGroup } from '@/components/tools/DuplicateGroup'
 import type { ComicInfo } from '@shared/types'
 
 const mockOpenDrawer = vi.fn()
+const mockOpenReader = vi.fn()
 vi.mock('@/stores/useDrawerStore', () => ({
   useDrawerStore: (selector: (state: { openDrawer: typeof mockOpenDrawer }) => unknown) =>
     selector({ openDrawer: mockOpenDrawer }),
+}))
+vi.mock('@/stores/useReaderStore', () => ({
+  useReaderStore: (selector: (state: { openReader: typeof mockOpenReader }) => unknown) =>
+    selector({ openReader: mockOpenReader }),
 }))
 
 function makeComic(id: string, title: string): ComicInfo {
@@ -20,7 +25,7 @@ const sampleGroup = {
 }
 
 describe('DuplicateGroup', () => {
-  beforeEach(() => { mockOpenDrawer.mockClear() })
+  beforeEach(() => { mockOpenDrawer.mockClear(); mockOpenReader.mockClear() })
 
   it('renders group header with comic count', () => {
     render(<DuplicateGroup groupIndex={0} group={sampleGroup} />)
@@ -40,10 +45,20 @@ describe('DuplicateGroup', () => {
     expect(badges).toHaveLength(2)
   })
 
-  it('calls openDrawer when a comic row is clicked', async () => {
+  it('calls openDrawer when a comic title is clicked', async () => {
     render(<DuplicateGroup groupIndex={0} group={sampleGroup} />)
     await userEvent.click(screen.getByText('标题A'))
     expect(mockOpenDrawer).toHaveBeenCalledWith(
+      expect.objectContaining({ id: '1', title: '标题A' })
+    )
+  })
+
+  it('calls openReader when cover button is clicked', async () => {
+    render(<DuplicateGroup groupIndex={0} group={sampleGroup} />)
+    const coverButtons = screen.getAllByTitle('预览漫画')
+    expect(coverButtons).toHaveLength(2)
+    await userEvent.click(coverButtons[0])
+    expect(mockOpenReader).toHaveBeenCalledWith(
       expect.objectContaining({ id: '1', title: '标题A' })
     )
   })
