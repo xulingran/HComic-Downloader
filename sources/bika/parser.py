@@ -38,6 +38,8 @@ class BikaParser:
         self.session.headers.update(DEFAULT_HEADERS)
         apply_system_proxy_to_session(self.session)
         self._token: str = ""
+        self._stored_username: str = ""
+        self._stored_password: str = ""
 
     def configure_auth(
         self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
@@ -46,6 +48,11 @@ class BikaParser:
         if bearer_token:
             self._token = bearer_token.strip()
             self.session.headers["authorization"] = self._token
+
+    def set_stored_credentials(self, username: str, password: str):
+        """保存用户名密码到内存，用于 token 过期后自动重登录。"""
+        self._stored_username = username or ""
+        self._stored_password = password or ""
 
     def close(self):
         """关闭底层会话连接。"""
@@ -149,9 +156,12 @@ class BikaParser:
         data = {"email": username, "password": password}
         result = self._request(Method.POST, "auth/sign-in", json=data)
 
-        token = result.get("data", {}).get("token")
+        token = result.get("data", {}).get("token") if isinstance(result.get("data"), dict) else None
         if not token:
-            raise ParserResponseError("登录失败：未获取到 token")
+            raise ParserResponseError(
+                f"登录失败：API 返回 code={result.get('code')}, "
+                f"message={result.get('message')}, data={result.get('data')!r}"
+            )
 
         self._token = token
         return token

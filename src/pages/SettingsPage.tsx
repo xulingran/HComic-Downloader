@@ -65,6 +65,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     previewCacheSizeLimitMB: 500,
     jmcomicDomain: '',
     moeimgUsername: '',
+    bikaUsername: '',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -122,6 +123,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
           jmcomicDomain: result.config.jmcomicDomain ?? '',
           moeimgUsername: result.config.moeimgUsername ?? '',
+          bikaUsername: result.config.bikaUsername ?? '',
         })
         setJmcomicDomainInput(result.config.jmcomicDomain ?? '')
         setJmcomicDomainMode(result.config.jmcomicDomain ? 'custom' : 'auto')
@@ -139,6 +141,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         }
         if (result.config.hasMoeimgAuth) {
           moeimgAuth.verifyFromConfig(true)
+        }
+        if (result.config.hasBikaAuth) {
+          bikaAuth.verifyFromConfig(true)
         }
         if (result.config.fontName) setFontName(result.config.fontName)
         if (result.config.fontSize) setFontSize(result.config.fontSize)

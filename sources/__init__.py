@@ -76,11 +76,16 @@ class MultiSourceParser:
                 moeimg_auth.get("username", ""),
                 moeimg_auth.get("password", ""),
             )
-        # 为 bika 恢复存储的 token
+        # 为 bika 恢复存储的 token 和用户名密码
         bika_auth = self.source_auth.get("bika", {})
         bika_parser = self.parsers["bika"]
-        if isinstance(bika_parser, BikaParser) and bika_auth.get("bearer_token"):
-            bika_parser.configure_auth(bearer_token=bika_auth["bearer_token"])
+        if isinstance(bika_parser, BikaParser):
+            if bika_auth.get("bearer_token"):
+                bika_parser.configure_auth(bearer_token=bika_auth["bearer_token"])
+            bika_parser.set_stored_credentials(
+                bika_auth.get("username", ""),
+                bika_auth.get("password", ""),
+            )
         self.current_source = (
             default_source if default_source in self.parsers else "hcomic"
         )

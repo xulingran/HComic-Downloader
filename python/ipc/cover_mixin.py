@@ -44,6 +44,11 @@ class CoverMixin:
 
             session = _requests.Session()
 
+        # Apply system proxy so covers on foreign CDNs can be reached
+        from utils import apply_system_proxy_to_session
+
+        apply_system_proxy_to_session(session)
+
         # Copy headers from parser (User-Agent, Accept, etc.)
         try:
             src_headers = dict(self.parser.session.headers)

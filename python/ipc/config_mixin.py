@@ -146,6 +146,12 @@ class ConfigMixin:
         config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get(
             "username", ""
         )
+        config["hasBikaAuth"] = bool(
+            self.config.source_auth.get("bika", {}).get("bearer_token")
+        )
+        config["bikaUsername"] = self.config.source_auth.get("bika", {}).get(
+            "username", ""
+        )
         # 返回 jmcomic CDN 域名，供前端动态更新白名单
         jmcomic_cdn = self.parser.get_jmcomic_cdn_domain()
         if jmcomic_cdn:

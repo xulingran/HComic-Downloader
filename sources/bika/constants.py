@@ -4,7 +4,7 @@
 API_KEY = "C69BAF41DA5ABD1FFEDC6D2FEA56B"
 
 # HMAC-SHA256 签名密钥
-SECRET_KEY = "~d}\\$Q7\\$eIni=V)9\\\\RK/P.RM4;9[7|@/CA}b~OW!3?EV`:<>M7pddUBL5n|0/*Cn"
+SECRET_KEY = r"~d}$Q7$eIni=V)9\RK/P.RM4;9[7|@/CA}b~OW!3?EV`:<>M7pddUBL5n|0/*Cn"
 
 # 固定 nonce
 NONCE = "4ce7a7aa759b40f794d189a88b84aba8"
