@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import logging
 import re
+from dataclasses import dataclass
 from urllib.parse import quote
 
 import requests
 from lxml import etree
 
 from models import ChapterInfo, ComicInfo, PaginationInfo
+from sources.base import ParserContextMixin
 from utils import apply_system_proxy_to_session, configure_session_auth
 
 from .constants import (
@@ -21,13 +23,27 @@ from .constants import (
 )
 from .session import create_session
 
+
+@dataclass
+class _DetailMetadata:
+    """Parsed metadata from comic detail page."""
+
+    author: str | None
+    tags: list[str]
+    category: str | None
+    pages: int
+    publish_date: str | None
+
+
 logger = logging.getLogger(__name__)
 
 _RANKING_RE = re.compile(r"^[日周月总](更新|点击|评分|评论|收藏)$")
 _INVALID_ID_RE = re.compile(r"album_missing|login")
+_CHALLENGE_MIN_LENGTH = 500
+_CHALLENGE_KEYWORDS = ("cloudflare", "just a moment", "captcha", "cf-")
 
 
-class JmParser:
+class JmParser(ParserContextMixin):
     """jmcomic 解析器，实现与 HComicParser 相同的接口。"""
 
     def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = ""):
@@ -156,15 +172,6 @@ class JmParser:
         self._user_agent = user_agent
         self._cookie_synced = False
 
-    def close(self):
-        self.session.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
-
     def verify_login_status(self) -> tuple[bool, str]:
         """通过访问首页导航栏验证 Cookie 有效性并提取用户名。
 
@@ -191,8 +198,7 @@ class JmParser:
                     resp.url,
                 )
                 return False, "登录校验失败，请确认 Cookie 是否有效"
-            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
-                resp.encoding = "utf-8"
+            self._fix_encoding(resp)
             html = resp.text
             doc = etree.HTML(html)
             # 已登录：导航栏含 /user/{username}/favorite 链接
@@ -435,14 +441,11 @@ class JmParser:
                     resp.url,
                 )
                 return False
-            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
-                resp.encoding = "utf-8"
+            self._fix_encoding(resp)
             html = resp.text
             doc = etree.HTML(html)
             # 检测 Cloudflare 挑战页面
-            if len(html) < 500 and (
-                "just a moment" in html.lower() or "cloudflare" in html.lower()
-            ):
+            if self._is_challenge_page(html):
                 logger.warning(
                     "_ensure_username: got Cloudflare challenge page (%d bytes)",
                     len(html),
@@ -512,8 +515,7 @@ class JmParser:
             if resp.url and "/login" in str(resp.url):
                 return [], None, True
             resp.raise_for_status()
-            if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
-                resp.encoding = "utf-8"
+            self._fix_encoding(resp)
             html = resp.text
             if not html or not html.strip():
                 logger.warning(
@@ -522,11 +524,7 @@ class JmParser:
                 )
                 return [], None, False
             # 检测 Cloudflare / 反爬页面
-            if len(html) < 500 and (
-                "cloudflare" in html.lower()
-                or "captcha" in html.lower()
-                or "cf-" in html.lower()
-            ):
+            if self._is_challenge_page(html):
                 logger.warning(
                     "jmcomic favourites page looks like a challenge page (%d bytes)",
                     len(html),
@@ -669,35 +667,11 @@ class JmParser:
                 if r.url and "/error/" in str(r.url):
                     return cid, "", "album error page (missing/removed)"
                 r.raise_for_status()
-                if not r.encoding or r.encoding.lower() in ("iso-8859-1", "latin-1"):
-                    r.encoding = "utf-8"
+                JmParser._fix_encoding(r)
                 doc = etree.HTML(r.text)
-                title_el = doc.xpath('//h1[@id="book-name"]/text()')
-                if title_el and title_el[0].strip():
-                    return cid, title_el[0].strip(), ""
-                h1_fallback = doc.xpath("//h1/text()")
-                if h1_fallback and h1_fallback[0].strip():
-                    return cid, h1_fallback[0].strip(), ""
-                og_title = doc.xpath('//meta[@property="og:title"]/@content')
-                if og_title and og_title[0].strip():
-                    return cid, og_title[0].strip(), ""
-                twitter_title = doc.xpath('//meta[@name="twitter:title"]/@content')
-                if twitter_title and twitter_title[0].strip():
-                    return cid, twitter_title[0].strip(), ""
-                page_title = doc.xpath("//title/text()")
-                if page_title and page_title[0].strip():
-                    raw = page_title[0].strip()
-                    for sep in (" | ", " - ", " – ", " — "):
-                        if sep in raw:
-                            raw = raw.split(sep, 1)[0].strip()
-                    if raw and raw.lower() not in (
-                        "禁漫天堂",
-                        "18comic",
-                        "jmcomic",
-                        "18comic.vip",
-                        "jmcomic-zzz.one",
-                    ):
-                        return cid, raw, ""
+                title = self._extract_title_from_doc(doc)
+                if title != "未知标题":
+                    return cid, title, ""
                 # JSON-LD 结构化数据（如 ComicSeries / Book 等 schema）
                 import json as _json
 
@@ -787,6 +761,21 @@ class JmParser:
     def _is_ranking_keyword(keyword: str) -> bool:
         return bool(_RANKING_RE.match(keyword or ""))
 
+    @staticmethod
+    def _is_challenge_page(html: str) -> bool:
+        """检测 Cloudflare/反爬挑战页面。"""
+        if len(html) >= _CHALLENGE_MIN_LENGTH:
+            return False
+        lower = html.lower()
+        return any(kw in lower for kw in _CHALLENGE_KEYWORDS)
+
+    @staticmethod
+    def _fix_encoding(resp) -> None:
+        """Fix response encoding if server returns wrong charset."""
+        enc = (resp.encoding or "").lower()
+        if not enc or enc in ("iso-8859-1", "latin-1"):
+            resp.encoding = "utf-8"
+
     def _build_search_url(self, keyword: str, page: int = 1) -> str:
         domain = self._ensure_domain()
         url = SEARCH_URL_TEMPLATE.format(domain=domain, query=quote(keyword))
@@ -805,8 +794,7 @@ class JmParser:
             url, timeout=self.timeout, allow_redirects=True, headers=headers
         )
         resp.raise_for_status()
-        if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
-            resp.encoding = "utf-8"
+        self._fix_encoding(resp)
         return resp.text
 
     def _parse_search_results(
@@ -966,13 +954,42 @@ class JmParser:
         )
 
     def _parse_detail(self, html: str, comic_id: str, domain: str) -> ComicInfo:
-        """解析漫画详情页面。
-
-        详情页的元信息集中在封面块（#album_photo_cover）之后的兄弟 div 中，
-        将作者/标签/作品/登场人物等字段的查询限定在该区块，避免误抓到
-        页面下方「猜你喜欢」等推荐区的同名节点。
-        """
+        """解析漫画详情页面 — 编排器。"""
         doc = etree.HTML(html)
+        title = self._extract_title_from_doc(doc)
+        scope = self._locate_info_block(doc)
+        scramble_id = self._extract_scramble_id(html)
+        chapters = self._parse_detail_chapters(doc)
+        image_urls = self._parse_detail_images(doc, domain)
+
+        metadata = self._parse_detail_metadata(scope, html, domain)
+        total_pages = max(metadata.pages, len(image_urls))
+        image_urls = self._expand_image_urls(image_urls, total_pages, comic_id)
+
+        cover_url = self._extract_cover_url(doc, domain)
+
+        return ComicInfo(
+            id=comic_id,
+            title=title,
+            author=metadata.author,
+            pages=total_pages,
+            tags=metadata.tags,
+            category=metadata.category,
+            publish_date=metadata.publish_date,
+            cover_url=cover_url,
+            preview_url=f"https://{domain}/album/{comic_id}",
+            media_id=comic_id,
+            comic_source="JMCOMIC",
+            source_site="jmcomic",
+            scramble_id=scramble_id,
+            image_urls=image_urls,
+            chapters=chapters,
+            album_id=comic_id,
+            album_total_chapters=len(chapters) if chapters else 1,
+        )
+
+    def _extract_title_from_doc(self, doc) -> str:
+        """5 策略标题提取：h1 → og:title → twitter:title → page title → 未知标题"""
         title_el = doc.xpath('//h1[@id="book-name"]/text()') or doc.xpath("//h1/text()")
         title_from_h1 = title_el[0].strip() if title_el else ""
         if not title_from_h1:
@@ -998,24 +1015,26 @@ class JmParser:
                     "jmcomic-zzz.one",
                 ):
                     title_from_h1 = raw
-        title = title_from_h1 or "未知标题"
+        return title_from_h1 or "未知标题"
 
-        # 定位信息区块：封面块之后的第一个兄弟 div
-        info_el = None
+    @staticmethod
+    def _locate_info_block(doc):
+        """定位信息区块：封面块之后的第一个兄弟 div"""
         cover_blocks = doc.xpath('//div[@id="album_photo_cover"]')
         if cover_blocks:
             siblings = cover_blocks[-1].xpath("./following-sibling::div")
             if siblings:
-                info_el = siblings[0]
-        scope = info_el if info_el is not None else doc
+                return siblings[0]
+        return None
 
-        # 从 JavaScript 中提取 scramble_id
-        scramble_id = ""
+    @staticmethod
+    def _extract_scramble_id(html: str) -> str:
+        """从 JavaScript 中提取 scramble_id"""
         scramble_match = re.search(r"var scramble_id\s*=\s*(\d+)", html)
-        if scramble_match:
-            scramble_id = scramble_match.group(1)
+        return scramble_match.group(1) if scramble_match else ""
 
-        # 解析章节列表（多章节专辑）。参考 ComicGUISpider：取最后一个 episode 块。
+    def _parse_detail_chapters(self, doc) -> list[ChapterInfo]:
+        """解析章节列表（多章节专辑），取最后一个 episode 块"""
         chapters: list[ChapterInfo] = []
         episode_blocks = doc.xpath('//div[@class="episode"]')
         if episode_blocks:
@@ -1036,8 +1055,11 @@ class JmParser:
                         index=idx,
                     )
                 )
+        return chapters
 
-        # 提取图片 URL（支持 data-src 和 data-original 两种懒加载方式）
+    @staticmethod
+    def _parse_detail_images(doc, domain: str) -> list[str]:
+        """提取图片 URL（支持 data-src 和 data-original 两种懒加载）"""
         image_urls: list[str] = []
         img_elements = doc.xpath('.//img[contains(@id,"album_photo_")]')
         for img in img_elements:
@@ -1053,25 +1075,31 @@ class JmParser:
                 if "blank.jpg" in url:
                     continue
                 image_urls.append(url)
+        return image_urls
 
-        # 作者（去重，页面中 author 节点可能因展开/收起重复出现）
+    def _parse_detail_metadata(self, scope, html: str, domain: str) -> _DetailMetadata:
+        """提取作者、标签、页数、发布日期"""
+        effective_scope = scope if scope is not None else etree.HTML(html)
+
         authors = self._clean_texts(
-            scope.xpath('.//span[@data-type="author"]/a/text()')
+            effective_scope.xpath('.//span[@data-type="author"]/a/text()')
         )
         author = authors[0] if authors else None
 
-        # 标签、作品（原作）、登场人物（角色）
-        tags = self._clean_texts(scope.xpath('.//span[@data-type="tags"]/a/text()'))
-        works = self._clean_texts(scope.xpath('.//span[@data-type="works"]/a/text()'))
-        actors = self._clean_texts(scope.xpath('.//span[@data-type="actor"]/a/text()'))
-
-        # 分类标签合并：作品与登场人物对搜索和展示同样有价值，
-        # 合并进 tags 并整体去重，保持「标签 → 作品 → 角色」顺序。
+        tags = self._clean_texts(
+            effective_scope.xpath('.//span[@data-type="tags"]/a/text()')
+        )
+        works = self._clean_texts(
+            effective_scope.xpath('.//span[@data-type="works"]/a/text()')
+        )
+        actors = self._clean_texts(
+            effective_scope.xpath('.//span[@data-type="actor"]/a/text()')
+        )
         merged_tags = list(dict.fromkeys([*tags, *works, *actors]))
+        category = works[0] if works else None
 
-        # 提取页数（限定在信息区块，避免误读推荐区的数字）
         pages = 0
-        pages_text = scope.xpath(
+        pages_text = effective_scope.xpath(
             './/div[contains(text(),"頁數") or contains(text(),"页数")]/text()'
         )
         if pages_text:
@@ -1079,10 +1107,8 @@ class JmParser:
             if m:
                 pages = int(m.group())
 
-        # 提取发布日期：页面同时有「上架日期」和「更新日期」两个
-        # itemprop="datePublished" 节点，优先取上架日期。
         publish_date = None
-        for span in scope.xpath('.//span[@itemprop="datePublished"]'):
+        for span in effective_scope.xpath('.//span[@itemprop="datePublished"]'):
             text = "".join(span.itertext())
             content = span.get("content")
             if not content:
@@ -1104,53 +1130,47 @@ class JmParser:
             if date_match:
                 publish_date = date_match.group(1)
 
-        # 如果页面上的图片数量少于总页数，使用 URL 模式生成所有图片 URL
-        total_pages = max(pages, len(image_urls))
-        if len(image_urls) < total_pages and image_urls:
-            sample_url = image_urls[0]
-            url_match = re.match(
-                r"(https://[^/]+)/media/photos/\d+/(\d+)\.(\w+)", sample_url
-            )
-            if url_match:
-                cdn_base = url_match.group(1)
-                ext = url_match.group(3)
-                image_urls = [
-                    f"{cdn_base}/media/photos/{comic_id}/{i:05d}.{ext}"
-                    for i in range(1, total_pages + 1)
-                ]
-                logger.debug(
-                    "Generated %d image URLs from pattern (ext=%s)", total_pages, ext
-                )
-            else:
-                logger.warning(
-                    "Sample image URL does not match expected pattern: %s", sample_url
-                )
-
-        cover_url = ""
-        cover_el = doc.xpath('.//div[@id="album_photo_cover"]//img/@src')
-        if cover_el:
-            cover_url = cover_el[0]
-            if not cover_url.startswith("http"):
-                cover_url = f"https://{domain}{cover_url}"
-
-        category = works[0] if works else None
-
-        return ComicInfo(
-            id=comic_id,
-            title=title,
+        return _DetailMetadata(
             author=author,
-            pages=total_pages,
             tags=merged_tags,
             category=category,
+            pages=pages,
             publish_date=publish_date,
-            cover_url=cover_url,
-            preview_url=f"https://{domain}/album/{comic_id}",
-            media_id=comic_id,
-            comic_source="JMCOMIC",
-            source_site="jmcomic",
-            scramble_id=scramble_id,
-            image_urls=image_urls,
-            chapters=chapters,
-            album_id=comic_id,
-            album_total_chapters=len(chapters) if chapters else 1,
         )
+
+    @staticmethod
+    def _expand_image_urls(
+        image_urls: list[str], total_pages: int, comic_id: str
+    ) -> list[str]:
+        """若页面上的图片数少于总页数，用 URL 模式生成所有图片 URL"""
+        if len(image_urls) >= total_pages or not image_urls:
+            return image_urls
+        sample_url = image_urls[0]
+        url_match = re.match(
+            r"(https://[^/]+)/media/photos/\d+/(\d+)\.(\w+)", sample_url
+        )
+        if url_match:
+            cdn_base = url_match.group(1)
+            ext = url_match.group(3)
+            logger.debug(
+                "Generated %d image URLs from pattern (ext=%s)", total_pages, ext
+            )
+            return [
+                f"{cdn_base}/media/photos/{comic_id}/{i:05d}.{ext}"
+                for i in range(1, total_pages + 1)
+            ]
+        logger.warning(
+            "Sample image URL does not match expected pattern: %s", sample_url
+        )
+        return image_urls
+
+    @staticmethod
+    def _extract_cover_url(doc, domain: str) -> str:
+        """提取封面图片 URL"""
+        cover_el = doc.xpath('.//div[@id="album_photo_cover"]//img/@src')
+        if cover_el:
+            url = cover_el[0]
+            if not url.startswith("http"):
+                url = f"https://{domain}{url}"
+            return url
+        return ""

@@ -13,6 +13,7 @@ import requests
 
 from constants import DEFAULT_USER_AGENT
 from models import ComicInfo, PaginationInfo
+from sources.base import ParserContextMixin
 from utils import apply_system_proxy_to_session, configure_session_auth
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class ParserResponseError(RuntimeError):
     """响应读取/解析相关异常。"""
 
 
-class HComicParser:
+class HComicParser(ParserContextMixin):
     """h-comic.com 解析器"""
 
     INDEX = "https://h-comic.com"
@@ -65,16 +66,6 @@ class HComicParser:
         configure_session_auth(
             self.session, self.HEADERS, cookie, user_agent, bearer_token
         )
-
-    def close(self):
-        """关闭底层会话连接。"""
-        self.session.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
 
     def verify_login_status(self) -> tuple[bool, str]:
         """通过访问收藏夹接口校验登录状态。"""

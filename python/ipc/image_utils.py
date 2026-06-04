@@ -1,6 +1,12 @@
 """Static image utility helpers shared by cover and preview mixins."""
 
+import time
 from urllib.parse import urlparse
+
+
+def _now() -> float:
+    """Return current time in seconds (unified for cache eviction)."""
+    return time.time()
 
 
 def detect_image_type(data: bytes) -> str:

@@ -7,6 +7,8 @@ import sqlite3
 import threading
 from collections import OrderedDict
 
+from .image_utils import _now
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DB_DIR = os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
@@ -178,9 +180,3 @@ class CoverCacheDB:
             if freed >= excess:
                 break
         self._disk_bytes -= freed
-
-
-def _now() -> float:
-    import time
-
-    return time.time()

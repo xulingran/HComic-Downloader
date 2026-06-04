@@ -178,6 +178,7 @@ class FavouriteTagsMixin:
         self._favourite_tags_db.clear(effective_source)
         synced = 0
         page = 1
+        failed_pages: list[int] = []
         while page <= self.MAX_SYNC_PAGES:
             try:
                 comics, pagination, _needs_login = self.parser.favourites(
@@ -185,7 +186,9 @@ class FavouriteTagsMixin:
                 )
             except Exception as e:
                 logger.error("sync_favourite_tags page %d error: %s", page, e)
-                break
+                failed_pages.append(page)
+                page += 1
+                continue
             for comic in comics:
                 tags = getattr(comic, "tags", None) or []
                 if tags:
@@ -196,6 +199,8 @@ class FavouriteTagsMixin:
             if not pagination or page >= pagination.total_pages:
                 break
             page += 1
+        if failed_pages:
+            logger.warning("sync_favourite_tags failed on pages: %s", failed_pages)
         if page > self.MAX_SYNC_PAGES:
             logger.warning(
                 "sync_favourite_tags hit MAX_SYNC_PAGES=%d limit for source=%s",

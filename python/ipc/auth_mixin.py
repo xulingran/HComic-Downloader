@@ -29,12 +29,16 @@ class AuthMixin:
             raise ValueError("\u8bf7\u7c98\u8d34 curl \u547d\u4ee4")
 
         from auth_parser import extract_auth_from_curl
+        from config import AuthSourceData
 
         cookie, user_agent, bearer_token, domain = extract_auth_from_curl(
             curl_text.strip()
         )
         self.config.set_source_auth(
-            source, cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
+            source,
+            AuthSourceData(
+                cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
+            ),
         )
         self.config.save(_get_config_path())
 
@@ -62,13 +66,7 @@ class AuthMixin:
                 cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
             )
 
-        logger.info(
-            "Auth applied for %s: cookie length=%d, ua length=%d, bearer length=%d",
-            source,
-            len(cookie),
-            len(user_agent),
-            len(bearer_token),
-        )
+        logger.info("Auth applied for %s", source)
         return {"success": True}
 
     def handle_verify_auth(self, source: str = "hcomic") -> dict:
@@ -76,6 +74,8 @@ class AuthMixin:
         return {"valid": is_valid, "message": message}
 
     def handle_moeimg_login(self, username: str, password: str) -> dict:
+        from config import AuthSourceData
+
         if not username or not username.strip():
             raise ValueError("请输入用户名")
         if not password or not password.strip():
@@ -87,7 +87,8 @@ class AuthMixin:
             raise ValueError("moeimg 来源不可用")
         cookie = moeimg_parser.login(username, password)
         self.config.set_source_auth(
-            "moeimg", cookie=cookie, username=username, password=password
+            "moeimg",
+            AuthSourceData(cookie=cookie, username=username, password=password),
         )
         self.config.save(_get_config_path())
         self.parser.configure_auth(cookie=cookie, source="moeimg")
@@ -96,6 +97,8 @@ class AuthMixin:
         return {"success": True, "message": "登录成功"}
 
     def handle_bika_login(self, username: str, password: str) -> dict:
+        from config import AuthSourceData
+
         if not username or not username.strip():
             raise ValueError("请输入用户名")
         if not password or not password.strip():
@@ -107,7 +110,8 @@ class AuthMixin:
             raise ValueError("bika 来源不可用")
         token = bika_parser.login(username, password)
         self.config.set_source_auth(
-            "bika", bearer_token=token, username=username, password=password
+            "bika",
+            AuthSourceData(bearer_token=token, username=username, password=password),
         )
         self.config.save(_get_config_path())
         self.parser.configure_auth(bearer_token=token, source="bika")

@@ -13,6 +13,17 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class AuthSourceData:
+    """认证来源数据。"""
+
+    cookie: str = ""
+    user_agent: str = ""
+    bearer_token: str = ""
+    username: str = ""
+    password: str = ""
+
+
+@dataclass
 class Config:
     """应用配置"""
 
@@ -76,7 +87,12 @@ class Config:
             and (self.auth_cookie or self.auth_user_agent)
         ):
             # 旧字段迁移：auth_cookie/auth_user_agent → source_auth["hcomic"]
-            self.set_source_auth("hcomic", self.auth_cookie, self.auth_user_agent)
+            self.set_source_auth(
+                "hcomic",
+                AuthSourceData(
+                    cookie=self.auth_cookie, user_agent=self.auth_user_agent
+                ),
+            )
             self.auth_cookie = ""
             self.auth_user_agent = ""
             hcomic_auth = self.get_source_auth("hcomic")
@@ -122,27 +138,26 @@ class Config:
     def set_source_auth(
         self,
         source: str,
-        cookie: str = "",
-        user_agent: str = "",
-        bearer_token: str = "",
-        username: str = "",
-        password: str = "",
+        data: AuthSourceData,
     ):
         """设置来源认证信息。"""
+        cookie = (data.cookie or "").strip()
+        user_agent = (data.user_agent or "").strip()
+        bearer_token = (data.bearer_token or "").strip()
         self.source_auth[source] = {
-            "cookie": (cookie or "").strip(),
-            "user_agent": (user_agent or "").strip(),
-            "bearer_token": (bearer_token or "").strip(),
+            "cookie": cookie,
+            "user_agent": user_agent,
+            "bearer_token": bearer_token,
         }
         if source == "moeimg":
-            self.source_auth[source]["username"] = (username or "").strip()
-            self.source_auth[source]["password"] = (password or "").strip()
+            self.source_auth[source]["username"] = (data.username or "").strip()
+            self.source_auth[source]["password"] = (data.password or "").strip()
         if source == "bika":
-            self.source_auth[source]["username"] = (username or "").strip()
-            self.source_auth[source]["password"] = (password or "").strip()
+            self.source_auth[source]["username"] = (data.username or "").strip()
+            self.source_auth[source]["password"] = (data.password or "").strip()
         if source == "hcomic":
-            self.auth_cookie = self.source_auth[source]["cookie"]
-            self.auth_user_agent = self.source_auth[source]["user_agent"]
+            self.auth_cookie = cookie
+            self.auth_user_agent = user_agent
 
     @classmethod
     def load(cls, config_path: str | None = None) -> "Config":

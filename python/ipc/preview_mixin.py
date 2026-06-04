@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import logging
+import sqlite3
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
@@ -170,7 +171,7 @@ class PreviewMixin:
                 b64 = _base64.b64encode(content).decode("ascii")
                 logger.debug("Preview cache hit for %s", url)
                 return f"data:{content_type};base64,{b64}"
-        except Exception:
+        except (OSError, sqlite3.Error):
             logger.debug(
                 "Preview cache read failed for %s, re-fetching", url, exc_info=True
             )
@@ -197,7 +198,7 @@ class PreviewMixin:
                         f"{_base64.b64encode(descrambled).decode('ascii')}"
                     )
                     logger.debug("Descrambled preview image for %s", url)
-        except Exception as e:
+        except (ValueError, OSError) as e:
             logger.warning("Descramble failed for %s: %s", url, e)
         return data_uri
 
@@ -211,7 +212,7 @@ class PreviewMixin:
             b64_part = data_uri.split(",", 1)[1]
             raw_bytes = _base64.b64decode(b64_part)
             self._preview_cache.put(url, raw_bytes)
-        except Exception:
+        except (OSError, sqlite3.Error):
             logger.debug("Failed to write preview cache for %s", url, exc_info=True)
 
     def _do_fetch_preview_image(

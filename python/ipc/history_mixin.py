@@ -5,11 +5,30 @@ from __future__ import annotations
 import logging
 import os
 import sqlite3
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 logger = logging.getLogger(__name__)
 
 _HISTORY_PAGE_SIZE = 20
+_ALLOWED_COLUMNS = frozenset(
+    {"source_site", "media_id", "last_chapter_id", "last_chapter_name"}
+)
+
+
+@dataclass
+class ReadingHistoryEntry:
+    comic_id: str
+    title: str
+    cover_url: str = ""
+    source: str = ""
+    source_site: str = ""
+    media_id: str = ""
+    source_url: str = ""
+    last_page: int = 0
+    total_pages: int = 0
+    last_chapter_id: str = ""
+    last_chapter_name: str = ""
 
 
 class HistoryMixin:
@@ -38,33 +57,9 @@ class HistoryMixin:
             },
         }
 
-    def handle_add_history(
-        self,
-        comic_id: str,
-        title: str,
-        cover_url: str = "",
-        source: str = "",
-        source_site: str = "",
-        media_id: str = "",
-        source_url: str = "",
-        last_page: int = 0,
-        total_pages: int = 0,
-        last_chapter_id: str = "",
-        last_chapter_name: str = "",
-    ) -> dict:
-        self._reading_history_db.upsert(
-            comic_id=comic_id,
-            title=title,
-            cover_url=cover_url,
-            source=source,
-            source_site=source_site,
-            media_id=media_id,
-            source_url=source_url,
-            last_page=last_page,
-            total_pages=total_pages,
-            last_chapter_id=last_chapter_id,
-            last_chapter_name=last_chapter_name,
-        )
+    def handle_add_history(self, **params) -> dict:
+        entry = ReadingHistoryEntry(**params)
+        self._reading_history_db.upsert(entry)
         return {"success": True}
 
     def handle_delete_history(self, comic_id: str, source: str) -> dict:
@@ -108,25 +103,14 @@ class ReadingHistoryDB:
         }
         for col in ("source_site", "media_id", "last_chapter_id", "last_chapter_name"):
             if col not in existing_cols:
+                if col not in _ALLOWED_COLUMNS:
+                    raise ValueError(f"Unknown migration column: {col}")
                 self._conn.execute(
                     f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''"
                 )
         self._conn.commit()
 
-    def upsert(
-        self,
-        comic_id: str,
-        title: str,
-        cover_url: str,
-        source: str,
-        source_site: str,
-        media_id: str,
-        source_url: str,
-        last_page: int,
-        total_pages: int,
-        last_chapter_id: str = "",
-        last_chapter_name: str = "",
-    ) -> None:
+    def upsert(self, entry: ReadingHistoryEntry) -> None:
         now = datetime.now(timezone.utc).isoformat()  # noqa: UP017
         self._conn.execute(
             """
@@ -145,17 +129,17 @@ class ReadingHistoryDB:
                 last_read_at = excluded.last_read_at
             """,
             (
-                comic_id,
-                title,
-                cover_url,
-                source,
-                source_site,
-                media_id,
-                source_url,
-                last_page,
-                total_pages,
-                last_chapter_id,
-                last_chapter_name,
+                entry.comic_id,
+                entry.title,
+                entry.cover_url,
+                entry.source,
+                entry.source_site,
+                entry.media_id,
+                entry.source_url,
+                entry.last_page,
+                entry.total_pages,
+                entry.last_chapter_id,
+                entry.last_chapter_name,
                 now,
                 now,
             ),

@@ -1,6 +1,9 @@
 """共享的图片格式定义。"""
 
-PAGE_FILENAME_FORMAT = "{page:03d}{ext}"
+DEFAULT_IMAGE_EXT = ".jpg"
+PAGE_FILENAME_WIDTH = 3
+_PAGE_FMT_PAD = f"{{page:0{PAGE_FILENAME_WIDTH}d}}"
+PAGE_FILENAME_FORMAT = _PAGE_FMT_PAD + "{ext}"
 
 MIME_TO_EXT = {
     "image/jpeg": ".jpg",

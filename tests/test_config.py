@@ -6,7 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from config import Config
+from config import AuthSourceData, Config
 
 
 class TestConfigOtherFields(unittest.TestCase):
@@ -143,8 +143,12 @@ class TestMultiSourceConfig(unittest.TestCase):
 
         try:
             config = Config(default_source="moeimg")
-            config.set_source_auth("hcomic", cookie="hc=1", user_agent="HC-UA")
-            config.set_source_auth("moeimg", cookie="mi=2", user_agent="MI-UA")
+            config.set_source_auth(
+                "hcomic", AuthSourceData(cookie="hc=1", user_agent="HC-UA")
+            )
+            config.set_source_auth(
+                "moeimg", AuthSourceData(cookie="mi=2", user_agent="MI-UA")
+            )
             config.save(config_path)
 
             loaded = Config.load(config_path)

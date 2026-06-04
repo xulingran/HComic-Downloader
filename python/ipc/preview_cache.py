@@ -12,8 +12,9 @@ import logging
 import os
 import sqlite3
 import threading
-import time
 from collections import OrderedDict
+
+from .image_utils import _now
 
 logger = logging.getLogger(__name__)
 
@@ -216,7 +217,3 @@ class PreviewCacheDB:
             self._conn.commit()
             self._lru.pop(oldest_url, None)
             total -= size
-
-
-def _now() -> float:
-    return time.time()

@@ -52,7 +52,7 @@ class CoverMixin:
         # Copy headers from parser (User-Agent, Accept, etc.)
         try:
             src_headers = dict(self.parser.session.headers)
-        except Exception:
+        except (AttributeError, TypeError):
             src_headers = {}
         if src_headers:
             session.headers.update(src_headers)
@@ -63,7 +63,7 @@ class CoverMixin:
             for ps in self.parser.get_sessions():
                 for cookie in ps.cookies:
                     session.cookies.set_cookie(cookie)
-        except Exception:
+        except (AttributeError, KeyError):
             pass
 
         # Set Referer for hotlinking protection bypass (jmcomic CDN requires this)
@@ -87,7 +87,7 @@ class CoverMixin:
         try:
             src_headers = dict(self.parser.session.headers)
             headers.update(src_headers)
-        except Exception:
+        except (AttributeError, KeyError):
             pass
 
         # Extract domain from cover URL for Referer header (required by jmcomic CDN)

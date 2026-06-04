@@ -101,37 +101,35 @@ def descramble_image(
     if num == 0:
         return image_bytes
 
-    src_img = Image.open(BytesIO(image_bytes))
-    width, height = src_img.size
+    with Image.open(BytesIO(image_bytes)) as src_img:
+        width, height = src_img.size
 
-    # 检测原始格式
-    save_format, save_params = _get_image_format(src_img, image_bytes)
+        # 检测原始格式
+        save_format, save_params = _get_image_format(src_img, image_bytes)
 
-    # 对于 WEBP 格式，需要转换为 RGB 模式以确保兼容性
-    if save_format == "WEBP" and src_img.mode not in ("RGB", "RGBA"):
-        src_img = src_img.convert("RGB")
+        # 对于 WEBP 格式，需要转换为 RGB 模式以确保兼容性
+        if save_format == "WEBP" and src_img.mode not in ("RGB", "RGBA"):
+            src_img = src_img.convert("RGB")
 
-    des_img = Image.new(src_img.mode, (width, height))
+        des_img = Image.new(src_img.mode, (width, height))
 
-    over = height % num
-    base = height // num
+        over = height % num
+        base = height // num
 
-    for i in range(num):
-        move = base
-        y_src = height - (move * (i + 1)) - over
-        y_dst = move * i
+        for i in range(num):
+            move = base
+            y_src = height - (move * (i + 1)) - over
+            y_dst = move * i
 
-        if i == 0:
-            move += over
-        else:
-            y_dst += over
+            if i == 0:
+                move += over
+            else:
+                y_dst += over
 
-        des_img.paste(
-            src_img.crop((0, y_src, width, y_src + move)),
-            (0, y_dst, width, y_dst + move),
-        )
-
-    src_img.close()
+            des_img.paste(
+                src_img.crop((0, y_src, width, y_src + move)),
+                (0, y_dst, width, y_dst + move),
+            )
 
     buf = BytesIO()
     des_img.save(buf, format=save_format, **save_params)

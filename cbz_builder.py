@@ -174,6 +174,28 @@ class CBZBuilder:
         logger.info("%s created: %s", options.log_label, options.output_path)
         return options.output_path
 
+    def _build_archive_internal(
+        self,
+        image_dir: str,
+        comic: ComicInfo,
+        output_path: str | None = None,
+        download_dir: str | None = None,
+        overwrite: bool = False,
+        include_comic_info_xml: bool = True,
+    ) -> str:
+        if output_path is None:
+            output_path = self._generate_output_path(comic)
+        options = ArchiveBuildOptions(
+            image_dir=image_dir,
+            comic=comic,
+            output_path=output_path,
+            download_dir=self._get_download_dir(download_dir),
+            overwrite=overwrite,
+            include_comic_info_xml=include_comic_info_xml,
+            log_label="CBZ" if include_comic_info_xml else "ZIP",
+        )
+        return self.build_archive(options)
+
     def build_cbz(
         self,
         image_dir: str,
@@ -194,18 +216,14 @@ class CBZBuilder:
         Returns:
             CBZ 文件路径
         """
-        if output_path is None:
-            output_path = self._generate_output_path(comic)
-        options = ArchiveBuildOptions(
+        return self._build_archive_internal(
             image_dir=image_dir,
             comic=comic,
             output_path=output_path,
-            download_dir=self._get_download_dir(download_dir),
+            download_dir=download_dir,
             overwrite=overwrite,
             include_comic_info_xml=True,
-            log_label="CBZ",
         )
-        return self.build_archive(options)
 
     def generate_comic_info_xml(self, comic: ComicInfo) -> str:
         """生成 ComicInfo.xml
@@ -377,16 +395,14 @@ class CBZBuilder:
         """
         if output_path is None:
             output_path = self._generate_output_path_for_format(comic, "zip")
-        options = ArchiveBuildOptions(
+        return self._build_archive_internal(
             image_dir=image_dir,
             comic=comic,
             output_path=output_path,
-            download_dir=self._get_download_dir(download_dir),
+            download_dir=download_dir,
             overwrite=overwrite,
             include_comic_info_xml=False,
-            log_label="ZIP",
         )
-        return self.build_archive(options)
 
     def save_as_folder(
         self,

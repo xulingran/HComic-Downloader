@@ -184,6 +184,7 @@ class _FakeDownloader:
         self,
         comic,
         output_dir,
+        options=None,
         progress_callback=None,
         delay_after=0,
         comic_info=None,
@@ -264,8 +265,10 @@ class _FakeCBZBuilder:
 
 class _InstantDownloader:
     def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, **kwargs
+        self, comic, output_dir, progress_callback=None, options=None, **kwargs
     ):
+        if options and options.progress_callback:
+            progress_callback = progress_callback or options.progress_callback
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
         os.makedirs(temp_dir, exist_ok=True)
         with open(os.path.join(temp_dir, "001.jpg"), "wb") as f:
@@ -365,8 +368,10 @@ def test_pause_downloading_task_keeps_paused_state(tmp_path):
 
 class _MixedExtensionFailureDownloader:
     def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, **kwargs
+        self, comic, output_dir, progress_callback=None, options=None, **kwargs
     ):
+        if options and options.progress_callback:
+            progress_callback = progress_callback or options.progress_callback
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
         os.makedirs(temp_dir, exist_ok=True)
         for index, ext in enumerate((".jpg", ".png", ".webp", ".ico"), start=1):
@@ -468,8 +473,10 @@ def test_get_next_task_locked_mixed_states_finds_queued():
 
 class _AlwaysFailDownloader:
     def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, **kwargs
+        self, comic, output_dir, progress_callback=None, options=None, **kwargs
     ):
+        if options and options.progress_callback:
+            progress_callback = progress_callback or options.progress_callback
         if progress_callback:
             progress_callback(1, 3, "downloading", None)
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
@@ -488,8 +495,10 @@ class _AlwaysFailDownloader:
 
 class _SlowSuccessDownloader:
     def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, **kwargs
+        self, comic, output_dir, progress_callback=None, options=None, **kwargs
     ):
+        if options and options.progress_callback:
+            progress_callback = progress_callback or options.progress_callback
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
         os.makedirs(temp_dir, exist_ok=True)
         total = max(1, comic.pages)

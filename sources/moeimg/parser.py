@@ -13,6 +13,7 @@ import requests
 
 from constants import DEFAULT_USER_AGENT
 from models import ComicInfo, PaginationInfo
+from sources.base import ParserContextMixin
 from utils import apply_system_proxy_to_session, configure_session_auth
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ class AuthRequiredError(RuntimeError):
     """需要登录但未提供凭据。"""
 
 
-class MoeImgParser:
+class MoeImgParser(ParserContextMixin):
     """moeimg.fan 解析器。"""
 
     BASE_URL = "https://moeimg.fan"
@@ -63,16 +64,6 @@ class MoeImgParser:
         configure_session_auth(
             self.session, self.HEADERS, cookie, user_agent, bearer_token
         )
-
-    def close(self):
-        """关闭底层会话连接。"""
-        self.session.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
 
     def verify_login_status(self) -> tuple[bool, str]:
         """验证 moeimg 登录状态。"""
@@ -615,6 +606,20 @@ class MoeImgParser:
                 cache.popitem(last=False)  # type: ignore[call-arg]
         return resolved
 
+    def _match_entity_item(
+        self, entity_item: dict, target: str, name_key: str, id_key: str
+    ) -> str | None:
+        """Match a single entity item against target name, returning its id or None."""
+        if not isinstance(entity_item, dict):
+            return None
+        candidate_id = entity_item.get(id_key)
+        if candidate_id is None:
+            return None
+        candidate_name = self._normalize_lookup_text(entity_item.get(name_key))
+        if candidate_name == target:
+            return str(candidate_id)
+        return None
+
     def _lookup_entity_id_from_search(self, mode: str, keyword: str) -> str | None:
         """通过搜索结果反查实体 ID。
 
@@ -632,6 +637,9 @@ class MoeImgParser:
 
         manga_list = search_data.get("manga_list")
         if not isinstance(manga_list, list):
+            return None
+
+        if not manga_list:
             return None
 
         target = self._normalize_lookup_text(keyword)
@@ -661,14 +669,9 @@ class MoeImgParser:
                 continue
 
             for entity_item in entity_items:
-                if not isinstance(entity_item, dict):
-                    continue
-                candidate_id = entity_item.get(id_key)
-                if candidate_id is None:
-                    continue
-                candidate_name = self._normalize_lookup_text(entity_item.get(name_key))
-                if candidate_name == target:
-                    return str(candidate_id)
+                result = self._match_entity_item(entity_item, target, name_key, id_key)
+                if result is not None:
+                    return result
         return None
 
     @classmethod

@@ -118,7 +118,7 @@ class MigrationMixin:
                 self._migration_paused_dm = False
 
     def handle_start_migration(self, target_dir: str, mode: str) -> dict:
-        target_dir = os.path.normpath(target_dir)
+        target_dir = os.path.realpath(target_dir)
         if not os.path.isabs(target_dir):
             raise ValueError("target_dir must be an absolute path")
         if mode not in ("full", "repair"):

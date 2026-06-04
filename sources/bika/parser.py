@@ -11,6 +11,7 @@ from typing import Any
 import requests
 
 from models import ChapterInfo, ComicInfo, PaginationInfo
+from sources.base import ParserContextMixin
 from utils import apply_system_proxy_to_session
 
 from .constants import (
@@ -29,7 +30,7 @@ class ParserResponseError(RuntimeError):
     """响应读取/解析相关异常。"""
 
 
-class BikaParser:
+class BikaParser(ParserContextMixin):
     """Bika (哔咔/Picacomic) 解析器。"""
 
     def __init__(self, timeout: int = 30):
@@ -69,16 +70,6 @@ class BikaParser:
             self.login(self._stored_username, self._stored_password)
             return
         raise ParserResponseError("未登录，请先登录 Bika")
-
-    def close(self):
-        """关闭底层会话连接。"""
-        self.session.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
 
     @staticmethod
     def _get_signature(url: str, timestamp: str, nonce: str, method: str) -> str:
@@ -304,6 +295,13 @@ class BikaParser:
 
         return chapters
 
+    @staticmethod
+    def _build_file_url(file_server: str, path: str) -> str:
+        """Build a file URL handling trailing slash on file_server."""
+        if file_server.endswith("/"):
+            return f"{file_server}static/{path}"
+        return f"{file_server}/static/{path}"
+
     def get_chapter_images(self, comic_id: str, order: int) -> list[str]:
         """获取章节图片列表。
 
@@ -331,11 +329,7 @@ class BikaParser:
                     file_server = media.get("fileServer", "")
                     path = media.get("path", "")
                     if file_server and path:
-                        url = (
-                            f"{file_server}/static/{path}"
-                            if not file_server.endswith("/")
-                            else f"{file_server}static/{path}"
-                        )
+                        url = self._build_file_url(file_server, path)
                         images.append(url)
 
                 total_pages = pages_data.get("pages", 1)
@@ -464,11 +458,7 @@ class BikaParser:
         path = thumb.get("path", "")
         cover_url = ""
         if file_server and path:
-            cover_url = (
-                f"{file_server}/static/{path}"
-                if not file_server.endswith("/")
-                else f"{file_server}static/{path}"
-            )
+            cover_url = self._build_file_url(file_server, path)
 
         # 标签和分类
         categories = data.get("categories", [])

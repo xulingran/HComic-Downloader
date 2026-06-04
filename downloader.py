@@ -18,6 +18,7 @@ from urllib3.util.retry import Retry
 
 from constants import DEFAULT_USER_AGENT
 from image_downloader import ImageDownloader
+from image_formats import PAGE_FILENAME_FORMAT
 from models import ComicInfo, DownloadCancelledError
 from url_validator import UrlValidator
 from utils import (
@@ -30,6 +31,7 @@ from utils import (
 logger = logging.getLogger(__name__)
 
 PROGRESS_THROTTLE_SEC = 0.1
+DEFAULT_IMAGE_EXT = ".jpg"
 
 
 @dataclass
@@ -39,6 +41,19 @@ class DownloadResult:
     failed_pages: list[int]
     temp_dir: str
     error_message: str | None = None
+
+
+@dataclass
+class DownloadOptions:
+    """Optional parameters for download_comic_resume."""
+
+    progress_callback: Callable[[int, int, str, dict | None], None] | None = None
+    delay_after: int = 0
+    comic_info: dict | None = None
+    completed_pages: list[int] | None = None
+    failed_pages: list[int] | None = None
+    cancel_event: threading.Event | None = None
+    pause_event: threading.Event | None = None
 
 
 @dataclass
@@ -66,6 +81,22 @@ class _DownloadRun:
             self.new_completed = []
         if self.new_failed is None:
             self.new_failed = []
+
+    def try_report_progress(self) -> None:
+        """Throttled progress callback (mutates self.last_progress_ts)."""
+        if not self.progress_callback:
+            return
+        now = time.monotonic()
+        status = f"下载中... ({self.downloaded_count}/{self.total})"
+        if self.new_failed:
+            status += f"，失败: {len(self.new_failed)}"
+        if (
+            now - self.last_progress_ts
+        ) >= PROGRESS_THROTTLE_SEC or self.downloaded_count >= self.total:
+            self.progress_callback(
+                self.downloaded_count, self.total, status, self.comic_info
+            )
+            self.last_progress_ts = now
 
 
 class ComicDownloader:
@@ -232,19 +263,21 @@ class ComicDownloader:
     @staticmethod
     def _apply_delay_after(
         delay_after: int,
-        progress_callback,
         downloaded_count: int,
         total: int,
         cancel_event: threading.Event | None,
-        comic_info: dict | None,
+        options: DownloadOptions,
     ) -> None:
         """批量下载完成后等待指定秒数。"""
         if delay_after <= 0:
             return
         logger.info("Waiting %ds before next download", delay_after)
-        if progress_callback:
-            progress_callback(
-                downloaded_count, total, f"等待 {delay_after} 秒...", comic_info
+        if options.progress_callback:
+            options.progress_callback(
+                downloaded_count,
+                total,
+                f"等待 {delay_after} 秒...",
+                options.comic_info,
             )
         if cancel_event is not None:
             if cancel_event.wait(delay_after):
@@ -253,49 +286,28 @@ class ComicDownloader:
         else:
             time.sleep(delay_after)
 
-    def _submit_download_batch(
-        self, executor, pages, image_urls, temp_dir, download_referer, cancel_event=None
-    ):
+    def _submit_download_batch(self, executor, pages, run: _DownloadRun):
         future_to_page = {}
         for page_num in pages:
-            if cancel_event and cancel_event.is_set():
+            if run.cancel_event and run.cancel_event.is_set():
                 break
-            url = image_urls[page_num - 1]
-            output_path = str(temp_dir / f"{page_num:03d}.jpg")
+            url = run.image_urls[page_num - 1]
+            output_path = str(
+                run.temp_dir
+                / PAGE_FILENAME_FORMAT.format(page=page_num, ext=DEFAULT_IMAGE_EXT)
+            )
             try:
                 future = executor.submit(
                     self.image_downloader.download_task,
                     url,
                     output_path,
-                    download_referer,
+                    run.download_referer,
                 )
             except RuntimeError:
                 logger.warning("Executor shut down, cannot submit page %d", page_num)
                 break
             future_to_page[future] = page_num
         return future_to_page
-
-    def _try_report_progress(
-        self,
-        progress_callback,
-        last_progress_ts,
-        downloaded_count,
-        total,
-        new_failed,
-        comic_info,
-    ):
-        if not progress_callback:
-            return last_progress_ts
-        now = time.monotonic()
-        status = f"下载中... ({downloaded_count}/{total})"
-        if new_failed:
-            status += f"，失败: {len(new_failed)}"
-        if (
-            now - last_progress_ts
-        ) >= PROGRESS_THROTTLE_SEC or downloaded_count >= total:
-            progress_callback(downloaded_count, total, status, comic_info)
-            return now
-        return last_progress_ts
 
     def _collect_and_advance(self, executor, run):
         """从 future pool 收集完成的任务并按需提交下一页。"""
@@ -324,21 +336,19 @@ class ComicDownloader:
                     logger.error("Download error for page %d: %s", page_num, e)
                     run.new_failed.append(page_num)
 
-                run.last_progress_ts = self._try_report_progress(
-                    run.progress_callback,
-                    run.last_progress_ts,
-                    run.downloaded_count,
-                    run.total,
-                    run.new_failed,
-                    run.comic_info,
-                )
+                run.try_report_progress()
 
                 is_paused = run.pause_event and run.pause_event.is_set()
                 if not is_paused and run.submitted_idx < len(run.remaining_pages):
                     next_page = run.remaining_pages[run.submitted_idx]
                     run.submitted_idx += 1
                     url = run.image_urls[next_page - 1]
-                    output_path = str(run.temp_dir / f"{next_page:03d}.jpg")
+                    output_path = str(
+                        run.temp_dir
+                        / PAGE_FILENAME_FORMAT.format(
+                            page=next_page, ext=DEFAULT_IMAGE_EXT
+                        )
+                    )
                     new_future = executor.submit(
                         self.image_downloader.download_task,
                         url,
@@ -351,32 +361,27 @@ class ComicDownloader:
         self,
         comic: ComicInfo,
         output_dir: str,
-        progress_callback: Callable[[int, int, str, dict | None], None] | None = None,
-        delay_after: int = 0,
-        comic_info: dict | None = None,
-        completed_pages: list[int] | None = None,
-        failed_pages: list[int] | None = None,
-        cancel_event: threading.Event | None = None,
-        pause_event: threading.Event | None = None,
+        options: DownloadOptions | None = None,
     ) -> DownloadResult:
         """断点续传下载漫画
 
         Args:
             comic: 漫画信息
             output_dir: 输出目录
-            progress_callback: 进度回调函数(current, total, status, comic_info)
-            delay_after: 下载完成后延迟的秒数（用于批量下载）
-            comic_info: 漫画信息字典，用于批量下载时传递上下文
-            completed_pages: 已完成的页码列表（1-based），这些页面会被跳过
-            failed_pages: 之前失败的页码列表（1-based），会优先重试这些
-            cancel_event: 取消事件
-            pause_event: 暂停事件
+            options: 可选参数（进度回调、断点状态、控制事件等）
 
         Returns:
             DownloadResult 对象，包含下载结果和状态
         """
-        completed_pages = completed_pages or []
-        failed_pages = failed_pages or []
+        if options is None:
+            options = DownloadOptions()
+        progress_callback = options.progress_callback
+        delay_after = options.delay_after
+        comic_info = options.comic_info
+        completed_pages = options.completed_pages or []
+        failed_pages = options.failed_pages or []
+        cancel_event = options.cancel_event
+        pause_event = options.pause_event
 
         temp_dir = Path(output_dir) / self._build_temp_dir_name(comic)
         ensure_dir(str(temp_dir))
@@ -425,34 +430,29 @@ class ComicDownloader:
         with ThreadPoolExecutor(max_workers=self.concurrent_downloads) as executor:
             remaining_pages = list(pages_to_download)
             initial_batch = remaining_pages[: self.concurrent_downloads]
-            future_to_page = self._submit_download_batch(
-                executor,
-                initial_batch,
-                image_urls,
-                temp_dir,
-                download_referer,
-                cancel_event,
+            run = _DownloadRun(
+                future_to_page={},
+                remaining_pages=remaining_pages,
+                submitted_idx=0,
+                image_urls=image_urls,
+                temp_dir=temp_dir,
+                download_referer=download_referer,
+                total=total,
+                progress_callback=progress_callback,
+                comic_info=comic_info,
+                cancel_event=cancel_event,
+                pause_event=pause_event,
+                downloaded_count=downloaded_count,
+                new_completed=new_completed,
+                new_failed=new_failed,
+                last_progress_ts=last_progress_ts,
             )
-            submitted_idx = len(initial_batch)
+            run.submitted_idx = len(initial_batch)
+            run.future_to_page = self._submit_download_batch(
+                executor, initial_batch, run
+            )
 
-            if future_to_page:
-                run = _DownloadRun(
-                    future_to_page=future_to_page,
-                    remaining_pages=remaining_pages,
-                    submitted_idx=submitted_idx,
-                    image_urls=image_urls,
-                    temp_dir=temp_dir,
-                    download_referer=download_referer,
-                    total=total,
-                    progress_callback=progress_callback,
-                    comic_info=comic_info,
-                    cancel_event=cancel_event,
-                    pause_event=pause_event,
-                    downloaded_count=downloaded_count,
-                    new_completed=new_completed,
-                    new_failed=new_failed,
-                    last_progress_ts=last_progress_ts,
-                )
+            if run.future_to_page:
                 self._collect_and_advance(executor, run)
                 downloaded_count = run.downloaded_count
                 new_completed = run.new_completed or []
@@ -495,11 +495,10 @@ class ComicDownloader:
 
         self._apply_delay_after(
             delay_after,
-            progress_callback,
             downloaded_count,
             total,
             cancel_event,
-            comic_info,
+            options,
         )
 
         return DownloadResult(

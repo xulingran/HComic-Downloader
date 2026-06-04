@@ -12,7 +12,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 from constants import DEFAULT_USER_AGENT
-from image_formats import MIME_TO_EXT, PIL_FORMAT_TO_EXT
+from image_formats import DEFAULT_IMAGE_EXT, MIME_TO_EXT, PIL_FORMAT_TO_EXT
 from url_validator import DownloadError, UrlValidator
 from utils import apply_system_proxy_to_session, ensure_dir
 
@@ -144,6 +144,23 @@ class ImageDownloader:
         self._init_session_pool()
         self.configure_auth(cookie=saved_cookie, user_agent=saved_ua)
 
+    def _write_chunks(
+        self,
+        response: requests.Response,
+        fd: int,
+        tmp_path: str,
+        max_size: int,
+        url: str,
+    ) -> None:
+        total = 0
+        with os.fdopen(fd, "wb") as f:
+            for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
+                if chunk:
+                    total += len(chunk)
+                    if total > max_size:
+                        raise DownloadError(f"Image too large (exceeded 100MB): {url}")
+                    f.write(chunk)
+
     def download(
         self,
         url: str,
@@ -196,16 +213,9 @@ class ImageDownloader:
                 )
                 tmp_path: str | None = tmp_path_raw
                 try:
-                    total = 0
-                    with os.fdopen(fd, "wb") as f:
-                        for chunk in response.iter_content(chunk_size=self.CHUNK_SIZE):
-                            if chunk:
-                                total += len(chunk)
-                                if total > self.MAX_IMAGE_SIZE:
-                                    raise DownloadError(
-                                        f"Image too large (exceeded 100MB): {url}"
-                                    )
-                                f.write(chunk)
+                    self._write_chunks(
+                        response, fd, tmp_path_raw, self.MAX_IMAGE_SIZE, url
+                    )
 
                     ext = None
                     content_type = response.headers.get("Content-Type", "")
@@ -214,13 +224,15 @@ class ImageDownloader:
                     if not ext:
                         try:
                             with Image.open(tmp_path) as img:  # type: ignore[arg-type]
-                                ext = PIL_FORMAT_TO_EXT.get(img.format or "", ".jpg")
+                                ext = PIL_FORMAT_TO_EXT.get(
+                                    img.format or "", DEFAULT_IMAGE_EXT
+                                )
                         except (OSError, SyntaxError, ValueError):
                             logger.debug(
                                 "Image format detection failed for %s, defaulting to .jpg",
                                 url,
                             )
-                            ext = ".jpg"
+                            ext = DEFAULT_IMAGE_EXT
 
                     if not path.endswith(ext):
                         path = os.path.splitext(path)[0] + ext

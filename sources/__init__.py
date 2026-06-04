@@ -15,6 +15,8 @@ from utils import normalize_source_auth
 
 logger = logging.getLogger(__name__)
 
+_VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika")
+
 __all__ = ["MultiSourceParser", "ParserResponseError"]
 
 
@@ -94,6 +96,10 @@ class MultiSourceParser:
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
         return normalize_source_auth(source_auth)
 
+    def _resolve_source(self, source: str | None = None) -> str:
+        """Resolve effective source: explicit argument or current default."""
+        return source or self.current_source
+
     @property
     def session(self) -> requests.Session:
         return self.parsers[self.current_source].session
@@ -127,11 +133,11 @@ class MultiSourceParser:
             self.current_source = source
 
     def source_supports_favourites(self, source: str | None = None) -> bool:
-        current = source or self.current_source
-        return current in ("hcomic", "jmcomic", "moeimg", "bika")
+        current = self._resolve_source(source)
+        return current in _VALID_SOURCES
 
     def get_auth(self, source: str | None = None) -> tuple[str, str]:
-        current = source or self.current_source
+        current = self._resolve_source(source)
         auth = self.source_auth.get(current, {"cookie": "", "user_agent": ""})
         return auth.get("cookie", ""), auth.get("user_agent", "")
 
@@ -142,7 +148,7 @@ class MultiSourceParser:
         bearer_token: str = "",
         source: str | None = None,
     ):
-        current = source or self.current_source
+        current = self._resolve_source(source)
         if current not in self.parsers:
             return
         cookie = (cookie or "").strip()
@@ -158,19 +164,19 @@ class MultiSourceParser:
         )
 
     def verify_login_status(self, source: str | None = None) -> tuple[bool, str]:
-        src = source or self.current_source
+        src = self._resolve_source(source)
         return self.parsers[src].verify_login_status()
 
     def search(
         self, keyword: str, page: int = 1, source: str | None = None, *, tag: str = ""
     ) -> tuple[list[ComicInfo], PaginationInfo | None]:
-        src = source or self.current_source
+        src = self._resolve_source(source)
         return self.parsers[src].search(keyword, page=page, tag=tag)
 
     def random(
         self, source: str | None = None
     ) -> tuple[list[ComicInfo], PaginationInfo | None]:
-        src = source or self.current_source
+        src = self._resolve_source(source)
         if src not in ("hcomic", "jmcomic"):
             raise ValueError(f"Random is not supported for source: {src}")
         return self.parsers[src].random()
@@ -178,33 +184,33 @@ class MultiSourceParser:
     def favourites(
         self, page: int = 1, raise_errors: bool = False, source: str | None = None
     ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
-        src = source or self.current_source
+        src = self._resolve_source(source)
         if not self.source_supports_favourites(src):
             return [], None, False
         return self.parsers[src].favourites(page=page, raise_errors=raise_errors)
 
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
-        src = source or self.current_source
-        if src not in ("hcomic", "jmcomic", "moeimg", "bika"):
+        src = self._resolve_source(source)
+        if src not in _VALID_SOURCES:
             return False
         return self.parsers[src].add_to_favourites(comic_id)
 
     def check_favourite(self, comic_id: str, source: str | None = None) -> bool:
-        src = source or self.current_source
-        if src not in ("hcomic", "jmcomic", "moeimg", "bika"):
+        src = self._resolve_source(source)
+        if src not in _VALID_SOURCES:
             return False
         return self.parsers[src].check_favourite(comic_id)
 
     def remove_from_favourites(self, comic_id: str, source: str | None = None) -> bool:
-        src = source or self.current_source
-        if src not in ("hcomic", "jmcomic", "moeimg", "bika"):
+        src = self._resolve_source(source)
+        if src not in _VALID_SOURCES:
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 
     def get_comic_detail(
         self, comic_id: str, slug: str = "", source: str | None = None
     ) -> ComicInfo | None:
-        src = source or self.current_source
+        src = self._resolve_source(source)
         return self.parsers[src].get_comic_detail(comic_id, slug=slug)
 
     def prepare_for_download(self, comic: ComicInfo) -> ComicInfo:

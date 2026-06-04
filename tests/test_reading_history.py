@@ -5,7 +5,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from python.ipc.history_mixin import ReadingHistoryDB
+from python.ipc.history_mixin import ReadingHistoryDB, ReadingHistoryEntry
 
 
 def _make_db(tmp_path):
@@ -15,15 +15,17 @@ def _make_db(tmp_path):
 def test_upsert_and_get_history(tmp_path):
     db = _make_db(tmp_path)
     db.upsert(
-        comic_id="1",
-        title="Comic",
-        cover_url="",
-        source="hcomic",
-        source_site="hcomic",
-        media_id="",
-        source_url="",
-        last_page=3,
-        total_pages=20,
+        ReadingHistoryEntry(
+            comic_id="1",
+            title="Comic",
+            cover_url="",
+            source="hcomic",
+            source_site="hcomic",
+            media_id="",
+            source_url="",
+            last_page=3,
+            total_pages=20,
+        )
     )
     items, total = db.get_history(page=1, page_size=20)
     assert total == 1
@@ -34,17 +36,19 @@ def test_upsert_and_get_history(tmp_path):
 def test_history_stores_chapter_fields(tmp_path):
     db = _make_db(tmp_path)
     db.upsert(
-        comic_id="999001",
-        title="多章",
-        cover_url="",
-        source="JMCOMIC",
-        source_site="jmcomic",
-        media_id="",
-        source_url="",
-        last_page=5,
-        total_pages=30,
-        last_chapter_id="999002",
-        last_chapter_name="第 2 話",
+        ReadingHistoryEntry(
+            comic_id="999001",
+            title="多章",
+            cover_url="",
+            source="JMCOMIC",
+            source_site="jmcomic",
+            media_id="",
+            source_url="",
+            last_page=5,
+            total_pages=30,
+            last_chapter_id="999002",
+            last_chapter_name="第 2 話",
+        )
     )
     items, total = db.get_history(page=1, page_size=20)
     assert total == 1
@@ -55,15 +59,17 @@ def test_history_stores_chapter_fields(tmp_path):
 def test_chapter_fields_default_empty(tmp_path):
     db = _make_db(tmp_path)
     db.upsert(
-        comic_id="2",
-        title="No chapter",
-        cover_url="",
-        source="hcomic",
-        source_site="hcomic",
-        media_id="",
-        source_url="",
-        last_page=1,
-        total_pages=10,
+        ReadingHistoryEntry(
+            comic_id="2",
+            title="No chapter",
+            cover_url="",
+            source="hcomic",
+            source_site="hcomic",
+            media_id="",
+            source_url="",
+            last_page=1,
+            total_pages=10,
+        )
     )
     items, _ = db.get_history(page=1, page_size=20)
     assert items[0]["lastChapterId"] == ""
