@@ -88,6 +88,7 @@ export interface AppConfig {
   hasBikaAuth?: boolean
   jmcomicDomain?: string
   moeimgUsername?: string
+  bikaUsername?: string
   favouriteTagHighlight?: boolean
 }
 

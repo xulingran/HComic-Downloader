@@ -111,5 +111,6 @@ class AuthMixin:
         )
         self.config.save(_get_config_path())
         self.parser.configure_auth(bearer_token=token, source="bika")
+        bika_parser.set_stored_credentials(username, password)
         logger.info("bika login successful for user %s", username)
         return {"success": True, "message": "登录成功"}

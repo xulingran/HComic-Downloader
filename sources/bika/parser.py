@@ -54,6 +54,22 @@ class BikaParser:
         self._stored_username = username or ""
         self._stored_password = password or ""
 
+    def _ensure_token(self):
+        """确保 token 有效，若过期或不存在则使用存储的凭据自动重登录。
+
+        Raises:
+            ParserResponseError: 无可用 token 且无存储凭据
+        """
+        if self._token:
+            return
+        if self._stored_username and self._stored_password:
+            logger.info(
+                "Auto-login bika with stored credentials for %s", self._stored_username
+            )
+            self.login(self._stored_username, self._stored_password)
+            return
+        raise ParserResponseError("未登录，请先登录 Bika")
+
     def close(self):
         """关闭底层会话连接。"""
         self.session.close()
@@ -156,7 +172,11 @@ class BikaParser:
         data = {"email": username, "password": password}
         result = self._request(Method.POST, "auth/sign-in", json=data)
 
-        token = result.get("data", {}).get("token") if isinstance(result.get("data"), dict) else None
+        token = (
+            result.get("data", {}).get("token")
+            if isinstance(result.get("data"), dict)
+            else None
+        )
         if not token:
             raise ParserResponseError(
                 f"登录失败：API 返回 code={result.get('code')}, "
@@ -172,16 +192,33 @@ class BikaParser:
         Returns:
             (是否已登录, 状态消息)
         """
-        if not self._token:
-            return False, "未登录，请先登录 Bika"
-
         try:
+            self._ensure_token()
+        except ParserResponseError as e:
+            return False, str(e)
+
+        def _check_profile() -> tuple[bool, str]:
             result = self._request(Method.GET, "users/profile")
             user = result.get("data", {}).get("user", {})
             name = user.get("name", "")
             return True, f"已登录为 {name}" if name else "登录校验通过"
+
+        try:
+            return _check_profile()
         except ParserResponseError as e:
-            return False, f"登录已失效: {e}"
+            error_msg = str(e)
+            if (
+                "认证已失效" in error_msg
+                and self._stored_username
+                and self._stored_password
+            ):
+                logger.info("Bika token expired, re-login with stored credentials")
+                try:
+                    self.login(self._stored_username, self._stored_password)
+                    return _check_profile()
+                except ParserResponseError as e2:
+                    return False, f"自动重新登录失败: {e2}"
+            return False, error_msg
 
     def search(
         self, keyword: str, page: int = 1, *, tag: str = ""
@@ -323,7 +360,9 @@ class BikaParser:
         Returns:
             (漫画信息列表, 分页信息, 是否需要登录)
         """
-        if not self._token:
+        try:
+            self._ensure_token()
+        except ParserResponseError:
             return [], None, True
 
         try:

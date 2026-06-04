@@ -53,6 +53,7 @@ class PreviewMixin:
             "moeimg.net",
             "cdndelivers.cloud",
             "bunnyssd.com",
+            "picacomic.com",
         }
     )
 

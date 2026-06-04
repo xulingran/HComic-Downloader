@@ -146,8 +146,10 @@ class ConfigMixin:
         config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get(
             "username", ""
         )
+        bika_auth = self.config.source_auth.get("bika", {})
         config["hasBikaAuth"] = bool(
-            self.config.source_auth.get("bika", {}).get("bearer_token")
+            bika_auth.get("bearer_token")
+            or (bika_auth.get("username") and bika_auth.get("password"))
         )
         config["bikaUsername"] = self.config.source_auth.get("bika", {}).get(
             "username", ""
