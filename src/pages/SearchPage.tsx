@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useRandom, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
@@ -6,10 +6,9 @@ import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
-import { PaginationControls } from '../components/common/PaginationControls'
-import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
+import { SearchBar } from '../components/SearchBar'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
@@ -17,39 +16,6 @@ import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 import { useFavouriteTags } from '../hooks/useIpc'
-
-const searchModes = [
-  { value: 'keyword', label: '关键词' },
-  { value: 'author', label: '作者' },
-  { value: 'tag', label: 'Tag' },
-  { value: 'ranking', label: '排行' }
-]
-
-const sources = [
-  { value: 'hcomic', label: 'HComic' },
-  { value: 'moeimg', label: 'Moeimg' },
-  { value: 'jmcomic', label: '禁漫天堂' },
-  { value: 'bika', label: '哔咔' }
-]
-
-const rankingOptions = [
-  { value: '日更新', label: '日更新' },
-  { value: '周更新', label: '周更新' },
-  { value: '月更新', label: '月更新' },
-  { value: '总更新', label: '总更新' },
-  { value: '日点击', label: '日点击' },
-  { value: '周点击', label: '周点击' },
-  { value: '月点击', label: '月点击' },
-  { value: '总点击', label: '总点击' },
-  { value: '日评分', label: '日评分' },
-  { value: '周评分', label: '周评分' },
-  { value: '月评分', label: '月评分' },
-  { value: '总评分', label: '总评分' },
-  { value: '日收藏', label: '日收藏' },
-  { value: '周收藏', label: '周收藏' },
-  { value: '月收藏', label: '月收藏' },
-  { value: '总收藏', label: '总收藏' },
-]
 
 function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' | 'bika' {
   if (source === 'moeimg') return 'moeimg'
@@ -231,9 +197,14 @@ export function SearchPage() {
     })
   }, [comics, filterEnabled, tagBlacklist, source, recommendedTags])
 
+  const modeRef = useRef(mode)
+  modeRef.current = mode // eslint-disable-line react-hooks/refs
+  const sourceRef = useRef(source)
+  sourceRef.current = source // eslint-disable-line react-hooks/refs
+
   const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
-  const withLoading = async (fn: () => Promise<{ comics: ComicInfo[]; pagination: PaginationInfo | null }>) => {
+  const withLoading = useCallback(async (fn: () => Promise<{ comics: ComicInfo[]; pagination: PaginationInfo | null }>) => {
     const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
@@ -244,8 +215,8 @@ export function SearchPage() {
       if (result.pagination) setPagination(result.pagination)
       searchCacheRef.current.setCache({
         query: queryRef.current,
-        mode,
-        source,
+        mode: modeRef.current,
+        source: sourceRef.current,
         searchTags: searchTagsRef.current,
         comics: result.comics,
         pagination: result.pagination ?? null,
@@ -256,7 +227,7 @@ export function SearchPage() {
     } finally {
       if (gen === searchGenRef.current) setLoading(false)
     }
-  }
+  }, [setLoading, setError, setComics, setPagination])
 
   const handleSearch = async (page: number = 1) => {
     clearSelection()
@@ -290,140 +261,40 @@ export function SearchPage() {
 
   return (
     <div className="space-y-3">
-      <div className="bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
-        <div className="flex gap-3">
-          <select
-            value={source}
-            onChange={(e) => setSource(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                       text-[var(--text-primary)] text-sm"
-          >
-            {sources.map((s) => (
-              <option key={s.value} value={s.value}>
-                {s.label}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={mode}
-            onChange={(e) => setMode(e.target.value)}
-            className="px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                       text-[var(--text-primary)] text-sm"
-          >
-            {searchModes.map((m) => (
-              <option key={m.value} value={m.value}>
-                {m.label}
-              </option>
-            ))}
-          </select>
-
-          <div className="flex-1 relative">
-            {mode === 'ranking' && source === 'jmcomic' ? (
-              <select
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                           text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
-              >
-                <option value="">选择排行</option>
-                {rankingOptions.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                ref={inputRef}
-                type="text"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onFocus={() => { if (history.length > 0) setShowHistory(true) }}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="输入搜索内容..."
-                className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
-                           text-[var(--text-primary)] placeholder-[var(--text-secondary)]
-                           focus:outline-none focus:border-[var(--accent)]"
-              />
-            )}
-            {showHistory && history.length > 0 && (
-              <div ref={historyDropdownRef} className="absolute top-full left-0 right-0 mt-1 bg-[var(--bg-primary)] border border-[var(--border)] rounded-lg shadow-lg z-10 max-h-64 overflow-y-auto">
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border)]">
-                  <span className="text-xs text-[var(--text-secondary)]">搜索历史</span>
-                  <button onClick={() => { clearHistory(); setShowHistory(false) }} className="text-xs text-[var(--text-secondary)] hover:text-[var(--error)]">清空</button>
-                </div>
-                {history.map((term) => (
-                  <div key={term} className="flex items-center justify-between px-3 py-2 hover:bg-[var(--bg-secondary)] cursor-pointer" onMouseDown={() => { setQuery(term); setShowHistory(false) }}>
-                    <span className="text-sm text-[var(--text-primary)] truncate">{term}</span>
-                    <button onClick={(e) => { e.stopPropagation(); removeHistory(term) }} className="text-xs text-[var(--text-secondary)] hover:text-[var(--error)] ml-2 flex-shrink-0">✕</button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {(source === 'hcomic' || source === 'jmcomic') && (
-            <button
-              onClick={handleRandom}
-              disabled={isLoading}
-              className="px-4 py-2 rounded-lg border border-[var(--border)]
-                         text-[var(--text-primary)] bg-[var(--bg-secondary)]
-                         hover:bg-[var(--bg-primary)] disabled:opacity-50 transition-colors"
-            >
-              🎲 随机
-            </button>
-          )}
-
-          <button
-            onClick={() => handleSearch()}
-            disabled={isLoading}
-            className="px-6 py-2 bg-[var(--accent)] text-white rounded-lg hover:bg-[var(--accent-hover)]
-                       disabled:opacity-50 transition-colors"
-          >
-            {isLoading ? '搜索中...' : '搜索'}
-          </button>
-          {tagBlacklist[effectiveSourceKey(source)].length > 0 && (
-            <button
-              onClick={() => setFilterEnabled(!filterEnabled)}
-              className={`px-3 py-2 rounded-lg text-sm transition-colors border ${
-                filterEnabled
-                  ? 'border-[var(--accent)] text-[var(--accent)] bg-[var(--accent)]/10'
-                  : 'border-[var(--border)] text-[var(--text-secondary)] bg-[var(--bg-secondary)]'
-              }`}
-              title={filterEnabled ? '点击显示被过滤的结果' : '点击启用标签过滤'}
-            >
-              🚫 过滤
-            </button>
-          )}
-        </div>
-
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-[var(--text-secondary)]">
-              源: {sources.find(s => s.value === source)?.label} | 模式: {searchModes.find(m => m.value === mode)?.label}
-              {pagination && pagination.totalItems > 0 && ` | 共 ${pagination.totalItems} 条结果`}
-              {blockedCount > 0 && ` | 已过滤 ${blockedCount} 条结果`}
-            </span>
-            {comics.length > 0 && (
-              <BatchControls
-                batchMode={batchMode}
-                selectedCount={selectedIds.size}
-                onToggleBatchMode={setBatchMode}
-                onSelectAll={() => selectAll(comics)}
-                onClearSelection={clearSelection}
-                onBatchDownload={handleBatchDownload}
-              />
-            )}
-          </div>
-          {pagination && pagination.totalPages > 1 && (
-            <PaginationControls
-              currentPage={pagination.currentPage}
-              totalPages={pagination.totalPages}
-              onNavigate={handleSearch}
-              onJumpClick={() => setShowJumpDialog(true)}
-            />
-          )}
-        </div>
-      </div>
+      <SearchBar
+        source={source}
+        onSourceChange={setSource}
+        mode={mode}
+        onModeChange={setMode}
+        query={query}
+        onQueryChange={setQuery}
+        isLoading={isLoading}
+        onSearch={() => handleSearch()}
+        onRandom={handleRandom}
+        showRandom={source === 'hcomic' || source === 'jmcomic'}
+        showHistory={showHistory}
+        onShowHistoryChange={setShowHistory}
+        history={history}
+        onClearHistory={clearHistory}
+        onRemoveHistory={removeHistory}
+        onSelectHistory={setQuery}
+        inputRef={inputRef}
+        historyDropdownRef={historyDropdownRef}
+        hasFilterEnabled={filterEnabled}
+        onFilterToggle={() => setFilterEnabled(!filterEnabled)}
+        hasBlacklistedTags={tagBlacklist[effectiveSourceKey(source)].length > 0}
+        pagination={pagination}
+        blockedCount={blockedCount}
+        hasComics={comics.length > 0}
+        batchMode={batchMode}
+        selectedCount={selectedIds.size}
+        onToggleBatchMode={setBatchMode}
+        onSelectAll={() => selectAll(comics)}
+        onClearSelection={clearSelection}
+        onBatchDownload={handleBatchDownload}
+        onPageJump={() => setShowJumpDialog(true)}
+        onPageNavigate={handleSearch}
+      />
 
       <ErrorDisplay message={error} />
 

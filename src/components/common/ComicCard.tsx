@@ -3,6 +3,7 @@ import { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useDrawerStore } from '../../stores/useDrawerStore'
 import { useCoverImage } from '../../hooks/useCoverImage'
+import { useCardInteraction } from '../../hooks/useCardInteraction'
 
 interface CoverImageProps {
   coverUrl: string
@@ -130,21 +131,14 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
-  const handleClick = () => {
-    if (batchMode) onToggleSelect?.(comic)
-    else onClick?.(comic)
-  }
-  const handleReaderClick = () => {
-    if (batchMode) { onToggleSelect?.(comic); return }
-    if (!sfwMode && onOpenReader) {
-      onOpenReader(comic)
-    }
-  }
+  const { handleCardClick, handleReaderClick, handleTitleClick } = useCardInteraction({
+    comic, batchMode, sfwMode, onToggleSelect, onClick, onOpenDrawer, onOpenReader,
+  })
 
   return (
     <div
       ref={containerRef}
-      onClick={handleClick}
+      onClick={handleCardClick}
       className={`bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-all duration-200
                  cursor-pointer overflow-hidden group relative
                  ${selected ? 'ring-2 ring-[var(--accent)] shadow-[var(--accent)]/20 shadow-lg' : ''}
@@ -181,12 +175,8 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
       <div className="p-2">
         <h3
           onClick={(e) => {
-            e.stopPropagation();
-            if (batchMode) {
-              onToggleSelect?.(comic)
-            } else {
-              onOpenDrawer()
-            }
+            e.stopPropagation()
+            handleTitleClick()
           }}
           className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text line-clamp-2"
           title={comic.title}
@@ -208,21 +198,14 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const [showAllTags, setShowAllTags] = useState(false)
-  const handleClick = () => {
-    if (batchMode) onToggleSelect?.(comic)
-    else onClick?.(comic)
-  }
-  const handleReaderClick = () => {
-    if (batchMode) { onToggleSelect?.(comic); return }
-    if (!sfwMode && onOpenReader) {
-      onOpenReader(comic)
-    }
-  }
+  const { handleCardClick, handleReaderClick, handleTitleClick } = useCardInteraction({
+    comic, batchMode, sfwMode, onToggleSelect, onClick, onOpenDrawer, onOpenReader,
+  })
 
   return (
     <div
       ref={containerRef}
-      onClick={handleClick}
+      onClick={handleCardClick}
       className={`flex items-center px-4 py-2.5 cursor-pointer transition-colors duration-150
                   border-b border-[var(--border)] hover:bg-[var(--bg-secondary)]
                   ${selected ? 'border-l-2 border-l-[var(--accent)] bg-[var(--accent)]/5' : ''}
@@ -248,12 +231,8 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
       <div className="flex-1 min-w-0 ml-3">
         <h3
           onClick={(e) => {
-            e.stopPropagation();
-            if (batchMode) {
-              onToggleSelect?.(comic)
-            } else {
-              onOpenDrawer()
-            }
+            e.stopPropagation()
+            handleTitleClick()
           }}
           className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text truncate"
           title={comic.title}

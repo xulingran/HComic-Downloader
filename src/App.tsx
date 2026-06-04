@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useTheme } from './hooks/useTheme'
-import { useSettingsStore, subscribeToBlacklistChanges, subscribeToFavouriteTagHighlightChanges } from './stores/useSettingsStore'
+import { useSettingsStore } from './stores/useSettingsStore'
 import { useConfig } from './hooks/useIpc'
+import { useInitConfig } from './hooks/useInitConfig'
 import { Sidebar } from './components/Sidebar'
 import { SearchPage } from './pages/SearchPage'
 import { DownloadPage } from './pages/DownloadPage'
@@ -16,67 +17,12 @@ import { useDrawerStore } from './stores/useDrawerStore'
 import { useReaderStore } from './stores/useReaderStore'
 
 function App() {
-  const {
-    sfwToastDismissed,
-    setThemeMode, setSfwMode, dismissSfwToast, setTagBlacklist, setFavouriteTagHighlight,
-  } = useSettingsStore()
-  const { getConfig, setConfig } = useConfig()
+  const { sfwToastDismissed, dismissSfwToast } = useSettingsStore()
+  const { setConfig } = useConfig()
   useTheme()
+  const { setSfwMode, } = useInitConfig()
 
-  const [showSfwToast, setShowSfwToast] = useState(false)
-  const subscribedRef = useRef(false)
-  const unsubRef = useRef<(() => void) | null>(null)
-
-  useEffect(() => {
-    getConfig().then((result) => {
-      // 应用主题配置
-      const mode = result?.config?.themeMode
-      if (mode === 'light' || mode === 'dark' || mode === 'auto') {
-        setThemeMode(mode)
-      }
-      // 特意设计：每次启动都强制开启 SFW 模式，不从持久化配置恢复
-      // 原因：SFW 是安全默认值，即使上次会话关闭了 SFW，本次启动也必须以安全状态开始
-      //       避免封面图在启动时被意外加载（尤其适用于公共 / 截屏场景）
-      //       用户可在会话中通过设置页面或 Toast 按钮主动关闭 SFW
-      setSfwMode(true)
-      setConfig('sfwMode', true).catch(() => {})
-      setShowSfwToast(true)
-      // Load tag blacklist from config
-      const rawBlacklist = result.config?.tagBlacklist
-      if (rawBlacklist && typeof rawBlacklist === 'object') {
-        const raw = rawBlacklist as Record<string, unknown>
-        const normalized: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[] } = {
-          hcomic: Array.isArray(raw.hcomic) ? raw.hcomic as string[] : [],
-          moeimg: Array.isArray(raw.moeimg) ? raw.moeimg as string[] : [],
-          jmcomic: Array.isArray(raw.jmcomic) ? raw.jmcomic as string[] : [],
-          bika: Array.isArray(raw.bika) ? raw.bika as string[] : [],
-        }
-        setTagBlacklist(normalized)
-      }
-      // Load favouriteTagHighlight from config
-      if (typeof result.config?.favouriteTagHighlight === 'boolean') {
-        setFavouriteTagHighlight(result.config.favouriteTagHighlight)
-      }
-      // Subscribe to setting changes for persistence
-      if (!subscribedRef.current) {
-        subscribedRef.current = true
-        const unsubBlacklist = subscribeToBlacklistChanges(setConfig)
-        const unsubHighlight = subscribeToFavouriteTagHighlightChanges(setConfig)
-        unsubRef.current = () => {
-          unsubBlacklist()
-          unsubHighlight()
-        }
-      }
-    }).catch(() => {
-      setSfwMode(true)
-      setShowSfwToast(true)
-    })
-    return () => {
-      unsubRef.current?.()
-      unsubRef.current = null
-      subscribedRef.current = false
-    }
-  }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist, setFavouriteTagHighlight])
+  const [showSfwToast, setShowSfwToast] = useState(true)
 
   const handleDisableSfw = useCallback(() => {
     setSfwMode(false)

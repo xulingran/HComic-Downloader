@@ -33,7 +33,7 @@ describe('useDownload', () => {
     const hcomic = createMockHcomic({ download: vi.fn().mockResolvedValue({ taskId: 't1', status: 'queued' }) })
     const { result } = renderHook(() => useDownload())
     const response = await result.current.startDownload('comic-1', mockComic)
-    expect(hcomic.download).toHaveBeenCalledWith('comic-1', mockComic, undefined, undefined)
+    expect(hcomic.download).toHaveBeenCalledWith('comic-1', mockComic)
     expect(response).toEqual({ taskId: 't1', status: 'queued' })
   })
 
@@ -64,6 +64,6 @@ describe('useDownload', () => {
     const hcomic = createMockHcomic({ download: vi.fn().mockResolvedValue({ taskId: 't2', status: 'queued' }) })
     const { result } = renderHook(() => useDownload())
     await result.current.startDownload('comic-2', comicWithExtras)
-    expect(hcomic.download).toHaveBeenCalledWith('comic-2', comicWithExtras, undefined, undefined)
+    expect(hcomic.download).toHaveBeenCalledWith('comic-2', comicWithExtras)
   })
 })

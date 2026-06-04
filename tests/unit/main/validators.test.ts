@@ -82,6 +82,12 @@ describe('validators.ts', () => {
       expect(() => minLength(3)('ab')).toThrow(ValidationError)
     })
 
+    it('minLength throws ValidationError for non-strings', () => {
+      expect(() => minLength(3)(42)).toThrow(ValidationError)
+      expect(() => minLength(3)(null)).toThrow(ValidationError)
+      expect(() => minLength(3)(undefined)).toThrow(ValidationError)
+    })
+
     it('maxLength passes when length <= max', () => {
       expect(maxLength(3)('abc')).toBe(true)
       expect(maxLength(3)('ab')).toBe(true)
@@ -89,6 +95,12 @@ describe('validators.ts', () => {
 
     it('maxLength throws when length > max', () => {
       expect(() => maxLength(3)('abcd')).toThrow(ValidationError)
+    })
+
+    it('maxLength throws ValidationError for non-strings', () => {
+      expect(() => maxLength(3)(42)).toThrow(ValidationError)
+      expect(() => maxLength(3)(null)).toThrow(ValidationError)
+      expect(() => maxLength(3)(undefined)).toThrow(ValidationError)
     })
 
     it('length combines min and max', () => {
@@ -110,6 +122,12 @@ describe('validators.ts', () => {
       expect(() => range(0, 100)(101)).toThrow(ValidationError)
     })
 
+    it('range throws ValidationError for non-numbers', () => {
+      expect(() => range(0, 100)('50')).toThrow(ValidationError)
+      expect(() => range(0, 100)(null)).toThrow(ValidationError)
+      expect(() => range(0, 100)(NaN)).toThrow(ValidationError)
+    })
+
     it('minValue passes for values >= min', () => {
       expect(minValue(0)(0)).toBe(true)
       expect(minValue(0)(100)).toBe(true)
@@ -117,6 +135,12 @@ describe('validators.ts', () => {
 
     it('minValue rejects values < min', () => {
       expect(() => minValue(0)(-1)).toThrow(ValidationError)
+    })
+
+    it('minValue throws ValidationError for non-numbers', () => {
+      expect(() => minValue(0)('100')).toThrow(ValidationError)
+      expect(() => minValue(0)(null)).toThrow(ValidationError)
+      expect(() => minValue(0)(NaN)).toThrow(ValidationError)
     })
   })
 

@@ -62,9 +62,11 @@ export function integer(): Validator<number> {
 
 export function minLength(min: number): Validator<string> {
   return (value): value is string => {
-    const s = value as string
-    if (s.length < min) {
-      throw new ValidationError(`String length must be at least ${min}, got ${s.length}`)
+    if (typeof value !== 'string') {
+      throw new ValidationError(`Expected string, got ${typeof value}`)
+    }
+    if (value.length < min) {
+      throw new ValidationError(`String length must be at least ${min}, got ${value.length}`)
     }
     return true
   }
@@ -72,9 +74,11 @@ export function minLength(min: number): Validator<string> {
 
 export function maxLength(max: number): Validator<string> {
   return (value): value is string => {
-    const s = value as string
-    if (s.length > max) {
-      throw new ValidationError(`String length must be at most ${max}, got ${s.length}`)
+    if (typeof value !== 'string') {
+      throw new ValidationError(`Expected string, got ${typeof value}`)
+    }
+    if (value.length > max) {
+      throw new ValidationError(`String length must be at most ${max}, got ${value.length}`)
     }
     return true
   }
@@ -88,6 +92,9 @@ export function length(min: number, max: number): Validator<string> {
 
 export function range(min: number, max: number): Validator<number> {
   return (value): value is number => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new ValidationError(`Expected finite number, got ${typeof value}`)
+    }
     const n = value as number
     if (n < min || n > max) {
       throw new ValidationError(`Number must be between ${min} and ${max}, got ${n}`)
@@ -98,6 +105,9 @@ export function range(min: number, max: number): Validator<number> {
 
 export function minValue(min: number): Validator<number> {
   return (value): value is number => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw new ValidationError(`Expected finite number, got ${typeof value}`)
+    }
     const n = value as number
     if (n < min) {
       throw new ValidationError(`Number must be >= ${min}, got ${n}`)

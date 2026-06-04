@@ -30,7 +30,7 @@ describe('useDownloadHelper', () => {
 
     expect(returned).toBe(true)
     expect(hcomic.checkDownloadConflict).toHaveBeenCalledWith(mockComic)
-    expect(hcomic.download).toHaveBeenCalledWith('comic-1', mockComic, undefined, undefined)
+    expect(hcomic.download).toHaveBeenCalledWith('comic-1', mockComic, undefined)
   })
 
   it('should download with overwrite when conflict and user confirms', async () => {
@@ -45,7 +45,7 @@ describe('useDownloadHelper', () => {
 
     expect(returned).toBe(true)
     expect(window.confirm).toHaveBeenCalled()
-    expect(hcomic.download).toHaveBeenCalledWith('comic-1', mockComic, true, undefined)
+    expect(hcomic.download).toHaveBeenCalledWith('comic-1', mockComic, true)
   })
 
   it('should not download when conflict and user cancels', async () => {

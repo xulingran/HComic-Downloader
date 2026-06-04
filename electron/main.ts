@@ -1041,33 +1041,19 @@ app.on('activate', () => {
 
 app.on('before-quit', (e) => {
   if (shutdownDone) return
-  // Prevent default quit to do async graceful shutdown, then re-quit.
   e.preventDefault()
   isQuitting = true
   const bridge = getPythonBridge()
 
-  let timedOut = false
-  const timer = setTimeout(() => {
-    timedOut = true
+  let timer: NodeJS.Timeout | null = null
+  const doQuit = () => {
+    if (shutdownDone) return
+    if (timer) clearTimeout(timer)
     bridge.kill()
     shutdownDone = true
     app.quit()
-  }, SHUTDOWN_TIMEOUT_MS)
+  }
 
-  bridge.shutdown()
-    .then(() => {
-      clearTimeout(timer)
-      if (!timedOut) {
-        shutdownDone = true
-        app.quit()
-      }
-    })
-    .catch(() => {
-      clearTimeout(timer)
-      if (!timedOut) {
-        bridge.kill()
-        shutdownDone = true
-        app.quit()
-      }
-    })
+  timer = setTimeout(doQuit, SHUTDOWN_TIMEOUT_MS)
+  bridge.shutdown().finally(() => doQuit())
 })

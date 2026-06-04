@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react'
+import { useCallback, useState, useEffect, useMemo } from 'react'
 import type { HcomicAPI, ConfigKey, ConfigValueMap } from '@shared/types'
 import { ComicInfo } from '@shared/types'
 
@@ -46,44 +46,20 @@ export function useRandom() {
 
 export function useDownloadCommands() {
   const { invoke } = useIpc()
-
-  const startDownload = useCallback(async (comicId: string, comicData: ComicInfo, overwrite?: boolean, chapterIds?: string[]) => {
-    return invoke(() => window.hcomic!.download(comicId, comicData, overwrite, chapterIds))
+  return useMemo(() => {
+    const api = window.hcomic!
+    return {
+      startDownload: (...args: Parameters<HcomicAPI['download']>) => invoke(() => api.download(...args)),
+      checkDownloadConflict: (comicData: ComicInfo) => invoke(() => api.checkDownloadConflict(comicData)),
+      cancelDownload: (taskId: string) => invoke(() => api.cancelDownload(taskId)),
+      pauseTask: (taskId: string) => invoke(() => api.pauseTask(taskId)),
+      resumeTask: (taskId: string) => invoke(() => api.resumeTask(taskId)),
+      retryTask: (taskId: string) => invoke(() => api.retryTask(taskId)),
+      toggleGlobalPause: () => invoke(() => api.toggleGlobalPause()),
+      getDownloadDetail: (taskId: string) => invoke(() => api.getDownloadDetail(taskId)),
+      getDownloads: () => invoke(() => api.getDownloads()),
+    }
   }, [invoke])
-
-  const checkDownloadConflict = useCallback(async (comicData: ComicInfo) => {
-    return invoke(() => window.hcomic!.checkDownloadConflict(comicData))
-  }, [invoke])
-
-  const cancelDownload = useCallback(async (taskId: string) => {
-    return invoke(() => window.hcomic!.cancelDownload(taskId))
-  }, [invoke])
-
-  const pauseTask = useCallback(async (taskId: string) => {
-    return invoke(() => window.hcomic!.pauseTask(taskId))
-  }, [invoke])
-
-  const resumeTask = useCallback(async (taskId: string) => {
-    return invoke(() => window.hcomic!.resumeTask(taskId))
-  }, [invoke])
-
-  const retryTask = useCallback(async (taskId: string) => {
-    return invoke(() => window.hcomic!.retryTask(taskId))
-  }, [invoke])
-
-  const toggleGlobalPause = useCallback(async () => {
-    return invoke(() => window.hcomic!.toggleGlobalPause())
-  }, [invoke])
-
-  const getDownloadDetail = useCallback(async (taskId: string) => {
-    return invoke(() => window.hcomic!.getDownloadDetail(taskId))
-  }, [invoke])
-
-  const getDownloads = useCallback(async () => {
-    return invoke(() => window.hcomic!.getDownloads())
-  }, [invoke])
-
-  return { startDownload, cancelDownload, getDownloads, checkDownloadConflict, pauseTask, resumeTask, retryTask, toggleGlobalPause, getDownloadDetail }
 }
 
 export interface DownloadProgressData {
