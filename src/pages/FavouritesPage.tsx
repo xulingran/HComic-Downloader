@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useFavourites } from '../hooks/useIpc'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useFavourites, useDownloadProgress } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
@@ -13,6 +13,8 @@ import { ComicInfo, PaginationInfo, IPC_ERROR_CODES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
 import { useReaderStore } from '../stores/useReaderStore'
+import { useDownloadStore } from '../stores/useDownloadStore'
+import type { DownloadProgressData } from '../hooks/useIpc'
 
 const sources = [
   { value: 'hcomic', label: 'HComic' },
@@ -52,6 +54,19 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const latestPageRef = useRef(1)
   const mountedRef = useRef(true)
+  const { progress: downloadProgress } = useDownloadProgress()
+  const tasks = useDownloadStore((s) => s.tasks)
+
+  const activeDownloadMap = useMemo(() => {
+    const map = new Map<string, DownloadProgressData>()
+    for (const t of tasks) {
+      if (t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused' || t.status === 'failed') {
+        const p = downloadProgress[t.id]
+        if (p) map.set(t.comic.id, p)
+      }
+    }
+    return map
+  }, [tasks, downloadProgress])
 
   const getTaskId = (comic: ComicInfo) =>
     `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
@@ -266,6 +281,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
                 onToggleSelect={toggleSelect}
                 onDownload={handleDownload}
                 downloadStatus={downloadedStatus[getTaskId(comic)]}
+                activeDownload={activeDownloadMap.get(comic.id)}
               />
             ))}
           </div>

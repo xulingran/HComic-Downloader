@@ -219,9 +219,14 @@ describe('validators.ts', () => {
   })
 
   describe('tagBlacklist()', () => {
+    const valid4 = (overrides: Record<string, string[]> = {}) => ({
+      hcomic: [] as string[], moeimg: [] as string[], jmcomic: [] as string[], bika: [] as string[],
+      ...overrides,
+    })
+
     it('passes for valid tag blacklist', () => {
       const v = tagBlacklist()
-      expect(v({ hcomic: ['tag1', 'tag2'], moeimg: [] })).toBe(true)
+      expect(v(valid4({ hcomic: ['tag1', 'tag2'] }))).toBe(true)
     })
 
     it('rejects non-object', () => {
@@ -230,29 +235,35 @@ describe('validators.ts', () => {
     })
 
     it('rejects non-array values', () => {
-      expect(() => tagBlacklist()({ hcomic: 'not-array', moeimg: [] })).toThrow(ValidationError)
+      expect(() => tagBlacklist()(valid4({ hcomic: 'not-array' as unknown as string[] }))).toThrow(ValidationError)
     })
 
     it('rejects arrays exceeding 500 items', () => {
       const big = Array(501).fill('tag')
-      expect(() => tagBlacklist()({ hcomic: big, moeimg: [] })).toThrow(ValidationError)
+      expect(() => tagBlacklist()(valid4({ hcomic: big }))).toThrow(ValidationError)
     })
 
     it('rejects empty strings', () => {
-      expect(() => tagBlacklist()({ hcomic: [''], moeimg: [] })).toThrow(ValidationError)
+      expect(() => tagBlacklist()(valid4({ hcomic: [''] }))).toThrow(ValidationError)
     })
 
     it('rejects strings over 64 chars', () => {
-      expect(() => tagBlacklist()({ hcomic: ['a'.repeat(65)], moeimg: [] })).toThrow(ValidationError)
+      expect(() => tagBlacklist()(valid4({ hcomic: ['a'.repeat(65)] }))).toThrow(ValidationError)
     })
 
     it('rejects duplicates (case-insensitive)', () => {
-      expect(() => tagBlacklist()({ hcomic: ['Tag', 'tag'], moeimg: [] })).toThrow(ValidationError)
+      expect(() => tagBlacklist()(valid4({ hcomic: ['Tag', 'tag'] }))).toThrow(ValidationError)
     })
 
     it('accepts max 500 items', () => {
       const exact = Array(500).fill(0).map((_, i) => `tag${i}`)
-      expect(tagBlacklist()({ hcomic: exact, moeimg: [] })).toBe(true)
+      expect(tagBlacklist()(valid4({ hcomic: exact }))).toBe(true)
+    })
+
+    it('validates all four source keys', () => {
+      expect(() => tagBlacklist()(valid4({ jmcomic: 'bad' as unknown as string[] }))).toThrow(ValidationError)
+      expect(() => tagBlacklist()(valid4({ bika: [''] }))).toThrow(ValidationError)
+      expect(tagBlacklist()(valid4({ jmcomic: ['tag'], bika: ['tag'] }))).toBe(true)
     })
   })
 

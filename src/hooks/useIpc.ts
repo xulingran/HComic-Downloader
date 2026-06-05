@@ -70,6 +70,10 @@ export interface DownloadProgressData {
   current: number
 }
 
+export function isDownloadActive(status?: string): boolean {
+  return status === 'downloading' || status === 'queued' || status === 'pausing' || status === 'paused'
+}
+
 export function useDownloadProgress() {
   const [progress, setProgress] = useState<Record<string, DownloadProgressData>>({})
 

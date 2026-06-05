@@ -195,13 +195,13 @@ export function absolutePath(): Validator<string> {
 
 // ── Tag blacklist validator ──────────────────────────────────────────────
 
-export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[] }> {
-  return (value): value is { hcomic: string[]; moeimg: string[] } => {
+export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[] }> {
+  return (value): value is { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[] } => {
     if (typeof value !== 'object' || value === null) {
       throw new ValidationError('tagBlacklist must be an object')
     }
     const obj = value as Record<string, unknown>
-    for (const key of ['hcomic', 'moeimg']) {
+    for (const key of ['hcomic', 'moeimg', 'jmcomic', 'bika']) {
       const arr = obj[key]
       if (!Array.isArray(arr)) {
         throw new ValidationError(`tagBlacklist.${key} must be an array`)

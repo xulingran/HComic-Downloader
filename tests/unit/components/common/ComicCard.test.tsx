@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import { ComicCard } from '@/components/common/ComicCard'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 import type { ComicInfo } from '@shared/types'
+import type { DownloadProgressData } from '@/hooks/useIpc'
 
 vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false })
@@ -11,6 +12,10 @@ vi.mock('@/stores/useSettingsStore', () => ({
 
 vi.mock('@/hooks/useCoverImage', () => ({
   useCoverImage: vi.fn().mockReturnValue({ coverSrc: 'data:image/png;base64,mock', retry: vi.fn() })
+}))
+
+vi.mock('@/stores/useDrawerStore', () => ({
+  useDrawerStore: vi.fn().mockReturnValue({ openDrawer: vi.fn() })
 }))
 
 const mockComic: ComicInfo = {
@@ -188,6 +193,100 @@ describe('ComicCard', () => {
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: true })
       const { container } = render(<ComicCard comic={mockComic} />)
       expect(container.querySelector('img')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('activeDownload progress', () => {
+    const activeDownload: DownloadProgressData = {
+      taskId: 'task-1',
+      status: 'downloading',
+      progress: 55,
+      total: 100,
+      current: 55,
+    }
+
+    it('shows CircularProgress instead of download button when activeDownload status is downloading', () => {
+      const onDownload = vi.fn()
+      const { container } = render(
+        <ComicCard comic={mockComic} onDownload={onDownload} activeDownload={activeDownload} />
+      )
+      // No button should be rendered
+      expect(container.querySelector('button')).not.toBeInTheDocument()
+      // SVG from CircularProgress should be present
+      const svg = container.querySelector('svg')
+      expect(svg).toBeInTheDocument()
+    })
+
+    it('shows CircularProgress instead of download button when activeDownload status is queued', () => {
+      const onDownload = vi.fn()
+      const { container } = render(
+        <ComicCard
+          comic={mockComic}
+          onDownload={onDownload}
+          activeDownload={{ ...activeDownload, status: 'queued', progress: 0 }}
+        />
+      )
+      expect(container.querySelector('button')).not.toBeInTheDocument()
+      expect(container.querySelector('svg')).toBeInTheDocument()
+    })
+
+    it('does NOT trigger onDownload when clicking during active download', async () => {
+      const onDownload = vi.fn()
+      const { container } = render(
+        <ComicCard comic={mockComic} onDownload={onDownload} activeDownload={activeDownload} />
+      )
+      // The progress wrapper div (not cursor-pointer since status is downloading)
+      const progressDiv = container.querySelector('.absolute.top-2.right-2.z-10')
+      expect(progressDiv).toBeInTheDocument()
+      expect(progressDiv!.className).not.toContain('cursor-pointer')
+    })
+
+    it('shows CircularProgress with failed status when activeDownload status is failed', () => {
+      const { container } = render(
+        <ComicCard
+          comic={mockComic}
+          onDownload={vi.fn()}
+          activeDownload={{ ...activeDownload, status: 'failed' }}
+        />
+      )
+      const circles = container.querySelectorAll('circle')
+      // Second circle is the progress arc, should have failed color
+      expect(circles[1]).toHaveAttribute('stroke', '#ef4444')
+    })
+
+    it('clicking failed progress ring triggers onDownload (retry)', async () => {
+      const onDownload = vi.fn()
+      const { container } = render(
+        <ComicCard
+          comic={mockComic}
+          onDownload={onDownload}
+          activeDownload={{ ...activeDownload, status: 'failed' }}
+        />
+      )
+      const progressDiv = container.querySelector('.absolute.top-2.right-2.z-10.cursor-pointer')
+      expect(progressDiv).toBeInTheDocument()
+      await userEvent.click(progressDiv!)
+      expect(onDownload).toHaveBeenCalledWith(mockComic)
+    })
+
+    it('shows normal download button when activeDownload is undefined', () => {
+      const onDownload = vi.fn()
+      render(<ComicCard comic={mockComic} onDownload={onDownload} />)
+      expect(screen.getByRole('button')).toBeInTheDocument()
+    })
+
+    it('in DetailedCard mode: shows progress ring when activeDownload is downloading', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      const onDownload = vi.fn()
+      const { container } = render(
+        <ComicCard comic={mockComic} onDownload={onDownload} activeDownload={activeDownload} />
+      )
+      // Should not have a button element
+      expect(container.querySelector('button')).not.toBeInTheDocument()
+      // Should have an SVG (CircularProgress)
+      expect(container.querySelector('svg')).toBeInTheDocument()
+      // Restore default
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
   })
 })

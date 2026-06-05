@@ -57,15 +57,20 @@ vi.mock('@/hooks/useIpc', () => ({
     getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
     syncFavouriteTags: vi.fn(),
     removeFavouriteTag: vi.fn()
-  })
+  }),
+  useDownloadProgress: vi.fn().mockReturnValue({ progress: {} }),
 }))
 
 vi.mock('@/stores/useComicStore', () => ({
   useComicStore: vi.fn(() => mockStoreState)
 }))
 
+vi.mock('@/stores/useDownloadStore', () => ({
+  useDownloadStore: vi.fn().mockReturnValue([])
+}))
+
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), favouriteTagHighlight: false, setFavouriteTagHighlight: vi.fn() })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), favouriteTagHighlight: false, setFavouriteTagHighlight: vi.fn() })
 }))
 
 const { mockSearchCacheStore } = vi.hoisted(() => {
@@ -249,7 +254,7 @@ describe('SearchPage', () => {
     ]
 
     it('uses grid layout for cover mode', () => {
-      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
       mockStoreState.comics = comicsWithResults
 
       render(<SearchPage />)
@@ -258,7 +263,7 @@ describe('SearchPage', () => {
     })
 
     it('uses flex-col layout for detailed mode', () => {
-      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
       mockStoreState.comics = comicsWithResults
 
       render(<SearchPage />)

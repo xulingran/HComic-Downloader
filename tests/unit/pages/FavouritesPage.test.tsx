@@ -33,10 +33,15 @@ vi.mock('@/hooks/useIpc', () => ({
   useComicDetail: vi.fn().mockReturnValue({
     getComicDetail: vi.fn().mockResolvedValue({ comic: null })
   }),
+  useDownloadProgress: vi.fn().mockReturnValue({ progress: {} }),
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', tagBlacklist: { hcomic: [], moeimg: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), addTag: vi.fn(), removeTag: vi.fn() })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), addTag: vi.fn(), removeTag: vi.fn() })
+}))
+
+vi.mock('@/stores/useDownloadStore', () => ({
+  useDownloadStore: vi.fn().mockReturnValue([])
 }))
 
 vi.mock('@/stores/useFavouritesStore', () => ({

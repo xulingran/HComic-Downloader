@@ -10,10 +10,12 @@ interface TagFilterSettingsProps {
 const SOURCES = [
   { key: 'hcomic' as const, label: 'HComic' },
   { key: 'moeimg' as const, label: 'Moeimg' },
+  { key: 'jmcomic' as const, label: 'JMComic' },
+  { key: 'bika' as const, label: 'Bika' },
 ]
 
 export function TagFilterSettings({ tagBlacklist, addTag, removeTag }: TagFilterSettingsProps) {
-  const [activeSource, setActiveSource] = useState<'hcomic' | 'moeimg'>('hcomic')
+  const [activeSource, setActiveSource] = useState<keyof TagBlacklist>('hcomic')
   const [inputValue, setInputValue] = useState('')
   const [confirmTag, setConfirmTag] = useState<string | null>(null)
 

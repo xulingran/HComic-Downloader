@@ -6,6 +6,7 @@ export function useSliderDrag(
   onDragEnd?: (page: number) => void,
 ) {
   const [isDragging, setIsDragging] = useState(false)
+  const isDraggingRef = useRef(false)
   const dragPageRef = useRef(0)
   const sliderRef = useRef<HTMLDivElement>(null)
 
@@ -22,24 +23,27 @@ export function useSliderDrag(
   const handleSliderPointerDown = useCallback((e: React.PointerEvent) => {
     e.preventDefault()
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    isDraggingRef.current = true
     setIsDragging(true)
     updateDragPosition(e)
   }, [updateDragPosition])
 
   const handleSliderPointerMove = useCallback((e: React.PointerEvent) => {
-    if (!isDragging) return
+    if (!isDraggingRef.current) return
     updateDragPosition(e)
-  }, [isDragging, updateDragPosition])
+  }, [updateDragPosition])
 
   const handleSliderPointerUp = useCallback(() => {
-    if (!isDragging) return
+    if (!isDraggingRef.current) return
+    isDraggingRef.current = false
     setIsDragging(false)
     if (dragPageRef.current > 0 && onDragEnd) {
       onDragEnd(dragPageRef.current)
     }
-  }, [isDragging, onDragEnd])
+  }, [onDragEnd])
 
   const cancelDrag = useCallback(() => {
+    isDraggingRef.current = false
     setIsDragging(false)
   }, [])
 

@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { SearchMode, IPC_ERROR_CODES, type ComicInfo } from '@shared/types'
+import { SearchMode, IPC_ERROR_CODES, type ComicInfo, type TagBlacklist } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
@@ -35,8 +35,10 @@ export function ComicInfoDrawer() {
     return { ...drawerComic, ...enrichedComic }
   }, [drawerComic, enrichedComic])
 
+  const sourceKeyMap: Record<string, keyof TagBlacklist> = { moeimg: 'moeimg', jmcomic: 'jmcomic', bika: 'bika' }
+
   const isTagBlocked = (tag: string) => {
-    const key = (comicSource === 'moeimg' ? 'moeimg' : 'hcomic') as 'hcomic' | 'moeimg'
+    const key = sourceKeyMap[comicSource] ?? 'hcomic'
     return tagBlacklist[key].some(t => t.toLowerCase() === tag.toLowerCase())
   }
 

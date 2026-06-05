@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch, useRandom, useConfig } from '../hooks/useIpc'
+import { useSearch, useRandom, useConfig, useDownloadProgress } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
@@ -16,6 +16,8 @@ import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 import { useFavouriteTags } from '../hooks/useIpc'
+import { useDownloadStore } from '../stores/useDownloadStore'
+import type { DownloadProgressData } from '../hooks/useIpc'
 
 function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' | 'bika' {
   if (source === 'moeimg') return 'moeimg'
@@ -57,6 +59,19 @@ export function SearchPage() {
   const searchCache = useSearchCacheStore()
   const searchCacheRef = useRef(searchCache)
   searchCacheRef.current = searchCache // eslint-disable-line react-hooks/refs
+  const { progress: downloadProgress } = useDownloadProgress()
+  const tasks = useDownloadStore((s) => s.tasks)
+
+  const activeDownloadMap = useMemo(() => {
+    const map = new Map<string, DownloadProgressData>()
+    for (const t of tasks) {
+      if (t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused' || t.status === 'failed') {
+        const p = downloadProgress[t.id]
+        if (p) map.set(t.comic.id, p)
+      }
+    }
+    return map
+  }, [tasks, downloadProgress])
 
   const searchGenRef = useRef(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -317,6 +332,7 @@ export function SearchPage() {
                 onDownload={handleDownload}
                 isRecommended={isRecommended}
                 recommendedTags={recommendedTags}
+                activeDownload={activeDownloadMap.get(comic.id)}
               />
             )
           ))}

@@ -4,6 +4,58 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { useDrawerStore } from '../../stores/useDrawerStore'
 import { useCoverImage } from '../../hooks/useCoverImage'
 import { useCardInteraction } from '../../hooks/useCardInteraction'
+import { CircularProgress } from './CircularProgress'
+import type { DownloadProgressData } from '../../hooks/useIpc'
+import { isDownloadActive } from '../../hooks/useIpc'
+import type { DownloadStatus } from '@shared/types'
+
+interface DownloadActionProps {
+  activeDownload?: DownloadProgressData
+  onDownload: () => void
+  variant: 'cover' | 'detailed'
+}
+
+function DownloadAction({ activeDownload, onDownload, variant }: DownloadActionProps) {
+  const isCover = variant === 'cover'
+  const size = isCover ? 24 : 20
+  const strokeWidth = isCover ? 3 : 2.5
+  const baseClass = isCover
+    ? 'absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-black/50'
+    : 'flex-shrink-0 ml-2 w-7 h-7 rounded-full bg-[var(--bg-secondary)]'
+  const hoverClass = isCover ? 'hover:bg-black/70' : 'hover:bg-[var(--bg-tertiary)]'
+  const showProgress = activeDownload && (isDownloadActive(activeDownload.status) || activeDownload.status === 'failed')
+
+  if (showProgress) {
+    return (
+      <div
+        className={`${baseClass} flex items-center justify-center ${activeDownload!.status === 'failed' ? `cursor-pointer ${hoverClass}` : ''}`}
+        title={`${activeDownload!.current}/${activeDownload!.total}`}
+        onClick={activeDownload!.status === 'failed' ? (e) => { e.stopPropagation(); onDownload() } : undefined}
+      >
+        <CircularProgress
+          progress={activeDownload!.progress}
+          size={size}
+          strokeWidth={strokeWidth}
+          status={activeDownload!.status as DownloadStatus}
+          showText={false}
+        />
+      </div>
+    )
+  }
+
+  const btnClass = isCover
+    ? `${baseClass} text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity ${hoverClass}`
+    : `${baseClass} text-[var(--text-secondary)] flex items-center justify-center ${hoverClass} hover:text-[var(--text-primary)] transition-colors`
+  const svgClass = isCover ? 'w-4 h-4' : 'w-3.5 h-3.5'
+
+  return (
+    <button onClick={(e) => { e.stopPropagation(); onDownload() }} className={btnClass}>
+      <svg className={svgClass} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+      </svg>
+    </button>
+  )
+}
 
 interface CoverImageProps {
   coverUrl: string
@@ -115,19 +167,20 @@ interface ComicCardProps {
   downloadStatus?: 'downloaded' | 'unknown'
   isRecommended?: boolean
   recommendedTags?: Set<string>
+  activeDownload?: DownloadProgressData
 }
 
-export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, isRecommended, recommendedTags }: ComicCardProps) {
+export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, isRecommended, recommendedTags, activeDownload }: ComicCardProps) {
   const { cardStyle } = useSettingsStore()
   const { openDrawer } = useDrawerStore()
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} />
   }
-  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} />
+  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} />
 }
 
-function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended }: ComicCardProps & { onOpenDrawer: () => void }) {
+function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, activeDownload }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
@@ -155,15 +208,11 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
         </div>
       )}
       {!batchMode && onDownload && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDownload(comic) }}
-          className="absolute top-2 right-2 z-10 w-8 h-8 rounded-full bg-black/50 text-white
-                     flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-black/70"
-        >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-        </button>
+        <DownloadAction
+          activeDownload={activeDownload}
+          onDownload={() => onDownload(comic)}
+          variant="cover"
+        />
       )}
       <div className="aspect-[6/7]" onClick={(e) => { e.stopPropagation(); handleReaderClick() }}>
         <CoverImage
@@ -193,7 +242,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, recommendedTags }: ComicCardProps & { onOpenDrawer: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, recommendedTags, activeDownload }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
@@ -281,15 +330,11 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
         )}
       </div>
       {!batchMode && onDownload && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDownload(comic) }}
-          className="flex-shrink-0 ml-2 w-7 h-7 rounded-full bg-[var(--bg-secondary)] text-[var(--text-secondary)]
-                     flex items-center justify-center hover:bg-[var(--bg-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-        >
-          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-            <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-          </svg>
-        </button>
+        <DownloadAction
+          activeDownload={activeDownload}
+          onDownload={() => onDownload(comic)}
+          variant="detailed"
+        />
       )}
     </div>
   )
