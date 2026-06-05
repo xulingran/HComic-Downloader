@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { SearchMode, IPC_ERROR_CODES, type ComicInfo, type TagBlacklist } from '@shared/types'
+import { SearchMode, type ComicInfo, type TagBlacklist } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
 import { Toast } from './common/Toast'
+import { isAuthError } from '../utils/auth'
 
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
@@ -145,8 +146,7 @@ export function ComicInfoDrawer() {
       }
       setShowFavToast(true)
     } catch (err: unknown) {
-      const error = err as Error & { code?: number }
-      if (error.code === IPC_ERROR_CODES.AUTH_REQUIRED) {
+      if (isAuthError(err)) {
         setFavouritesState(isFavourited ? 'success' : 'error')
         setFavToastMessage('请先登录后再操作')
       } else {

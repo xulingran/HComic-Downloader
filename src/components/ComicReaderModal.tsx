@@ -104,6 +104,25 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
   const settingsPanelRef = useRef<HTMLDivElement>(null)
   const freezePageTrackingRef = useRef(false)
+  const prevDragPageRef = useRef(currentPage)
+
+  // Shared scroll-to-page helper with two modes:
+  //  - immediate=false (default): rAF-wrapped + auto unfreeze after 50ms (display mode change)
+  //  - immediate=true: synchronous scroll, caller manages freeze/unfreeze (drag scroll)
+  const scrollToPage = useCallback((page: number, immediate = false) => {
+    const el = pageRefs.current[page - 1]
+    if (!el) return
+    const doScroll = () => el.scrollIntoView({ behavior: 'instant', block: 'start' })
+    if (immediate) {
+      doScroll()
+    } else {
+      freezePageTrackingRef.current = true
+      requestAnimationFrame(() => {
+        doScroll()
+        setTimeout(() => { freezePageTrackingRef.current = false }, 50)
+      })
+    }
+  }, [])
 
   usePageTracking(
     pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
@@ -113,11 +132,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   // Keep preload target in sync with current page during scroll mode
   // so usePreloadManager preloads pages ahead/behind the visible viewport
   // Only enable for comics with enough pages to make preloading meaningful
+  // Suppress during drag — onDragEnd in useSliderDrag handles the final target
   useEffect(() => {
+    if (isDragging) return
     if (displayMode === 'scroll' && loadingState === 'loaded' && imageUrls.length > 9) {
       setPreloadTarget(currentPage)
     }
-  }, [displayMode, currentPage, loadingState, imageUrls.length, setPreloadTarget])
+  }, [displayMode, currentPage, loadingState, imageUrls.length, isDragging, setPreloadTarget])
 
   // Jump to initial page when opening from history
   useEffect(() => {
@@ -303,19 +324,31 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     }
 
     if (displayMode === 'scroll' && currentPage > 1 && loadingState === 'loaded') {
-      freezePageTrackingRef.current = true
-      requestAnimationFrame(() => {
-        const el = pageRefs.current[currentPage - 1]
-        if (el) {
-          el.scrollIntoView({ behavior: 'instant', block: 'start' })
-        }
-        setTimeout(() => {
-          freezePageTrackingRef.current = false
-        }, 50)
-      })
+      scrollToPage(currentPage)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayMode])
+
+  // Scroll to page during slider drag in scroll mode
+  useEffect(() => {
+    if (displayMode !== 'scroll' || !isDragging || loadingState !== 'loaded') {
+      prevDragPageRef.current = currentPage
+      return
+    }
+    if (currentPage === prevDragPageRef.current) return
+    prevDragPageRef.current = currentPage
+    freezePageTrackingRef.current = true
+    scrollToPage(currentPage, true)
+  }, [currentPage, isDragging, displayMode, loadingState, scrollToPage])
+
+  // Unfreeze page tracking after drag ends
+  useEffect(() => {
+    if (isDragging) return
+    const timer = setTimeout(() => {
+      freezePageTrackingRef.current = false
+    }, 200)
+    return () => clearTimeout(timer)
+  }, [isDragging])
 
   if (!mounted) return null
 

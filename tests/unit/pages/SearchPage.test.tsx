@@ -28,6 +28,10 @@ const { mockGetConfig } = vi.hoisted(() => ({
   mockGetConfig: vi.fn().mockResolvedValue({ config: { defaultSource: 'hcomic' } })
 }))
 
+const { mockVerifyAuth } = vi.hoisted(() => ({
+  mockVerifyAuth: vi.fn().mockResolvedValue({ valid: true })
+}))
+
 vi.mock('@/hooks/useIpc', () => ({
   useSearch: vi.fn().mockReturnValue({ search: mockSearch }),
   useRandom: vi.fn().mockReturnValue({ random: mockRandom }),
@@ -60,6 +64,9 @@ vi.mock('@/hooks/useIpc', () => ({
     removeFavouriteTag: vi.fn()
   }),
   useDownloadProgress: vi.fn().mockReturnValue({ progress: {} }),
+  useAuth: vi.fn().mockReturnValue({
+    verifyAuth: mockVerifyAuth,
+  }),
 }))
 
 vi.mock('@/stores/useComicStore', () => ({
@@ -100,6 +107,7 @@ import { SearchPage } from '@/pages/SearchPage'
 describe('SearchPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockGetConfig.mockResolvedValue({ config: { defaultSource: 'hcomic' } })
     mockStoreState.comics = []
     mockStoreState.pagination = null
     mockStoreState.isLoading = false
@@ -296,6 +304,7 @@ describe('SearchPage', () => {
         comics: [],
         pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
       })
+      mockVerifyAuth.mockResolvedValue({ valid: true })
 
       render(<SearchPage />)
       await screen.findByPlaceholderText('输入搜索内容...')
@@ -303,6 +312,7 @@ describe('SearchPage', () => {
       const sourceSelect = screen.getByDisplayValue('HComic')
       await userEvent.selectOptions(sourceSelect, 'jmcomic')
 
+      expect(mockVerifyAuth).toHaveBeenCalledWith('jmcomic')
       expect(mockRandom).toHaveBeenCalledWith('jmcomic')
     })
 
@@ -320,9 +330,7 @@ describe('SearchPage', () => {
     })
 
     it('shows login prompt when switching to jmcomic with auth error', async () => {
-      const authError = new Error('jmcomic 未登录，请前往设置页面配置登录凭证') as Error & { code?: number }
-      authError.code = -32001
-      mockRandom.mockRejectedValue(authError)
+      mockVerifyAuth.mockResolvedValue({ valid: false })
 
       render(<SearchPage />)
       await screen.findByPlaceholderText('输入搜索内容...')
@@ -330,13 +338,12 @@ describe('SearchPage', () => {
       const sourceSelect = screen.getByDisplayValue('HComic')
       await userEvent.selectOptions(sourceSelect, 'jmcomic')
 
+      expect(mockRandom).not.toHaveBeenCalled()
       expect(screen.getByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
     })
 
     it('shows navigate-to-settings button when needsLogin and onNavigateToSettings provided', async () => {
-      const authError = new Error('jmcomic 未登录') as Error & { code?: number }
-      authError.code = -32001
-      mockRandom.mockRejectedValue(authError)
+      mockVerifyAuth.mockResolvedValue({ valid: false })
       const mockNavigate = vi.fn()
 
       render(<SearchPage onNavigateToSettings={mockNavigate} />)
@@ -353,12 +360,99 @@ describe('SearchPage', () => {
 
     it('shows login prompt on mount when default source is jmcomic with auth error', async () => {
       mockGetConfig.mockResolvedValue({ config: { defaultSource: 'jmcomic' } })
-      const authError = new Error('jmcomic 未登录') as Error & { code?: number }
+      mockVerifyAuth.mockResolvedValue({ valid: false })
+
+      render(<SearchPage />)
+      await screen.findByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')
+
+      expect(mockSearch).not.toHaveBeenCalled()
+    })
+
+    it('shows login prompt when verifyAuth throws', async () => {
+      mockVerifyAuth.mockRejectedValue(new Error('Network error'))
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'jmcomic')
+
+      expect(mockRandom).not.toHaveBeenCalled()
+      expect(screen.getByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+    })
+
+    it('shows login prompt on mount when default source is jmcomic and verifyAuth throws', async () => {
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'jmcomic' } })
+      mockVerifyAuth.mockRejectedValue(new Error('Network error'))
+
+      render(<SearchPage />)
+      await screen.findByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')
+
+      expect(mockSearch).not.toHaveBeenCalled()
+    })
+
+    it('does not call search when jmcomic needsLogin and search clicked', async () => {
+      mockVerifyAuth.mockResolvedValue({ valid: false })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'jmcomic')
+
+      expect(screen.getByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+
+      mockSearch.mockClear()
+      await userEvent.click(screen.getByText('搜索'))
+      expect(mockSearch).not.toHaveBeenCalled()
+    })
+
+    it('does not call random when jmcomic needsLogin and random clicked', async () => {
+      mockVerifyAuth.mockResolvedValue({ valid: false })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'jmcomic')
+
+      expect(screen.getByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+
+      mockRandom.mockClear()
+      const randomButton = screen.getByText('🎲 随机')
+      await userEvent.click(randomButton)
+      expect(mockRandom).not.toHaveBeenCalled()
+    })
+
+    it('shows login prompt when verifyAuth passes but random rejects with auth error', async () => {
+      mockVerifyAuth.mockResolvedValue({ valid: true })
+      const authError = new Error('Forbidden') as Error & { code?: number }
+      authError.code = -32001
+      mockRandom.mockRejectedValue(authError)
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'jmcomic')
+
+      expect(mockVerifyAuth).toHaveBeenCalledWith('jmcomic')
+      expect(mockRandom).toHaveBeenCalledWith('jmcomic')
+      expect(screen.getByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+    })
+
+    it('shows login prompt on mount when defaultSource jmcomic, verifyAuth passes, but search rejects with auth error', async () => {
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'jmcomic' } })
+      mockVerifyAuth.mockResolvedValue({ valid: true })
+      const authError = new Error('Auth failed') as Error & { code?: number }
       authError.code = -32001
       mockSearch.mockRejectedValue(authError)
 
       render(<SearchPage />)
       await screen.findByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')
+
+      expect(mockVerifyAuth).toHaveBeenCalledWith('jmcomic')
+      expect(mockSearch).toHaveBeenCalled()
     })
   })
 })

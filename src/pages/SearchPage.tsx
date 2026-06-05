@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch, useRandom, useConfig, useDownloadProgress } from '../hooks/useIpc'
+import { useSearch, useRandom, useConfig, useDownloadProgress, useAuth } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
@@ -9,7 +9,7 @@ import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { SearchBar } from '../components/SearchBar'
-import { ComicInfo, PaginationInfo, IPC_ERROR_CODES } from '@shared/types'
+import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -18,6 +18,7 @@ import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import type { DownloadProgressData } from '../hooks/useIpc'
+import { requiresAuth, isAuthError } from '../utils/auth'
 
 function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' | 'bika' {
   if (source === 'moeimg') return 'moeimg'
@@ -44,6 +45,16 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const { random } = useRandom()
   const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const { getConfig } = useConfig()
+  const { verifyAuth } = useAuth()
+  const verifySourceAuth = useCallback(async (src: string): Promise<boolean> => {
+    if (!requiresAuth(src)) return true
+    try {
+      const result = await verifyAuth(src)
+      return result.valid
+    } catch {
+      return false
+    }
+  }, [verifyAuth])
   const {
     batchMode,
     setBatchMode,
@@ -109,6 +120,16 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       if (result.config.defaultSource) {
         setSource(result.config.defaultSource)
       }
+      if (requiresAuth(mountedSource)) {
+        return verifySourceAuth(mountedSource).then(isValid => {
+          if (cancelled || gen !== searchGenRef.current) return undefined
+          if (!isValid) {
+            setNeedsLogin(true)
+            return undefined
+          }
+          return search('', mode, 1, mountedSource)
+        })
+      }
       return search('', mode, 1, mountedSource)
     }).then(result => {
       if (cancelled || gen !== searchGenRef.current) return
@@ -119,12 +140,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }).catch(err => {
       if (cancelled || gen !== searchGenRef.current) return
       const msg = err instanceof Error ? err.message : 'Search failed'
-      if ((err as Record<string, unknown>)?.code === IPC_ERROR_CODES.AUTH_REQUIRED
-          || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
-        if (mountedSource === 'jmcomic') {
-          setNeedsLogin(true)
-          return
-        }
+      if (isAuthError(err) && requiresAuth(mountedSource)) {
+        setNeedsLogin(true)
+        return
       }
       setError(msg)
     }).finally(() => {
@@ -254,12 +272,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     } catch (err) {
       if (gen !== searchGenRef.current) return
       const msg = err instanceof Error ? err.message : 'Request failed'
-      if ((err as Record<string, unknown>)?.code === IPC_ERROR_CODES.AUTH_REQUIRED
-          || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
-        if (sourceRef.current === 'jmcomic') {
-          setNeedsLogin(true)
-          return
-        }
+      if (isAuthError(err) && requiresAuth(sourceRef.current)) {
+        setNeedsLogin(true)
+        return
       }
       setError(msg)
     } finally {
@@ -268,6 +283,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }, [setLoading, setError, setComics, setPagination])
 
   const handleSearch = async (page: number = 1) => {
+    if (requiresAuth(source) && needsLogin) return
     clearSelection()
     setShowHistory(false)
     if (query.trim()) {
@@ -277,6 +293,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }
 
   const handleRandom = async () => {
+    if (requiresAuth(source) && needsLogin) return
     clearSelection()
     clearPendingSearch()
     setQuery('')
@@ -285,7 +302,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     await withLoading(() => random(source))
   }
 
-  const handleSourceChange = (newSource: string) => {
+  const handleSourceChange = async (newSource: string) => {
     setSource(newSource)
     sourceRef.current = newSource
     setQuery('')
@@ -295,7 +312,15 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     clearSelection()
     setShowHistory(false)
     setNeedsLogin(false)
-    if (newSource === 'jmcomic') {
+    if (requiresAuth(newSource)) {
+      setLoading(true)
+      const isValid = await verifySourceAuth(newSource)
+      if (sourceRef.current !== newSource) return
+      setLoading(false)
+      if (!isValid) {
+        setNeedsLogin(true)
+        return
+      }
       withLoading(() => random(newSource))
     } else {
       withLoading(() => search('', mode, 1, newSource))
@@ -353,7 +378,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
 
       <ErrorDisplay message={error} />
 
-      {!isLoading && needsLogin && source === 'jmcomic' && (
+      {!isLoading && needsLogin && requiresAuth(source) && (
         <div className="text-center py-12">
           <div className="text-[var(--text-secondary)] mb-4">jmcomic 登录信息已过期或未配置，请前往设置页面重新登录</div>
           {onNavigateToSettings && (

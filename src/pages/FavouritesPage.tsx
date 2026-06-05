@@ -9,12 +9,13 @@ import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
-import { ComicInfo, PaginationInfo, IPC_ERROR_CODES } from '@shared/types'
+import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import type { DownloadProgressData } from '../hooks/useIpc'
+import { isAuthError } from '../utils/auth'
 
 const sources = [
   { value: 'hcomic', label: 'HComic' },
@@ -102,7 +103,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       })
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load favourites'
-      if ((err as Record<string, unknown>)?.code === IPC_ERROR_CODES.AUTH_REQUIRED || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
+      if (isAuthError(err)) {
         setNeedsLogin(true)
       } else {
         setError(msg)

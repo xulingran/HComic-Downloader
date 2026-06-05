@@ -655,6 +655,9 @@ class JmParser(ParserContextMixin):
                     import requests
 
                     sess = requests.Session()
+                # 注入系统代理，与主 session 保持一致。
+                # 未注入时依赖代理的用户会在此处 DNS 解析失败或连接超时。
+                apply_system_proxy_to_session(sess)
                 sess.headers.update(HEADERS)
                 sess.headers["Referer"] = f"https://{domain}/"
                 for name, value in main_cookies:

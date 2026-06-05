@@ -17,6 +17,16 @@ logger = logging.getLogger(__name__)
 
 _VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika")
 _DEFAULT_SOURCE = "hcomic"
+_AUTH_KEYWORDS = (
+    "401",
+    "403",
+    "unauthorized",
+    "forbidden",
+    "认证已失效",
+    "auth",
+    "cloudflare",
+    "just a moment",
+)
 
 
 class SearchMixin:
@@ -84,15 +94,29 @@ class SearchMixin:
                 comic = prepared
         return comic
 
-    def _check_jmcomic_auth(self) -> None:
-        """Raise AuthRequiredError if jmcomic credentials are not configured."""
-        if not self.config.source_auth.get("jmcomic", {}).get("cookie"):
+    def _check_source_auth(self, source: str) -> None:
+        """Raise AuthRequiredError if source credentials are not configured."""
+        if source == "jmcomic" and not self.config.source_auth.get("jmcomic", {}).get(
+            "cookie"
+        ):
             raise AuthRequiredError("jmcomic 未登录，请前往设置页面配置登录凭证")
 
-    def _is_jmcomic_auth_error(self, error: Exception) -> bool:
-        """Check if an exception indicates jmcomic auth failure."""
+    def _is_source_auth_error(self, source: str, error: Exception) -> bool:
+        """Check if an exception indicates auth failure for the given source."""
+        if source != "jmcomic":
+            return False
         msg = str(error).lower()
-        return any(kw in msg for kw in ("403", "401", "cloudflare", "just a moment"))
+        return any(kw in msg for kw in _AUTH_KEYWORDS)
+
+    @staticmethod
+    def _pagination_to_dict(pagination, fallback_page: int = 1) -> dict:
+        if not pagination:
+            return {"currentPage": fallback_page, "totalPages": 1, "totalItems": 0}
+        return {
+            "currentPage": pagination.current_page,
+            "totalPages": pagination.total_pages,
+            "totalItems": pagination.total_items,
+        }
 
     def handle_search(
         self,
@@ -105,8 +129,7 @@ class SearchMixin:
         effective_source = (
             source if source in _VALID_SOURCES else self.config.default_source
         )
-        if effective_source == "jmcomic":
-            self._check_jmcomic_auth()
+        self._check_source_auth(effective_source)
         effective_query = query
         effective_tag = tag
         if effective_source == "hcomic" and mode == "tag":
@@ -123,37 +146,28 @@ class SearchMixin:
                 effective_query, page=page, source=effective_source, tag=effective_tag
             )
         except Exception as e:
-            if effective_source == "jmcomic" and self._is_jmcomic_auth_error(e):
+            if self._is_source_auth_error(effective_source, e):
                 raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
             raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
-            "pagination": {
-                "currentPage": pagination.current_page if pagination else page,
-                "totalPages": pagination.total_pages if pagination else 1,
-                "totalItems": pagination.total_items if pagination else 0,
-            },
+            "pagination": self._pagination_to_dict(pagination, fallback_page=page),
         }
 
     def handle_random(self, source: str | None = None) -> dict:
         effective_source = (
             source if source in ("hcomic", "jmcomic") else _DEFAULT_SOURCE
         )
-        if effective_source == "jmcomic":
-            self._check_jmcomic_auth()
+        self._check_source_auth(effective_source)
         try:
             comics, pagination = self.parser.random(source=effective_source)
         except Exception as e:
-            if effective_source == "jmcomic" and self._is_jmcomic_auth_error(e):
+            if self._is_source_auth_error(effective_source, e):
                 raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
             raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
-            "pagination": {
-                "currentPage": pagination.current_page if pagination else 1,
-                "totalPages": pagination.total_pages if pagination else 1,
-                "totalItems": pagination.total_items if pagination else 0,
-            },
+            "pagination": self._pagination_to_dict(pagination),
         }
 
     def handle_get_favourites(self, page: int = 1, source: str = "hcomic") -> dict:
@@ -161,6 +175,7 @@ class SearchMixin:
 
         valid_sources = _VALID_SOURCES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
+        self._check_source_auth(effective_source)
         try:
             comics, pagination, needs_login = self.parser.favourites(
                 page=page, raise_errors=True, source=effective_source
@@ -182,19 +197,12 @@ class SearchMixin:
                 )
             return {
                 "comics": [self._comic_to_dict(c) for c in deduped],
-                "pagination": {
-                    "currentPage": pagination.current_page if pagination else page,
-                    "totalPages": pagination.total_pages if pagination else 1,
-                    "totalItems": pagination.total_items if pagination else 0,
-                },
+                "pagination": self._pagination_to_dict(pagination, fallback_page=page),
                 "needsLogin": needs_login,
             }
         except ParserResponseError as e:
             msg = str(e)
-            if any(
-                kw in msg.lower()
-                for kw in ("401", "403", "unauthorized", "forbidden", "login", "auth")
-            ):
+            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
         except (ValueError, json.JSONDecodeError, TypeError) as e:
@@ -202,6 +210,8 @@ class SearchMixin:
             raise RuntimeError(f"Parse error: {e}") from e
         except Exception as e:
             logger.error("Get favourites unexpected error: %s", e)
+            if self._is_source_auth_error(effective_source, e):
+                raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
             raise
 
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
@@ -216,17 +226,7 @@ class SearchMixin:
             return {"success": success}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
-            if any(
-                kw in msg.lower()
-                for kw in (
-                    "401",
-                    "403",
-                    "unauthorized",
-                    "forbidden",
-                    "认证已失效",
-                    "auth",
-                )
-            ):
+            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
@@ -242,17 +242,7 @@ class SearchMixin:
             return {"isFavourited": is_favourited}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
-            if any(
-                kw in msg.lower()
-                for kw in (
-                    "401",
-                    "403",
-                    "unauthorized",
-                    "forbidden",
-                    "认证已失效",
-                    "auth",
-                )
-            ):
+            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
@@ -272,17 +262,7 @@ class SearchMixin:
             return {"success": success}
         except (ParserResponseError, RuntimeError) as e:
             msg = str(e)
-            if any(
-                kw in msg.lower()
-                for kw in (
-                    "401",
-                    "403",
-                    "unauthorized",
-                    "forbidden",
-                    "认证已失效",
-                    "auth",
-                )
-            ):
+            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
 
