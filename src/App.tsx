@@ -51,7 +51,7 @@ function App() {
   const renderPage = () => {
     switch (activePage) {
       case 'search':
-        return <SearchPage />
+        return <SearchPage onNavigateToSettings={() => { setActivePage('settings'); setScrollTarget('login') }} />
       case 'downloads':
         return <DownloadPage />
       case 'favourites':

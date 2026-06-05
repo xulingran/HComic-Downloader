@@ -84,6 +84,16 @@ class SearchMixin:
                 comic = prepared
         return comic
 
+    def _check_jmcomic_auth(self) -> None:
+        """Raise AuthRequiredError if jmcomic credentials are not configured."""
+        if not self.config.source_auth.get("jmcomic", {}).get("cookie"):
+            raise AuthRequiredError("jmcomic 未登录，请前往设置页面配置登录凭证")
+
+    def _is_jmcomic_auth_error(self, error: Exception) -> bool:
+        """Check if an exception indicates jmcomic auth failure."""
+        msg = str(error).lower()
+        return any(kw in msg for kw in ("403", "401", "cloudflare", "just a moment"))
+
     def handle_search(
         self,
         query: str,
@@ -95,6 +105,8 @@ class SearchMixin:
         effective_source = (
             source if source in _VALID_SOURCES else self.config.default_source
         )
+        if effective_source == "jmcomic":
+            self._check_jmcomic_auth()
         effective_query = query
         effective_tag = tag
         if effective_source == "hcomic" and mode == "tag":
@@ -106,9 +118,14 @@ class SearchMixin:
             effective_tag = ""
         elif effective_source == "jmcomic" and mode == "ranking":
             effective_tag = ""
-        comics, pagination = self.parser.search(
-            effective_query, page=page, source=effective_source, tag=effective_tag
-        )
+        try:
+            comics, pagination = self.parser.search(
+                effective_query, page=page, source=effective_source, tag=effective_tag
+            )
+        except Exception as e:
+            if effective_source == "jmcomic" and self._is_jmcomic_auth_error(e):
+                raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
+            raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": {
@@ -122,7 +139,14 @@ class SearchMixin:
         effective_source = (
             source if source in ("hcomic", "jmcomic") else _DEFAULT_SOURCE
         )
-        comics, pagination = self.parser.random(source=effective_source)
+        if effective_source == "jmcomic":
+            self._check_jmcomic_auth()
+        try:
+            comics, pagination = self.parser.random(source=effective_source)
+        except Exception as e:
+            if effective_source == "jmcomic" and self._is_jmcomic_auth_error(e):
+                raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
+            raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": {

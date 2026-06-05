@@ -9,7 +9,7 @@ import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { SearchBar } from '../components/SearchBar'
-import { ComicInfo, PaginationInfo } from '@shared/types'
+import { ComicInfo, PaginationInfo, IPC_ERROR_CODES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -26,7 +26,11 @@ function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' | '
   return 'hcomic'
 }
 
-export function SearchPage() {
+interface SearchPageProps {
+  onNavigateToSettings?: () => void
+}
+
+export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState('keyword')
   const [source, setSource] = useState('hcomic')
@@ -34,6 +38,7 @@ export function SearchPage() {
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
+  const [needsLogin, setNeedsLogin] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { random } = useRandom()
@@ -94,16 +99,17 @@ export function SearchPage() {
     }
 
     let cancelled = false
+    let mountedSource = source
     const gen = ++searchGenRef.current
     setLoading(true)
 
     getConfig().then(result => {
       if (cancelled) return
-      const resolvedSource = result.config.defaultSource || source
+      mountedSource = result.config.defaultSource || source
       if (result.config.defaultSource) {
         setSource(result.config.defaultSource)
       }
-      return search('', mode, 1, resolvedSource)
+      return search('', mode, 1, mountedSource)
     }).then(result => {
       if (cancelled || gen !== searchGenRef.current) return
       if (result) {
@@ -112,7 +118,15 @@ export function SearchPage() {
       }
     }).catch(err => {
       if (cancelled || gen !== searchGenRef.current) return
-      setError(err instanceof Error ? err.message : 'Search failed')
+      const msg = err instanceof Error ? err.message : 'Search failed'
+      if ((err as Record<string, unknown>)?.code === IPC_ERROR_CODES.AUTH_REQUIRED
+          || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
+        if (mountedSource === 'jmcomic') {
+          setNeedsLogin(true)
+          return
+        }
+      }
+      setError(msg)
     }).finally(() => {
       if (!cancelled && gen === searchGenRef.current) {
         setLoading(false)
@@ -226,6 +240,7 @@ export function SearchPage() {
     try {
       const result = await fn()
       if (gen !== searchGenRef.current) return
+      setNeedsLogin(false)
       setComics(result.comics)
       if (result.pagination) setPagination(result.pagination)
       searchCacheRef.current.setCache({
@@ -238,7 +253,15 @@ export function SearchPage() {
       })
     } catch (err) {
       if (gen !== searchGenRef.current) return
-      setError(err instanceof Error ? err.message : 'Request failed')
+      const msg = err instanceof Error ? err.message : 'Request failed'
+      if ((err as Record<string, unknown>)?.code === IPC_ERROR_CODES.AUTH_REQUIRED
+          || msg.includes('AUTH_REQUIRED') || msg.includes('401') || msg.includes('403')) {
+        if (sourceRef.current === 'jmcomic') {
+          setNeedsLogin(true)
+          return
+        }
+      }
+      setError(msg)
     } finally {
       if (gen === searchGenRef.current) setLoading(false)
     }
@@ -262,6 +285,23 @@ export function SearchPage() {
     await withLoading(() => random(source))
   }
 
+  const handleSourceChange = (newSource: string) => {
+    setSource(newSource)
+    sourceRef.current = newSource
+    setQuery('')
+    queryRef.current = ''
+    setSearchTags('')
+    searchTagsRef.current = ''
+    clearSelection()
+    setShowHistory(false)
+    setNeedsLogin(false)
+    if (newSource === 'jmcomic') {
+      withLoading(() => random(newSource))
+    } else {
+      withLoading(() => search('', mode, 1, newSource))
+    }
+  }
+
   const handleOpenReader = (comic: ComicInfo) => {
     openReader(comic)
   }
@@ -278,7 +318,7 @@ export function SearchPage() {
     <div className="space-y-3">
       <SearchBar
         source={source}
-        onSourceChange={setSource}
+        onSourceChange={handleSourceChange}
         mode={mode}
         onModeChange={setMode}
         query={query}
@@ -313,7 +353,21 @@ export function SearchPage() {
 
       <ErrorDisplay message={error} />
 
-      {filteredComics.length > 0 && (
+      {!isLoading && needsLogin && source === 'jmcomic' && (
+        <div className="text-center py-12">
+          <div className="text-[var(--text-secondary)] mb-4">jmcomic 登录信息已过期或未配置，请前往设置页面重新登录</div>
+          {onNavigateToSettings && (
+            <button
+              onClick={onNavigateToSettings}
+              className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-colors text-sm"
+            >
+              前往设置
+            </button>
+          )}
+        </div>
+      )}
+
+      {!needsLogin && filteredComics.length > 0 && (
         <div className={cardStyle === 'detailed'
           ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
           : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
@@ -364,9 +418,9 @@ export function SearchPage() {
         />
       )}
 
-      {!isLoading && comics.length === 0 && <EmptyState message="暂无搜索结果" />}
+      {!isLoading && !needsLogin && comics.length === 0 && <EmptyState message="暂无搜索结果" />}
 
-      {!isLoading && comics.length > 0 && blockedCount === comics.length && <EmptyState message="所有结果均已被标签过滤" />}
+      {!isLoading && !needsLogin && comics.length > 0 && blockedCount === comics.length && <EmptyState message="所有结果均已被标签过滤" />}
     </div>
   )
 }

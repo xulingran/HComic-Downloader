@@ -5,7 +5,7 @@ import type { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 // Hoist mock functions so they are available inside vi.mock factories
-const { mockSearch, mockStartDownload, mockStoreState } = vi.hoisted(() => {
+const { mockSearch, mockRandom, mockStartDownload, mockStoreState } = vi.hoisted(() => {
   const state = {
     comics: [] as ComicInfo[],
     pagination: null as Record<string, number> | null,
@@ -18,6 +18,7 @@ const { mockSearch, mockStartDownload, mockStoreState } = vi.hoisted(() => {
   }
   return {
     mockSearch: vi.fn(),
+    mockRandom: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }),
     mockStartDownload: vi.fn(),
     mockStoreState: state
   }
@@ -29,7 +30,7 @@ const { mockGetConfig } = vi.hoisted(() => ({
 
 vi.mock('@/hooks/useIpc', () => ({
   useSearch: vi.fn().mockReturnValue({ search: mockSearch }),
-  useRandom: vi.fn().mockReturnValue({ random: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }) }),
+  useRandom: vi.fn().mockReturnValue({ random: mockRandom }),
   useDownloadCommands: vi.fn().mockReturnValue({
     startDownload: mockStartDownload,
     cancelDownload: vi.fn(),
@@ -269,6 +270,95 @@ describe('SearchPage', () => {
       render(<SearchPage />)
       const flexContainer = screen.getByText('Comic A').closest('div[class*="flex-col"]')
       expect(flexContainer).toBeInTheDocument()
+    })
+  })
+
+  describe('source switching', () => {
+    it('triggers empty search when switching to a non-jmcomic source', async () => {
+      mockSearch.mockResolvedValue({
+        comics: [],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+      })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'moeimg')
+
+      // Last search call should be for moeimg with empty query
+      const lastCall = mockSearch.mock.calls[mockSearch.mock.calls.length - 1]
+      expect(lastCall).toEqual(['', 'keyword', 1, 'moeimg'])
+    })
+
+    it('triggers random search when switching to jmcomic source', async () => {
+      mockSearch.mockResolvedValue({
+        comics: [],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+      })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'jmcomic')
+
+      expect(mockRandom).toHaveBeenCalledWith('jmcomic')
+    })
+
+    it('does not trigger extra search on initial mount', async () => {
+      mockSearch.mockResolvedValue({
+        comics: [],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+      })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      expect(mockRandom).not.toHaveBeenCalled()
+      expect(mockSearch).toHaveBeenCalledTimes(1)
+    })
+
+    it('shows login prompt when switching to jmcomic with auth error', async () => {
+      const authError = new Error('jmcomic 未登录，请前往设置页面配置登录凭证') as Error & { code?: number }
+      authError.code = -32001
+      mockRandom.mockRejectedValue(authError)
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'jmcomic')
+
+      expect(screen.getByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+    })
+
+    it('shows navigate-to-settings button when needsLogin and onNavigateToSettings provided', async () => {
+      const authError = new Error('jmcomic 未登录') as Error & { code?: number }
+      authError.code = -32001
+      mockRandom.mockRejectedValue(authError)
+      const mockNavigate = vi.fn()
+
+      render(<SearchPage onNavigateToSettings={mockNavigate} />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'jmcomic')
+
+      const button = screen.getByText('前往设置')
+      expect(button).toBeInTheDocument()
+      await userEvent.click(button)
+      expect(mockNavigate).toHaveBeenCalled()
+    })
+
+    it('shows login prompt on mount when default source is jmcomic with auth error', async () => {
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'jmcomic' } })
+      const authError = new Error('jmcomic 未登录') as Error & { code?: number }
+      authError.code = -32001
+      mockSearch.mockRejectedValue(authError)
+
+      render(<SearchPage />)
+      await screen.findByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')
     })
   })
 })
