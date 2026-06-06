@@ -55,14 +55,8 @@ def test_num_computed_for_new_ids():
 
 def test_extract_page_num():
     """从图片 URL 中提取页码。"""
-    assert (
-        _extract_page_num("https://cdn.example.com/media/photos/12345/00001.webp")
-        == "00001"
-    )
-    assert (
-        _extract_page_num("https://cdn.example.com/media/photos/12345/00042.jpg")
-        == "00042"
-    )
+    assert _extract_page_num("https://cdn.example.com/media/photos/12345/00001.webp") == "00001"
+    assert _extract_page_num("https://cdn.example.com/media/photos/12345/00042.jpg") == "00042"
     assert _extract_page_num("https://cdn.example.com/other/path") == "0"
 
 

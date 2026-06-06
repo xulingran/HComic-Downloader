@@ -20,6 +20,8 @@
     "lint:fix": "eslint src electron shared tests --fix",
     "lint:py": "node scripts/lint-py.mjs",
     "lint:py:fix": "node scripts/lint-py.mjs --fix",
+    "format:py": "node scripts/format-py.mjs --check",
+    "format:py:fix": "node scripts/format-py.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",
     "preview:icon": "start icon-preview.html"
   },
