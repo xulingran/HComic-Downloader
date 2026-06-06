@@ -4,7 +4,9 @@ from pathlib import Path
 
 import pytest
 
+from sources.bika.parser import BikaParser
 from sources.hcomic import HComicParser
+from sources.moeimg import MoeImgParser
 
 
 @pytest.fixture
@@ -32,6 +34,36 @@ def parser():
         配置了 timeout=30 的 HComicParser 实例
     """
     return HComicParser(timeout=30)
+
+
+@pytest.fixture
+def bika_parser():
+    """创建 BikaParser 实例用于测试。"""
+    return BikaParser(timeout=5)
+
+
+@pytest.fixture
+def moeimg_parser():
+    """创建 MoeImgParser 实例用于测试。"""
+    return MoeImgParser(timeout=5)
+
+
+@pytest.fixture
+def json_fixture():
+    """加载 fixtures/json/ 目录中的 JSON 样本。
+
+    Returns:
+        工厂函数，接受文件名并返回解析后的 dict
+    """
+    import json as _json
+
+    def _load(name: str):
+        path = Path(__file__).parent / "fixtures" / "json" / name
+        if not path.exists():
+            pytest.fail(f"JSON fixture not found: {name}")
+        return _json.loads(path.read_text(encoding="utf-8"))
+
+    return _load
 
 
 @pytest.fixture

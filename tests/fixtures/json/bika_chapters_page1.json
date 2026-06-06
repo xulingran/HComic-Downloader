@@ -1,0 +1,16 @@
+{
+  "code": 200,
+  "data": {
+    "eps": {
+      "docs": [
+        {"_id": "ep001", "title": "Chapter 1", "order": 1},
+        {"_id": "ep002", "title": "Chapter 2", "order": 2},
+        {"_id": "ep003", "title": "Chapter 3", "order": 3}
+      ],
+      "page": 1,
+      "pages": 1,
+      "total": 3,
+      "limit": 40
+    }
+  }
+}

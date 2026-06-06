@@ -265,3 +265,518 @@ def test_verify_login_succeeds_and_discovers_username(monkeypatch):
     valid, msg = parser.verify_login_status()
     assert valid is True
     assert parser._username == "xulingran"
+
+
+# ---------------------------------------------------------------------------
+# 辅助函数
+# ---------------------------------------------------------------------------
+
+
+def _make_parser_with_session(session=None) -> JmParser:
+    """创建带完整属性初始化的 parser（用于需要 session 的测试）。"""
+    from unittest.mock import MagicMock
+
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "test.one"
+    parser._cdn_domain = None
+    parser._cookie = ""
+    parser._cookie_synced = True
+    parser._username = None
+    parser.timeout = 5
+    parser.session = session or MagicMock()
+    return parser
+
+
+# ---------------------------------------------------------------------------
+# _is_challenge_page 静态方法
+# ---------------------------------------------------------------------------
+
+
+def test_is_challenge_page_cloudflare():
+    assert JmParser._is_challenge_page("Please wait, cloudflare check...") is True
+
+
+def test_is_challenge_page_just_a_moment():
+    assert JmParser._is_challenge_page("Just a moment, please wait") is True
+
+
+def test_is_challenge_page_captcha():
+    assert JmParser._is_challenge_page("Complete the captcha below") is True
+
+
+def test_is_challenge_page_cf_prefix():
+    assert JmParser._is_challenge_page("cf-challenge loading...") is True
+
+
+def test_is_challenge_page_normal_html():
+    """正常长 HTML (>=500 字符) 不是挑战页。"""
+    html = "x" * 600
+    assert JmParser._is_challenge_page(html) is False
+
+
+def test_is_challenge_page_short_no_keywords():
+    """短 HTML 但不含关键词 → 不是挑战页。"""
+    assert JmParser._is_challenge_page("<html>ok</html>") is False
+
+
+# ---------------------------------------------------------------------------
+# _fix_encoding 静态方法
+# ---------------------------------------------------------------------------
+
+
+def test_fix_encoding_iso8859_to_utf8():
+    from types import SimpleNamespace
+
+    resp = SimpleNamespace(encoding="iso-8859-1")
+    JmParser._fix_encoding(resp)
+    assert resp.encoding == "utf-8"
+
+
+def test_fix_encoding_latin1_to_utf8():
+    from types import SimpleNamespace
+
+    resp = SimpleNamespace(encoding="latin-1")
+    JmParser._fix_encoding(resp)
+    assert resp.encoding == "utf-8"
+
+
+def test_fix_encoding_none_to_utf8():
+    from types import SimpleNamespace
+
+    resp = SimpleNamespace(encoding=None)
+    JmParser._fix_encoding(resp)
+    assert resp.encoding == "utf-8"
+
+
+def test_fix_encoding_utf8_unchanged():
+    from types import SimpleNamespace
+
+    resp = SimpleNamespace(encoding="utf-8")
+    JmParser._fix_encoding(resp)
+    assert resp.encoding == "utf-8"
+
+
+def test_fix_encoding_gbk_unchanged():
+    from types import SimpleNamespace
+
+    resp = SimpleNamespace(encoding="gbk")
+    JmParser._fix_encoding(resp)
+    assert resp.encoding == "gbk"
+
+
+# ---------------------------------------------------------------------------
+# _expand_image_urls 静态方法
+# ---------------------------------------------------------------------------
+
+
+def test_expand_image_urls_generates_full_list():
+    images = [
+        "https://cdn.test.one/media/photos/430371/00001.webp",
+        "https://cdn.test.one/media/photos/430371/00002.webp",
+    ]
+    result = JmParser._expand_image_urls(images, total_pages=5, comic_id="430371")
+    assert len(result) == 5
+    assert result[0] == "https://cdn.test.one/media/photos/430371/00001.webp"
+    assert result[4] == "https://cdn.test.one/media/photos/430371/00005.webp"
+
+
+def test_expand_image_urls_no_expansion_when_enough():
+    images = [
+        f"https://cdn.test.one/media/photos/123/{i:05d}.webp" for i in range(1, 6)
+    ]
+    result = JmParser._expand_image_urls(images, total_pages=5, comic_id="123")
+    assert result is images  # 不扩展，返回原列表
+
+
+def test_expand_image_urls_no_expansion_when_empty():
+    result = JmParser._expand_image_urls([], total_pages=5, comic_id="123")
+    assert result == []
+
+
+def test_expand_image_urls_bad_pattern_returns_original():
+    images = ["https://other-domain.com/img/abc.jpg"]
+    result = JmParser._expand_image_urls(images, total_pages=5, comic_id="123")
+    assert result == images  # 不匹配正则，返回原列表
+
+
+# ---------------------------------------------------------------------------
+# set_username
+# ---------------------------------------------------------------------------
+
+
+def test_set_username_strips_whitespace():
+    parser = JmParser.__new__(JmParser)
+    parser._username = None
+    parser.set_username("  testuser  ")
+    assert parser._username == "testuser"
+
+
+def test_set_username_ignores_empty():
+    parser = JmParser.__new__(JmParser)
+    parser._username = "existing"
+    parser.set_username("")
+    assert parser._username == "existing"
+    parser.set_username("   ")
+    assert parser._username == "existing"
+
+
+def test_set_username_affects_favourites_url():
+    parser = JmParser.__new__(JmParser)
+    parser._username = None
+    parser.set_username("myuser")
+    url = parser._build_favourites_url("test.one", 1)
+    assert "/user/myuser/favorite/albums" in url
+
+
+# ---------------------------------------------------------------------------
+# _sync_cookies_to_jar
+# ---------------------------------------------------------------------------
+
+
+def test_sync_cookies_to_jar_basic():
+    import requests as _requests
+
+    parser = _make_parser_with_session(session=_requests.Session())
+    parser._cookie = "test_cookie=abc123; other=xyz789"
+    parser._cookie_synced = False
+
+    parser._sync_cookies_to_jar()
+
+    assert parser._cookie_synced is True
+    assert parser.session.cookies.get("test_cookie") == "abc123"
+    assert parser.session.cookies.get("other") == "xyz789"
+
+
+def test_sync_cookies_skips_when_already_synced():
+    parser = _make_parser_with_session()
+    parser._cookie = "a=1"
+    parser._cookie_synced = True
+
+    parser._sync_cookies_to_jar()
+
+    assert parser._cookie_synced is True
+
+
+def test_sync_cookies_skips_when_no_cookie():
+    parser = _make_parser_with_session()
+    parser._cookie = ""
+    parser._cookie_synced = False
+
+    parser._sync_cookies_to_jar()
+
+    assert parser._cookie_synced is False
+
+
+def test_sync_cookies_skips_when_no_domain():
+    parser = _make_parser_with_session()
+    parser._cookie = "a=1"
+    parser._cookie_synced = False
+    parser._domain = None
+
+    parser._sync_cookies_to_jar()
+
+    assert parser._cookie_synced is False
+
+
+def test_sync_cookies_curl_cffi_jar_compatibility():
+    """当 session.cookies 有 .jar 属性时使用 .jar.set_cookie()。"""
+    from unittest.mock import MagicMock
+
+    mock_jar = MagicMock()
+    mock_cookies = MagicMock(spec=[])
+    mock_cookies.jar = mock_jar
+
+    parser = _make_parser_with_session()
+    parser._cookie = "ck=val"
+    parser._cookie_synced = False
+    parser.session = MagicMock()
+    parser.session.cookies = mock_cookies
+
+    parser._sync_cookies_to_jar()
+
+    mock_jar.set_cookie.assert_called_once()
+    assert parser._cookie_synced is True
+
+
+def test_sync_cookies_unsupported_jar_warns():
+    """session.cookies 既无 set_cookie 也无 .jar → 记录警告不崩溃。"""
+    from unittest.mock import MagicMock
+
+    mock_cookies = MagicMock(spec=[])
+
+    parser = _make_parser_with_session()
+    parser._cookie = "ck=val"
+    parser._cookie_synced = False
+    parser.session = MagicMock()
+    parser.session.cookies = mock_cookies
+
+    parser._sync_cookies_to_jar()
+    assert parser._cookie_synced is False
+
+
+# ---------------------------------------------------------------------------
+# _request_text
+# ---------------------------------------------------------------------------
+
+
+def test_request_text_success(monkeypatch):
+    from unittest.mock import MagicMock
+
+    parser = _make_parser_with_session()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.encoding = "utf-8"
+    mock_resp.text = "<html>search results</html>"
+    parser.session.get = MagicMock(return_value=mock_resp)
+
+    result = parser._request_text("https://test.one/search")
+
+    assert result == "<html>search results</html>"
+
+
+def test_request_text_raises_on_http_error(monkeypatch):
+    from unittest.mock import MagicMock
+
+    import pytest
+    import requests as _requests
+
+    parser = _make_parser_with_session()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 403
+    mock_resp.raise_for_status.side_effect = _requests.HTTPError(response=mock_resp)
+    parser.session.get = MagicMock(return_value=mock_resp)
+
+    with pytest.raises(_requests.HTTPError):
+        parser._request_text("https://test.one/album/123")
+
+
+def test_request_text_fixes_encoding(monkeypatch):
+    from unittest.mock import MagicMock
+
+    parser = _make_parser_with_session()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.encoding = "iso-8859-1"
+    mock_resp.text = "中文内容"
+    parser.session.get = MagicMock(return_value=mock_resp)
+
+    parser._request_text("https://test.one/search")
+
+    assert mock_resp.encoding == "utf-8"
+
+
+def test_request_text_sets_referer(monkeypatch):
+    from unittest.mock import MagicMock
+
+    parser = _make_parser_with_session()
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.encoding = "utf-8"
+    mock_resp.text = "ok"
+    parser.session.get = MagicMock(return_value=mock_resp)
+
+    parser._request_text("https://test.one/search")
+
+    call_kwargs = parser.session.get.call_args
+    headers = call_kwargs[1].get("headers", call_kwargs.kwargs.get("headers", {}))
+    assert "test.one" in headers.get("Referer", "")
+
+
+# ---------------------------------------------------------------------------
+# search() 端到端
+# ---------------------------------------------------------------------------
+
+
+def test_search_keyword_end_to_end(monkeypatch):
+    """关键词搜索使用 fixture HTML 验证完整解析流程。"""
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    monkeypatch.setattr(parser, "_request_text", lambda url: html)
+
+    comics, pagination = parser.search("心甘晴愿")
+
+    assert len(comics) == 2
+    assert comics[0].id == "1442910"
+    assert comics[0].source_site == "jmcomic"
+    assert pagination is not None
+    assert pagination.total_pages == 3
+
+
+def test_search_ranking_keyword_routes_to_ranking(monkeypatch):
+    """排行关键词应路由到 _search_ranking 而非普通搜索。"""
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    captured_urls = []
+
+    def fake_request_text(url):
+        captured_urls.append(url)
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+
+    parser.search("周更新")
+
+    assert len(captured_urls) == 1
+    assert "albums?t=w&o=mr" in captured_urls[0]
+
+
+def test_search_error_returns_empty(monkeypatch):
+    parser = _make_parser_with_session()
+    monkeypatch.setattr(
+        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("network"))
+    )
+
+    comics, pagination = parser.search("test")
+
+    assert comics == []
+    assert pagination is None
+
+
+def test_search_with_tag_parameter():
+    """tag 参数不崩溃（当前实现忽略 tag）。"""
+    parser = _make_parser_with_session()
+
+    def fake_request_text(url):
+        return (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+
+    parser._request_text = fake_request_text
+    comics, _ = parser.search("test", tag="some_tag")
+    assert isinstance(comics, list)
+
+
+# ---------------------------------------------------------------------------
+# random()
+# ---------------------------------------------------------------------------
+
+
+def test_random_returns_comics(monkeypatch):
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    monkeypatch.setattr(parser, "_request_text", lambda url: html)
+
+    comics, pagination = parser.random()
+
+    assert len(comics) == 2
+
+
+def test_random_requests_correct_url(monkeypatch):
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    captured_urls = []
+
+    def fake_request_text(url):
+        captured_urls.append(url)
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+
+    parser.random()
+
+    assert any("/albums/random" in u for u in captured_urls)
+
+
+def test_random_error_returns_empty(monkeypatch):
+    parser = _make_parser_with_session()
+    monkeypatch.setattr(
+        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err"))
+    )
+
+    comics, pagination = parser.random()
+
+    assert comics == []
+    assert pagination is None
+
+
+# ---------------------------------------------------------------------------
+# get_comic_detail() 端到端
+# ---------------------------------------------------------------------------
+
+
+def test_get_comic_detail_end_to_end(monkeypatch):
+    html = (FIXTURES / "jm_album_detail.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    monkeypatch.setattr(parser, "_request_text", lambda url: html)
+
+    comic = parser.get_comic_detail("430371")
+
+    assert comic is not None
+    assert comic.id == "430371"
+    assert comic.title == "[MANA] 神里綾華 1–4 (原神) [中国語] [無修正]"
+    assert comic.author == "MANA"
+    assert comic.pages == 31
+
+
+def test_get_comic_detail_correct_url(monkeypatch):
+    html = (FIXTURES / "jm_album_detail.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    captured_urls = []
+
+    def fake_request_text(url):
+        captured_urls.append(url)
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+
+    parser.get_comic_detail("430371")
+
+    assert captured_urls[0] == "https://test.one/album/430371"
+
+
+def test_get_comic_detail_error_returns_none(monkeypatch):
+    parser = _make_parser_with_session()
+    monkeypatch.setattr(
+        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err"))
+    )
+
+    result = parser.get_comic_detail("430371")
+
+    assert result is None
+
+
+# ---------------------------------------------------------------------------
+# _search_ranking()
+# ---------------------------------------------------------------------------
+
+
+def test_search_ranking_builds_correct_url(monkeypatch):
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    captured_urls = []
+
+    def fake_request_text(url):
+        captured_urls.append(url)
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+
+    parser._search_ranking("周更新")
+
+    assert "albums?t=w&o=mr" in captured_urls[0]
+
+
+def test_search_ranking_page2_includes_page_param(monkeypatch):
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    captured_urls = []
+
+    def fake_request_text(url):
+        captured_urls.append(url)
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+
+    parser._search_ranking("周更新", page=2)
+
+    assert "page=2" in captured_urls[0]
+
+
+def test_search_ranking_error_returns_empty(monkeypatch):
+    parser = _make_parser_with_session()
+    monkeypatch.setattr(
+        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err"))
+    )
+
+    comics, pagination = parser._search_ranking("周更新")
+
+    assert comics == []
+    assert pagination is None

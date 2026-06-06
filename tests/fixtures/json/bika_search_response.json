@@ -1,0 +1,41 @@
+{
+  "code": 200,
+  "data": {
+    "comics": {
+      "docs": [
+        {
+          "_id": "5f6a1b2c3d4e5f6a7b8c9d0e",
+          "title": "Test Comic Title",
+          "author": "TestAuthor",
+          "pagesCount": 24,
+          "epsCount": 3,
+          "thumb": {
+            "fileServer": "https://storage1.picacomic.com",
+            "path": "tobe/5f6a1b2c/thumb.jpg"
+          },
+          "categories": ["Doujinshi", "School"],
+          "tags": ["full color", "Chinese"],
+          "updated_at": "2025-06-15T10:30:00.000Z"
+        },
+        {
+          "_id": "5f6a1b2c3d4e5f6a7b8c9d0f",
+          "title": "Another Comic",
+          "author": "Author2",
+          "pagesCount": 10,
+          "epsCount": 1,
+          "thumb": {
+            "fileServer": "https://storage1.picacomic.com/",
+            "path": "tobe/5f6a1b2d/thumb.jpg"
+          },
+          "categories": ["Manga"],
+          "tags": [],
+          "updated_at": "2025-05-01T00:00:00.000Z"
+        }
+      ],
+      "page": 1,
+      "pages": 5,
+      "total": 92,
+      "limit": 20
+    }
+  }
+}

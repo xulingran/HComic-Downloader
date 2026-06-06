@@ -1,0 +1,25 @@
+{
+  "code": 200,
+  "data": {
+    "pages": {
+      "docs": [
+        {
+          "media": {
+            "fileServer": "https://storage1.picacomic.com/",
+            "path": "tobe/comic123/ep1/001.jpg"
+          }
+        },
+        {
+          "media": {
+            "fileServer": "https://storage1.picacomic.com",
+            "path": "tobe/comic123/ep1/002.jpg"
+          }
+        }
+      ],
+      "page": 1,
+      "pages": 1,
+      "total": 2,
+      "limit": 40
+    }
+  }
+}

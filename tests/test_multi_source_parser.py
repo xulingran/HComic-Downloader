@@ -188,3 +188,155 @@ def test_configure_auth_on_current_source(monkeypatch):
 
     assert parser.get_auth("moeimg") == ("c", "u")
     assert called.get("invoked") is True
+
+
+def test_prepare_for_download_bika_single_chapter(monkeypatch):
+    """bika 单章节时，prepare_for_download 应获取详情并填充图片地址。"""
+    from models import ChapterInfo
+
+    parser = MultiSourceParser(timeout=5, default_source="bika")
+    source_comic = ComicInfo(
+        id="bk1", title="Bika Comic", source_site="bika", pages=0, image_urls=[]
+    )
+    detail_comic = ComicInfo(
+        id="bk1",
+        title="Bika Comic",
+        source_site="bika",
+        pages=10,
+        chapters=[ChapterInfo(id="ep1", name="Ch 1", index=1)],
+    )
+
+    monkeypatch.setattr(
+        parser.parsers["bika"],
+        "get_comic_detail",
+        lambda comic_id, slug="": detail_comic,
+    )
+    monkeypatch.setattr(
+        parser.parsers["bika"],
+        "get_chapter_images",
+        lambda comic_id, order: [f"https://cdn/img/{i}.jpg" for i in range(3)],
+    )
+
+    output = parser.prepare_for_download(source_comic)
+
+    assert output.pages == 3
+    assert len(output.image_urls) == 3
+    assert output.image_urls[0] == "https://cdn/img/0.jpg"
+
+
+def test_prepare_for_download_bika_multi_chapter(monkeypatch):
+    """bika 多章节时，返回详情但不调用 get_chapter_images。"""
+    from models import ChapterInfo
+
+    parser = MultiSourceParser(timeout=5, default_source="bika")
+    source_comic = ComicInfo(
+        id="bk2", title="Multi Ch", source_site="bika", pages=0, image_urls=[]
+    )
+    detail_comic = ComicInfo(
+        id="bk2",
+        title="Multi Ch",
+        source_site="bika",
+        pages=30,
+        chapters=[
+            ChapterInfo(id="ep1", name="Ch 1", index=1),
+            ChapterInfo(id="ep2", name="Ch 2", index=2),
+            ChapterInfo(id="ep3", name="Ch 3", index=3),
+        ],
+    )
+
+    images_called = []
+    monkeypatch.setattr(
+        parser.parsers["bika"],
+        "get_comic_detail",
+        lambda comic_id, slug="": detail_comic,
+    )
+    monkeypatch.setattr(
+        parser.parsers["bika"],
+        "get_chapter_images",
+        lambda *a, **kw: images_called.append(True) or [],
+    )
+
+    output = parser.prepare_for_download(source_comic)
+
+    assert output is detail_comic
+    assert output.pages == 30
+    assert images_called == []  # 不应调用 get_chapter_images
+
+
+def test_prepare_for_download_jmcomic(monkeypatch):
+    """jmcomic 通过详情接口补齐图片地址。"""
+    parser = MultiSourceParser(timeout=5, default_source="jmcomic")
+    source_comic = ComicInfo(
+        id="jm1", title="JM Comic", source_site="jmcomic", pages=0, image_urls=[]
+    )
+    resolved = ComicInfo(
+        id="jm1",
+        title="JM Comic",
+        source_site="jmcomic",
+        pages=5,
+        image_urls=["https://jm/img/1.jpg"],
+    )
+
+    monkeypatch.setattr(
+        parser.parsers["jmcomic"],
+        "get_comic_detail",
+        lambda comic_id, slug="": resolved,
+    )
+
+    output = parser.prepare_for_download(source_comic)
+
+    assert output is resolved
+    assert output.pages == 5
+
+
+def test_random_delegates_to_supported_source(monkeypatch):
+    """random() 应分发给 hcomic 和 jmcomic。"""
+    parser = MultiSourceParser(timeout=5, default_source="hcomic")
+
+    called = []
+    monkeypatch.setattr(
+        parser.parsers["hcomic"],
+        "random",
+        lambda: called.append("hcomic") or ([], None),
+    )
+    monkeypatch.setattr(
+        parser.parsers["jmcomic"],
+        "random",
+        lambda: called.append("jmcomic") or ([], None),
+    )
+
+    parser.random(source="hcomic")
+    parser.random(source="jmcomic")
+
+    assert called == ["hcomic", "jmcomic"]
+
+
+def test_random_raises_for_unsupported_source():
+    """random() 对 moeimg/bika 应抛 ValueError。"""
+    import pytest
+
+    parser = MultiSourceParser(timeout=5, default_source="moeimg")
+
+    with pytest.raises(ValueError, match="not supported"):
+        parser.random(source="moeimg")
+
+    with pytest.raises(ValueError, match="not supported"):
+        parser.random(source="bika")
+
+
+def test_favourites_routes_to_bika(monkeypatch):
+    """favourites(source='bika') 应路由到 bika parser。"""
+    parser = MultiSourceParser(timeout=5, default_source="hcomic")
+
+    called = []
+    monkeypatch.setattr(
+        parser.parsers["bika"],
+        "favourites",
+        lambda page=1, raise_errors=False: (
+            called.append(("bika", page)) or ([], None, False)
+        ),
+    )
+
+    parser.favourites(source="bika", page=2)
+
+    assert called == [("bika", 2)]

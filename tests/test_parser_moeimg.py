@@ -2,6 +2,7 @@
 
 from typing import Any
 
+import pytest
 import requests as _requests
 
 from sources.moeimg import MoeImgParser
@@ -446,3 +447,331 @@ def test_get_comic_detail_excludes_language_from_tags(monkeypatch):
     assert comic is not None
     assert comic.tags == ["rough translation", "sex toys"]
     assert "chinese" not in comic.tags
+
+
+# ---------------------------------------------------------------------------
+# 登录流程
+# ---------------------------------------------------------------------------
+
+
+class TestMoeImgLogin:
+    """测试 moeimg 登录获取 session cookie 的流程。"""
+
+    def test_login_success_sets_cookie(self, moeimg_parser, monkeypatch):
+        """登录成功后从 session.cookies 中提取 __SESSION 并返回。"""
+
+        def fake_post(url, **kwargs):
+            # 模拟服务器设置 cookie
+            moeimg_parser.session.cookies.set(
+                "__SESSION", "abc123", domain="moeimg.fan"
+            )
+            return _MockResponse({"success": True})
+
+        monkeypatch.setattr(moeimg_parser.session, "post", fake_post)
+
+        result = moeimg_parser.login("user", "pass")
+
+        assert result == "__SESSION=abc123"
+
+    def test_login_failure_wrong_credentials(self, moeimg_parser, monkeypatch):
+        monkeypatch.setattr(
+            moeimg_parser.session,
+            "post",
+            lambda *a, **kw: _MockResponse({"success": False}),
+        )
+
+        with pytest.raises(ValueError, match="登录失败"):
+            moeimg_parser.login("bad_user", "bad_pass")
+
+    def test_login_success_but_no_cookie(self, moeimg_parser, monkeypatch):
+        """登录成功但 session 中未获取到 __SESSION cookie。"""
+        monkeypatch.setattr(
+            moeimg_parser.session,
+            "post",
+            lambda *a, **kw: _MockResponse({"success": True}),
+        )
+
+        with pytest.raises(ValueError, match="未获取到 session cookie"):
+            moeimg_parser.login("user", "pass")
+
+    def test_login_http_error(self, moeimg_parser, monkeypatch):
+        monkeypatch.setattr(
+            moeimg_parser.session,
+            "post",
+            lambda *a, **kw: _MockResponse({}, status_code=500),
+        )
+
+        with pytest.raises(RuntimeError, match="500"):
+            moeimg_parser.login("user", "pass")
+
+
+# ---------------------------------------------------------------------------
+# _ensure_session 懒登录
+# ---------------------------------------------------------------------------
+
+
+class TestMoeImgEnsureSession:
+    """测试 _ensure_session 三级回退逻辑。"""
+
+    def test_ensure_session_with_cookie_in_jar(self, moeimg_parser):
+        """cookie jar 中已有 __SESSION，直接返回。"""
+        moeimg_parser.session.cookies.set("__SESSION", "existing", domain="moeimg.fan")
+
+        # 不应抛出异常
+        moeimg_parser._ensure_session()
+
+    def test_ensure_session_restores_from_cookie_header(self, moeimg_parser):
+        """从 Cookie header 中解析 __SESSION 并注入到 jar。"""
+        moeimg_parser.session.headers["Cookie"] = "__SESSION=from_header; other=val"
+
+        moeimg_parser._ensure_session()
+
+        assert moeimg_parser.session.cookies.get("__SESSION") == "from_header"
+
+    def test_ensure_session_fallback_to_stored_credentials(
+        self, moeimg_parser, monkeypatch
+    ):
+        """无 cookie 时使用存储的用户名密码登录。"""
+        moeimg_parser.set_stored_credentials("user", "pass")
+        login_called = []
+
+        def fake_login(username, password):
+            login_called.append((username, password))
+            moeimg_parser.session.cookies.set(
+                "__SESSION", "new_session", domain="moeimg.fan"
+            )
+            return "__SESSION=new_session"
+
+        monkeypatch.setattr(moeimg_parser, "login", fake_login)
+
+        moeimg_parser._ensure_session()
+
+        assert login_called == [("user", "pass")]
+
+    def test_ensure_session_raises_auth_required(self, moeimg_parser):
+        """无任何认证信息时抛出 AuthRequiredError。"""
+        from sources.moeimg.parser import AuthRequiredError
+
+        with pytest.raises(AuthRequiredError, match="需要登录"):
+            moeimg_parser._ensure_session()
+
+
+# ---------------------------------------------------------------------------
+# 登录状态验证
+# ---------------------------------------------------------------------------
+
+
+class TestMoeImgVerifyLoginStatus:
+    """测试 verify_login_status 验证流程。"""
+
+    def test_verify_success(self, moeimg_parser, monkeypatch):
+        moeimg_parser.session.cookies.set("__SESSION", "valid", domain="moeimg.fan")
+
+        def fake_get(url, **kwargs):
+            return _MockResponse({}, text='<div class="u-fav-item"></div>')
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        valid, message = moeimg_parser.verify_login_status()
+
+        assert valid is True
+        assert "已登录" in message
+
+    def test_verify_expired(self, moeimg_parser, monkeypatch):
+        moeimg_parser.session.cookies.set("__SESSION", "expired", domain="moeimg.fan")
+
+        monkeypatch.setattr(
+            moeimg_parser.session,
+            "get",
+            lambda *a, **kw: _MockResponse({}, text="<html>no bookmarks here</html>"),
+        )
+
+        valid, message = moeimg_parser.verify_login_status()
+
+        assert valid is False
+        assert "登录已过期" in message
+
+    def test_verify_network_error(self, moeimg_parser, monkeypatch):
+        moeimg_parser.session.cookies.set("__SESSION", "valid", domain="moeimg.fan")
+
+        def fake_get(*a, **kw):
+            raise _requests.ConnectionError("network down")
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        valid, message = moeimg_parser.verify_login_status()
+
+        assert valid is False
+        assert "网络错误" in message
+
+    def test_verify_no_session(self, moeimg_parser):
+        valid, message = moeimg_parser.verify_login_status()
+
+        assert valid is False
+        assert "未登录" in message
+
+
+# ---------------------------------------------------------------------------
+# 收藏夹
+# ---------------------------------------------------------------------------
+
+
+class TestMoeImgFavourites:
+    """测试 moeimg 收藏夹 HTML 解析流程。"""
+
+    def test_favourites_parses_bookmarks_html(
+        self, moeimg_parser, monkeypatch, html_sample
+    ):
+        moeimg_parser.session.cookies.set("__SESSION", "valid", domain="moeimg.fan")
+        bookmarks_html = html_sample("moeimg_bookmarks.html")
+
+        def fake_get(url, **kwargs):
+            return _MockResponse({}, text=bookmarks_html)
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        comics, pagination, needs_login = moeimg_parser.favourites(page=1)
+
+        assert needs_login is False
+        assert len(comics) == 2
+
+        c1 = comics[0]
+        assert c1.id == "12345"
+        assert c1.title == "Bookmark Comic 1"
+        assert c1.cover_url == "https://moeimg.fan/img/thumb/12345.webp"
+        assert c1.source_site == "moeimg"
+        assert c1.preview_url == "https://moeimg.fan/post/fa12345"
+
+        c2 = comics[1]
+        assert c2.id == "67890"
+        assert c2.title == "Bookmark Comic 2"
+
+        assert pagination is not None
+        assert pagination.total_pages == 3
+
+    def test_favourites_empty_page(self, moeimg_parser, monkeypatch):
+        moeimg_parser.session.cookies.set("__SESSION", "valid", domain="moeimg.fan")
+
+        monkeypatch.setattr(
+            moeimg_parser.session,
+            "get",
+            lambda *a, **kw: _MockResponse({}, text="<html><body>empty</body></html>"),
+        )
+
+        comics, pagination, needs_login = moeimg_parser.favourites()
+
+        assert comics == []
+        assert needs_login is False
+
+    def test_favourites_needs_login(self, moeimg_parser):
+        comics, pagination, needs_login = moeimg_parser.favourites()
+
+        assert needs_login is True
+        assert comics == []
+
+    def test_favourites_network_error(self, moeimg_parser, monkeypatch):
+        moeimg_parser.session.cookies.set("__SESSION", "valid", domain="moeimg.fan")
+
+        def fake_get(*a, **kw):
+            raise _requests.ConnectionError("network")
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        comics, pagination, needs_login = moeimg_parser.favourites()
+
+        assert comics == []
+        assert needs_login is False
+
+
+# ---------------------------------------------------------------------------
+# 收藏操作 (toggle)
+# ---------------------------------------------------------------------------
+
+
+class TestMoeImgFavouriteToggle:
+    """测试 moeimg 收藏/取消收藏的 toggle 逻辑。"""
+
+    def _set_session(self, parser):
+        parser.session.cookies.set("__SESSION", "valid", domain="moeimg.fan")
+
+    def test_check_favourite_true(self, moeimg_parser, monkeypatch):
+        self._set_session(moeimg_parser)
+
+        monkeypatch.setattr(
+            moeimg_parser.session,
+            "get",
+            lambda *a, **kw: _MockResponse({"status": 1}),
+        )
+
+        assert moeimg_parser.check_favourite("12345") is True
+
+    def test_check_favourite_false(self, moeimg_parser, monkeypatch):
+        self._set_session(moeimg_parser)
+
+        monkeypatch.setattr(
+            moeimg_parser.session,
+            "get",
+            lambda *a, **kw: _MockResponse({"status": 0}),
+        )
+
+        assert moeimg_parser.check_favourite("12345") is False
+
+    def test_add_when_not_favourited(self, moeimg_parser, monkeypatch):
+        self._set_session(moeimg_parser)
+        call_log = []
+
+        def fake_get(url, **kwargs):
+            call_log.append(url)
+            if "bookmark-status" in url:
+                return _MockResponse({"status": 0})
+            if "bookmark" in url:
+                return _MockResponse({"status": 1})
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        assert moeimg_parser.add_to_favourites("12345") is True
+        assert len(call_log) == 2  # check + toggle
+
+    def test_add_already_favourited(self, moeimg_parser, monkeypatch):
+        self._set_session(moeimg_parser)
+        call_log = []
+
+        def fake_get(url, **kwargs):
+            call_log.append(url)
+            return _MockResponse({"status": 1})
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        assert moeimg_parser.add_to_favourites("12345") is True
+        assert len(call_log) == 1  # 只 check，不 toggle
+
+    def test_remove_when_favourited(self, moeimg_parser, monkeypatch):
+        self._set_session(moeimg_parser)
+        call_log = []
+
+        def fake_get(url, **kwargs):
+            call_log.append(url)
+            if "bookmark-status" in url:
+                return _MockResponse({"status": 1})
+            if "bookmark" in url:
+                return _MockResponse({"status": -1})
+            raise AssertionError(f"Unexpected URL: {url}")
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        assert moeimg_parser.remove_from_favourites("12345") is True
+        assert len(call_log) == 2  # check + toggle
+
+    def test_remove_already_not_favourited(self, moeimg_parser, monkeypatch):
+        self._set_session(moeimg_parser)
+        call_log = []
+
+        def fake_get(url, **kwargs):
+            call_log.append(url)
+            return _MockResponse({"status": 0})
+
+        monkeypatch.setattr(moeimg_parser.session, "get", fake_get)
+
+        assert moeimg_parser.remove_from_favourites("12345") is True
+        assert len(call_log) == 1  # 只 check，不 toggle

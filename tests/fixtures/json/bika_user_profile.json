@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "data": {
+    "user": {
+      "_id": "user123",
+      "name": "TestBikaUser",
+      "level": 5,
+      "isPunched": true
+    }
+  }
+}

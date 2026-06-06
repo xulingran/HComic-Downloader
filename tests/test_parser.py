@@ -1,9 +1,11 @@
 """测试 parser.py 页面解析功能"""
 
 import pytest
+import requests
 
 from models import ComicInfo
 from sources.hcomic import HComicParser
+from sources.hcomic.parser import ParserResponseError
 
 
 class TestHComicParser:
@@ -150,7 +152,6 @@ class TestHComicParserNetworkMethods:
 
     def test_search_success(self, parser, monkeypatch):
         """测试搜索成功"""
-        import requests
 
         mock_response = requests.Response()
         mock_response._content = b'data: [null, {"data": {"comics": [{"id": "1", "media_id": "m1", "comic_source": "NH", "title": {"display": "Test"}, "num_pages": 10, "tags": [], "upload_date": 1704067200}], "pages": {"pages": 1, "total": 1, "limit": 10}}}], form:'
@@ -169,7 +170,6 @@ class TestHComicParserNetworkMethods:
 
     def test_search_empty_result(self, parser, monkeypatch):
         """测试搜索无结果"""
-        import requests
 
         mock_response = requests.Response()
         mock_response._content = b'data: [null, {"data": {"comics": [], "pages": {"pages": 1, "total": 0, "limit": 10}}}], form:'
@@ -187,7 +187,6 @@ class TestHComicParserNetworkMethods:
 
     def test_search_network_error(self, parser, monkeypatch):
         """测试搜索网络错误"""
-        import requests
 
         def mock_get(*args, **kwargs):
             raise requests.RequestException("Network error")
@@ -596,3 +595,119 @@ class TestHComicParserEdgeCases:
         )
         assert len(comics) == 0
         assert not need_login
+
+
+class TestHComicRandom:
+    """测试 random() 方法。"""
+
+    def test_random_success(self, parser, monkeypatch):
+        """测试随机漫画成功解析。"""
+
+        mock_response = requests.Response()
+        mock_response._content = (
+            b'data: [null, {"data": {"comics": ['
+            b'{"id": "r1", "media_id": "rm1", "comic_source": "NH", '
+            b'"title": {"display": "Random Comic"}, "num_pages": 15, '
+            b'"tags": [{"type": "tag", "name": "random_tag"}], "upload_date": 1704067200}'
+            b'], "pages": {"pages": 1, "total": 1, "limit": 10}}}], form:'
+        )
+        mock_response.status_code = 200
+        mock_response.encoding = "utf-8"
+
+        monkeypatch.setattr(parser.session, "get", lambda *a, **kw: mock_response)
+
+        comics, pagination = parser.random()
+
+        assert len(comics) == 1
+        assert comics[0].title == "Random Comic"
+        assert comics[0].pages == 15
+
+    def test_random_network_error(self, parser, monkeypatch):
+        """测试随机漫画网络错误返回空列表。"""
+
+        monkeypatch.setattr(
+            parser.session,
+            "get",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.Timeout("t")),
+        )
+
+        comics, pagination = parser.random()
+
+        assert comics == []
+        assert pagination is None
+
+
+class TestHComicAuthenticatedRequest:
+    """测试 _authenticated_request 的错误处理路径。"""
+
+    def test_authenticated_request_timeout(self, parser, monkeypatch):
+        """测试超时异常被正确转换。"""
+
+        monkeypatch.setattr(
+            parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.Timeout("timeout")),
+        )
+
+        with pytest.raises(ParserResponseError, match="请求超时"):
+            parser._authenticated_request(
+                "POST",
+                "https://api.h-comic.com/api/favourites",
+                error_prefix="加入收藏夹",
+            )
+
+    def test_authenticated_request_auth_error(self, parser, monkeypatch):
+        """测试 401 认证失效异常。"""
+
+        resp = requests.Response()
+        resp.status_code = 401
+
+        monkeypatch.setattr(
+            parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.HTTPError(response=resp)),
+        )
+
+        with pytest.raises(ParserResponseError, match="认证已失效"):
+            parser._authenticated_request(
+                "GET",
+                "https://api.h-comic.com/api/favourites/123",
+                error_prefix="检查收藏",
+            )
+
+    def test_authenticated_request_generic_error(self, parser, monkeypatch):
+        """测试 500 服务器错误。"""
+
+        resp = requests.Response()
+        resp.status_code = 500
+        resp._content = b"Internal Server Error"
+
+        monkeypatch.setattr(
+            parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.HTTPError(response=resp)),
+        )
+
+        with pytest.raises(ParserResponseError, match="HTTP 500"):
+            parser._authenticated_request(
+                "POST",
+                "https://api.h-comic.com/api/favourites",
+                error_prefix="加入收藏夹",
+                log_name="test_add",
+            )
+
+    def test_authenticated_request_connection_error(self, parser, monkeypatch):
+        """测试连接异常。"""
+
+        monkeypatch.setattr(
+            parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.ConnectionError("refused")),
+        )
+
+        with pytest.raises(ParserResponseError, match="请求失败"):
+            parser._authenticated_request(
+                "GET",
+                "https://api.h-comic.com/api/favourites/123",
+                error_prefix="检查收藏",
+            )

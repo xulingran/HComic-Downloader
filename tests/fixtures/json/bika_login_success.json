@@ -1,0 +1,7 @@
+{
+  "code": 200,
+  "message": "",
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJfaWQiOiI2MTIzNDU2Nzg5In0.fake_signature"
+  }
+}

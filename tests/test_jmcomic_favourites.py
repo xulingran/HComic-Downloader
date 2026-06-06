@@ -330,3 +330,216 @@ class TestJmcomicRemoveFromFavourites(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestFillMissingTitles(unittest.TestCase):
+    """测试 _fill_missing_titles 并发标题补全。"""
+
+    def setUp(self):
+        self.parser = JmParser(timeout=5)
+        self.parser._domain = "18comic.vip"
+        self.parser._cdn_domain = None
+        self.parser._cookie = ""
+        self.parser._cookie_synced = True
+
+    def test_fill_skips_when_all_titled(self):
+        """所有 comic 都有标题时不发起任何请求。"""
+        from models import ComicInfo
+
+        comics = [
+            ComicInfo(
+                id="1", title="Title A", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+            ComicInfo(
+                id="2", title="Title B", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+        ]
+        # cookies.get_dict 不应被调用
+        self.parser.session.cookies = MagicMock()
+        self.parser.session.cookies.get_dict = MagicMock(
+            side_effect=AssertionError("Should not be called")
+        )
+
+        self.parser._fill_missing_titles(comics, "18comic.vip")
+
+        # 标题不变
+        assert comics[0].title == "Title A"
+        assert comics[1].title == "Title B"
+
+    def test_fill_updates_missing_titles(self):
+        """缺失标题的 comic 被正确填充。"""
+        from unittest.mock import patch
+
+        from models import ComicInfo
+
+        comics = [
+            ComicInfo(
+                id="1", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+            ComicInfo(
+                id="2", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+        ]
+
+        detail_html = (
+            "<html><body>" '<h1 id="book-name">补全的标题</h1>' "</body></html>"
+        )
+
+        mock_thread_session = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = "utf-8"
+        mock_resp.text = detail_html
+        mock_resp.url = "https://18comic.vip/album/2"
+        mock_thread_session.get.return_value = mock_resp
+
+        self.parser.session.cookies = MagicMock()
+        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
+
+        with patch("time.sleep", lambda x: None), patch(
+            "requests.Session", return_value=mock_thread_session
+        ), patch(
+            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+        ):
+            self.parser._fill_missing_titles(comics, "18comic.vip")
+
+        assert comics[0].title == "已有标题"
+        assert comics[1].title == "补全的标题"
+
+    def test_fill_handles_login_redirect(self):
+        """线程被重定向到 /login → 标题不填充。"""
+        from unittest.mock import patch
+
+        from models import ComicInfo
+
+        comics = [
+            ComicInfo(
+                id="3", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+        ]
+
+        mock_thread_session = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = "utf-8"
+        mock_resp.text = "<html>login page</html>"
+        mock_resp.url = "https://18comic.vip/login"
+        mock_thread_session.get.return_value = mock_resp
+
+        self.parser.session.cookies = MagicMock()
+        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
+
+        with patch("time.sleep", lambda x: None), patch(
+            "requests.Session", return_value=mock_thread_session
+        ), patch(
+            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+        ):
+            self.parser._fill_missing_titles(comics, "18comic.vip")
+
+        # 登录重定向时标题不填充
+        assert comics[0].title == "未知标题"
+
+    def test_fill_handles_error_page(self):
+        """线程被重定向到 /error/ → 标题不填充。"""
+        from unittest.mock import patch
+
+        from models import ComicInfo
+
+        comics = [
+            ComicInfo(
+                id="4", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+        ]
+
+        mock_thread_session = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = "utf-8"
+        mock_resp.text = "<html>error</html>"
+        mock_resp.url = "https://18comic.vip/error/404"
+        mock_thread_session.get.return_value = mock_resp
+
+        self.parser.session.cookies = MagicMock()
+        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
+
+        with patch("time.sleep", lambda x: None), patch(
+            "requests.Session", return_value=mock_thread_session
+        ), patch(
+            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+        ):
+            self.parser._fill_missing_titles(comics, "18comic.vip")
+
+        assert comics[0].title == "未知标题"
+
+    def test_fill_json_ld_fallback(self):
+        """当 h1 标题为 '未知标题' 时从 JSON-LD 提取。"""
+        from unittest.mock import patch
+
+        from models import ComicInfo
+
+        comics = [
+            ComicInfo(
+                id="5", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+        ]
+
+        detail_html = (
+            "<html><body>"
+            '<h1 id="book-name">未知标题</h1>'
+            '<script type="application/ld+json">'
+            '{"name": "JSON-LD 标题"}'
+            "</script>"
+            "</body></html>"
+        )
+
+        mock_thread_session = MagicMock()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.encoding = "utf-8"
+        mock_resp.text = detail_html
+        mock_resp.url = "https://18comic.vip/album/5"
+        mock_thread_session.get.return_value = mock_resp
+
+        self.parser.session.cookies = MagicMock()
+        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
+
+        with patch("time.sleep", lambda x: None), patch(
+            "requests.Session", return_value=mock_thread_session
+        ), patch(
+            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+        ):
+            self.parser._fill_missing_titles(comics, "18comic.vip")
+
+        assert comics[0].title == "JSON-LD 标题"
+
+    def test_fill_network_error_graceful(self):
+        """线程内网络异常 → 该条目跳过，不影响其他。"""
+        from unittest.mock import patch
+
+        from models import ComicInfo
+
+        comics = [
+            ComicInfo(
+                id="6", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+            ComicInfo(
+                id="7", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"
+            ),
+        ]
+
+        mock_thread_session = MagicMock()
+        mock_thread_session.get.side_effect = requests.ConnectionError("network down")
+
+        self.parser.session.cookies = MagicMock()
+        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
+
+        with patch("time.sleep", lambda x: None), patch(
+            "requests.Session", return_value=mock_thread_session
+        ), patch(
+            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+        ):
+            self.parser._fill_missing_titles(comics, "18comic.vip")
+
+        # 网络错误的条目保持原标题，已有标题的不受影响
+        assert comics[0].title == "未知标题"
+        assert comics[1].title == "已有标题"
