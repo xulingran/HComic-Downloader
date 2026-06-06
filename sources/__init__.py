@@ -17,6 +17,7 @@ from utils import normalize_source_auth
 logger = logging.getLogger(__name__)
 
 _VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika", "copymanga")
+_SOURCES_WITH_FAVOURITES = ("hcomic", "jmcomic", "moeimg", "bika")
 
 __all__ = ["MultiSourceParser", "ParserResponseError"]
 
@@ -53,7 +54,7 @@ class MultiSourceParser:
                 "bearer_token": self.source_auth["hcomic"].get("bearer_token", ""),
             }
 
-        self.parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser] = {
+        self.parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser] = {
             "hcomic": HComicParser(
                 timeout=timeout,
                 cookie=self.source_auth["hcomic"]["cookie"],
@@ -138,7 +139,7 @@ class MultiSourceParser:
 
     def source_supports_favourites(self, source: str | None = None) -> bool:
         current = self._resolve_source(source)
-        return current in _VALID_SOURCES
+        return current in _SOURCES_WITH_FAVOURITES
 
     def get_auth(self, source: str | None = None) -> tuple[str, str]:
         current = self._resolve_source(source)
@@ -195,19 +196,19 @@ class MultiSourceParser:
 
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
-        if src not in _VALID_SOURCES:
+        if src not in _SOURCES_WITH_FAVOURITES:
             return False
         return self.parsers[src].add_to_favourites(comic_id)
 
     def check_favourite(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
-        if src not in _VALID_SOURCES:
+        if src not in _SOURCES_WITH_FAVOURITES:
             return False
         return self.parsers[src].check_favourite(comic_id)
 
     def remove_from_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
-        if src not in _VALID_SOURCES:
+        if src not in _SOURCES_WITH_FAVOURITES:
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 
@@ -250,9 +251,10 @@ class MultiSourceParser:
             detail = parser.get_comic_detail(comic.id)
             if detail is None:
                 return comic
-            if detail.chapters and len(detail.chapters) > 1:
+            chapters = getattr(detail, "chapters", None) or []
+            if len(chapters) > 1:
                 return detail
-            chapter_id = detail.chapters[0].id if detail.chapters else ""
+            chapter_id = chapters[0].id if chapters else ""
             if chapter_id:
                 detail.image_urls = parser.get_chapter_images(comic.id, chapter_id)
                 detail.pages = len(detail.image_urls)

@@ -8,6 +8,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
+from sources import _VALID_SOURCES, _SOURCES_WITH_FAVOURITES
 from sources.base import ParserResponseError
 
 from .types import AuthRequiredError
@@ -17,8 +18,6 @@ if TYPE_CHECKING:
     from sources import MultiSourceParser
 
 logger = logging.getLogger(__name__)
-
-_VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika", "copymanga")
 _DEFAULT_SOURCE = "hcomic"
 _AUTH_KEYWORDS = (
     "401",
@@ -197,7 +196,7 @@ class SearchMixin:
         }
 
     def handle_get_favourites(self, page: int = 1, source: str = "hcomic") -> dict:
-        valid_sources = _VALID_SOURCES
+        valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         self._check_source_auth(effective_source)
         with self._auth_error_guard(effective_source):
@@ -226,7 +225,7 @@ class SearchMixin:
             }
 
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
-        valid_sources = _VALID_SOURCES
+        valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         with self._auth_error_guard(effective_source):
             success = self.parser.add_to_favourites(comic_id, source=effective_source)
@@ -235,7 +234,7 @@ class SearchMixin:
             return {"success": success}
 
     def handle_check_favourite(self, comic_id: str, source: str = "hcomic") -> dict:
-        valid_sources = _VALID_SOURCES
+        valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         with self._auth_error_guard(effective_source):
             is_favourited = self.parser.check_favourite(
@@ -246,7 +245,7 @@ class SearchMixin:
     def handle_remove_from_favourites(
         self, comic_id: str, source: str = "hcomic"
     ) -> dict:
-        valid_sources = _VALID_SOURCES
+        valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         with self._auth_error_guard(effective_source):
             success = self.parser.remove_from_favourites(

@@ -6,6 +6,7 @@ import logging
 import re
 
 import requests
+from lxml import html as lxml_html
 
 from models import ChapterInfo, ComicInfo, PaginationInfo
 from sources.base import ParserContextMixin, ParserResponseError
@@ -18,6 +19,7 @@ from .constants import (
     CHAPTERS_URL_TEMPLATE,
     PAGE_SIZE,
     PC_HEADERS,
+    PREVIEW_URL_TEMPLATE,
     SEARCH_URL_TEMPLATE,
 )
 from .crypto import AesKeyCache, decrypt_aes_cbc, extract_aes_key
@@ -39,6 +41,28 @@ class CopyMangaParser(ParserContextMixin):
         self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
     ):
         """配置认证信息。拷贝漫画不需要认证，保留接口兼容。"""
+
+    def verify_login_status(self) -> tuple[bool, str]:
+        """拷贝漫画不需要登录，始终返回已就绪。"""
+        return True, "拷贝漫画无需登录"
+
+    def favourites(
+        self, page: int = 1, raise_errors: bool = False
+    ) -> tuple[list, None, bool]:
+        """拷贝漫画不支持收藏夹。"""
+        return [], None, False
+
+    def add_to_favourites(self, comic_id: str) -> bool:
+        """拷贝漫画不支持收藏夹。"""
+        return False
+
+    def check_favourite(self, comic_id: str) -> bool:
+        """拷贝漫画不支持收藏夹。"""
+        return False
+
+    def remove_from_favourites(self, comic_id: str) -> bool:
+        """拷贝漫画不支持收藏夹。"""
+        return False
 
     # ------------------------------------------------------------------
     # 内部请求辅助
@@ -147,16 +171,22 @@ class CopyMangaParser(ParserContextMixin):
         )
         cover = item.get("cover", "")
 
+        # 从 last_chapter_name 提取章节数（如 "第243话" → 243）
+        last_ch = item.get("last_chapter_name", "")
+        total_chapters = 1
+        if m := re.search(r"(\d+)", last_ch):
+            total_chapters = int(m.group(1))
+
         return ComicInfo(
             id=path_word,
             title=name,
             author=author_names or None,
             pages=0,
             cover_url=cover,
-            preview_url=f"https://www.2026copy.com/comic/{path_word}",
+            preview_url=PREVIEW_URL_TEMPLATE.format(path_word=path_word),
             source_site="copymanga",
             comic_source="COPYMANGA",
-            album_total_chapters=1,
+            album_total_chapters=total_chapters,
         )
 
     # ------------------------------------------------------------------
@@ -173,7 +203,7 @@ class CopyMangaParser(ParserContextMixin):
             url = CHAPTERS_URL_TEMPLATE.format(path_word=comic_id)
             headers = {
                 **API_HEADERS,
-                "Referer": f"https://www.2026copy.com/comic/{comic_id}",
+                "Referer": PREVIEW_URL_TEMPLATE.format(path_word=comic_id),
             }
             data = self._request_json(url, headers=headers)
             encrypted = data.get("results")
@@ -198,7 +228,7 @@ class CopyMangaParser(ParserContextMixin):
             url = CHAPTERS_URL_TEMPLATE.format(path_word=path_word)
             headers = {
                 **API_HEADERS,
-                "Referer": f"https://www.2026copy.com/comic/{path_word}",
+                "Referer": PREVIEW_URL_TEMPLATE.format(path_word=path_word),
             }
             data = self._request_json(url, headers=headers)
             encrypted = data.get("results")
@@ -239,12 +269,12 @@ class CopyMangaParser(ParserContextMixin):
             author=author_names or None,
             pages=0,
             cover_url=cover,
-            preview_url=f"https://www.2026copy.com/comic/{path_word}",
+            preview_url=PREVIEW_URL_TEMPLATE.format(path_word=path_word),
             source_site="copymanga",
             comic_source="COPYMANGA",
             chapters=chapters,
             album_id=path_word,
-            album_total_chapters=len(chapters) if len(chapters) > 1 else 1,
+            album_total_chapters=len(chapters) or 1,
         )
 
     @staticmethod
@@ -302,10 +332,8 @@ class CopyMangaParser(ParserContextMixin):
             return []
 
     @staticmethod
-    def _extract_content_key(html_text: str, url: str = "") -> str:
+    def _extract_content_key(html_text: str) -> str:
         """从章节 HTML 页面提取 contentKey 变量的值。"""
-        from lxml import html as lxml_html
-
         doc = lxml_html.fromstring(html_text)
         scripts = doc.xpath('//script[contains(text(), "contentKey")]/text()')
         script = next(iter(scripts), None)

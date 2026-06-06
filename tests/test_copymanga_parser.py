@@ -153,7 +153,7 @@ class TestCopyMangaSearch:
         assert c1.author == "ONE, 村田雄介"
         assert c1.cover_url == "https://cover.example.com/onepunchman.jpg"
         assert c1.source_site == "copymanga"
-        assert c1.album_total_chapters == 1
+        assert c1.album_total_chapters == 243  # 从 "第243话" 解析
 
         assert pagination is not None
         assert pagination.total_items == 2
@@ -187,6 +187,31 @@ class TestCopyMangaSearch:
         assert comics == []
         assert pagination is not None
         assert pagination.total_items == 0
+
+    def test_search_no_last_chapter_defaults_to_1(self, copymanga_parser, monkeypatch):
+        """没有 last_chapter_name 时默认 album_total_chapters=1。"""
+        payload = {
+            "code": 200,
+            "results": {
+                "list": [
+                    {
+                        "path_word": "new-comic",
+                        "name": "新漫画",
+                        "author": [],
+                        "cover": "",
+                    }
+                ],
+                "total": 1,
+            },
+        }
+        monkeypatch.setattr(
+            copymanga_parser.session,
+            "get",
+            lambda *a, **kw: _make_json_response(payload),
+        )
+        comics, _ = copymanga_parser.search("新漫画")
+        assert len(comics) == 1
+        assert comics[0].album_total_chapters == 1
 
     def test_search_network_error_returns_empty(self, copymanga_parser, monkeypatch):
         monkeypatch.setattr(
@@ -352,3 +377,32 @@ class TestCopyMangaChapterImages:
 
         images = copymanga_parser.get_chapter_images("test", "ch1")
         assert images == []
+
+
+# ---------------------------------------------------------------------------
+# 收藏夹 & 登录状态 stub 测试
+# ---------------------------------------------------------------------------
+
+
+class TestCopyMangaStubMethods:
+    """测试拷贝漫画不支持的功能返回安全默认值。"""
+
+    def test_verify_login_status_always_ready(self, copymanga_parser):
+        ok, msg = copymanga_parser.verify_login_status()
+        assert ok is True
+        assert "无需登录" in msg
+
+    def test_favourites_returns_empty(self, copymanga_parser):
+        comics, pagination, needs_login = copymanga_parser.favourites()
+        assert comics == []
+        assert pagination is None
+        assert needs_login is False
+
+    def test_add_to_favourites_returns_false(self, copymanga_parser):
+        assert copymanga_parser.add_to_favourites("any_id") is False
+
+    def test_check_favourite_returns_false(self, copymanga_parser):
+        assert copymanga_parser.check_favourite("any_id") is False
+
+    def test_remove_from_favourites_returns_false(self, copymanga_parser):
+        assert copymanga_parser.remove_from_favourites("any_id") is False

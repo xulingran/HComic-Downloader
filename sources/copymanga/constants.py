@@ -3,6 +3,9 @@
 PC_DOMAIN = "www.2026copy.com"
 API_DOMAIN = "api.2026copy.com"
 
+# 漫画预览页 URL 模板
+PREVIEW_URL_TEMPLATE = f"https://{PC_DOMAIN}/comic/{{path_word}}"
+
 # 搜索 API
 SEARCH_URL_TEMPLATE = (
     f"https://{API_DOMAIN}/api/v3/search/comic"

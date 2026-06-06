@@ -29,3 +29,17 @@ class TestCopyMangaRegistration:
     def test_search_dispatches_to_copymanga(self):
         parser = MultiSourceParser(default_source="copymanga")
         assert parser.current_source == "copymanga"
+
+    def test_copymanga_does_not_support_favourites(self):
+        """copymanga 不支持收藏夹（无 API）。"""
+        parser = MultiSourceParser()
+        assert parser.source_supports_favourites("copymanga") is False
+
+    def test_copymanga_add_to_favourites_returns_false(self):
+        parser = MultiSourceParser()
+        assert parser.add_to_favourites("any_id", source="copymanga") is False
+
+    def test_copymanga_verify_login_always_ready(self):
+        parser = MultiSourceParser()
+        ok, msg = parser.verify_login_status(source="copymanga")
+        assert ok is True
