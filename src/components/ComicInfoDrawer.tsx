@@ -5,6 +5,7 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
 import { Toast } from './common/Toast'
 import { isAuthError } from '../utils/auth'
+import { normalizeSourceKey } from '../utils/source'
 
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
@@ -36,10 +37,8 @@ export function ComicInfoDrawer() {
     return { ...drawerComic, ...enrichedComic }
   }, [drawerComic, enrichedComic])
 
-  const sourceKeyMap: Record<string, keyof TagBlacklist> = { moeimg: 'moeimg', jmcomic: 'jmcomic', bika: 'bika', copymanga: 'copymanga' }
-
   const isTagBlocked = (tag: string) => {
-    const key = sourceKeyMap[comicSource] ?? 'hcomic'
+    const key = normalizeSourceKey(comicSource)
     return tagBlacklist[key].some(t => t.toLowerCase() === tag.toLowerCase())
   }
 

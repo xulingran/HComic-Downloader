@@ -1,11 +1,9 @@
 import { IPC_ERROR_CODES } from '@shared/types'
-
-/** 需要预验证认证状态的来源（扩展时在此添加，如 'bika'） */
-export const AUTH_REQUIRED_SOURCES = new Set(['jmcomic'])
+import { sourceRequiresAuth } from './source'
 
 /** 判断来源是否需要预验证认证 */
 export function requiresAuth(source: string): boolean {
-  return AUTH_REQUIRED_SOURCES.has(source)
+  return sourceRequiresAuth(source)
 }
 
 /** 判断 IPC 错误是否为认证失败（支持结构化错误码和字符串匹配兜底） */

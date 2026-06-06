@@ -77,7 +77,7 @@ export interface AppConfig {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] }
+  tagBlacklist: TagBlacklist
   previewCacheSizeLimitMB: number
   proxy?: string
   cookie?: string
@@ -92,7 +92,7 @@ export interface AppConfig {
   favouriteTagHighlight?: boolean
 }
 
-export type TagBlacklist = AppConfig['tagBlacklist']
+export type TagBlacklist = Record<ComicSource, string[]>
 
 export type CardStyle = 'cover' | 'detailed'
 
@@ -194,7 +194,7 @@ export type ConfigValueMap = {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] }
+  tagBlacklist: TagBlacklist
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
   favouriteTagHighlight: boolean
@@ -562,6 +562,61 @@ export type SearchMode = typeof SEARCH_MODES[number]
 /** Valid comic sources — shared between preload and main */
 export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic', 'bika', 'copymanga'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
+
+/** 来源元数据 — 集中管理标签和能力标志 */
+export const SOURCE_META = {
+  hcomic: {
+    label: 'HComic',
+    supportsRandom: true,
+    supportsFavourites: true,
+    requiresAuth: false,
+  },
+  moeimg: {
+    label: 'MoeImg',
+    supportsRandom: false,
+    supportsFavourites: true,
+    requiresAuth: false,
+  },
+  jmcomic: {
+    label: '禁漫天堂',
+    supportsRandom: true,
+    supportsFavourites: true,
+    requiresAuth: true,
+  },
+  bika: {
+    label: '哔咔',
+    supportsRandom: false,
+    supportsFavourites: true,
+    requiresAuth: false,
+  },
+  copymanga: {
+    label: '拷贝漫画',
+    supportsRandom: false,
+    supportsFavourites: false,
+    requiresAuth: false,
+  },
+} as const satisfies Record<ComicSource, {
+  label: string
+  supportsRandom: boolean
+  supportsFavourites: boolean
+  requiresAuth: boolean
+}>
+
+/** 来源标签映射（便捷访问） */
+export const SOURCE_LABELS: Record<ComicSource, string> =
+  Object.fromEntries(
+    Object.entries(SOURCE_META).map(([k, v]) => [k, v.label])
+  ) as Record<ComicSource, string>
+
+/** 有收藏夹支持的来源列表 */
+export const SOURCES_WITH_FAVOURITES = COMIC_SOURCES.filter(
+  s => SOURCE_META[s].supportsFavourites
+)
+
+/** 需要认证的来源列表 */
+export const AUTH_REQUIRED_SOURCES = COMIC_SOURCES.filter(
+  s => SOURCE_META[s].requiresAuth
+)
 
 /** JSON-RPC application error codes (Python backend) */
 export const IPC_ERROR_CODES = {

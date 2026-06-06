@@ -17,6 +17,7 @@ import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
+import { sourceSupportsRandom } from '../utils/source'
 import type { DownloadProgressData } from '../hooks/useIpc'
 import { requiresAuth, isAuthError } from '../utils/auth'
 import { normalizeSourceKey } from '../utils/source'
@@ -346,7 +347,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         isLoading={isLoading}
         onSearch={() => handleSearch()}
         onRandom={handleRandom}
-        showRandom={source === 'hcomic' || source === 'jmcomic'}
+        showRandom={sourceSupportsRandom(source)}
         showHistory={showHistory}
         onShowHistoryChange={setShowHistory}
         history={history}

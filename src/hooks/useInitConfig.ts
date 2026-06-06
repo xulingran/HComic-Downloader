@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { COMIC_SOURCES, type TagBlacklist } from '@shared/types'
 import { useSettingsStore, subscribeToBlacklistChanges, subscribeToFavouriteTagHighlightChanges } from '../stores/useSettingsStore'
 import { useConfig } from './useIpc'
 
@@ -23,13 +24,9 @@ export function useInitConfig() {
       const rawBlacklist = result.config?.tagBlacklist
       if (rawBlacklist && typeof rawBlacklist === 'object') {
         const raw = rawBlacklist as Record<string, unknown>
-        const normalized: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] } = {
-          hcomic: Array.isArray(raw.hcomic) ? raw.hcomic as string[] : [],
-          moeimg: Array.isArray(raw.moeimg) ? raw.moeimg as string[] : [],
-          jmcomic: Array.isArray(raw.jmcomic) ? raw.jmcomic as string[] : [],
-          bika: Array.isArray(raw.bika) ? raw.bika as string[] : [],
-          copymanga: Array.isArray(raw.copymanga) ? raw.copymanga as string[] : [],
-        }
+        const normalized: TagBlacklist = Object.fromEntries(
+          COMIC_SOURCES.map(s => [s, Array.isArray(raw[s]) ? raw[s] as string[] : []])
+        ) as TagBlacklist
         setTagBlacklist(normalized)
       }
 

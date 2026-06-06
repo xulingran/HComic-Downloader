@@ -1,16 +1,29 @@
-import type { TagBlacklist } from '@shared/types'
+import { COMIC_SOURCES, SOURCE_LABELS, SOURCE_META, type ComicSource, type TagBlacklist } from '@shared/types'
+
+/** 获取来源标签 */
+export function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source as ComicSource] ?? source
+}
+
+/** 来源是否支持随机 */
+export function sourceSupportsRandom(source: string): boolean {
+  return SOURCE_META[source as ComicSource]?.supportsRandom ?? false
+}
+
+/** 来源是否支持收藏夹 */
+export function sourceSupportsFavourites(source: string): boolean {
+  return SOURCE_META[source as ComicSource]?.supportsFavourites ?? false
+}
+
+/** 来源是否需要认证 */
+export function sourceRequiresAuth(source: string): boolean {
+  return SOURCE_META[source as ComicSource]?.requiresAuth ?? false
+}
 
 /**
- * Normalize a source identifier to a valid TagBlacklist key.
- *
- * Accepts any string and returns one of the valid keys:
- * `'hcomic'`, `'moeimg'`, `'jmcomic'`, `'bika'`, or `'copymanga'`.
- * Unknown sources default to `'hcomic'`.
+ * Normalize a source identifier to a valid ComicSource.
+ * Unknown sources default to 'hcomic'.
  */
-export function normalizeSourceKey(source: string): keyof TagBlacklist {
-  if (source === 'moeimg') return 'moeimg'
-  if (source === 'jmcomic') return 'jmcomic'
-  if (source === 'bika') return 'bika'
-  if (source === 'copymanga') return 'copymanga'
-  return 'hcomic'
+export function normalizeSourceKey(source: string): ComicSource {
+  return COMIC_SOURCES.includes(source as ComicSource) ? source as ComicSource : 'hcomic'
 }

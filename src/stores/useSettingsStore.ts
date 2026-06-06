@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { TagBlacklist, CardStyle } from '@shared/types'
+import { COMIC_SOURCES, type TagBlacklist, type CardStyle } from '@shared/types'
 import { normalizeSourceKey } from '../utils/source'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
@@ -23,7 +23,9 @@ interface SettingsState {
   setFavouriteTagHighlight: (enabled: boolean) => void
 }
 
-const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] }
+const DEFAULT_TAG_BLACKLIST: TagBlacklist = Object.fromEntries(
+  COMIC_SOURCES.map(s => [s, []])
+) as TagBlacklist
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   themeMode: 'auto',

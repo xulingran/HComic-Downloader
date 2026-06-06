@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { TagBlacklist } from '@shared/types'
+import { useSources } from '@/hooks/useSourceOptions'
 
 interface TagFilterSettingsProps {
   tagBlacklist: TagBlacklist
@@ -7,18 +8,11 @@ interface TagFilterSettingsProps {
   removeTag: (source: string, tag: string) => void
 }
 
-const SOURCES = [
-  { key: 'hcomic' as const, label: 'HComic' },
-  { key: 'moeimg' as const, label: 'Moeimg' },
-  { key: 'jmcomic' as const, label: 'JMComic' },
-  { key: 'bika' as const, label: 'Bika' },
-  { key: 'copymanga' as const, label: '拷贝漫画' },
-]
-
 export function TagFilterSettings({ tagBlacklist, addTag, removeTag }: TagFilterSettingsProps) {
   const [activeSource, setActiveSource] = useState<keyof TagBlacklist>('hcomic')
   const [inputValue, setInputValue] = useState('')
   const [confirmTag, setConfirmTag] = useState<string | null>(null)
+  const sources = useSources()
 
   const tags = tagBlacklist[activeSource]
 
@@ -42,19 +36,19 @@ export function TagFilterSettings({ tagBlacklist, addTag, removeTag }: TagFilter
 
       <div>
         <div className="flex gap-3 mb-4">
-          {SOURCES.map((s) => (
+          {sources.map((s) => (
             <button
-              key={s.key}
-              onClick={() => setActiveSource(s.key)}
+              key={s.value}
+              onClick={() => setActiveSource(s.value as keyof TagBlacklist)}
               className={`px-4 py-2 rounded-lg text-sm transition-colors ${
-                activeSource === s.key
+                activeSource === s.value
                   ? 'bg-[var(--accent)] text-white'
                   : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
               }`}
             >
               {s.label}
-              {tagBlacklist[s.key].length > 0 && (
-                <span className="ml-1.5 text-xs opacity-80">({tagBlacklist[s.key].length})</span>
+              {tagBlacklist[s.value as keyof TagBlacklist].length > 0 && (
+                <span className="ml-1.5 text-xs opacity-80">({tagBlacklist[s.value as keyof TagBlacklist].length})</span>
               )}
             </button>
           ))}

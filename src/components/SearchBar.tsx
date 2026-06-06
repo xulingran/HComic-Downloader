@@ -1,40 +1,8 @@
 import { PaginationInfo } from '@shared/types'
 import { PaginationControls } from './common/PaginationControls'
 import { BatchControls } from './common/BatchControls'
-
-const searchModes = [
-  { value: 'keyword', label: '关键词' },
-  { value: 'author', label: '作者' },
-  { value: 'tag', label: 'Tag' },
-  { value: 'ranking', label: '排行' }
-]
-
-const sources = [
-  { value: 'hcomic', label: 'HComic' },
-  { value: 'moeimg', label: 'Moeimg' },
-  { value: 'jmcomic', label: '禁漫天堂' },
-  { value: 'bika', label: '哔咔' },
-  { value: 'copymanga', label: '拷贝漫画' }
-]
-
-const rankingOptions = [
-  { value: '日更新', label: '日更新' },
-  { value: '周更新', label: '周更新' },
-  { value: '月更新', label: '月更新' },
-  { value: '总更新', label: '总更新' },
-  { value: '日点击', label: '日点击' },
-  { value: '周点击', label: '周点击' },
-  { value: '月点击', label: '月点击' },
-  { value: '总点击', label: '总点击' },
-  { value: '日评分', label: '日评分' },
-  { value: '周评分', label: '周评分' },
-  { value: '月评分', label: '月评分' },
-  { value: '总评分', label: '总评分' },
-  { value: '日收藏', label: '日收藏' },
-  { value: '周收藏', label: '周收藏' },
-  { value: '月收藏', label: '月收藏' },
-  { value: '总收藏', label: '总收藏' },
-]
+import { useSources, useSearchModes, useRankingOptions } from '../hooks/useSourceOptions'
+import { sourceSupportsRandom } from '../utils/source'
 
 
 interface SearchBarProps {
@@ -84,6 +52,9 @@ export function SearchBar({
   batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onBatchDownload,
   onPageJump, onPageNavigate,
 }: SearchBarProps) {
+  const sources = useSources()
+  const searchModes = useSearchModes()
+  const rankingOptions = useRankingOptions()
   return (
     <div className="bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
       <div className="flex gap-3">

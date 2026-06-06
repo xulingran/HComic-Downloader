@@ -1,21 +1,15 @@
 import { useState, useCallback } from 'react'
 import type { ComicInfo } from '@shared/types'
 import { useFavourites } from '@/hooks/useIpc'
+import { useSources } from '@/hooks/useSourceOptions'
 import { findDuplicateGroups, type DuplicateGroup } from '@/utils/titleSimilarity'
 import { DuplicateGroup as DuplicateGroupView } from './DuplicateGroup'
-
-const sources = [
-  { value: 'hcomic', label: 'HComic' },
-  { value: 'moeimg', label: 'MoeImg' },
-  { value: 'jmcomic', label: '禁漫天堂' },
-  { value: 'bika', label: '哔咔' },
-  { value: 'copymanga', label: '拷贝漫画' },
-]
 
 type DetectionStatus = 'idle' | 'fetching' | 'computing' | 'done'
 
 export function DuplicateDetector() {
   const { getFavourites } = useFavourites()
+  const sources = useSources()
   const [source, setSource] = useState('hcomic')
   const [status, setStatus] = useState<DetectionStatus>('idle')
   const [progress, setProgress] = useState('')

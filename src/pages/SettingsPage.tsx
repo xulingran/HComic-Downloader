@@ -3,7 +3,7 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useConfig, useProxyStatus, useAvailableFonts, useJmcomicDomains } from '../hooks/useIpc'
 import { useOptimisticConfig } from '../hooks/useOptimisticConfig'
 import { useAuthState } from '../hooks/useAuthState'
-import type { ConfigKey, ConfigValueMap, FontInfo, ProxyStatus } from '@shared/types'
+import { COMIC_SOURCES, SOURCE_LABELS, type ConfigKey, type ConfigValueMap, type FontInfo, type ProxyStatus } from '@shared/types'
 import { AppearanceSettings } from '../components/settings/AppearanceSettings'
 import { DownloadSettings } from '../components/settings/DownloadSettings'
 import { AuthSettings } from '../components/settings/AuthSettings'
@@ -401,7 +401,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">默认来源</label>
             <div className="flex gap-3">
-              {['hcomic', 'moeimg', 'bika', 'copymanga'].map((source) => (
+              {COMIC_SOURCES.map((source) => (
                 <button
                   key={source}
                   onClick={() => handleConfigChange('defaultSource', source)}
@@ -411,7 +411,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
                       : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
                   }`}
                 >
-                  {source === 'hcomic' ? 'HComic' : source === 'moeimg' ? 'Moeimg' : source === 'bika' ? '哔咔' : '拷贝漫画'}
+                  {SOURCE_LABELS[source]}
                 </button>
               ))}
             </div>

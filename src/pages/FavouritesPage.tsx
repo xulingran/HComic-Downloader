@@ -14,16 +14,9 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore } from '../stores/useFavouritesStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
+import { useSources } from '../hooks/useSourceOptions'
 import type { DownloadProgressData } from '../hooks/useIpc'
 import { isAuthError } from '../utils/auth'
-
-const sources = [
-  { value: 'hcomic', label: 'HComic' },
-  { value: 'moeimg', label: 'MoeImg' },
-  { value: 'jmcomic', label: '禁漫天堂' },
-  { value: 'bika', label: '哔咔' },
-  { value: 'copymanga', label: '拷贝漫画' }
-]
 
 interface FavouritesPageProps {
   onNavigateToSettings?: () => void
@@ -39,6 +32,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [source, setSource] = useState('hcomic')
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const { getFavourites, checkDownloadedStatus } = useFavourites()
+  const sources = useSources()
   const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const {
     batchMode,

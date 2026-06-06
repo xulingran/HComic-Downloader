@@ -158,7 +158,7 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getAllByText('Moeimg').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('MoeImg').length).toBeGreaterThanOrEqual(1)
     })
     // HComic appears in source section, tag filter section, and login section
     expect(screen.getAllByText('HComic').length).toBeGreaterThanOrEqual(2)
@@ -236,11 +236,11 @@ describe('SettingsPage', () => {
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(screen.getAllByText('Moeimg').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('MoeImg').length).toBeGreaterThanOrEqual(1)
     })
 
-    // Click the first Moeimg button (in the default source section)
-    await userEvent.click(screen.getAllByText('Moeimg')[0])
+    // Click the first MoeImg button (in the default source section)
+    await userEvent.click(screen.getAllByText('MoeImg')[0])
 
     expect(mockSetConfig).toHaveBeenCalledWith('defaultSource', 'moeimg')
   })
