@@ -112,6 +112,7 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         "moeimg": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "jmcomic": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "bika": {"cookie": "", "user_agent": "", "bearer_token": ""},
+        "copymanga": {"cookie": "", "user_agent": "", "bearer_token": ""},
     }
     if not isinstance(source_auth, dict):
         return normalized
