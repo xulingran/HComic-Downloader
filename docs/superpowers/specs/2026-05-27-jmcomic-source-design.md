@@ -2,7 +2,7 @@
 
 ## 概述
 
-为 hcomic_downloader 添加禁漫天堂（jmcomic）作为第三个漫画来源，支持登录、搜索、排行、标签搜索、随机浏览和图片反混淆。采用独立模块架构（`jmcomic/`），通过 `MultiSourceParser` 统一调度。
+为 hcomic_downloader 添加 jmcomic 作为第三个漫画来源，支持登录、搜索、排行、标签搜索、随机浏览和图片反混淆。采用独立模块架构（`jmcomic/`），通过 `MultiSourceParser` 统一调度。
 
 参考实现：`E:\Developing\ComicGUISpider` 中的 `ComicSpider\spiders\jm.py` 和 `utils\website\providers\jm.py`。
 
@@ -77,7 +77,7 @@ class JmDomainResolver:
 **搜索 URL 构建：**
 
 - `mode="keyword"` → `https://{domain}/search/photos?main_tag=0&search_query={keyword}`
-- `mode="tag"` → `https://{domain}/search/photos?main_tag=0&search_query={keyword}`（禁漫自动匹配标签）
+- `mode="tag"` → `https://{domain}/search/photos?main_tag=0&search_query={keyword}`（jmcomic 自动匹配标签）
 - `mode="ranking"` → 排行榜 URL，通过中文关键词映射：
 
 **排行关键词映射（`constants.py`）：**
@@ -195,7 +195,7 @@ electron/main.ts:
 |------|------|
 | `shared/types.ts` | `COMIC_SOURCES` 加入 `'jmcomic'` |
 | `shared/types.ts` | `AppConfig.tagBlacklist` 扩展 `jmcomic` 键 |
-| 来源选择器 | 显示名"禁漫天堂" |
+| 来源选择器 | 显示名"jmcomic" |
 | 搜索模式选择器 | 切换到 jmcomic 时增加"排行"选项 |
 | 排行模式 UI | 选择排行时，搜索框变为下拉选择器（16 种排行组合） |
 | 设置页 | 新增 jmcomic 认证区域（Cookie 输入框 + 弹窗登录按钮） |

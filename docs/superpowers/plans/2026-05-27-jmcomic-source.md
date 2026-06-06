@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** 为 hcomic_downloader 添加禁漫天堂（jmcomic）作为第三个漫画来源，支持搜索、排行、标签、随机、登录和图片反混淆。
+**Goal:** 为 hcomic_downloader 添加 jmcomic 作为第三个漫画来源，支持搜索、排行、标签、随机、登录和图片反混淆。
 
 **Architecture:** 独立 `jmcomic/` 模块包含 parser、domain resolver、image descrambler，通过 `MultiSourceParser` 统一调度。前端扩展来源选择器和搜索模式。认证支持弹窗登录和手动 Cookie 粘贴。
 
@@ -98,7 +98,7 @@ git commit -m "feat: add scramble_id field to ComicInfo for jmcomic image descra
 Create `jmcomic/__init__.py`:
 
 ```python
-"""jmcomic (禁漫天堂) 来源模块。"""
+"""jmcomic 来源模块。"""
 ```
 
 - [ ] **Step 2: 创建常量模块**
@@ -440,7 +440,7 @@ Create `jmcomic/descrambler.py`:
 ```python
 """jmcomic 图片反混淆模块。
 
-禁漫天堂的图片会根据漫画 ID 和 scramble_id 进行分块打乱。
+jmcomic 的图片会根据漫画 ID 和 scramble_id 进行分块打乱。
 本模块实现逆变换算法，将打乱的图片还原为正确排列。
 """
 import hashlib
@@ -908,7 +908,7 @@ from jmcomic.parser import JmParser
     SOURCE_OPTIONS = (
         ("hcomic", "h-comic"),
         ("moeimg", "moeimg.fan"),
-        ("jmcomic", "禁漫天堂"),
+        ("jmcomic", "jmcomic"),
     )
 ```
 
@@ -1166,7 +1166,7 @@ function openLoginWindow(source: string = 'hcomic'): Promise<{ success: boolean;
   }
 
   const loginUrl = source === 'jmcomic' ? 'https://18comic.vip' : 'https://h-comic.com'
-  const loginTitle = source === 'jmcomic' ? '登录禁漫天堂' : '登录 H-Comic'
+  const loginTitle = source === 'jmcomic' ? '登录 jmcomic' : '登录 H-Comic'
 
   return new Promise((resolve) => {
     const loginWin = createLoginBrowserWindow(parent, loginTitle)
@@ -1418,7 +1418,7 @@ git commit -m "feat: extend TypeScript types for jmcomic source and ranking mode
 const sources = [
   { value: 'hcomic', label: 'HComic' },
   { value: 'moeimg', label: 'Moeimg' },
-  { value: 'jmcomic', label: '禁漫天堂' }
+  { value: 'jmcomic', label: 'jmcomic' }
 ]
 ```
 
@@ -1544,7 +1544,7 @@ interface AuthSettingsProps {
 ```tsx
 <div className="space-y-4 pt-4 border-t border-[var(--border)]">
   <div className="flex items-center gap-2">
-    <span className="text-sm font-medium text-[var(--text-primary)]">禁漫天堂</span>
+    <span className="text-sm font-medium text-[var(--text-primary)]">jmcomic</span>
     <span className={`text-xs px-2 py-0.5 rounded-full ${
       jmcomicLoginStatus === 'valid' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
       jmcomicLoginStatus === 'invalid' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
@@ -1567,14 +1567,14 @@ interface AuthSettingsProps {
     >
       {jmcomicLoginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
     </button>
-    <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录禁漫天堂账号</span>
+    <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 jmcomic 账号</span>
   </div>
 
   <div>
     <textarea
       value={jmcomicCurlText}
       onChange={(e) => setJmcomicCurlText(e.target.value)}
-      placeholder="粘贴禁漫天堂的 Cookie 字符串或 curl 命令"
+      placeholder="粘贴 jmcomic 的 Cookie 字符串或 curl 命令"
       rows={3}
       className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                  text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]
@@ -1685,12 +1685,12 @@ Expected: No errors
 Run: `cd E:/Developing/hcomic_downloader && npm run dev`
 
 验证项：
-1. 来源选择器显示"禁漫天堂"选项
+1. 来源选择器显示"jmcomic"选项
 2. 切换到 jmcomic 后搜索模式出现"排行"选项
 3. 排行模式下搜索框变为下拉选择器
 4. 随机按钮在 jmcomic 来源下可用
 5. 设置页显示 jmcomic 认证区域
-6. 弹窗登录按钮打开禁漫天堂网站
+6. 弹窗登录按钮打开 jmcomic 网站
 
 - [ ] **Step 5: Final Commit**
 

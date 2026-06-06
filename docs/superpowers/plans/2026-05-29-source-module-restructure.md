@@ -245,7 +245,7 @@ def create_session():
 - [ ] **Step 6: 创建 sources/jmcomic/__init__.py**
 
 ```python
-"""jmcomic (禁漫天堂) 来源模块。"""
+"""jmcomic 来源模块。"""
 ```
 
 （与原 `jmcomic/__init__.py` 内容一致）

@@ -1280,7 +1280,7 @@ Add entry to `SOURCE_OPTIONS`:
 SOURCE_OPTIONS = (
     ("hcomic", "h-comic"),
     ("moeimg", "moeimg.fan"),
-    ("jmcomic", "禁漫天堂"),
+    ("jmcomic", "jmcomic"),
     ("bika", "哔咔"),
     ("copymanga", "拷贝漫画"),
 )
@@ -1398,7 +1398,7 @@ Expected: All tests PASS (including existing tests — no regressions)
 - [ ] **Step 2: Verify import chain works**
 
 Run: `python -c "from sources import MultiSourceParser; p = MultiSourceParser(); print(p.get_source_options())"`
-Expected: `(('hcomic', 'h-comic'), ('moeimg', 'moeimg.fan'), ('jmcomic', '禁漫天堂'), ('bika', '哔咔'), ('copymanga', '拷贝漫画'))`
+Expected: `(('hcomic', 'h-comic'), ('moeimg', 'moeimg.fan'), ('jmcomic', 'jmcomic'), ('bika', '哔咔'), ('copymanga', '拷贝漫画'))`
 
 - [ ] **Step 3: Final commit if any fixes were needed**
 

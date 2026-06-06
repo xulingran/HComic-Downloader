@@ -4,7 +4,7 @@
 
 ## 项目概述
 
-HComic Downloader 是一个基于 Electron + React + TypeScript 前端的漫画下载工具，Python 后端负责解析、下载和打包。漫画以 CBZ 格式（含 ComicInfo.xml 元数据）保存，支持 h-comic、moeimg、jmcomic（禁漫天堂）、bika（哔咔）四个来源。
+HComic Downloader 是一个基于 Electron + React + TypeScript 前端的漫画下载工具，Python 后端负责解析、下载和打包。漫画以 CBZ 格式（含 ComicInfo.xml 元数据）保存，支持 h-comic、moeimg、jmcomic、bika（哔咔）四个来源。
 
 ## 关键约束：系统代理
 

@@ -10,7 +10,7 @@
 |------|------|------|------|---------|
 | hcomic | h-comic.com | ✅ | ✅ | curl 导入 / 内嵌浏览器 |
 | moeimg | moeimg.fan | ✅ | — | curl 导入 |
-| jmcomic | 禁漫天堂（含镜像） | ✅ | ✅ | curl 导入 / 内嵌浏览器 |
+| jmcomic | jmcomic（含镜像） | ✅ | ✅ | curl 导入 / 内嵌浏览器 |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
 - **随机推荐**：hcomic、jmcomic 支持
@@ -152,7 +152,7 @@ hcomic_downloader/
 ├── sources/                   # 漫画来源解析器
 │   ├── hcomic/                # h-comic 解析器
 │   ├── moeimg/                # moeimg 解析器
-│   └── jmcomic/               # 禁漫天堂解析器（含反混淆）
+│   └── jmcomic/               # jmcomic 解析器（含反混淆）
 │       ├── parser.py
 │       ├── descrambler.py     # 图片反混淆
 │       ├── session.py         # 认证与请求

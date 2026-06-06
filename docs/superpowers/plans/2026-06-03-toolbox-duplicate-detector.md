@@ -575,7 +575,7 @@ import { DuplicateGroup as DuplicateGroupView } from './DuplicateGroup'
 const sources = [
   { value: 'hcomic', label: 'HComic' },
   { value: 'moeimg', label: 'MoeImg' },
-  { value: 'jmcomic', label: '禁漫天堂' },
+  { value: 'jmcomic', label: 'jmcomic' },
 ]
 
 type DetectionStatus = 'idle' | 'fetching' | 'computing' | 'done'

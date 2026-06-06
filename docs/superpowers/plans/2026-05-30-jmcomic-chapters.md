@@ -182,7 +182,7 @@ git commit -m "✨ feat: extract descramble eps_id from image URL path"
 
 ```html
 <!doctype html>
-<html lang="zh"><head><meta charset="utf-8"><title>多章漫画 | 禁漫天堂</title></head>
+<html lang="zh"><head><meta charset="utf-8"><title>多章漫画 | jmcomic</title></head>
 <body>
 <script>var aid = 999001; var scramble_id = 220980;</script>
 <h1 id="book-name">多章测试漫画</h1>

@@ -68,7 +68,7 @@ export const SOURCE_META = {
     requiresAuth: false,
   },
   jmcomic: {
-    label: '禁漫天堂',
+    label: 'jmcomic',
     supportsRandom: true,
     supportsFavourites: true,
     requiresAuth: true,
@@ -225,7 +225,7 @@ export function isAuthError(err: unknown): boolean {
 -const sources = [
 -  { value: 'hcomic', label: 'HComic' },
 -  { value: 'moeimg', label: 'Moeimg' },
--  { value: 'jmcomic', label: '禁漫天堂' },
+-  { value: 'jmcomic', label: 'jmcomic' },
 -  { value: 'bika', label: '哔咔' },
 -  { value: 'copymanga', label: '拷贝漫画' }
 -]
