@@ -1,0 +1,38 @@
+{
+  "code": 200,
+  "message": "success",
+  "results": {
+    "list": [
+      {
+        "path_word": "onepunchman",
+        "name": "一拳超人",
+        "author": [
+          {"name": "ONE", "path_word": "one"},
+          {"name": "村田雄介", "path_word": "murata"}
+        ],
+        "cover": "https://cover.example.com/onepunchman.jpg",
+        "popular": 98765,
+        "datetime_updated": "2026-06-01",
+        "last_chapter_name": "第243话",
+        "status": {"value": 0, "display": "连载中"},
+        "theme": []
+      },
+      {
+        "path_word": "test-comic",
+        "name": "测试漫画",
+        "author": [
+          {"name": "测试作者", "path_word": "test-author"}
+        ],
+        "cover": "https://cover.example.com/test.jpg",
+        "popular": 1234,
+        "datetime_updated": "2026-05-20",
+        "last_chapter_name": "第10话",
+        "status": {"value": 1, "display": "已完结"},
+        "theme": []
+      }
+    ],
+    "total": 2,
+    "limit": 30,
+    "offset": 0
+  }
+}

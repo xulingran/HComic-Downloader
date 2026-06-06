@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from sources.bika.parser import BikaParser
+from sources.copymanga.parser import CopyMangaParser
 from sources.hcomic import HComicParser
 from sources.moeimg import MoeImgParser
 
@@ -46,6 +47,12 @@ def bika_parser():
 def moeimg_parser():
     """创建 MoeImgParser 实例用于测试。"""
     return MoeImgParser(timeout=5)
+
+
+@pytest.fixture
+def copymanga_parser():
+    """创建 CopyMangaParser 实例用于测试。"""
+    return CopyMangaParser(timeout=5)
 
 
 @pytest.fixture

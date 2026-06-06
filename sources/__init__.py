@@ -8,6 +8,7 @@ import requests
 
 from models import AuthConfig, ComicInfo, PaginationInfo
 from sources.bika.parser import BikaParser
+from sources.copymanga.parser import CopyMangaParser
 from sources.hcomic.parser import HComicParser, ParserResponseError
 from sources.jmcomic.parser import JmParser
 from sources.moeimg.parser import MoeImgParser
@@ -15,7 +16,8 @@ from utils import normalize_source_auth
 
 logger = logging.getLogger(__name__)
 
-_VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika")
+_VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika", "copymanga")
+_SOURCES_WITH_FAVOURITES = ("hcomic", "jmcomic", "moeimg", "bika")
 
 __all__ = ["MultiSourceParser", "ParserResponseError"]
 
@@ -28,6 +30,7 @@ class MultiSourceParser:
         ("moeimg", "moeimg.fan"),
         ("jmcomic", "禁漫天堂"),
         ("bika", "哔咔"),
+        ("copymanga", "拷贝漫画"),
     )
 
     def __init__(
@@ -51,7 +54,7 @@ class MultiSourceParser:
                 "bearer_token": self.source_auth["hcomic"].get("bearer_token", ""),
             }
 
-        self.parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser] = {
+        self.parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser] = {
             "hcomic": HComicParser(
                 timeout=timeout,
                 cookie=self.source_auth["hcomic"]["cookie"],
@@ -69,6 +72,7 @@ class MultiSourceParser:
                 user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
             ),
             "bika": BikaParser(timeout=timeout),
+            "copymanga": CopyMangaParser(timeout=timeout),
         }
         # 为 moeimg 恢复存储的用户名密码（用于懒登录）
         moeimg_auth = self.source_auth.get("moeimg", {})
@@ -110,6 +114,7 @@ class MultiSourceParser:
             self.parsers["moeimg"].session,
             self.parsers["jmcomic"].session,
             self.parsers["bika"].session,
+            self.parsers["copymanga"].session,
         ]
 
     def get_jmcomic_cdn_domain(self) -> str | None:
@@ -134,7 +139,7 @@ class MultiSourceParser:
 
     def source_supports_favourites(self, source: str | None = None) -> bool:
         current = self._resolve_source(source)
-        return current in _VALID_SOURCES
+        return current in _SOURCES_WITH_FAVOURITES
 
     def get_auth(self, source: str | None = None) -> tuple[str, str]:
         current = self._resolve_source(source)
@@ -191,19 +196,19 @@ class MultiSourceParser:
 
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
-        if src not in _VALID_SOURCES:
+        if src not in _SOURCES_WITH_FAVOURITES:
             return False
         return self.parsers[src].add_to_favourites(comic_id)
 
     def check_favourite(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
-        if src not in _VALID_SOURCES:
+        if src not in _SOURCES_WITH_FAVOURITES:
             return False
         return self.parsers[src].check_favourite(comic_id)
 
     def remove_from_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
-        if src not in _VALID_SOURCES:
+        if src not in _SOURCES_WITH_FAVOURITES:
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 
@@ -241,6 +246,18 @@ class MultiSourceParser:
             order = detail.chapters[0].index if detail.chapters else 1
             detail.image_urls = parser.get_chapter_images(comic.id, order)
             detail.pages = len(detail.image_urls)
+            return detail
+        if source == "copymanga":
+            detail = parser.get_comic_detail(comic.id)
+            if detail is None:
+                return comic
+            chapters = getattr(detail, "chapters", None) or []
+            if len(chapters) > 1:
+                return detail
+            chapter_id = chapters[0].id if chapters else ""
+            if chapter_id:
+                detail.image_urls = parser.get_chapter_images(comic.id, chapter_id)
+                detail.pages = len(detail.image_urls)
             return detail
         detail = parser.get_comic_detail(comic.id)
         return detail or comic
