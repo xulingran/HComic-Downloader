@@ -12,6 +12,7 @@ const SOURCES = [
   { key: 'moeimg' as const, label: 'Moeimg' },
   { key: 'jmcomic' as const, label: 'JMComic' },
   { key: 'bika' as const, label: 'Bika' },
+  { key: 'copymanga' as const, label: '拷贝漫画' },
 ]
 
 export function TagFilterSettings({ tagBlacklist, addTag, removeTag }: TagFilterSettingsProps) {

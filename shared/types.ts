@@ -77,7 +77,7 @@ export interface AppConfig {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[] }
+  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] }
   previewCacheSizeLimitMB: number
   proxy?: string
   cookie?: string
@@ -194,7 +194,7 @@ export type ConfigValueMap = {
   fontName: string
   fontSize: number
   sfwMode: boolean
-  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[] }
+  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] }
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
   favouriteTagHighlight: boolean
@@ -560,7 +560,7 @@ export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking'] as const
 export type SearchMode = typeof SEARCH_MODES[number]
 
 /** Valid comic sources — shared between preload and main */
-export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic', 'bika'] as const
+export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic', 'bika', 'copymanga'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
 
 /** JSON-RPC application error codes (Python backend) */

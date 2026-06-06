@@ -401,7 +401,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           <div>
             <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">默认来源</label>
             <div className="flex gap-3">
-              {['hcomic', 'moeimg', 'bika'].map((source) => (
+              {['hcomic', 'moeimg', 'bika', 'copymanga'].map((source) => (
                 <button
                   key={source}
                   onClick={() => handleConfigChange('defaultSource', source)}
@@ -411,7 +411,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
                       : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
                   }`}
                 >
-                  {source === 'hcomic' ? 'HComic' : source === 'moeimg' ? 'Moeimg' : '哔咔'}
+                  {source === 'hcomic' ? 'HComic' : source === 'moeimg' ? 'Moeimg' : source === 'bika' ? '哔咔' : '拷贝漫画'}
                 </button>
               ))}
             </div>

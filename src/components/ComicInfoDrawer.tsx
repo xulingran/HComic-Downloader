@@ -36,7 +36,7 @@ export function ComicInfoDrawer() {
     return { ...drawerComic, ...enrichedComic }
   }, [drawerComic, enrichedComic])
 
-  const sourceKeyMap: Record<string, keyof TagBlacklist> = { moeimg: 'moeimg', jmcomic: 'jmcomic', bika: 'bika' }
+  const sourceKeyMap: Record<string, keyof TagBlacklist> = { moeimg: 'moeimg', jmcomic: 'jmcomic', bika: 'bika', copymanga: 'copymanga' }
 
   const isTagBlocked = (tag: string) => {
     const key = sourceKeyMap[comicSource] ?? 'hcomic'

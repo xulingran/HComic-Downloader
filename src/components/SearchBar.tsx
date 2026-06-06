@@ -13,7 +13,8 @@ const sources = [
   { value: 'hcomic', label: 'HComic' },
   { value: 'moeimg', label: 'Moeimg' },
   { value: 'jmcomic', label: '禁漫天堂' },
-  { value: 'bika', label: '哔咔' }
+  { value: 'bika', label: '哔咔' },
+  { value: 'copymanga', label: '拷贝漫画' }
 ]
 
 const rankingOptions = [

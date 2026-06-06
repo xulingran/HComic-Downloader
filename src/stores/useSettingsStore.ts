@@ -23,7 +23,7 @@ interface SettingsState {
   setFavouriteTagHighlight: (enabled: boolean) => void
 }
 
-const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [], bika: [] }
+const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] }
 
 export const useSettingsStore = create<SettingsState>((set) => ({
   themeMode: 'auto',

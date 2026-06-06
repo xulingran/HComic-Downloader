@@ -21,7 +21,8 @@ const sources = [
   { value: 'hcomic', label: 'HComic' },
   { value: 'moeimg', label: 'MoeImg' },
   { value: 'jmcomic', label: '禁漫天堂' },
-  { value: 'bika', label: '哔咔' }
+  { value: 'bika', label: '哔咔' },
+  { value: 'copymanga', label: '拷贝漫画' }
 ]
 
 interface FavouritesPageProps {

@@ -220,7 +220,7 @@ describe('validators.ts', () => {
 
   describe('tagBlacklist()', () => {
     const valid4 = (overrides: Record<string, string[]> = {}) => ({
-      hcomic: [] as string[], moeimg: [] as string[], jmcomic: [] as string[], bika: [] as string[],
+      hcomic: [] as string[], moeimg: [] as string[], jmcomic: [] as string[], bika: [] as string[], copymanga: [] as string[],
       ...overrides,
     })
 
