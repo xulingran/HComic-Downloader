@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika")
+_VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika", "copymanga")
 _DEFAULT_SOURCE = "hcomic"
 _AUTH_KEYWORDS = (
     "401",
@@ -122,10 +122,10 @@ class SearchMixin:
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
         except (ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error("Parse error in %s handler: %s", source, e)
+            logger.error("Parse error in %s handler: %s", source, e, exc_info=True)
             raise RuntimeError(f"Parse error: {e}") from e
         except Exception as e:
-            logger.error("Unexpected error in %s handler: %s", source, e)
+            logger.error("Unexpected error in %s handler: %s", source, e, exc_info=True)
             if self._is_source_auth_error(source, e):
                 raise AuthRequiredError(f"{source} 登录凭证已失效: {e}") from e
             raise
@@ -349,6 +349,17 @@ class SearchMixin:
                 "comicId": chapter_id,
             }
             return result
+        if site == "copymanga":
+            cm_parser = self.parser.parsers.get("copymanga")
+            if cm_parser is None:
+                raise ValueError("copymanga source unavailable")
+            comic_id = album_id or chapter_id
+            image_urls = cm_parser.get_chapter_images(comic_id, chapter_id)
+            return {
+                "imageUrls": image_urls,
+                "totalPages": len(image_urls),
+                "comicId": chapter_id,
+            }
         jm = self.parser.parsers.get("jmcomic")
         if jm is None:
             raise ValueError("jmcomic source unavailable")
