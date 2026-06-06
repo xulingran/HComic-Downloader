@@ -101,39 +101,26 @@ class TestHComicParser:
         assert pagination.current_page == 3
 
     def test_build_search_url(self):
+        assert HComicParser._build_search_url("keyword") == "https://h-comic.com/?q=keyword"
         assert (
-            HComicParser._build_search_url("keyword")
-            == "https://h-comic.com/?q=keyword"
-        )
-        assert (
-            HComicParser._build_search_url("关键词", 2)
-            == "https://h-comic.com/?q=%E5%85%B3%E9%94%AE%E8%AF%8D&page=2"
+            HComicParser._build_search_url("关键词", 2) == "https://h-comic.com/?q=%E5%85%B3%E9%94%AE%E8%AF%8D&page=2"
         )
 
     def test_build_favourites_url(self):
         assert HComicParser._build_favourites_url() == "https://h-comic.com/favourites"
-        assert (
-            HComicParser._build_favourites_url(3)
-            == "https://h-comic.com/favourites?page=3"
-        )
+        assert HComicParser._build_favourites_url(3) == "https://h-comic.com/favourites?page=3"
 
     def test_build_cover_url(self):
         assert (
-            HComicParser._build_cover_url(
-                {"media_id": "abc123", "comic_source": "MMCG_SHORT"}
-            )
+            HComicParser._build_cover_url({"media_id": "abc123", "comic_source": "MMCG_SHORT"})
             == "https://h-comic.link/api/mms/abc123"
         )
         assert (
-            HComicParser._build_cover_url(
-                {"media_id": "xyz789", "comic_source": "MMCG_LONG"}
-            )
+            HComicParser._build_cover_url({"media_id": "xyz789", "comic_source": "MMCG_LONG"})
             == "https://h-comic.link/api/mml/xyz789"
         )
         assert (
-            HComicParser._build_cover_url(
-                {"media_id": "def456", "comic_source": "UNKNOWN"}
-            )
+            HComicParser._build_cover_url({"media_id": "def456", "comic_source": "UNKNOWN"})
             == "https://h-comic.link/api/nh/def456"
         )
 
@@ -172,7 +159,9 @@ class TestHComicParserNetworkMethods:
         """测试搜索无结果"""
 
         mock_response = requests.Response()
-        mock_response._content = b'data: [null, {"data": {"comics": [], "pages": {"pages": 1, "total": 0, "limit": 10}}}], form:'
+        mock_response._content = (
+            b'data: [null, {"data": {"comics": [], "pages": {"pages": 1, "total": 0, "limit": 10}}}], form:'
+        )
         mock_response.status_code = 200
         mock_response.encoding = "utf-8"
 
@@ -301,18 +290,14 @@ class TestHComicParserParseMethods:
     def test_parse_favourites_page_with_results(self, parser):
         """测试解析有结果的收藏夹页面"""
         html = 'data: [null, {"data": {"favourites": {"docs": [{"comic": {"id": "1", "media_id": "m1", "comic_source": "NH", "title": {"display": "Fav"}, "num_pages": 5, "tags": [], "upload_date": 1704067200}}], "pages": 2, "total": 15, "limit": 10}}}], form:'
-        comics, pagination, need_login = parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page(html, requested_page=1)
         assert len(comics) == 1
         assert not need_login
 
     def test_parse_favourites_page_invalid_items(self, parser):
         """测试解析收藏夹页面时跳过无效项"""
         html = 'data: [null, {"data": {"favourites": {"docs": [{"invalid": "item"}, {"comic": null}, {"comic": {"id": "1", "media_id": "m1", "comic_source": "NH", "title": {"display": "Valid"}, "num_pages": 5, "tags": [], "upload_date": 1704067200}}], "pages": 1, "total": 1, "limit": 10}}}], form:'
-        comics, pagination, need_login = parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page(html, requested_page=1)
         assert len(comics) == 1  # 只有有效的那个
         assert comics[0].title == "Valid"
 
@@ -432,36 +417,30 @@ class TestHComicParserAdditionalCoverage:
     def test_parse_favourites_page_not_dict(self, parser):
         """测试解析收藏夹页面时 favourites 不是字典"""
         html = 'data: [null, {"data": {"favourites": "not_a_dict"}}], form:'
-        comics, pagination, need_login = parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page(html, requested_page=1)
         assert len(comics) == 0
         assert need_login is True
 
     def test_parse_favourites_page_missing_keys(self, parser):
         """测试解析收藏夹页面时缺少必要字段"""
         html = 'data: [null, {"data": {"favourites": {"docs": []}}}], form:'
-        comics, pagination, need_login = parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page(html, requested_page=1)
         assert len(comics) == 0
         assert need_login is True
 
     def test_parse_favourites_page_docs_not_list(self, parser):
         """测试解析收藏夹页面时 docs 不是列表"""
-        html = 'data: [null, {"data": {"favourites": {"docs": "not_a_list", "pages": 1, "total": 0, "limit": 10}}}], form:'
-        comics, pagination, need_login = parser.parse_favourites_page(
-            html, requested_page=1
+        html = (
+            'data: [null, {"data": {"favourites": {"docs": "not_a_list", "pages": 1, "total": 0, "limit": 10}}}], form:'
         )
+        comics, pagination, need_login = parser.parse_favourites_page(html, requested_page=1)
         assert len(comics) == 0
         assert need_login is True
 
     def test_parse_favourites_page_invalid_page_values(self, parser):
         """测试解析收藏夹页面时页面值为无效类型"""
         html = 'data: [null, {"data": {"favourites": {"docs": [], "pages": "invalid", "total": "invalid", "limit": "invalid"}}}], form:'
-        comics, pagination, need_login = parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page(html, requested_page=1)
         assert len(comics) == 0
         assert not need_login
         assert pagination.total_pages == 1
@@ -548,9 +527,7 @@ class TestHComicParserEdgeCases:
             raise json.JSONDecodeError("test", "", 0)
 
         monkeypatch.setattr(parser, "_extract_payload_data", mock_extract)
-        comics, pagination, need_login = parser.parse_favourites_page(
-            "invalid", requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page("invalid", requested_page=1)
         assert comics == []
         assert pagination is None
         assert need_login is False
@@ -562,9 +539,7 @@ class TestHComicParserEdgeCases:
             raise TypeError("test")
 
         monkeypatch.setattr(parser, "_extract_payload_data", mock_extract)
-        comics, pagination, need_login = parser.parse_favourites_page(
-            "invalid", requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page("invalid", requested_page=1)
         assert comics == []
         assert pagination is None
         assert need_login is False
@@ -590,9 +565,7 @@ class TestHComicParserEdgeCases:
     def test_parse_favourites_page_item_not_dict(self, parser):
         """测试解析收藏夹页面时 item 不是字典"""
         html = 'data: [null, {"data": {"favourites": {"docs": ["not_a_dict"], "pages": 1, "total": 1, "limit": 10}}}], form:'
-        comics, pagination, need_login = parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        comics, pagination, need_login = parser.parse_favourites_page(html, requested_page=1)
         assert len(comics) == 0
         assert not need_login
 

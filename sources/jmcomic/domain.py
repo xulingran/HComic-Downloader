@@ -29,9 +29,7 @@ class JmDomainResolver:
     TEST_TIMEOUT = 5
 
     def __init__(self, cache_dir: str | None = None):
-        self._cache_dir = cache_dir or os.path.join(
-            os.path.expanduser("~"), ".hcomic_downloader"
-        )
+        self._cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
         self._cache_path = os.path.join(self._cache_dir, self.CACHE_FILENAME)
         self._session = create_session()
         apply_system_proxy_to_session(self._session)
@@ -53,9 +51,7 @@ class JmDomainResolver:
                 self._write_cache(domain)
                 return domain
 
-        logger.warning(
-            "No available domain found, using fallback: %s", self.FALLBACK_DOMAIN
-        )
+        logger.warning("No available domain found, using fallback: %s", self.FALLBACK_DOMAIN)
         return self.FALLBACK_DOMAIN
 
     def _read_cache(self) -> str | None:
@@ -107,11 +103,7 @@ class JmDomainResolver:
 
         idx_start = next((i for i, p in enumerate(ps) if "內地" in get_text(p)), None)
         idx_end = next(
-            (
-                i
-                for i, p in enumerate(ps)
-                if get_text(p).strip().lower().startswith("app")
-            ),
+            (i for i, p in enumerate(ps) if get_text(p).strip().lower().startswith("app")),
             len(ps),
         )
         if idx_start is not None:
@@ -120,9 +112,7 @@ class JmDomainResolver:
             for p in ps[idx_start:idx_end]:
                 for raw_domain in p.xpath("./following-sibling::div//text()"):
                     domain = raw_domain.strip()
-                    if "." in domain and not bool(
-                        re.search(r"discord|\.work|@|＠|<", domain)
-                    ):
+                    if "." in domain and not bool(re.search(r"discord|\.work|@|＠|<", domain)):
                         domain = re.sub(r"^https?://", "", domain).split("/", 1)[0]
                         if domain:
                             domains.append(domain)

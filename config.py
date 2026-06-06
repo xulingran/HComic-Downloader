@@ -31,9 +31,7 @@ class Config:
     TIMEOUT_RANGE = (5, 300)
     RETRY_RANGE = (0, 10)
 
-    download_dir: str = field(
-        default_factory=lambda: str(Path.home() / "Downloads" / "hcomic")
-    )
+    download_dir: str = field(default_factory=lambda: str(Path.home() / "Downloads" / "hcomic"))
     concurrent_downloads: int = 4
     timeout: int = 30
     retry_times: int = 3
@@ -60,9 +58,7 @@ class Config:
     notify_on_complete: bool = True  # 是否发送系统通知
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
-    tag_blacklist: dict[str, list[str]] = field(
-        default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []}
-    )
+    tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []})
     # jmcomic 自定义域名（空字符串表示自动选择）
     jmcomic_domain: str = ""
     # 预览页面缓存大小上限（MB）
@@ -98,9 +94,7 @@ class Config:
         ):
             self.set_source_auth(
                 "hcomic",
-                AuthSourceData(
-                    cookie=self.auth_cookie, user_agent=self.auth_user_agent
-                ),
+                AuthSourceData(cookie=self.auth_cookie, user_agent=self.auth_user_agent),
             )
         else:
             # 以 source_auth 为准回写到旧字段
@@ -199,9 +193,7 @@ class Config:
                 return cls()
             # 迁移旧配置：auth_cookie/auth_user_agent -> source_auth.hcomic
             data.setdefault("source_auth", {})
-            hcomic_auth = data["source_auth"].setdefault(
-                "hcomic", {"cookie": "", "user_agent": ""}
-            )
+            hcomic_auth = data["source_auth"].setdefault("hcomic", {"cookie": "", "user_agent": ""})
             data["source_auth"].setdefault("moeimg", {"cookie": "", "user_agent": ""})
             # 如果旧的顶层字段有值而 hcomic 条目缺失，则填充之
             old_cookie = str(data.get("auth_cookie", "") or "").strip()
@@ -219,9 +211,7 @@ class Config:
             known_fields = {f.name for f in dc_fields(cls)}
             unknown = [k for k in data if k not in known_fields]
             if unknown:
-                logger.warning(
-                    "Ignoring unknown config keys in %s: %s", config_path, unknown
-                )
+                logger.warning("Ignoring unknown config keys in %s: %s", config_path, unknown)
             data = {k: v for k, v in data.items() if k in known_fields}
             return cls(**data)
         return cls()
@@ -283,11 +273,7 @@ def _restrict_file_permissions_win32(filepath: str) -> None:
             timeout=5,
         )
         if result.returncode != 0:
-            stderr = (
-                result.stderr.decode("utf-8", errors="replace").strip()
-                if result.stderr
-                else ""
-            )
+            stderr = result.stderr.decode("utf-8", errors="replace").strip() if result.stderr else ""
             logger.warning(
                 "Failed to restrict file permissions for %s (exit code %d): %s",
                 filepath,
@@ -300,10 +286,6 @@ def _restrict_file_permissions_win32(filepath: str) -> None:
             filepath,
         )
     except subprocess.TimeoutExpired:
-        logger.warning(
-            "icacls timed out while restricting permissions for %s", filepath
-        )
+        logger.warning("icacls timed out while restricting permissions for %s", filepath)
     except Exception as e:
-        logger.warning(
-            "Unexpected error restricting file permissions for %s: %s", filepath, e
-        )
+        logger.warning("Unexpected error restricting file permissions for %s: %s", filepath, e)

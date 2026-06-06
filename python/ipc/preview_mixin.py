@@ -100,22 +100,15 @@ class PreviewMixin:
                 if key in self.downloader.session.headers:
                     session.headers[key] = self.downloader.session.headers[key]
 
-            final_url, session = self.downloader.url_validator.resolve_redirects(
-                url, session, self.downloader.timeout
-            )
+            final_url, session = self.downloader.url_validator.resolve_redirects(url, session, self.downloader.timeout)
             final_parsed = urlparse(final_url)
             final_hostname = final_parsed.hostname or ""
             if final_parsed.scheme != "https":
-                raise ValueError(
-                    f"Redirect target must use HTTPS, got: {final_parsed.scheme}"
-                )
+                raise ValueError(f"Redirect target must use HTTPS, got: {final_parsed.scheme}")
             if not any(
-                final_hostname == d or final_hostname.endswith("." + d)
-                for d in self._get_allowed_preview_domains()
+                final_hostname == d or final_hostname.endswith("." + d) for d in self._get_allowed_preview_domains()
             ):
-                raise ValueError(
-                    f"Redirect target domain not allowed: {final_hostname}"
-                )
+                raise ValueError(f"Redirect target domain not allowed: {final_hostname}")
 
             headers = {
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
@@ -137,9 +130,7 @@ class PreviewMixin:
                         continue
                     total += len(chunk)
                     if total > max_size:
-                        raise ValueError(
-                            f"Preview image too large (exceeds {_PREVIEW_SIZE_MB} MB limit)"
-                        )
+                        raise ValueError(f"Preview image too large (exceeds {_PREVIEW_SIZE_MB} MB limit)")
                     chunks.append(chunk)
             content = b"".join(chunks)
         finally:
@@ -172,9 +163,7 @@ class PreviewMixin:
                 logger.debug("Preview cache hit for %s", url)
                 return f"data:{content_type};base64,{b64}"
         except (OSError, sqlite3.Error):
-            logger.debug(
-                "Preview cache read failed for %s, re-fetching", url, exc_info=True
-            )
+            logger.debug("Preview cache read failed for %s, re-fetching", url, exc_info=True)
         return None
 
     def _apply_descramble(self, data_uri: str, url: str, comic_id: str) -> str:
@@ -193,10 +182,7 @@ class PreviewMixin:
             if descrambled != raw_bytes:
                 content_type = _detect(descrambled)
                 if content_type:
-                    data_uri = (
-                        f"data:{content_type};base64,"
-                        f"{_base64.b64encode(descrambled).decode('ascii')}"
-                    )
+                    data_uri = f"data:{content_type};base64,{_base64.b64encode(descrambled).decode('ascii')}"
                     logger.debug("Descrambled preview image for %s", url)
         except (ValueError, OSError) as e:
             logger.warning("Descramble failed for %s: %s", url, e)
@@ -255,9 +241,7 @@ class PreviewMixin:
     ) -> None:
         """Thread-pool target: fetch a reader page image and write response."""
         try:
-            data_uri = self._do_fetch_preview_image(
-                url, scramble_id=scramble_id, comic_id=comic_id
-            )
+            data_uri = self._do_fetch_preview_image(url, scramble_id=scramble_id, comic_id=comic_id)
             self._write_response(
                 {
                     "jsonrpc": "2.0",

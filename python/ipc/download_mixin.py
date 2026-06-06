@@ -65,9 +65,7 @@ class DownloadMixin:
             self._history_db.record_download(comic, output_path, output_format)
             logger.info("Recorded download history for %s", comic.title)
         except Exception:
-            logger.warning(
-                "Failed to record download history for %s", comic.title, exc_info=True
-            )
+            logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
 
     def handle_download(
         self,
@@ -100,18 +98,14 @@ class DownloadMixin:
             "status": task.status.value if task else "queued",
         }
 
-    def _download_chapters(
-        self, album_id: str, comic_data: dict, chapter_ids: list, overwrite: bool
-    ) -> dict:
+    def _download_chapters(self, album_id: str, comic_data: dict, chapter_ids: list, overwrite: bool) -> dict:
         """为选中的每个章节创建独立下载任务。"""
         from models import ComicInfo
 
         source_site = comic_data.get("sourceSite", "hcomic") or "hcomic"
         album_title = comic_data.get("title", "Unknown")
         total = int(comic_data.get("albumTotalChapters") or len(chapter_ids))
-        chapter_meta = {
-            c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c
-        }
+        chapter_meta = {c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c}
 
         task_ids = []
         failed = []
@@ -152,14 +146,10 @@ class DownloadMixin:
                         album_id=album_id,
                         album_total_chapters=total,
                     )
-                task_ids.append(
-                    self._download_manager.add_task(comic, overwrite=overwrite)
-                )
+                task_ids.append(self._download_manager.add_task(comic, overwrite=overwrite))
             except Exception as e:
                 # 单章失败不应中断其余章节：记录后继续，让调用方据 failedChapters 提示并保持前后端状态一致。
-                logger.warning(
-                    "Failed to queue chapter %s (%s): %s", chap_id, chap_name, e
-                )
+                logger.warning("Failed to queue chapter %s (%s): %s", chap_id, chap_name, e)
                 failed.append({"id": chap_id, "name": chap_name, "error": str(e)})
 
         status = "queued" if task_ids else "error"

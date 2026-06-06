@@ -34,9 +34,7 @@ def test_set_source_and_search_delegation(monkeypatch):
 
 def test_prepare_for_download_uses_moeimg_detail(monkeypatch):
     parser = MultiSourceParser(timeout=5, default_source="moeimg")
-    source_comic = ComicInfo(
-        id="100", title="T", source_site="moeimg", pages=0, image_urls=[]
-    )
+    source_comic = ComicInfo(id="100", title="T", source_site="moeimg", pages=0, image_urls=[])
     resolved_comic = ComicInfo(
         id="100",
         title="T",
@@ -88,9 +86,7 @@ def test_favourites_with_explicit_source(monkeypatch):
     monkeypatch.setattr(
         parser.parsers["hcomic"],
         "favourites",
-        lambda page=1, raise_errors=False: (
-            called.append("hcomic") or ([], None, False)
-        ),
+        lambda page=1, raise_errors=False: called.append("hcomic") or ([], None, False),
     )
     parser.favourites(source="hcomic")
     assert called == ["hcomic"]
@@ -103,7 +99,7 @@ def test_verify_login_status_with_explicit_source(monkeypatch):
     monkeypatch.setattr(
         parser.parsers["hcomic"],
         "verify_login_status",
-        lambda: (called.append(True) or (True, "ok")),
+        lambda: called.append(True) or (True, "ok"),
     )
     parser.verify_login_status(source="hcomic")
     assert called == [True]
@@ -116,7 +112,7 @@ def test_get_comic_detail_with_explicit_source(monkeypatch):
     monkeypatch.setattr(
         parser.parsers["moeimg"],
         "get_comic_detail",
-        lambda comic_id, slug="": (called.append(comic_id) or None),
+        lambda comic_id, slug="": called.append(comic_id) or None,
     )
     parser.get_comic_detail("999", source="moeimg")
     assert called == ["999"]
@@ -195,9 +191,7 @@ def test_prepare_for_download_bika_single_chapter(monkeypatch):
     from models import ChapterInfo
 
     parser = MultiSourceParser(timeout=5, default_source="bika")
-    source_comic = ComicInfo(
-        id="bk1", title="Bika Comic", source_site="bika", pages=0, image_urls=[]
-    )
+    source_comic = ComicInfo(id="bk1", title="Bika Comic", source_site="bika", pages=0, image_urls=[])
     detail_comic = ComicInfo(
         id="bk1",
         title="Bika Comic",
@@ -229,9 +223,7 @@ def test_prepare_for_download_bika_multi_chapter(monkeypatch):
     from models import ChapterInfo
 
     parser = MultiSourceParser(timeout=5, default_source="bika")
-    source_comic = ComicInfo(
-        id="bk2", title="Multi Ch", source_site="bika", pages=0, image_urls=[]
-    )
+    source_comic = ComicInfo(id="bk2", title="Multi Ch", source_site="bika", pages=0, image_urls=[])
     detail_comic = ComicInfo(
         id="bk2",
         title="Multi Ch",
@@ -266,9 +258,7 @@ def test_prepare_for_download_bika_multi_chapter(monkeypatch):
 def test_prepare_for_download_jmcomic(monkeypatch):
     """jmcomic 通过详情接口补齐图片地址。"""
     parser = MultiSourceParser(timeout=5, default_source="jmcomic")
-    source_comic = ComicInfo(
-        id="jm1", title="JM Comic", source_site="jmcomic", pages=0, image_urls=[]
-    )
+    source_comic = ComicInfo(id="jm1", title="JM Comic", source_site="jmcomic", pages=0, image_urls=[])
     resolved = ComicInfo(
         id="jm1",
         title="JM Comic",
@@ -332,9 +322,7 @@ def test_favourites_routes_to_bika(monkeypatch):
     monkeypatch.setattr(
         parser.parsers["bika"],
         "favourites",
-        lambda page=1, raise_errors=False: (
-            called.append(("bika", page)) or ([], None, False)
-        ),
+        lambda page=1, raise_errors=False: called.append(("bika", page)) or ([], None, False),
     )
 
     parser.favourites(source="bika", page=2)

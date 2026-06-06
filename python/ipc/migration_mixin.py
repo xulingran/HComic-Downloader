@@ -30,9 +30,7 @@ class MigrationMixin:
 
     def _init_migration(self):
         """Initialize migration state. Call from IPCServer.__init__."""
-        state_path = os.path.join(
-            os.path.expanduser("~"), ".hcomic_downloader", "migration_state.json"
-        )
+        state_path = os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "migration_state.json")
         self._migration_engine = MigrationEngine(
             history_db=self._history_db,
             state_path=state_path,
@@ -74,9 +72,7 @@ class MigrationMixin:
                     state.target_dir,
                 )
             except Exception as e:
-                logger.error(
-                    "Failed to auto-update download_dir after migration: %s", e
-                )
+                logger.error("Failed to auto-update download_dir after migration: %s", e)
 
         self._write_response(
             {
@@ -132,13 +128,9 @@ class MigrationMixin:
             self._init_migration()
 
             if mode == "full":
-                state = self._migration_engine.plan_full_migration(
-                    self.config.download_dir, target_dir
-                )
+                state = self._migration_engine.plan_full_migration(self.config.download_dir, target_dir)
             else:
-                state = self._migration_engine.plan_repair(
-                    target_dir, self.config.cbz_filename_template
-                )
+                state = self._migration_engine.plan_repair(target_dir, self.config.cbz_filename_template)
 
         return {
             "migrationId": state.id,
@@ -146,9 +138,7 @@ class MigrationMixin:
             "sourceDir": state.source_dir,
             "targetDir": state.target_dir,
             "isSameDrive": (
-                MigrationEngine._is_same_drive(state.source_dir, state.target_dir)
-                if state.source_dir
-                else False
+                MigrationEngine._is_same_drive(state.source_dir, state.target_dir) if state.source_dir else False
             ),
         }
 

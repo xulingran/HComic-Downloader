@@ -40,9 +40,7 @@ def test_search_success_maps_comic_fields(monkeypatch):
         },
     }
 
-    monkeypatch.setattr(
-        parser.session, "get", lambda *args, **kwargs: _MockResponse(payload)
-    )
+    monkeypatch.setattr(parser.session, "get", lambda *args, **kwargs: _MockResponse(payload))
 
     comics, pagination = parser.search("test", page=2)
     assert len(comics) == 1
@@ -293,10 +291,7 @@ def test_get_comic_detail_builds_download_urls(monkeypatch):
     assert comic.source_site == "moeimg"
     assert comic.tags == ["tag1", "tag2", "parody1", "char1", "chapter-tag"]
     assert len(comic.image_urls) == 2
-    assert (
-        comic.image_urls[0]
-        == "https://nvme1.cdndelivers.cloud/data/a5/0c/187476/189904/000-979x1331.webp"
-    )
+    assert comic.image_urls[0] == "https://nvme1.cdndelivers.cloud/data/a5/0c/187476/189904/000-979x1331.webp"
 
 
 def test_get_comic_detail_supports_single_quote_data_url_and_preview_count(monkeypatch):
@@ -321,10 +316,7 @@ def test_get_comic_detail_supports_single_quote_data_url_and_preview_count(monke
         "chapter_detail": {
             "total": "invalid",
             "server": "https://cdn.example/",
-            "chapter_content": (
-                "<img data-url='data/path/001.webp'>"
-                "<img data-url='data/path/002.webp'>"
-            ),
+            "chapter_content": ("<img data-url='data/path/001.webp'><img data-url='data/path/002.webp'>"),
         }
     }
 
@@ -462,9 +454,7 @@ class TestMoeImgLogin:
 
         def fake_post(url, **kwargs):
             # 模拟服务器设置 cookie
-            moeimg_parser.session.cookies.set(
-                "__SESSION", "abc123", domain="moeimg.fan"
-            )
+            moeimg_parser.session.cookies.set("__SESSION", "abc123", domain="moeimg.fan")
             return _MockResponse({"success": True})
 
         monkeypatch.setattr(moeimg_parser.session, "post", fake_post)
@@ -528,18 +518,14 @@ class TestMoeImgEnsureSession:
 
         assert moeimg_parser.session.cookies.get("__SESSION") == "from_header"
 
-    def test_ensure_session_fallback_to_stored_credentials(
-        self, moeimg_parser, monkeypatch
-    ):
+    def test_ensure_session_fallback_to_stored_credentials(self, moeimg_parser, monkeypatch):
         """无 cookie 时使用存储的用户名密码登录。"""
         moeimg_parser.set_stored_credentials("user", "pass")
         login_called = []
 
         def fake_login(username, password):
             login_called.append((username, password))
-            moeimg_parser.session.cookies.set(
-                "__SESSION", "new_session", domain="moeimg.fan"
-            )
+            moeimg_parser.session.cookies.set("__SESSION", "new_session", domain="moeimg.fan")
             return "__SESSION=new_session"
 
         monkeypatch.setattr(moeimg_parser, "login", fake_login)
@@ -619,9 +605,7 @@ class TestMoeImgVerifyLoginStatus:
 class TestMoeImgFavourites:
     """测试 moeimg 收藏夹 HTML 解析流程。"""
 
-    def test_favourites_parses_bookmarks_html(
-        self, moeimg_parser, monkeypatch, html_sample
-    ):
+    def test_favourites_parses_bookmarks_html(self, moeimg_parser, monkeypatch, html_sample):
         moeimg_parser.session.cookies.set("__SESSION", "valid", domain="moeimg.fan")
         bookmarks_html = html_sample("moeimg_bookmarks.html")
 

@@ -46,22 +46,16 @@ class CoverCacheDB:
                 size INTEGER NOT NULL DEFAULT 0,
                 fetched_at REAL NOT NULL
             )""")
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_fetched_at ON cover_cache(fetched_at)"
-        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fetched_at ON cover_cache(fetched_at)")
         ex = self._conn.execute("PRAGMA table_info(cover_cache)").fetchall()
         cols = {r[1] for r in ex}
         if "size" not in cols:
-            self._conn.execute(
-                "ALTER TABLE cover_cache ADD COLUMN size INTEGER NOT NULL DEFAULT 0"
-            )
+            self._conn.execute("ALTER TABLE cover_cache ADD COLUMN size INTEGER NOT NULL DEFAULT 0")
         self._conn.commit()
 
         self._memory: OrderedDict[str, tuple[str, int]] = OrderedDict()
         self._memory_bytes: int = 0
-        rows = self._conn.execute(
-            "SELECT url, data_uri, size FROM cover_cache ORDER BY fetched_at DESC"
-        ).fetchall()
+        rows = self._conn.execute("SELECT url, data_uri, size FROM cover_cache ORDER BY fetched_at DESC").fetchall()
         for url, data_uri, size in reversed(rows):
             sz = size if size else len(data_uri)
             if self._memory_bytes + sz > self._max_size_bytes:
@@ -70,9 +64,7 @@ class CoverCacheDB:
             self._memory.move_to_end(url)
             self._memory_bytes += sz
 
-        self._disk_bytes: int = self._conn.execute(
-            "SELECT COALESCE(SUM(size), 0) FROM cover_cache"
-        ).fetchone()[0]
+        self._disk_bytes: int = self._conn.execute("SELECT COALESCE(SUM(size), 0) FROM cover_cache").fetchone()[0]
 
         logger.info(
             "Cover cache DB opened (%s), pre-loaded %d entries (%.1f MB / %d MB), disk %.1f MB",
@@ -118,9 +110,7 @@ class CoverCacheDB:
     def get_stats(self):
         """Return ``{file_count, total_size_bytes}`` for this cache."""
         with self._lock:
-            row = self._conn.execute(
-                "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM cover_cache"
-            ).fetchone()
+            row = self._conn.execute("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM cover_cache").fetchone()
             return {
                 "file_count": row[0],
                 "total_size_bytes": row[1],
@@ -170,9 +160,7 @@ class CoverCacheDB:
         if self._disk_bytes <= self._max_size_bytes:
             return
         excess = self._disk_bytes - self._max_size_bytes
-        rows = self._conn.execute(
-            "SELECT url_hash, size FROM cover_cache ORDER BY fetched_at ASC"
-        ).fetchall()
+        rows = self._conn.execute("SELECT url_hash, size FROM cover_cache ORDER BY fetched_at ASC").fetchall()
         freed = 0
         for rhash, rsize in rows:
             self._conn.execute("DELETE FROM cover_cache WHERE url_hash = ?", (rhash,))

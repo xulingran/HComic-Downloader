@@ -37,9 +37,7 @@ class TestDMRecovery:
         dm = MagicMock()
         mixin._download_manager = dm
         mixin._migration_engine = MagicMock()
-        mixin._migration_engine.state = _make_migration_state(
-            id="test-id", status="ready"
-        )
+        mixin._migration_engine.state = _make_migration_state(id="test-id", status="ready")
 
         with patch.object(mixin, "_run_migration"):
             mixin.handle_confirm_migration("test-id")
@@ -53,9 +51,7 @@ class TestDMRecovery:
         mixin._download_manager = dm
         mixin._migration_engine = MagicMock()
         mixin._migration_engine.execute = MagicMock()
-        mixin._migration_engine.state = _make_migration_state(
-            status="completed", completed_items=1
-        )
+        mixin._migration_engine.state = _make_migration_state(status="completed", completed_items=1)
 
         mixin._run_migration()
 
@@ -146,9 +142,7 @@ class TestLockProtection:
 
     def test_pause_and_confirm_are_serialized(self, mixin):
         mixin._migration_engine = MagicMock()
-        mixin._migration_engine.state = _make_migration_state(
-            id="test-id", status="ready"
-        )
+        mixin._migration_engine.state = _make_migration_state(id="test-id", status="ready")
 
         pause_order = []
         original_pause = mixin._migration_engine.pause

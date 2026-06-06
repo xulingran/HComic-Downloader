@@ -8,7 +8,7 @@ from collections.abc import Callable
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
 
-from sources import _VALID_SOURCES, _SOURCES_WITH_FAVOURITES
+from sources import _SOURCES_WITH_FAVOURITES, _VALID_SOURCES
 from sources.base import ParserResponseError
 
 from .types import AuthRequiredError
@@ -98,9 +98,7 @@ class SearchMixin:
 
     def _check_source_auth(self, source: str) -> None:
         """Raise AuthRequiredError if source credentials are not configured."""
-        if source == "jmcomic" and not self.config.source_auth.get("jmcomic", {}).get(
-            "cookie"
-        ):
+        if source == "jmcomic" and not self.config.source_auth.get("jmcomic", {}).get("cookie"):
             raise AuthRequiredError("jmcomic 未登录，请前往设置页面配置登录凭证")
 
     def _is_source_auth_error(self, source: str, error: Exception) -> bool:
@@ -147,9 +145,7 @@ class SearchMixin:
         source: str | None = None,
         tag: str = "",
     ) -> dict:
-        effective_source = (
-            source if source in _VALID_SOURCES else self.config.default_source
-        )
+        effective_source = source if source in _VALID_SOURCES else self.config.default_source
         self._check_source_auth(effective_source)
         effective_query = query
         effective_tag = tag
@@ -168,9 +164,7 @@ class SearchMixin:
             )
         except Exception as e:
             if self._is_source_auth_error(effective_source, e):
-                raise AuthRequiredError(
-                    f"{effective_source} 登录凭证已失效: {e}"
-                ) from e
+                raise AuthRequiredError(f"{effective_source} 登录凭证已失效: {e}") from e
             raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
@@ -178,17 +172,13 @@ class SearchMixin:
         }
 
     def handle_random(self, source: str | None = None) -> dict:
-        effective_source = (
-            source if source in ("hcomic", "jmcomic") else _DEFAULT_SOURCE
-        )
+        effective_source = source if source in ("hcomic", "jmcomic") else _DEFAULT_SOURCE
         self._check_source_auth(effective_source)
         try:
             comics, pagination = self.parser.random(source=effective_source)
         except Exception as e:
             if self._is_source_auth_error(effective_source, e):
-                raise AuthRequiredError(
-                    f"{effective_source} 登录凭证已失效: {e}"
-                ) from e
+                raise AuthRequiredError(f"{effective_source} 登录凭证已失效: {e}") from e
             raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
@@ -237,20 +227,14 @@ class SearchMixin:
         valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         with self._auth_error_guard(effective_source):
-            is_favourited = self.parser.check_favourite(
-                comic_id, source=effective_source
-            )
+            is_favourited = self.parser.check_favourite(comic_id, source=effective_source)
             return {"isFavourited": is_favourited}
 
-    def handle_remove_from_favourites(
-        self, comic_id: str, source: str = "hcomic"
-    ) -> dict:
+    def handle_remove_from_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         with self._auth_error_guard(effective_source):
-            success = self.parser.remove_from_favourites(
-                comic_id, source=effective_source
-            )
+            success = self.parser.remove_from_favourites(comic_id, source=effective_source)
             if success:
                 self._favourite_tags_db.remove_comic(comic_id, effective_source)
             return {"success": success}
@@ -278,17 +262,11 @@ class SearchMixin:
         comic = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
 
         # 多章节专辑：不预取图片，返回章节列表供前端选章。
-        if (
-            comic.source_site in ("jmcomic", "bika")
-            and len(getattr(comic, "chapters", None) or []) > 1
-        ):
+        if comic.source_site in ("jmcomic", "bika") and len(getattr(comic, "chapters", None) or []) > 1:
             return {
                 "imageUrls": [],
                 "totalPages": comic.pages or 0,
-                "chapters": [
-                    {"id": c.id, "name": c.name, "index": c.index, "pages": c.pages}
-                    for c in comic.chapters
-                ],
+                "chapters": [{"id": c.id, "name": c.name, "index": c.index, "pages": c.pages} for c in comic.chapters],
                 "albumId": comic.album_id or comic.id,
                 "albumTotalChapters": comic.album_total_chapters or len(comic.chapters),
             }
@@ -314,9 +292,7 @@ class SearchMixin:
             result["comicId"] = comic.id
         return result
 
-    def handle_get_chapter_preview_urls(
-        self, chapter_id: str, album_id: str = "", source_site: str = ""
-    ) -> dict:
+    def handle_get_chapter_preview_urls(self, chapter_id: str, album_id: str = "", source_site: str = "") -> dict:
         """获取单个章节的图片 URL 列表（支持 jmcomic 和 bika）。"""
         import requests
 
@@ -338,9 +314,7 @@ class SearchMixin:
                         order = ch.index
                         break
             except (requests.RequestException, ParserResponseError):
-                logger.warning(
-                    "Failed to get chapters for chapter preview: %s", chapter_id
-                )
+                logger.warning("Failed to get chapters for chapter preview: %s", chapter_id)
             image_urls = parser.get_chapter_images(comic_id, order)
             result = {
                 "imageUrls": image_urls,
@@ -376,17 +350,13 @@ class SearchMixin:
         valid_sources = _VALID_SOURCES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         if source not in valid_sources:
-            logger.warning(
-                "get_comic_detail: invalid source %r, falling back to moeimg", source
-            )
+            logger.warning("get_comic_detail: invalid source %r, falling back to moeimg", source)
         comic = self.parser.get_comic_detail(comic_id, source=effective_source)
         if comic is None:
             return {"comic": None}
         return {"comic": self._comic_to_dict(comic)}
 
-    def handle_fetch_preview_image(
-        self, image_url: str, scramble_id: str = "", comic_id: str = ""
-    ) -> dict:
+    def handle_fetch_preview_image(self, image_url: str, scramble_id: str = "", comic_id: str = "") -> dict:
         self._validate_preview_image_url(image_url)
         logger.info(
             "fetch_preview_image: url=%s scramble_id=%s comic_id=%s",
@@ -394,9 +364,7 @@ class SearchMixin:
             scramble_id,
             comic_id,
         )
-        data_uri = self._do_fetch_preview_image(
-            image_url, scramble_id=scramble_id, comic_id=comic_id
-        )
+        data_uri = self._do_fetch_preview_image(image_url, scramble_id=scramble_id, comic_id=comic_id)
         return {"dataUri": data_uri}
 
     def _update_tags_on_favourite_add(self, comic_id: str, source: str) -> None:

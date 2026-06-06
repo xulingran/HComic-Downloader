@@ -18,9 +18,7 @@ from python.ipc_server import IPCServer
 
 @pytest.fixture
 def ipc_server(tmp_path):
-    with patch(
-        "python.ipc_server._get_config_path", return_value=str(tmp_path / "config.json")
-    ):
+    with patch("python.ipc_server._get_config_path", return_value=str(tmp_path / "config.json")):
         server = IPCServer()
     yield server
     server._download_manager.stop()
@@ -29,9 +27,7 @@ def ipc_server(tmp_path):
 
 def _resolve_output_path(server, comic_id, title, source_site="hcomic"):
     comic = ComicInfo(id=comic_id, title=title, source_site=source_site)
-    return server.cbz_builder.get_output_path_for_format(
-        comic, server.config.output_format, server.config.download_dir
-    )
+    return server.cbz_builder.get_output_path_for_format(comic, server.config.output_format, server.config.download_dir)
 
 
 def test_check_download_conflict_no_conflict(ipc_server, tmp_path):

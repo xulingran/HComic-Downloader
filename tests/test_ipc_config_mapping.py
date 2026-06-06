@@ -34,9 +34,7 @@ class TestConfigKeyMapping:
 
         config = Config()
         for camel_key, snake_key in CONFIG_KEY_MAP.items():
-            assert hasattr(
-                config, snake_key
-            ), f"Config has no field: {snake_key} (mapped from {camel_key})"
+            assert hasattr(config, snake_key), f"Config has no field: {snake_key} (mapped from {camel_key})"
 
     def test_set_config_returns_error_for_unknown_key(self):
         assert "unknownKey" not in CONFIG_KEY_MAP

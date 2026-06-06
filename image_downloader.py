@@ -193,14 +193,10 @@ class ImageDownloader:
 
                 ensure_dir(os.path.dirname(path))
 
-                fd, tmp_path_raw = tempfile.mkstemp(
-                    suffix=".tmp", dir=os.path.dirname(path)
-                )
+                fd, tmp_path_raw = tempfile.mkstemp(suffix=".tmp", dir=os.path.dirname(path))
                 tmp_path: str | None = tmp_path_raw
                 try:
-                    self._write_chunks(
-                        response, fd, tmp_path_raw, self.MAX_IMAGE_SIZE, url
-                    )
+                    self._write_chunks(response, fd, tmp_path_raw, self.MAX_IMAGE_SIZE, url)
 
                     ext = None
                     content_type = response.headers.get("Content-Type", "")
@@ -209,9 +205,7 @@ class ImageDownloader:
                     if not ext:
                         try:
                             with Image.open(tmp_path) as img:  # type: ignore[arg-type]
-                                ext = PIL_FORMAT_TO_EXT.get(
-                                    img.format or "", DEFAULT_IMAGE_EXT
-                                )
+                                ext = PIL_FORMAT_TO_EXT.get(img.format or "", DEFAULT_IMAGE_EXT)
                         except (OSError, SyntaxError, ValueError):
                             logger.debug(
                                 "Image format detection failed for %s, defaulting to .jpg",

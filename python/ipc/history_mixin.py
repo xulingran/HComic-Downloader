@@ -11,9 +11,7 @@ from datetime import datetime, timezone
 logger = logging.getLogger(__name__)
 
 _HISTORY_PAGE_SIZE = 20
-_ALLOWED_COLUMNS = frozenset(
-    {"source_site", "media_id", "last_chapter_id", "last_chapter_name"}
-)
+_ALLOWED_COLUMNS = frozenset({"source_site", "media_id", "last_chapter_id", "last_chapter_name"})
 
 
 @dataclass
@@ -37,16 +35,12 @@ class HistoryMixin:
     _reading_history_db: ReadingHistoryDB
 
     def _init_reading_history(self) -> None:
-        db_path = os.path.join(
-            os.path.expanduser("~"), ".hcomic_downloader", "reading_history.db"
-        )
+        db_path = os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "reading_history.db")
         self._reading_history_db = ReadingHistoryDB(db_path)
 
     def handle_get_history(self, page: int = 1) -> dict:
         effective_page = max(1, page)
-        items, total = self._reading_history_db.get_history(
-            page=effective_page, page_size=_HISTORY_PAGE_SIZE
-        )
+        items, total = self._reading_history_db.get_history(page=effective_page, page_size=_HISTORY_PAGE_SIZE)
         total_pages = max(1, (total + _HISTORY_PAGE_SIZE - 1) // _HISTORY_PAGE_SIZE)
         return {
             "items": items,
@@ -98,16 +92,12 @@ class ReadingHistoryDB:
             )
         """)
         # Migrate: add columns if they don't exist (for existing databases)
-        existing_cols = {
-            row[1] for row in self._conn.execute("PRAGMA table_info(reading_history)")
-        }
+        existing_cols = {row[1] for row in self._conn.execute("PRAGMA table_info(reading_history)")}
         for col in ("source_site", "media_id", "last_chapter_id", "last_chapter_name"):
             if col not in existing_cols:
                 if col not in _ALLOWED_COLUMNS:
                     raise ValueError(f"Unknown migration column: {col}")
-                self._conn.execute(
-                    f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''"
-                )
+                self._conn.execute(f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''")
         self._conn.commit()
 
     def upsert(self, entry: ReadingHistoryEntry) -> None:

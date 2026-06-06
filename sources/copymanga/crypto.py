@@ -37,11 +37,8 @@ def extract_aes_key(html_text: str) -> str:
     try:
         doc = lxml_html.fromstring(html_text)
     except Exception:
-        raise ValueError("kaobei aes key script not found")
-    script_texts = [
-        text.strip().replace(" ", "")
-        for text in doc.xpath("//script/text()")
-    ]
+        raise ValueError("kaobei aes key script not found") from None
+    script_texts = [text.strip().replace(" ", "") for text in doc.xpath("//script/text()")]
     real_script = next(
         (text for text in script_texts if text.startswith("var")),
         None,
@@ -71,18 +68,14 @@ def decrypt_aes_cbc(encrypted: str, aes_key: str) -> dict:
         ValueError: 解密失败
     """
     if len(encrypted) <= 16:
-        raise ValueError(
-            f"Encrypted payload too short: len={len(encrypted)}"
-        )
+        raise ValueError(f"Encrypted payload too short: len={len(encrypted)}")
     iv = encrypted[:16]
     cipher_hex = encrypted[16:]
     cipher_bytes = bytes.fromhex(cipher_hex)
     key_bytes = aes_key.encode("utf-8")
     iv_bytes = iv.encode("utf-8")
 
-    cipher = Cipher(
-        algorithms.AES(key_bytes), modes.CBC(iv_bytes), backend=default_backend()
-    )
+    cipher = Cipher(algorithms.AES(key_bytes), modes.CBC(iv_bytes), backend=default_backend())
     decryptor = cipher.decryptor()
     decrypted_padded = decryptor.update(cipher_bytes) + decryptor.finalize()
 

@@ -56,17 +56,11 @@ class HComicParser(ParserContextMixin):
         self.session = requests.Session()
         self.session.headers.update(self.HEADERS)
         apply_system_proxy_to_session(self.session)
-        self.configure_auth(
-            cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
-        )
+        self.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
 
-    def configure_auth(
-        self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
-    ):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置登录相关请求头。"""
-        configure_session_auth(
-            self.session, self.HEADERS, cookie, user_agent, bearer_token
-        )
+        configure_session_auth(self.session, self.HEADERS, cookie, user_agent, bearer_token)
 
     def verify_login_status(self) -> tuple[bool, str]:
         """通过访问收藏夹接口校验登录状态。"""
@@ -75,9 +69,7 @@ class HComicParser(ParserContextMixin):
             response = self._request_text(url)
             data = self._extract_payload_data(response)
             favourites_data = data.get("favourites")
-            if isinstance(favourites_data, dict) and all(
-                k in favourites_data for k in ("docs", "pages", "total")
-            ):
+            if isinstance(favourites_data, dict) and all(k in favourites_data for k in ("docs", "pages", "total")):
                 return True, "登录校验通过"
             return False, "登录已失效，请重新登录"
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError):
@@ -123,9 +115,7 @@ class HComicParser(ParserContextMixin):
         except requests.RequestException as e:
             raise ParserResponseError(f"请求失败: {url} ({e})") from e
 
-    def search(
-        self, keyword: str, page: int = 1, *, tag: str = ""
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画
 
         Args:
@@ -165,9 +155,7 @@ class HComicParser(ParserContextMixin):
         """
         url = self._build_favourites_url(page)
         try:
-            return self.parse_favourites_page(
-                self._request_text(url), requested_page=page
-            )
+            return self.parse_favourites_page(self._request_text(url), requested_page=page)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error("Load favourites failed: %s", e, exc_info=True)
             if raise_errors:
@@ -297,9 +285,7 @@ class HComicParser(ParserContextMixin):
             logger.error("Get comic detail failed: %s", e, exc_info=True)
             return None
 
-    def parse_search_page(
-        self, html: str, requested_page: int = 1
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def parse_search_page(self, html: str, requested_page: int = 1) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """解析搜索页面
 
         Args:
@@ -354,9 +340,7 @@ class HComicParser(ParserContextMixin):
             return [], None, True
 
         # 空字典表示 Cookie 过期或收藏夹为空，统一返回 needs_login=True
-        if not favourites_data or not all(
-            k in favourites_data for k in ("docs", "pages", "total")
-        ):
+        if not favourites_data or not all(k in favourites_data for k in ("docs", "pages", "total")):
             return [], None, True
 
         docs = favourites_data.get("docs")
@@ -427,36 +411,25 @@ class HComicParser(ParserContextMixin):
 
         # 提取分类
         category = next(
-            (
-                t.get("name_zh") or t.get("name")
-                for t in tags
-                if t.get("type") == "category"
-            ),
+            (t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "category"),
             None,
         )
 
         # 提取标签
-        tag_names = [
-            t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "tag"
-        ]
+        tag_names = [t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "tag"]
 
         # 构建 URL
         preview_url, _ = self._build_book_urls(data)
 
         # 获取页数
-        pages = data.get("num_pages") or len(
-            (data.get("images") or {}).get("pages") or []
-        )
+        pages = data.get("num_pages") or len((data.get("images") or {}).get("pages") or [])
 
         # 构建封面 URL
         cover_url = self._build_cover_url(data)
 
         return ComicInfo(
             id=str(data.get("_id") or data.get("id") or ""),
-            title=title_info.get("display")
-            or title_info.get("japanese")
-            or title_info.get("english")
-            or "未知标题",
+            title=title_info.get("display") or title_info.get("japanese") or title_info.get("english") or "未知标题",
             author=artist,
             pages=pages,
             category=category,
@@ -483,9 +456,7 @@ class HComicParser(ParserContextMixin):
         """
         if tag:
             q = quote(keyword) if keyword else ""
-            return cls._build_paginated_url(
-                f"{cls.INDEX}/?q={q}&tag={quote(tag)}", page
-            )
+            return cls._build_paginated_url(f"{cls.INDEX}/?q={q}&tag={quote(tag)}", page)
         return cls._build_paginated_url(f"{cls.INDEX}/?q={quote(keyword)}", page)
 
     @classmethod
@@ -514,9 +485,7 @@ class HComicParser(ParserContextMixin):
         return f"{base}{sep}page={page}"
 
     @classmethod
-    def _parse_pagination_info(
-        cls, data: dict, requested_page: int = 1
-    ) -> PaginationInfo | None:
+    def _parse_pagination_info(cls, data: dict, requested_page: int = 1) -> PaginationInfo | None:
         """解析分页信息
 
         Args:
@@ -551,9 +520,7 @@ class HComicParser(ParserContextMixin):
         """
         title_info = comic.get("title") or {}
         comic_id = comic.get("id")
-        slug_source = (
-            title_info.get("japanese") or title_info.get("english") or str(comic_id)
-        )
+        slug_source = title_info.get("japanese") or title_info.get("english") or str(comic_id)
         slug = quote(slug_source, safe="")
         preview_url = f"{cls.INDEX}/comics/{slug}?id={comic_id}"
         reader_url = f"{cls.INDEX}/comics/{slug}/1?id={comic_id}"
@@ -570,9 +537,7 @@ class HComicParser(ParserContextMixin):
     @classmethod
     def _get_image_prefix(cls, comic_source: str) -> str:
         """获取图片前缀"""
-        suffix = _IMAGE_URL_SUFFIX_MAP.get(
-            (comic_source or "").upper(), _DEFAULT_IMAGE_URL_SUFFIX
-        )
+        suffix = _IMAGE_URL_SUFFIX_MAP.get((comic_source or "").upper(), _DEFAULT_IMAGE_URL_SUFFIX)
         return f"{cls.IMAGE_SERVER}/{suffix}"
 
     @classmethod
@@ -607,9 +572,7 @@ class HComicParser(ParserContextMixin):
         return data
 
     @classmethod
-    def _scan_string_literal(
-        cls, text: str, i: int, quote_char: str, out: list[str]
-    ) -> tuple[int, bool]:
+    def _scan_string_literal(cls, text: str, i: int, quote_char: str, out: list[str]) -> tuple[int, bool]:
         """处理字符串字面量内部内容，返回 (新的位置索引, 是否仍在字符串内)。"""
         while i < len(text):
             ch = text[i]
@@ -664,9 +627,7 @@ class HComicParser(ParserContextMixin):
             ch = js_obj_text[pos]
 
             if in_string:
-                pos, in_string = cls._scan_string_literal(
-                    js_obj_text, pos, quote_char, out
-                )
+                pos, in_string = cls._scan_string_literal(js_obj_text, pos, quote_char, out)
                 if not in_string:
                     quote_char = ""
                 continue

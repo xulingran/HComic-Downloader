@@ -63,19 +63,13 @@ class PreviewCacheDB:
                 fetched_at REAL NOT NULL,
                 last_access REAL NOT NULL
             )""")
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_preview_last_access ON preview_cache(last_access)"
-        )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_preview_url ON preview_cache(url)"
-        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_preview_last_access ON preview_cache(last_access)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_preview_url ON preview_cache(url)")
         self._conn.commit()
 
         # In-memory LRU index: url -> None, insertion order = LRU order
         self._lru: OrderedDict[str, None] = OrderedDict()
-        rows = self._conn.execute(
-            "SELECT url FROM preview_cache ORDER BY last_access ASC"
-        ).fetchall()
+        rows = self._conn.execute("SELECT url FROM preview_cache ORDER BY last_access ASC").fetchall()
         for (url,) in rows:
             self._lru[url] = None
 
@@ -94,9 +88,7 @@ class PreviewCacheDB:
             if url not in self._lru:
                 return None
             self._lru.move_to_end(url)
-            row = self._conn.execute(
-                "SELECT file_path FROM preview_cache WHERE url = ?", (url,)
-            ).fetchone()
+            row = self._conn.execute("SELECT file_path FROM preview_cache WHERE url = ?", (url,)).fetchone()
             if row is None:
                 self._lru.pop(url, None)
                 return None
@@ -123,9 +115,7 @@ class PreviewCacheDB:
             now = _now()
 
             # If URL already cached, remove old file first
-            old = self._conn.execute(
-                "SELECT file_path FROM preview_cache WHERE url_hash = ?", (url_hash,)
-            ).fetchone()
+            old = self._conn.execute("SELECT file_path FROM preview_cache WHERE url_hash = ?", (url_hash,)).fetchone()
             if old:
                 old_path = os.path.join(self._files_dir, old[0])
                 if os.path.exists(old_path) and old_path != file_path:
@@ -155,9 +145,7 @@ class PreviewCacheDB:
     def get_stats(self) -> dict:
         """Return ``{file_count, total_size_bytes, max_size_bytes}``."""
         with self._lock:
-            row = self._conn.execute(
-                "SELECT COUNT(*), COALESCE(SUM(size), 0) FROM preview_cache"
-            ).fetchone()
+            row = self._conn.execute("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM preview_cache").fetchone()
             return {
                 "file_count": row[0],
                 "total_size_bytes": row[1],
@@ -193,9 +181,7 @@ class PreviewCacheDB:
 
     def _evict_if_needed(self) -> None:
         """Evict LRU entries until total size is within limit."""
-        row = self._conn.execute(
-            "SELECT COALESCE(SUM(size), 0) FROM preview_cache"
-        ).fetchone()
+        row = self._conn.execute("SELECT COALESCE(SUM(size), 0) FROM preview_cache").fetchone()
         total = row[0]
         while total > self._max_size_bytes and self._lru:
             oldest_url = next(iter(self._lru))

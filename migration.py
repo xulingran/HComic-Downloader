@@ -192,10 +192,7 @@ class MigrationEngine:
 
         for record in records:
             output_path = os.path.normpath(record["output_path"])
-            if (
-                not output_path.startswith(source_dir + os.sep)
-                and output_path != source_dir
-            ):
+            if not output_path.startswith(source_dir + os.sep) and output_path != source_dir:
                 continue
             if not os.path.exists(output_path):
                 continue
@@ -243,11 +240,7 @@ class MigrationEngine:
             for entry in os.listdir(target_dir):
                 full_path = os.path.join(target_dir, entry)
                 ext = os.path.splitext(entry)[1].lower()
-                if (
-                    os.path.isfile(full_path)
-                    and ext in (".cbz", ".zip")
-                    or os.path.isdir(full_path)
-                ):
+                if os.path.isfile(full_path) and ext in (".cbz", ".zip") or os.path.isdir(full_path):
                     files_on_disk.append(full_path)
 
         plan: list[MigrationPlanItem] = []
@@ -258,9 +251,7 @@ class MigrationEngine:
             comic_id = record.get("comic_id", "")
             db_key = (record["source_site"], record["comic_id"], record["comic_source"])
 
-            best_match = self._find_match(
-                files_on_disk, title, author, comic_id, filename_template
-            )
+            best_match = self._find_match(files_on_disk, title, author, comic_id, filename_template)
             if best_match:
                 plan.append(
                     MigrationPlanItem(
@@ -361,9 +352,7 @@ class MigrationEngine:
                         "error": str(e),
                     }
                 )
-                self._write_log(
-                    "ERROR", f"Failed: {os.path.basename(item.source)} — {e}"
-                )
+                self._write_log("ERROR", f"Failed: {os.path.basename(item.source)} — {e}")
                 logger.error("Migration failed for %s: %s", item.source, e)
                 if on_error:
                     on_error({"message": str(e), "file_path": item.source})
@@ -399,9 +388,7 @@ class MigrationEngine:
             try:
                 os.rename(item.source, item.target)
             except FileExistsError:
-                raise FileExistsError(
-                    f"目标文件已存在: {item.target} (源: {item.source})"
-                ) from None
+                raise FileExistsError(f"目标文件已存在: {item.target} (源: {item.source})") from None
         else:
             if os.path.isdir(item.source):
                 shutil.copytree(item.source, item.target)
@@ -413,9 +400,7 @@ class MigrationEngine:
                         item.source,
                         e,
                     )
-                    self._write_log(
-                        "WARNING", f"Source dir removal failed: {item.source} — {e}"
-                    )
+                    self._write_log("WARNING", f"Source dir removal failed: {item.source} — {e}")
             else:
                 shutil.copy2(item.source, item.target)
                 try:
@@ -426,9 +411,7 @@ class MigrationEngine:
                         item.source,
                         e,
                     )
-                    self._write_log(
-                        "WARNING", f"Source file removal failed: {item.source} — {e}"
-                    )
+                    self._write_log("WARNING", f"Source file removal failed: {item.source} — {e}")
 
         self._history_db.update_output_path(item.db_key, item.target)
 
@@ -448,9 +431,7 @@ class MigrationEngine:
 
     @staticmethod
     def _get_log_path() -> str:
-        return os.path.join(
-            os.path.expanduser("~"), ".hcomic_downloader", "migration.log"
-        )
+        return os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "migration.log")
 
     def _write_log(self, level: str, message: str):
         log_level = getattr(logging, level.upper(), logging.INFO)

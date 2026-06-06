@@ -97,9 +97,7 @@ def test_parse_detail_generates_image_urls():
     parser = _make_parser()
     comic = parser._parse_detail(html, comic_id="430371", domain="test.one")
 
-    assert comic.cover_url.startswith(
-        "https://cdn-msp2.test.one/media/albums/430371.jpg"
-    )
+    assert comic.cover_url.startswith("https://cdn-msp2.test.one/media/albums/430371.jpg")
 
 
 def test_parse_detail_multi_chapter():
@@ -255,11 +253,7 @@ def test_verify_login_succeeds_and_discovers_username(monkeypatch):
     mock_resp.status_code = 200
     mock_resp.encoding = "utf-8"
     mock_resp.url = "https://test.one/"
-    mock_resp.text = (
-        "<html><body>"
-        '<a href="/user/xulingran/favorite/albums">收藏夹</a>'
-        "</body></html>"
-    )
+    mock_resp.text = '<html><body><a href="/user/xulingran/favorite/albums">收藏夹</a></body></html>'
     parser.session.get.return_value = mock_resp
 
     valid, msg = parser.verify_login_status()
@@ -381,9 +375,7 @@ def test_expand_image_urls_generates_full_list():
 
 
 def test_expand_image_urls_no_expansion_when_enough():
-    images = [
-        f"https://cdn.test.one/media/photos/123/{i:05d}.webp" for i in range(1, 6)
-    ]
+    images = [f"https://cdn.test.one/media/photos/123/{i:05d}.webp" for i in range(1, 6)]
     result = JmParser._expand_image_urls(images, total_pages=5, comic_id="123")
     assert result is images  # 不扩展，返回原列表
 
@@ -622,9 +614,7 @@ def test_search_ranking_keyword_routes_to_ranking(monkeypatch):
 
 def test_search_error_returns_empty(monkeypatch):
     parser = _make_parser_with_session()
-    monkeypatch.setattr(
-        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("network"))
-    )
+    monkeypatch.setattr(parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("network")))
 
     comics, pagination = parser.search("test")
 
@@ -677,9 +667,7 @@ def test_random_requests_correct_url(monkeypatch):
 
 def test_random_error_returns_empty(monkeypatch):
     parser = _make_parser_with_session()
-    monkeypatch.setattr(
-        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err"))
-    )
+    monkeypatch.setattr(parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err")))
 
     comics, pagination = parser.random()
 
@@ -724,9 +712,7 @@ def test_get_comic_detail_correct_url(monkeypatch):
 
 def test_get_comic_detail_error_returns_none(monkeypatch):
     parser = _make_parser_with_session()
-    monkeypatch.setattr(
-        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err"))
-    )
+    monkeypatch.setattr(parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err")))
 
     result = parser.get_comic_detail("430371")
 
@@ -772,9 +758,7 @@ def test_search_ranking_page2_includes_page_param(monkeypatch):
 
 def test_search_ranking_error_returns_empty(monkeypatch):
     parser = _make_parser_with_session()
-    monkeypatch.setattr(
-        parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err"))
-    )
+    monkeypatch.setattr(parser, "_request_text", lambda url: (_ for _ in ()).throw(Exception("err")))
 
     comics, pagination = parser._search_ranking("周更新")
 

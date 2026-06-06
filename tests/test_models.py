@@ -41,9 +41,7 @@ class TestComicInfo:
         assert comic.get_image_url(1) == "https://h-comic.link/api/nh/abcde/pages/1"
 
     def test_get_all_image_urls(self):
-        comic = ComicInfo(
-            id="12345", media_id="abcde", comic_source="MMCG_SHORT", pages=3
-        )
+        comic = ComicInfo(id="12345", media_id="abcde", comic_source="MMCG_SHORT", pages=3)
         urls = comic.get_all_image_urls()
         assert len(urls) == 3
         assert urls[0] == "https://h-comic.link/api/mms/abcde/pages/1"

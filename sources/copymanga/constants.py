@@ -13,14 +13,10 @@ SEARCH_URL_TEMPLATE = (
 )
 
 # 章节详情 API（path_word 占位）
-CHAPTERS_URL_TEMPLATE = (
-    f"https://{PC_DOMAIN}/comicdetail/{{path_word}}/chapters"
-)
+CHAPTERS_URL_TEMPLATE = f"https://{PC_DOMAIN}/comicdetail/{{path_word}}/chapters"
 
 # 章节 HTML 页（用于提取图片 URL）
-CHAPTER_PAGE_URL_TEMPLATE = (
-    f"https://{PC_DOMAIN}/comic/{{path_word}}/chapter/{{chapter_id}}"
-)
+CHAPTER_PAGE_URL_TEMPLATE = f"https://{PC_DOMAIN}/comic/{{path_word}}/chapter/{{chapter_id}}"
 
 # AES 密钥提取页面（固定访问一拳超人）
 AES_KEY_PAGE_URL = f"https://{PC_DOMAIN}/comic/yiquanchaoren"
@@ -30,14 +26,8 @@ PAGE_SIZE = 30
 
 # PC 端页面请求 headers
 PC_HEADERS = {
-    "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) "
-        "Gecko/20100101 Firefox/145.0"
-    ),
-    "Accept": (
-        "text/html,application/xhtml+xml,application/xml;"
-        "q=0.9,*/*;q=0.8"
-    ),
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:145.0) Gecko/20100101 Firefox/145.0"),
+    "Accept": ("text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"),
     "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2",
 }
 

@@ -24,18 +24,15 @@ def _create_test_server():
     Uses unittest.mock.patch to avoid side effects (file I/O, network,
     thread pools) so the constructor can run to completion.
     """
-    with patch("config.Config.load", return_value=Config()), patch(
-        "sources.MultiSourceParser", return_value=MagicMock()
-    ), patch("downloader.ComicDownloader", return_value=MagicMock()), patch(
-        "cbz_builder.CBZBuilder", return_value=MagicMock()
-    ), patch(
-        "download_manager.ComicDownloadManager", return_value=MagicMock()
-    ), patch(
-        "download_history.DownloadHistoryDB", return_value=MagicMock()
-    ), patch(
-        "concurrent.futures.ThreadPoolExecutor", MagicMock()
-    ), patch(
-        "python.ipc_server.CoverCacheDB", return_value=MagicMock()
+    with (
+        patch("config.Config.load", return_value=Config()),
+        patch("sources.MultiSourceParser", return_value=MagicMock()),
+        patch("downloader.ComicDownloader", return_value=MagicMock()),
+        patch("cbz_builder.CBZBuilder", return_value=MagicMock()),
+        patch("download_manager.ComicDownloadManager", return_value=MagicMock()),
+        patch("download_history.DownloadHistoryDB", return_value=MagicMock()),
+        patch("concurrent.futures.ThreadPoolExecutor", MagicMock()),
+        patch("python.ipc_server.CoverCacheDB", return_value=MagicMock()),
     ):
         return IPCServer()
 
@@ -48,9 +45,7 @@ def test_fetch_preview_image_returns_data_uri(monkeypatch):
         lambda url, **kw: "data:image/webp;base64,abc",
     )
 
-    result = server.handle_fetch_preview_image(
-        "https://h-comic.link/api/nh/media123/pages/1"
-    )
+    result = server.handle_fetch_preview_image("https://h-comic.link/api/nh/media123/pages/1")
 
     assert result == {"dataUri": "data:image/webp;base64,abc"}
 
@@ -138,9 +133,7 @@ def test_fetch_preview_image_uses_downloader_auth_and_referer():
     fake_session = FakeSession()
     server.downloader = SimpleNamespace(
         timeout=17,
-        session=SimpleNamespace(
-            headers={"Cookie": "sid=abc", "User-Agent": "Downloader-UA"}
-        ),
+        session=SimpleNamespace(headers={"Cookie": "sid=abc", "User-Agent": "Downloader-UA"}),
         create_isolated_session=lambda: fake_session,
         url_validator=SimpleNamespace(
             resolve_redirects=lambda url, session, timeout: (
@@ -182,9 +175,7 @@ def test_resolve_eps_id_falls_back_to_comic_id():
     """URL 无 eps_id 时回退到 comic_id。"""
     from python.ipc.preview_mixin import _resolve_eps_id
 
-    assert (
-        _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="430371") == 430371
-    )
+    assert _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="430371") == 430371
     assert _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="") == 0
 
 
@@ -205,9 +196,7 @@ def test_get_preview_urls_returns_chapters(monkeypatch):
             ChapterInfo(id="999002", name="第 2 話", index=2),
         ],
     )
-    monkeypatch.setattr(
-        server, "_build_and_prepare_comic", lambda d, comic_id=None: comic
-    )
+    monkeypatch.setattr(server, "_build_and_prepare_comic", lambda d, comic_id=None: comic)
     result = server.handle_get_preview_urls({"id": "999001", "sourceSite": "jmcomic"})
     assert result["imageUrls"] == []
     assert len(result["chapters"]) == 2
@@ -227,9 +216,7 @@ def test_get_chapter_preview_urls(monkeypatch):
         )
     )
     server.parser.parsers = {"jmcomic": fake_jm}
-    result = server.handle_get_chapter_preview_urls(
-        chapter_id="999002", album_id="999001"
-    )
+    result = server.handle_get_chapter_preview_urls(chapter_id="999002", album_id="999001")
     assert result["imageUrls"][0].endswith("00001.webp")
     assert result["scrambleId"] == "220980"
     assert result["comicId"] == "999002"

@@ -40,9 +40,7 @@ def test_init_creates_table(db):
     import sqlite3
 
     conn = sqlite3.connect(db._db_path)
-    cursor = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='download_history'"
-    )
+    cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='download_history'")
     assert cursor.fetchone() is not None
     conn.close()
 
@@ -78,8 +76,7 @@ def test_record_download_upsert(db, sample_comic, tmp_path):
 
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
-        "SELECT output_path FROM download_history "
-        "WHERE source_site=? AND comic_id=? AND comic_source=?",
+        "SELECT output_path FROM download_history WHERE source_site=? AND comic_id=? AND comic_source=?",
         ("hcomic", "12345", "MMCG_SHORT"),
     )
     row = cursor.fetchone()
@@ -96,8 +93,7 @@ def test_record_download_stores_timestamp(db, sample_comic, tmp_path):
 
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
-        "SELECT downloaded_at FROM download_history "
-        "WHERE source_site=? AND comic_id=? AND comic_source=?",
+        "SELECT downloaded_at FROM download_history WHERE source_site=? AND comic_id=? AND comic_source=?",
         ("hcomic", "12345", "MMCG_SHORT"),
     )
     row = cursor.fetchone()
@@ -113,17 +109,13 @@ def test_check_batch_returns_downloaded_when_file_exists(db, sample_comic, tmp_p
     db.record_download(sample_comic, output_path, "cbz")
 
     keys = [("hcomic", "12345", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(
-        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
-    )
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
 
 
 def test_check_batch_returns_unknown_when_no_record(db, tmp_path):
     keys = [("hcomic", "99999", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(
-        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
-    )
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[("hcomic", "99999", "MMCG_SHORT")] == "unknown"
 
 
@@ -132,9 +124,7 @@ def test_check_batch_returns_unknown_when_file_missing(db, sample_comic, tmp_pat
     db.record_download(sample_comic, output_path, "cbz")
 
     keys = [("hcomic", "12345", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(
-        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
-    )
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "unknown"
 
 
@@ -151,9 +141,7 @@ def test_check_batch_fallback_to_expected_path(db, sample_comic, tmp_path):
         f.write("fake cbz")
 
     keys = [("hcomic", "12345", "MMCG_SHORT")]
-    result = db.check_downloaded_batch(
-        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
-    )
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
 
 
@@ -167,9 +155,7 @@ def test_check_batch_multiple_keys(db, sample_comic, tmp_path):
         ("hcomic", "12345", "MMCG_SHORT"),
         ("hcomic", "99999", "MMCG_SHORT"),
     ]
-    result = db.check_downloaded_batch(
-        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
-    )
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
     assert result[("hcomic", "99999", "MMCG_SHORT")] == "unknown"
 
@@ -197,9 +183,7 @@ def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
     comic_data_map = {key: {"title": "Fallback Comic", "author": "Fallback Author"}}
 
     # Without comic_data_map, fallback uses empty title/author → wrong path → unknown
-    result_without = db.check_downloaded_batch(
-        keys, str(tmp_path), "cbz", "{author}-{title}.cbz"
-    )
+    result_without = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result_without[key] == "unknown"
 
     # With comic_data_map, fallback uses correct title/author → finds file → downloaded
@@ -215,9 +199,7 @@ def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
 
 def test_get_all_records_returns_all_rows(db, sample_comic, tmp_path):
     db.record_download(sample_comic, str(tmp_path / "a.cbz"), "cbz")
-    comic2 = ComicInfo(
-        id="67890", title="Comic 2", source_site="hcomic", comic_source="NH"
-    )
+    comic2 = ComicInfo(id="67890", title="Comic 2", source_site="hcomic", comic_source="NH")
     db.record_download(comic2, str(tmp_path / "b.cbz"), "cbz")
 
     records = db.get_all_records()
@@ -251,8 +233,7 @@ def test_update_output_path_changes_stored_path(db, sample_comic, tmp_path):
 
     conn = sqlite3.connect(db._db_path)
     cursor = conn.execute(
-        "SELECT output_path FROM download_history "
-        "WHERE source_site=? AND comic_id=? AND comic_source=?",
+        "SELECT output_path FROM download_history WHERE source_site=? AND comic_id=? AND comic_source=?",
         ("hcomic", "12345", "MMCG_SHORT"),
     )
     assert cursor.fetchone()[0] == new_path
@@ -306,14 +287,10 @@ def test_legacy_single_record_still_downloaded(db, sample_comic, tmp_path):
         f.write("fake")
     # 模拟旧记录：album_id 为空，迁移逻辑应补齐
     db.record_download(sample_comic, output_path, "cbz")
-    db._conn.execute(
-        "UPDATE download_history SET album_id = '', album_total_chapters = 1"
-    )
+    db._conn.execute("UPDATE download_history SET album_id = '', album_total_chapters = 1")
     db._conn.commit()
     db._migrate_album_ids()
 
     key = ("hcomic", "12345", "MMCG_SHORT")
-    result = db.check_downloaded_batch(
-        [key], str(tmp_path), "cbz", "{author}-{title}.cbz"
-    )
+    result = db.check_downloaded_batch([key], str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[key] == "downloaded"

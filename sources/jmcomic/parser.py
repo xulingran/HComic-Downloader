@@ -76,11 +76,7 @@ class JmParser(ParserContextMixin):
         使用 http.cookiejar.Cookie 对象 + set_cookie() 方式设置，
         确保与 curl_cffi/libcurl 的 cookie engine 兼容。
         """
-        if (
-            getattr(self, "_cookie_synced", False)
-            or not getattr(self, "_cookie", "")
-            or not self._domain
-        ):
+        if getattr(self, "_cookie_synced", False) or not getattr(self, "_cookie", "") or not self._domain:
             return
         try:
             from http.cookiejar import Cookie
@@ -95,9 +91,7 @@ class JmParser(ParserContextMixin):
             elif hasattr(cookies_obj, "jar") and hasattr(cookies_obj.jar, "set_cookie"):
                 jar = cookies_obj.jar
             else:
-                raise AttributeError(
-                    "session.cookies 不支持 set_cookie，无法同步认证 cookie"
-                )
+                raise AttributeError("session.cookies 不支持 set_cookie，无法同步认证 cookie")
 
             count = 0
             for part in self._cookie.split(";"):
@@ -140,11 +134,7 @@ class JmParser(ParserContextMixin):
         old_domain = self._domain
         self._domain = domain.strip() if domain and domain.strip() else None
         # 域名变更后需要重新将 cookie 同步到新域名的 cookie jar
-        if (
-            self._domain
-            and self._domain != old_domain
-            and hasattr(self, "_cookie_synced")
-        ):
+        if self._domain and self._domain != old_domain and hasattr(self, "_cookie_synced"):
             self._cookie_synced = False
 
     def set_username(self, username: str) -> None:
@@ -161,9 +151,7 @@ class JmParser(ParserContextMixin):
         """返回当前解析到的 CDN 域名（如 cdn-msp2.jmcomic-zzz.one）。"""
         return self._cdn_domain
 
-    def configure_auth(
-        self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
-    ):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         configure_session_auth(self.session, HEADERS, cookie, user_agent, bearer_token)
         # curl_cffi/libcurl 不认可 session.headers['Cookie']，
         # 改用 cookie jar 方式设置 cookies
@@ -193,8 +181,7 @@ class JmParser(ParserContextMixin):
                 return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
             if resp.status_code == 200 and self._is_challenge_page(resp.text):
                 logger.debug(
-                    "jmcomic verify_login: challenge page detected at status 200 "
-                    "(first 500 chars): %s",
+                    "jmcomic verify_login: challenge page detected at status 200 (first 500 chars): %s",
                     resp.text[:500],
                 )
                 return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
@@ -216,14 +203,10 @@ class JmParser(ParserContextMixin):
                     username = m.group(1)
                     if self._username != username:
                         self._username = username
-                        logger.info(
-                            "Discovered jmcomic username from navbar: %s", username
-                        )
+                        logger.info("Discovered jmcomic username from navbar: %s", username)
                     return True, "登录校验通过"
             # 次级检测：导航栏含登出链接也表示已登录
-            logout_links = doc.xpath(
-                '//a[contains(@href,"logout") or contains(@href,"sign_out")]'
-            )
+            logout_links = doc.xpath('//a[contains(@href,"logout") or contains(@href,"sign_out")]')
             if logout_links:
                 # 尝试从 /user/{username} 链接补充用户名
                 for href in doc.xpath('//a[contains(@href,"/user/")]/@href'):
@@ -234,8 +217,7 @@ class JmParser(ParserContextMixin):
                 return True, "登录校验通过"
             # 页面含「登入」链接，说明未登录
             login_links = doc.xpath(
-                '//a[contains(@href,"/login") or contains(text(),"登入") '
-                'or contains(text(),"登录")]'
+                '//a[contains(@href,"/login") or contains(text(),"登入") or contains(text(),"登录")]'
             )
             if login_links:
                 return False, "登录已失效，请重新登录"
@@ -244,8 +226,7 @@ class JmParser(ParserContextMixin):
                 html[:500],
             )
             logger.warning(
-                "jmcomic verify_login: cannot determine login state "
-                "(status=%d, fav_links=%d, login_links=%d)",
+                "jmcomic verify_login: cannot determine login state (status=%d, fav_links=%d, login_links=%d)",
                 resp.status_code,
                 len(fav_links),
                 len(login_links),
@@ -282,11 +263,7 @@ class JmParser(ParserContextMixin):
                 },
             )
             resp.raise_for_status()
-            result = (
-                resp.json()
-                if resp.headers.get("content-type", "").startswith("application/json")
-                else {}
-            )
+            result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
             if result.get("status") == "ok" or result.get("success"):
                 return True
             # 如果返回了结果但不是明确的失败，也认为成功（某些站点返回空对象）
@@ -320,16 +297,8 @@ class JmParser(ParserContextMixin):
                 },
             )
             resp.raise_for_status()
-            result = (
-                resp.json()
-                if resp.headers.get("content-type", "").startswith("application/json")
-                else {}
-            )
-            return bool(
-                result.get("favorited")
-                or result.get("is_favorite")
-                or result.get("status") == "ok"
-            )
+            result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
+            return bool(result.get("favorited") or result.get("is_favorite") or result.get("status") == "ok")
         except requests.RequestException as e:
             logger.error("jmcomic check_favourite failed: %s", e, exc_info=True)
             raise RuntimeError(f"检查收藏状态失败: {e}") from e
@@ -364,9 +333,7 @@ class JmParser(ParserContextMixin):
             logger.error("jmcomic remove_from_favourites failed: %s", e, exc_info=True)
             raise RuntimeError(f"移除收藏夹失败: {e}") from e
 
-    def search(
-        self, keyword: str, page: int = 1, *, tag: str = ""
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。支持关键词、标签和排行模式。"""
         domain = self._ensure_domain()
         if self._is_ranking_keyword(keyword):
@@ -509,10 +476,7 @@ class JmParser(ParserContextMixin):
         domain = self._ensure_domain()
         # 用户名未知时，先从首页导航栏发现（verify_login_status 通常已完成此步骤）
         if not self._username and not self._ensure_username(domain):
-            logger.warning(
-                "jmcomic favourites: username unknown and homepage discovery failed "
-                "(not logged in?)"
-            )
+            logger.warning("jmcomic favourites: username unknown and homepage discovery failed (not logged in?)")
             return [], None, True
         try:
             url = self._build_favourites_url(domain, page)
@@ -570,13 +534,9 @@ class JmParser(ParserContextMixin):
         """解析收藏夹页面的漫画列表。"""
         items = doc.xpath('//div[contains(@class,"thumb-overlay")]')
         if not items:
-            logger.debug(
-                "No thumb-overlay items found in favourites page; trying alternate selectors"
-            )
+            logger.debug("No thumb-overlay items found in favourites page; trying alternate selectors")
             # The favourites page may use a different container structure
-            items = doc.xpath(
-                '//div[contains(@class,"thumb") and not(contains(@class,"thumb-overlay"))]'
-            )
+            items = doc.xpath('//div[contains(@class,"thumb") and not(contains(@class,"thumb-overlay"))]')
         comics = []
         seen: set[str] = set()
         for item in items:
@@ -629,9 +589,7 @@ class JmParser(ParserContextMixin):
         main_cookies = self._serialize_cookies_for_title_fetch()
         fill_missing_titles(comics, domain, main_cookies, self.timeout)
 
-    def _search_ranking(
-        self, keyword: str, page: int = 1
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def _search_ranking(self, keyword: str, page: int = 1) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """排行搜索。"""
         domain = self._ensure_domain()
         params = RANKING_MAPPINGS.get(keyword, {"t": "w", "o": "mr"})
@@ -678,16 +636,12 @@ class JmParser(ParserContextMixin):
     def _request_text(self, url: str) -> str:
         domain = self._ensure_domain()
         headers = {"Referer": f"https://{domain}/"}
-        resp = self.session.get(
-            url, timeout=self.timeout, allow_redirects=True, headers=headers
-        )
+        resp = self.session.get(url, timeout=self.timeout, allow_redirects=True, headers=headers)
         resp.raise_for_status()
         self._fix_encoding(resp)
         return resp.text
 
-    def _parse_search_results(
-        self, html: str, domain: str
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def _parse_search_results(self, html: str, domain: str) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """解析搜索结果页面。"""
         doc = etree.HTML(html)
         items = doc.xpath('//div[contains(@class,"thumb-overlay")]')
@@ -743,11 +697,7 @@ class JmParser(ParserContextMixin):
         if not title:
             title = "未知标题"
 
-        img_el = (
-            item.xpath(".//img/@data-original")
-            or item.xpath(".//img/@data-src")
-            or item.xpath(".//img/@src")
-        )
+        img_el = item.xpath(".//img/@data-original") or item.xpath(".//img/@data-src") or item.xpath(".//img/@src")
         cover_url = img_el[0] if img_el else ""
         if cover_url and not cover_url.startswith("http"):
             cover_url = f"https://{domain}{cover_url}"
@@ -770,9 +720,7 @@ class JmParser(ParserContextMixin):
             artist_el = card.xpath('.//div//a[contains(@href,"main_tag=2")]/text()')
             if artist_el and artist_el[0].strip():
                 author = artist_el[0].strip()
-            tags = self._clean_texts(
-                card.xpath('.//div[contains(@class,"tags")]//a[@class="tag"]/text()')
-            )
+            tags = self._clean_texts(card.xpath('.//div[contains(@class,"tags")]//a[@class="tag"]/text()'))
         cat_el = item.xpath('.//div[@class="category-icon"]/div/text()')
         if cat_el:
             category = " ".join(t.strip() for t in cat_el if t.strip()).strip() or None
@@ -896,7 +844,7 @@ class JmParser(ParserContextMixin):
                     if sep in raw:
                         raw = raw.split(sep, 1)[0].strip()
                 if raw and raw.lower() not in (
-                    "禁漫天堂",
+                    "jmcomic",
                     "18comic",
                     "jmcomic",
                     "18comic.vip",
@@ -951,11 +899,7 @@ class JmParser(ParserContextMixin):
         image_urls: list[str] = []
         img_elements = doc.xpath('.//img[contains(@id,"album_photo_")]')
         for img in img_elements:
-            img_url = (
-                img.xpath("./@data-src")
-                or img.xpath("./@data-original")
-                or img.xpath("./@src")
-            )
+            img_url = img.xpath("./@data-src") or img.xpath("./@data-original") or img.xpath("./@src")
             if img_url:
                 url = img_url[0]
                 if not url.startswith("http"):
@@ -969,27 +913,17 @@ class JmParser(ParserContextMixin):
         """提取作者、标签、页数、发布日期"""
         effective_scope = scope if scope is not None else etree.HTML(html)
 
-        authors = self._clean_texts(
-            effective_scope.xpath('.//span[@data-type="author"]/a/text()')
-        )
+        authors = self._clean_texts(effective_scope.xpath('.//span[@data-type="author"]/a/text()'))
         author = authors[0] if authors else None
 
-        tags = self._clean_texts(
-            effective_scope.xpath('.//span[@data-type="tags"]/a/text()')
-        )
-        works = self._clean_texts(
-            effective_scope.xpath('.//span[@data-type="works"]/a/text()')
-        )
-        actors = self._clean_texts(
-            effective_scope.xpath('.//span[@data-type="actor"]/a/text()')
-        )
+        tags = self._clean_texts(effective_scope.xpath('.//span[@data-type="tags"]/a/text()'))
+        works = self._clean_texts(effective_scope.xpath('.//span[@data-type="works"]/a/text()'))
+        actors = self._clean_texts(effective_scope.xpath('.//span[@data-type="actor"]/a/text()'))
         merged_tags = list(dict.fromkeys([*tags, *works, *actors]))
         category = works[0] if works else None
 
         pages = 0
-        pages_text = effective_scope.xpath(
-            './/div[contains(text(),"頁數") or contains(text(),"页数")]/text()'
-        )
+        pages_text = effective_scope.xpath('.//div[contains(text(),"頁數") or contains(text(),"页数")]/text()')
         if pages_text:
             m = re.search(r"\d+", pages_text[0])
             if m:
@@ -1007,9 +941,7 @@ class JmParser(ParserContextMixin):
             if publish_date is None:
                 publish_date = content
         if not publish_date:
-            date_match = re.search(
-                r'itemprop="datePublished"\s+content="(\d{4}-\d{2}-\d{2})"', html
-            )
+            date_match = re.search(r'itemprop="datePublished"\s+content="(\d{4}-\d{2}-\d{2})"', html)
             if not date_match:
                 date_match = re.search(
                     r"(?:上架日期|上傳日期|上传日期)\s*[:：]\s*(\d{4}-\d{2}-\d{2})",
@@ -1027,29 +959,18 @@ class JmParser(ParserContextMixin):
         )
 
     @staticmethod
-    def _expand_image_urls(
-        image_urls: list[str], total_pages: int, comic_id: str
-    ) -> list[str]:
+    def _expand_image_urls(image_urls: list[str], total_pages: int, comic_id: str) -> list[str]:
         """若页面上的图片数少于总页数，用 URL 模式生成所有图片 URL"""
         if len(image_urls) >= total_pages or not image_urls:
             return image_urls
         sample_url = image_urls[0]
-        url_match = re.match(
-            r"(https://[^/]+)/media/photos/\d+/(\d+)\.(\w+)", sample_url
-        )
+        url_match = re.match(r"(https://[^/]+)/media/photos/\d+/(\d+)\.(\w+)", sample_url)
         if url_match:
             cdn_base = url_match.group(1)
             ext = url_match.group(3)
-            logger.debug(
-                "Generated %d image URLs from pattern (ext=%s)", total_pages, ext
-            )
-            return [
-                f"{cdn_base}/media/photos/{comic_id}/{i:05d}.{ext}"
-                for i in range(1, total_pages + 1)
-            ]
-        logger.warning(
-            "Sample image URL does not match expected pattern: %s", sample_url
-        )
+            logger.debug("Generated %d image URLs from pattern (ext=%s)", total_pages, ext)
+            return [f"{cdn_base}/media/photos/{comic_id}/{i:05d}.{ext}" for i in range(1, total_pages + 1)]
+        logger.warning("Sample image URL does not match expected pattern: %s", sample_url)
         return image_urls
 
     @staticmethod

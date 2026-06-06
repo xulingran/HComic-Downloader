@@ -16,9 +16,7 @@ logger = logging.getLogger(__name__)
 class OutputStagingManager:
     """管理下载输出的 staging/commit/cleanup 文件系统操作。"""
 
-    def __init__(
-        self, output_dir: str, cbz_builder: CBZBuilder, output_format: str = "cbz"
-    ):
+    def __init__(self, output_dir: str, cbz_builder: CBZBuilder, output_format: str = "cbz"):
         self.output_dir = output_dir
         self.cbz_builder = cbz_builder
         self.output_format = output_format
@@ -40,9 +38,7 @@ class OutputStagingManager:
             logger.warning("Refusing to rmtree path outside output dir: %s", path)
             return
 
-        shutil.rmtree(
-            path, ignore_errors=False, onerror=OutputStagingManager._rmtree_onerror
-        )
+        shutil.rmtree(path, ignore_errors=False, onerror=OutputStagingManager._rmtree_onerror)
 
     def build(self, temp_dir: str, comic) -> tuple[str, str, str | None]:
         """Build the requested output into a staging path.
@@ -50,18 +46,12 @@ class OutputStagingManager:
         Returns:
             (staged_path, final_path, staging_root)
         """
-        final_path = self.cbz_builder.get_output_path_for_format(
-            comic, self.output_format, self.output_dir
-        )
+        final_path = self.cbz_builder.get_output_path_for_format(comic, self.output_format, self.output_dir)
 
         if self.output_format == "folder":
-            staging_root = tempfile.mkdtemp(
-                dir=self.output_dir, prefix=".hcomic_stage_"
-            )
+            staging_root = tempfile.mkdtemp(dir=self.output_dir, prefix=".hcomic_stage_")
             try:
-                staged_path = self.cbz_builder.save_as_folder(
-                    temp_dir, comic, staging_root, overwrite=False
-                )
+                staged_path = self.cbz_builder.save_as_folder(temp_dir, comic, staging_root, overwrite=False)
                 return staged_path, final_path, staging_root
             except Exception:
                 self.safe_rmtree(staging_root, self.output_dir)

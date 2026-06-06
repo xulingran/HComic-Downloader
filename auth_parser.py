@@ -76,10 +76,7 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str, str]:
                     cookie = header_val
                 elif header_name.lower() == "user-agent":
                     user_agent = header_val
-                elif (
-                    header_name.lower() == "authorization"
-                    and header_val.lower().startswith("bearer ")
-                ):
+                elif header_name.lower() == "authorization" and header_val.lower().startswith("bearer "):
                     bearer_token = header_val[7:].strip()
                 i += 2
                 continue
@@ -89,10 +86,7 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str, str]:
                 cookie = header_val
             elif header_name.lower() == "user-agent":
                 user_agent = header_val
-            elif (
-                header_name.lower() == "authorization"
-                and header_val.lower().startswith("bearer ")
-            ):
+            elif header_name.lower() == "authorization" and header_val.lower().startswith("bearer "):
                 bearer_token = header_val[7:].strip()
 
         i += 1

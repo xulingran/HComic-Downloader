@@ -100,9 +100,7 @@ class CoverMixin:
         # Validate final URL after redirects is still HTTPS
         final_parsed = urlparse(response.url)
         if final_parsed.scheme != "https":
-            raise ValueError(
-                f"Redirect target must use HTTPS, got: {final_parsed.scheme}"
-            )
+            raise ValueError(f"Redirect target must use HTTPS, got: {final_parsed.scheme}")
 
         # Read up to MAX_COVER_SIZE + 1 byte - if we get more, the image is too large
         max_size = MAX_COVER_SIZE
@@ -111,9 +109,7 @@ class CoverMixin:
         for chunk in response.iter_content(chunk_size=8192):
             total += len(chunk)
             if total > max_size:
-                raise ValueError(
-                    f"Cover image too large (exceeds {_COVER_SIZE_MB} MB limit)"
-                )
+                raise ValueError(f"Cover image too large (exceeds {_COVER_SIZE_MB} MB limit)")
             chunks.append(chunk)
         content = b"".join(chunks)
 

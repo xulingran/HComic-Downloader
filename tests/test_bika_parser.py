@@ -22,9 +22,7 @@ def _make_json_response(payload: dict, status_code: int = 200) -> requests.Respo
     return resp
 
 
-def _make_http_error(
-    status_code: int, payload: dict | None = None
-) -> requests.HTTPError:
+def _make_http_error(status_code: int, payload: dict | None = None) -> requests.HTTPError:
     """构建带有 status_code 的 HTTPError。"""
     resp = _make_json_response(payload or {}, status_code)
     return requests.HTTPError(response=resp)
@@ -185,9 +183,7 @@ class TestBikaLogin:
         monkeypatch.setattr(
             bika_parser.session,
             "request",
-            lambda *a, **kw: (_ for _ in ()).throw(
-                requests.ConnectionError("conn refused")
-            ),
+            lambda *a, **kw: (_ for _ in ()).throw(requests.ConnectionError("conn refused")),
         )
 
         with pytest.raises(ParserResponseError, match="连接失败"):
@@ -310,9 +306,7 @@ class TestBikaRequest:
 class TestBikaSearch:
     """测试 Bika 搜索 API 的完整解析流程。"""
 
-    def test_search_parses_comic_list_and_pagination(
-        self, bika_parser, monkeypatch, json_fixture
-    ):
+    def test_search_parses_comic_list_and_pagination(self, bika_parser, monkeypatch, json_fixture):
         payload = json_fixture("bika_search_response.json")
 
         monkeypatch.setattr(
@@ -334,10 +328,7 @@ class TestBikaSearch:
         assert c1.comic_source == "BIKA"
         assert c1.album_total_chapters == 3
         # 封面 URL 应由 fileServer + /static/ + path 拼接
-        assert (
-            c1.cover_url
-            == "https://storage1.picacomic.com/static/tobe/5f6a1b2c/thumb.jpg"
-        )
+        assert c1.cover_url == "https://storage1.picacomic.com/static/tobe/5f6a1b2c/thumb.jpg"
         # categories + tags 去重合并
         assert "Doujinshi" in c1.tags
         assert "School" in c1.tags
@@ -346,10 +337,7 @@ class TestBikaSearch:
 
         c2 = comics[1]
         # trailing slash 处理
-        assert (
-            c2.cover_url
-            == "https://storage1.picacomic.com/static/tobe/5f6a1b2d/thumb.jpg"
-        )
+        assert c2.cover_url == "https://storage1.picacomic.com/static/tobe/5f6a1b2d/thumb.jpg"
 
         assert pagination is not None
         assert pagination.current_page == 1
@@ -402,9 +390,7 @@ class TestBikaSearch:
 class TestBikaComicDetail:
     """测试 get_comic_detail 获取详情 + 章节的流程。"""
 
-    def test_get_comic_detail_with_chapters(
-        self, bika_parser, monkeypatch, json_fixture
-    ):
+    def test_get_comic_detail_with_chapters(self, bika_parser, monkeypatch, json_fixture):
         detail_payload = json_fixture("bika_comic_detail.json")
         chapters_payload = json_fixture("bika_chapters_page1.json")
 
@@ -536,9 +522,7 @@ class TestBikaChapters:
 class TestBikaChapterImages:
     """测试 get_chapter_images URL 构建逻辑。"""
 
-    def test_get_chapter_images_builds_urls(
-        self, bika_parser, monkeypatch, json_fixture
-    ):
+    def test_get_chapter_images_builds_urls(self, bika_parser, monkeypatch, json_fixture):
         payload = json_fixture("bika_chapter_images.json")
 
         monkeypatch.setattr(
@@ -551,15 +535,9 @@ class TestBikaChapterImages:
 
         assert len(images) == 2
         # trailing slash fileServer
-        assert (
-            images[0]
-            == "https://storage1.picacomic.com/static/tobe/comic123/ep1/001.jpg"
-        )
+        assert images[0] == "https://storage1.picacomic.com/static/tobe/comic123/ep1/001.jpg"
         # no trailing slash fileServer
-        assert (
-            images[1]
-            == "https://storage1.picacomic.com/static/tobe/comic123/ep1/002.jpg"
-        )
+        assert images[1] == "https://storage1.picacomic.com/static/tobe/comic123/ep1/002.jpg"
 
     def test_get_chapter_images_multi_page(self, bika_parser, monkeypatch):
         page1 = {
@@ -706,9 +684,7 @@ class TestBikaVerifyLoginStatus:
         assert valid is True
         assert "TestBikaUser" in message
 
-    def test_verify_expired_token_auto_relogin(
-        self, bika_parser, monkeypatch, json_fixture
-    ):
+    def test_verify_expired_token_auto_relogin(self, bika_parser, monkeypatch, json_fixture):
         bika_parser._token = "expired_token"
         bika_parser.set_stored_credentials("user@example.com", "pass123")
         login_payload = json_fixture("bika_login_success.json")
@@ -718,10 +694,7 @@ class TestBikaVerifyLoginStatus:
         def fake_request(method, url, **kwargs):
             call_log.append(url)
             # 第一次 profile 请求返回 401（token 过期）
-            if (
-                "users/profile" in url
-                and len([u for u in call_log if "profile" in u]) == 1
-            ):
+            if "users/profile" in url and len([u for u in call_log if "profile" in u]) == 1:
                 raise _make_http_error(401)
             # login 请求
             if "auth/sign-in" in url:
@@ -744,9 +717,7 @@ class TestBikaVerifyLoginStatus:
             if "users/profile" in url:
                 raise _make_http_error(401)
             # login 也失败
-            return _make_json_response(
-                {"code": 401, "message": "wrong password", "data": ""}
-            )
+            return _make_json_response({"code": 401, "message": "wrong password", "data": ""})
 
         monkeypatch.setattr(bika_parser.session, "request", fake_request)
 

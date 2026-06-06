@@ -20,9 +20,7 @@ def create_session():
 
         return cf_requests.Session(impersonate=IMPERSONATE_BROWSER)
     except ImportError:
-        logger.warning(
-            "curl_cffi not available, falling back to requests (may get 403)"
-        )
+        logger.warning("curl_cffi not available, falling back to requests (may get 403)")
         import requests
 
         return requests.Session()

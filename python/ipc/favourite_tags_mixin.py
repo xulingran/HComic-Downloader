@@ -49,9 +49,7 @@ class FavouriteTagsDB:
         with self._lock:
             self._upsert_comic_unlocked(comic_id, source, tags)
 
-    def _upsert_comic_unlocked(
-        self, comic_id: str, source: str, tags: list[str]
-    ) -> None:
+    def _upsert_comic_unlocked(self, comic_id: str, source: str, tags: list[str]) -> None:
         row = self._conn.execute(
             "SELECT tags FROM favourite_tag_comics WHERE comic_id = ? AND source = ?",
             (comic_id, source),
@@ -135,12 +133,8 @@ class FavouriteTagsDB:
     def clear(self, source: str) -> None:
         """Clear all tag data for a source."""
         with self._lock:
-            self._conn.execute(
-                "DELETE FROM favourite_tag_index WHERE source = ?", (source,)
-            )
-            self._conn.execute(
-                "DELETE FROM favourite_tag_comics WHERE source = ?", (source,)
-            )
+            self._conn.execute("DELETE FROM favourite_tag_index WHERE source = ?", (source,))
+            self._conn.execute("DELETE FROM favourite_tag_comics WHERE source = ?", (source,))
             self._conn.commit()
 
     def get_comic_tags(self, comic_id: str, source: str) -> list[str]:
@@ -163,9 +157,7 @@ class FavouriteTagsMixin:
     MAX_SYNC_PAGES = 200
 
     def _init_favourite_tags(self) -> None:
-        db_path = os.path.join(
-            os.path.expanduser("~"), ".hcomic_downloader", "favourite_tags.db"
-        )
+        db_path = os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "favourite_tags.db")
         self._favourite_tags_db = FavouriteTagsDB(db_path)
 
     def handle_get_favourite_tags(self, source: str = "hcomic") -> dict:
@@ -192,9 +184,7 @@ class FavouriteTagsMixin:
             for comic in comics:
                 tags = getattr(comic, "tags", None) or []
                 if tags:
-                    self._favourite_tags_db.upsert_comic(
-                        comic.id, effective_source, tags
-                    )
+                    self._favourite_tags_db.upsert_comic(comic.id, effective_source, tags)
                 synced += 1
             if not pagination or page >= pagination.total_pages:
                 break

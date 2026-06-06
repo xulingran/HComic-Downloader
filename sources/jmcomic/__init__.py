@@ -1,4 +1,4 @@
-"""jmcomic (禁漫天堂) 来源模块。"""
+"""jmcomic 来源模块。"""
 
 from .parser import JmParser
 

@@ -51,9 +51,7 @@ class TestJsObjectParsing(unittest.TestCase):
 
         data = HComicParser._jsobj_to_dict(js_obj_text)
 
-        self.assertEqual(
-            data["data"]["title"]["english"], "[HEATWAVE, super:nova] test"
-        )
+        self.assertEqual(data["data"]["title"]["english"], "[HEATWAVE, super:nova] test")
         self.assertEqual(data["data"]["pages"]["pages"], 1)
 
 

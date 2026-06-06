@@ -6,8 +6,6 @@ import pytest
 import requests as _requests
 
 from sources.copymanga.crypto import AesKeyCache, decrypt_aes_cbc, extract_aes_key
-from sources.copymanga.parser import CopyMangaParser
-
 
 # ---------------------------------------------------------------------------
 # 辅助工具
@@ -164,10 +162,12 @@ class TestCopyMangaSearch:
 
         def fake_get(url, **kwargs):
             captured["url"] = url
-            return _make_json_response({
-                "code": 200,
-                "results": {"list": [], "total": 0, "limit": 30, "offset": 30},
-            })
+            return _make_json_response(
+                {
+                    "code": 200,
+                    "results": {"list": [], "total": 0, "limit": 30, "offset": 30},
+                }
+            )
 
         monkeypatch.setattr(copymanga_parser.session, "get", fake_get)
 
@@ -178,10 +178,12 @@ class TestCopyMangaSearch:
         monkeypatch.setattr(
             copymanga_parser.session,
             "get",
-            lambda *a, **kw: _make_json_response({
-                "code": 200,
-                "results": {"list": [], "total": 0, "limit": 30, "offset": 0},
-            }),
+            lambda *a, **kw: _make_json_response(
+                {
+                    "code": 200,
+                    "results": {"list": [], "total": 0, "limit": 30, "offset": 0},
+                }
+            ),
         )
         comics, pagination = copymanga_parser.search("不存在")
         assert comics == []
@@ -232,9 +234,7 @@ class TestCopyMangaSearch:
 class TestCopyMangaChapters:
     """测试漫画详情和章节列表。"""
 
-    def test_get_chapters_decrypts_and_parses(
-        self, copymanga_parser, monkeypatch, json_fixture
-    ):
+    def test_get_chapters_decrypts_and_parses(self, copymanga_parser, monkeypatch, json_fixture):
         aes_key = "0123456789abcdef"
         iv = "0123456789abcdef"
         chapters_data = json_fixture("copymanga_chapters_response.json")
@@ -257,9 +257,7 @@ class TestCopyMangaChapters:
         assert chapters[0].index == 1
         assert chapters[2].index == 3
 
-    def test_get_comic_detail_returns_comic_with_chapters(
-        self, copymanga_parser, monkeypatch, json_fixture
-    ):
+    def test_get_comic_detail_returns_comic_with_chapters(self, copymanga_parser, monkeypatch, json_fixture):
         aes_key = "0123456789abcdef"
         iv = "0123456789abcdef"
         chapters_data = json_fixture("copymanga_chapters_response.json")
@@ -304,9 +302,7 @@ class TestCopyMangaChapters:
         monkeypatch.setattr(
             copymanga_parser.session,
             "get",
-            lambda url, **kw: _make_json_response(
-                {"code": 200, "results": "0123456789abcdef" + "ff" * 16}
-            ),
+            lambda url, **kw: _make_json_response({"code": 200, "results": "0123456789abcdef" + "ff" * 16}),
         )
         chapters = copymanga_parser.get_chapters("test")
         assert chapters == []
@@ -334,11 +330,7 @@ class TestCopyMangaChapterImages:
 
         def fake_get(url, **kwargs):
             # Chapter HTML page
-            html = (
-                '<html><body><script>'
-                f'var contentKey = "{encrypted_images}";'
-                '</script></body></html>'
-            )
+            html = f'<html><body><script>var contentKey = "{encrypted_images}";</script></body></html>'
             resp = _requests.Response()
             resp.status_code = 200
             resp._content = html.encode("utf-8")
@@ -361,15 +353,13 @@ class TestCopyMangaChapterImages:
         )
         assert copymanga_parser.get_chapter_images("test", "ch1") == []
 
-    def test_get_chapter_images_no_content_key_returns_empty(
-        self, copymanga_parser, monkeypatch
-    ):
+    def test_get_chapter_images_no_content_key_returns_empty(self, copymanga_parser, monkeypatch):
         copymanga_parser._aes_key_cache.set("test_aes_key_1234")
 
         def fake_get(url, **kwargs):
             resp = _requests.Response()
             resp.status_code = 200
-            resp._content = b'<html><body><p>no script</p></body></html>'
+            resp._content = b"<html><body><p>no script</p></body></html>"
             resp.encoding = "utf-8"
             return resp
 

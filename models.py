@@ -94,9 +94,7 @@ class ComicInfo:
         Returns:
             图片 URL
         """
-        suffix = _IMAGE_URL_SUFFIX_MAP.get(
-            self.comic_source.upper(), _DEFAULT_IMAGE_URL_SUFFIX
-        )
+        suffix = _IMAGE_URL_SUFFIX_MAP.get(self.comic_source.upper(), _DEFAULT_IMAGE_URL_SUFFIX)
         return f"{IMAGE_API_BASE}/{suffix}/{self.media_id}/pages/{page}"
 
     def get_all_image_urls(self) -> list[str]:
@@ -121,11 +119,7 @@ class ComicInfo:
         """
         if not isinstance(other, ComicInfo):
             return False
-        return (
-            self.source_site == other.source_site
-            and self.id == other.id
-            and self.comic_source == other.comic_source
-        )
+        return self.source_site == other.source_site and self.id == other.id and self.comic_source == other.comic_source
 
 
 @dataclass
@@ -162,9 +156,7 @@ class DownloadCancelledError(Exception):
         temp_dir: 下载时使用的临时目录，用于取消后清理
     """
 
-    def __init__(
-        self, message: str = "Download cancelled", temp_dir: str | None = None
-    ):
+    def __init__(self, message: str = "Download cancelled", temp_dir: str | None = None):
         super().__init__(message)
         self.temp_dir = temp_dir
 

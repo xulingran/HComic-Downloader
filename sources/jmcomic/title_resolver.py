@@ -52,7 +52,7 @@ def _extract_title_from_doc(doc) -> str:
                 if sep in raw:
                     raw = raw.split(sep, 1)[0].strip()
             if raw and raw.lower() not in (
-                "禁漫天堂",
+                "jmcomic",
                 "18comic",
                 "jmcomic",
                 "18comic.vip",
@@ -85,10 +85,7 @@ def fill_missing_titles(
     )
 
     if not session_cookies:
-        logger.warning(
-            "No cookies available for title-fetch threads; "
-            "age-restricted albums may redirect to login"
-        )
+        logger.warning("No cookies available for title-fetch threads; age-restricted albums may redirect to login")
 
     def _fetch_title(cid: str) -> tuple[str, str, str]:
         """线程安全：独立 session + 完整 headers 上下文。
@@ -132,9 +129,7 @@ def fill_missing_titles(
                             return cid, headline.strip(), ""
                     if isinstance(data, list):
                         for item in data:
-                            name = (
-                                item.get("name", "") if isinstance(item, dict) else ""
-                            )
+                            name = item.get("name", "") if isinstance(item, dict) else ""
                             if name and name.strip():
                                 return cid, name.strip(), ""
                 except (json.JSONDecodeError, TypeError, ValueError):
@@ -175,9 +170,7 @@ def fill_missing_titles(
     if failures:
         # 按错误原因分组统计
         reason_counts = Counter(err for _, err in failures)
-        reasons = ", ".join(
-            f"{reason}: {cnt}" for reason, cnt in reason_counts.most_common()
-        )
+        reasons = ", ".join(f"{reason}: {cnt}" for reason, cnt in reason_counts.most_common())
         failed_ids = [cid for cid, _ in failures[:5]]
         logger.warning(
             "Failed to fetch %d titles. Reasons: %s. First IDs: %s",

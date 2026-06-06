@@ -38,9 +38,7 @@ class BikaParser(ParserContextMixin):
         self._stored_username: str = ""
         self._stored_password: str = ""
 
-    def configure_auth(
-        self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
-    ):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置认证信息。Bika 使用 bearer_token。"""
         if bearer_token:
             self._token = bearer_token.strip()
@@ -60,9 +58,7 @@ class BikaParser(ParserContextMixin):
         if self._token:
             return
         if self._stored_username and self._stored_password:
-            logger.info(
-                "Auto-login bika with stored credentials for %s", self._stored_username
-            )
+            logger.info("Auto-login bika with stored credentials for %s", self._stored_username)
             self.login(self._stored_username, self._stored_password)
             return
         raise ParserResponseError("未登录，请先登录 Bika")
@@ -159,11 +155,7 @@ class BikaParser(ParserContextMixin):
         data = {"email": username, "password": password}
         result = self._request(Method.POST, "auth/sign-in", json=data)
 
-        token = (
-            result.get("data", {}).get("token")
-            if isinstance(result.get("data"), dict)
-            else None
-        )
+        token = result.get("data", {}).get("token") if isinstance(result.get("data"), dict) else None
         if not token:
             raise ParserResponseError(
                 f"登录失败：API 返回 code={result.get('code')}, "
@@ -194,11 +186,7 @@ class BikaParser(ParserContextMixin):
             return _check_profile()
         except ParserResponseError as e:
             error_msg = str(e)
-            if (
-                "认证已失效" in error_msg
-                and self._stored_username
-                and self._stored_password
-            ):
+            if "认证已失效" in error_msg and self._stored_username and self._stored_password:
                 logger.info("Bika token expired, re-login with stored credentials")
                 try:
                     self.login(self._stored_username, self._stored_password)
@@ -207,9 +195,7 @@ class BikaParser(ParserContextMixin):
                     return False, f"自动重新登录失败: {e2}"
             return False, error_msg
 
-    def search(
-        self, keyword: str, page: int = 1, *, tag: str = ""
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。
 
         Args:
@@ -222,9 +208,7 @@ class BikaParser(ParserContextMixin):
         """
         try:
             data = {"keyword": keyword, "sort": "dd"}
-            result = self._request(
-                Method.POST, f"comics/advanced-search?page={page}", json=data
-            )
+            result = self._request(Method.POST, f"comics/advanced-search?page={page}", json=data)
             return self._parse_comics_response(result)
         except ParserResponseError as e:
             logger.error("Bika search failed: %s", e, exc_info=True)
@@ -413,9 +397,7 @@ class BikaParser(ParserContextMixin):
             logger.error("Bika remove_from_favourites failed: %s", e, exc_info=True)
             return False
 
-    def _parse_comics_response(
-        self, result: dict[str, Any]
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def _parse_comics_response(self, result: dict[str, Any]) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """解析漫画列表响应。
 
         Args:
@@ -468,9 +450,7 @@ class BikaParser(ParserContextMixin):
             pages=data.get("pagesCount", 0),
             category=categories[0] if categories else None,
             tags=all_tags,
-            publish_date=(
-                data.get("updated_at", "")[:10] if data.get("updated_at") else None
-            ),
+            publish_date=(data.get("updated_at", "")[:10] if data.get("updated_at") else None),
             cover_url=cover_url,
             preview_url=f"{API_BASE_URL}comics/{comic_id}",
             media_id=comic_id,

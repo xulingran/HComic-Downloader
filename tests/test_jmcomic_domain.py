@@ -36,9 +36,10 @@ def test_resolve_no_cache_fallback(tmp_path):
 def test_resolve_publish_success(tmp_path):
     """发布页返回可用域名时写入缓存。"""
     resolver = JmDomainResolver(cache_dir=str(tmp_path))
-    with patch.object(
-        resolver, "_fetch_publish_domains", return_value=["new-domain.com"]
-    ), patch.object(resolver, "_test_domain", return_value=True):
+    with (
+        patch.object(resolver, "_fetch_publish_domains", return_value=["new-domain.com"]),
+        patch.object(resolver, "_test_domain", return_value=True),
+    ):
         domain = resolver.resolve()
     assert domain == "new-domain.com"
     cache_file = tmp_path / "jm_domain.txt"

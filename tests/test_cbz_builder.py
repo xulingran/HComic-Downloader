@@ -47,9 +47,7 @@ class TestCBZBuilder:
     def test_build_cbz_creates_valid_zip(self, sample_comic, sample_images, tmp_path):
         builder = CBZBuilder()
         output_path = tmp_path / "output.cbz"
-        result = builder.build_cbz(
-            sample_images, sample_comic, str(output_path), download_dir=str(tmp_path)
-        )
+        result = builder.build_cbz(sample_images, sample_comic, str(output_path), download_dir=str(tmp_path))
         assert Path(result).exists()
         assert result == str(output_path)
         with zipfile.ZipFile(result, "r") as zf:
@@ -60,9 +58,7 @@ class TestCBZBuilder:
     def test_comic_info_xml_content(self, sample_comic, sample_images, tmp_path):
         builder = CBZBuilder()
         output_path = tmp_path / "output.cbz"
-        builder.build_cbz(
-            sample_images, sample_comic, str(output_path), download_dir=str(tmp_path)
-        )
+        builder.build_cbz(sample_images, sample_comic, str(output_path), download_dir=str(tmp_path))
         with zipfile.ZipFile(output_path, "r") as zf:
             xml_content = zf.read("ComicInfo.xml").decode("utf-8")
         assert "<Title>测试漫画Title</Title>" in xml_content
@@ -79,23 +75,17 @@ class TestCBZBuilder:
     def test_cbz_image_naming(self, sample_comic, sample_images, tmp_path):
         builder = CBZBuilder()
         output_path = tmp_path / "output.cbz"
-        builder.build_cbz(
-            sample_images, sample_comic, str(output_path), download_dir=str(tmp_path)
-        )
+        builder.build_cbz(sample_images, sample_comic, str(output_path), download_dir=str(tmp_path))
         with zipfile.ZipFile(output_path, "r") as zf:
             namelist = zf.namelist()
         assert "001.jpg" in namelist
         assert "002.jpg" in namelist
         assert "003.jpg" in namelist
 
-    def test_build_cbz_with_custom_output_path(
-        self, sample_comic, sample_images, tmp_path
-    ):
+    def test_build_cbz_with_custom_output_path(self, sample_comic, sample_images, tmp_path):
         builder = CBZBuilder()
         custom_path = tmp_path / "custom" / "subdir" / "comic.cbz"
-        result = builder.build_cbz(
-            sample_images, sample_comic, str(custom_path), download_dir=str(tmp_path)
-        )
+        result = builder.build_cbz(sample_images, sample_comic, str(custom_path), download_dir=str(tmp_path))
         assert Path(result).exists()
 
     def test_collect_image_files(self, tmp_path):
@@ -128,9 +118,7 @@ class TestCBZBuilder:
         (img_dir / "004.ico").write_bytes(b"ico")
         output_path = tmp_path / "mixed.cbz"
 
-        result = builder.build_cbz(
-            str(img_dir), sample_comic, str(output_path), download_dir=str(tmp_path)
-        )
+        result = builder.build_cbz(str(img_dir), sample_comic, str(output_path), download_dir=str(tmp_path))
 
         assert Path(result).exists()
         with zipfile.ZipFile(result, "r") as zf:
@@ -149,15 +137,11 @@ class TestCBZBuilder:
         # For single word inputs without dashes, returns the word as year
         assert builder._parse_date("invalid") == ("invalid", "", "")
 
-    def test_comic_info_xml_with_preview_url(
-        self, sample_comic, sample_images, tmp_path
-    ):
+    def test_comic_info_xml_with_preview_url(self, sample_comic, sample_images, tmp_path):
         builder = CBZBuilder()
         sample_comic.preview_url = "https://h-comic.com/comic/123"
         output_path = tmp_path / "output.cbz"
-        builder.build_cbz(
-            sample_images, sample_comic, str(output_path), download_dir=str(tmp_path)
-        )
+        builder.build_cbz(sample_images, sample_comic, str(output_path), download_dir=str(tmp_path))
         with zipfile.ZipFile(output_path, "r") as zf:
             xml_content = zf.read("ComicInfo.xml").decode("utf-8")
         assert "<Web>https://h-comic.com/comic/123</Web>" in xml_content
@@ -175,9 +159,7 @@ class TestCBZBuilder:
             publish_date="",
         )
         output_path = tmp_path / "minimal.cbz"
-        builder.build_cbz(
-            sample_images, minimal_comic, str(output_path), download_dir=str(tmp_path)
-        )
+        builder.build_cbz(sample_images, minimal_comic, str(output_path), download_dir=str(tmp_path))
         with zipfile.ZipFile(output_path, "r") as zf:
             xml_content = zf.read("ComicInfo.xml").decode("utf-8")
         assert "<Title>极简漫画</Title>" in xml_content
@@ -214,9 +196,7 @@ class TestCBZBuilder:
             assert "ComicInfo.xml" not in namelist
             assert len([n for n in namelist if n.endswith(".jpg")]) == 3
 
-    def test_build_cbz_simple_with_comic_info(
-        self, sample_comic, sample_images, tmp_path
-    ):
+    def test_build_cbz_simple_with_comic_info(self, sample_comic, sample_images, tmp_path):
         """测试 build_cbz_simple 函数带 comic_info"""
         from cbz_builder import build_cbz_simple
 

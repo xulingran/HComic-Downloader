@@ -120,12 +120,8 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         if source not in normalized or not isinstance(auth, dict):
             continue
         normalized[source]["cookie"] = str(auth.get("cookie", "") or "").strip()
-        normalized[source]["user_agent"] = str(
-            auth.get("user_agent", auth.get("ua", "")) or ""
-        ).strip()
-        normalized[source]["bearer_token"] = str(
-            auth.get("bearer_token", "") or ""
-        ).strip()
+        normalized[source]["user_agent"] = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
+        normalized[source]["bearer_token"] = str(auth.get("bearer_token", "") or "").strip()
         if source in ("moeimg", "bika"):
             normalized[source]["username"] = str(auth.get("username", "") or "").strip()
             normalized[source]["password"] = str(auth.get("password", "") or "").strip()

@@ -73,28 +73,16 @@ class ConfigMixin:
             "downloadDir": lambda v: self._download_manager.set_output_dir(v),
             "outputFormat": lambda v: self._download_manager.set_output_format(v),
             "batchDownloadDelay": lambda v: self._download_manager.set_delay_after(v),
-            "autoRetryMaxAttempts": lambda v: self._download_manager.set_auto_retry_max_attempts(
-                v
-            ),
+            "autoRetryMaxAttempts": lambda v: self._download_manager.set_auto_retry_max_attempts(v),
             "concurrentDownloads": self._apply_concurrent_downloads,
             "timeout": self._apply_timeout,
             "retryTimes": self._apply_retry_times,
-            "cbzFilenameTemplate": lambda v: setattr(
-                self.cbz_builder, "filename_template", v
-            ),
+            "cbzFilenameTemplate": lambda v: setattr(self.cbz_builder, "filename_template", v),
             "defaultSource": lambda v: self.parser.set_source(v),
             "jmcomicDomain": self._apply_jmcomic_domain,
             "previewCacheSizeLimitMB": lambda v: (
-                (
-                    self._preview_cache.update_max_size(v)
-                    if hasattr(self, "_preview_cache")
-                    else None
-                ),
-                (
-                    self._cover_cache.update_max_size(v)
-                    if hasattr(self, "_cover_cache")
-                    else None
-                ),
+                (self._preview_cache.update_max_size(v) if hasattr(self, "_preview_cache") else None),
+                (self._cover_cache.update_max_size(v) if hasattr(self, "_cover_cache") else None),
             ),
         }
         applier = _RUNTIME_APPLIERS.get(key)
@@ -119,41 +107,24 @@ class ConfigMixin:
             "font_name": getattr(self.config, "font_name", ""),
             "font_size": getattr(self.config, "font_size", 14),
             "sfw_mode": getattr(self.config, "sfw_mode", True),
-            "tag_blacklist": getattr(
-                self.config, "tag_blacklist", {"hcomic": [], "moeimg": []}
-            ),
-            "preview_cache_size_limit_mb": getattr(
-                self.config, "preview_cache_size_limit_mb", 500
-            ),
+            "tag_blacklist": getattr(self.config, "tag_blacklist", {"hcomic": [], "moeimg": []}),
+            "preview_cache_size_limit_mb": getattr(self.config, "preview_cache_size_limit_mb", 500),
             "jmcomic_domain": getattr(self.config, "jmcomic_domain", ""),
-            "favourite_tag_highlight": getattr(
-                self.config, "favourite_tag_highlight", False
-            ),
+            "favourite_tag_highlight": getattr(self.config, "favourite_tag_highlight", False),
         }
         config = {}
         for snake_key, value in raw.items():
             camel_key = reverse_map.get(snake_key, snake_key)
             config[camel_key] = value
-        config["hasAuth"] = bool(
-            self.config.source_auth.get("hcomic", {}).get("cookie")
-        )
-        config["hasJmcomicAuth"] = bool(
-            self.config.source_auth.get("jmcomic", {}).get("cookie")
-        )
-        config["hasMoeimgAuth"] = bool(
-            self.config.source_auth.get("moeimg", {}).get("cookie")
-        )
-        config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get(
-            "username", ""
-        )
+        config["hasAuth"] = bool(self.config.source_auth.get("hcomic", {}).get("cookie"))
+        config["hasJmcomicAuth"] = bool(self.config.source_auth.get("jmcomic", {}).get("cookie"))
+        config["hasMoeimgAuth"] = bool(self.config.source_auth.get("moeimg", {}).get("cookie"))
+        config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get("username", "")
         bika_auth = self.config.source_auth.get("bika", {})
         config["hasBikaAuth"] = bool(
-            bika_auth.get("bearer_token")
-            or (bika_auth.get("username") and bika_auth.get("password"))
+            bika_auth.get("bearer_token") or (bika_auth.get("username") and bika_auth.get("password"))
         )
-        config["bikaUsername"] = self.config.source_auth.get("bika", {}).get(
-            "username", ""
-        )
+        config["bikaUsername"] = self.config.source_auth.get("bika", {}).get("username", "")
         # 返回 jmcomic CDN 域名，供前端动态更新白名单
         jmcomic_cdn = self.parser.get_jmcomic_cdn_domain()
         if jmcomic_cdn:

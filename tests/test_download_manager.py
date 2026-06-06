@@ -264,9 +264,7 @@ class _FakeCBZBuilder:
 
 
 class _InstantDownloader:
-    def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, options=None, **kwargs
-    ):
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, options=None, **kwargs):
         if options and options.progress_callback:
             progress_callback = progress_callback or options.progress_callback
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
@@ -367,9 +365,7 @@ def test_pause_downloading_task_keeps_paused_state(tmp_path):
 
 
 class _MixedExtensionFailureDownloader:
-    def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, options=None, **kwargs
-    ):
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, options=None, **kwargs):
         if options and options.progress_callback:
             progress_callback = progress_callback or options.progress_callback
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
@@ -472,9 +468,7 @@ def test_get_next_task_locked_mixed_states_finds_queued():
 
 
 class _AlwaysFailDownloader:
-    def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, options=None, **kwargs
-    ):
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, options=None, **kwargs):
         if options and options.progress_callback:
             progress_callback = progress_callback or options.progress_callback
         if progress_callback:
@@ -494,9 +488,7 @@ class _AlwaysFailDownloader:
 
 
 class _SlowSuccessDownloader:
-    def download_comic_resume(
-        self, comic, output_dir, progress_callback=None, options=None, **kwargs
-    ):
+    def download_comic_resume(self, comic, output_dir, progress_callback=None, options=None, **kwargs):
         if options and options.progress_callback:
             progress_callback = progress_callback or options.progress_callback
         temp_dir = os.path.join(output_dir, f"temp_{comic.id}")
@@ -526,11 +518,7 @@ def test_task_lifecycle_queued_to_completed(tmp_path):
     task_id = dm.add_task(ComicInfo(id="life_ok", title="Lifecycle OK", pages=3))
 
     deadline = time.time() + 5
-    while (
-        dm.tasks[task_id].status
-        not in (DownloadStatus.COMPLETED, DownloadStatus.FAILED)
-        and time.time() < deadline
-    ):
+    while dm.tasks[task_id].status not in (DownloadStatus.COMPLETED, DownloadStatus.FAILED) and time.time() < deadline:
         time.sleep(0.05)
 
     task = dm.tasks[task_id]
@@ -611,11 +599,7 @@ def test_auto_retry_respects_max_attempts(tmp_path):
     dm.start()
 
     deadline = time.time() + 2
-    while (
-        dm.tasks[task_id].status
-        not in (DownloadStatus.FAILED, DownloadStatus.COMPLETED)
-        and time.time() < deadline
-    ):
+    while dm.tasks[task_id].status not in (DownloadStatus.FAILED, DownloadStatus.COMPLETED) and time.time() < deadline:
         time.sleep(0.02)
 
     task = dm.tasks[task_id]

@@ -22,9 +22,7 @@ class TestParserFavourites(unittest.TestCase):
     def test_parse_favourites_page_detects_login_required(self):
         html = _build_payload_html({"data": {"favourites": {}}})
 
-        results, pagination, needs_login = self.parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        results, pagination, needs_login = self.parser.parse_favourites_page(html, requested_page=1)
 
         self.assertEqual(results, [])
         self.assertIsNone(pagination)
@@ -54,9 +52,7 @@ class TestParserFavourites(unittest.TestCase):
             }
         )
 
-        results, pagination, needs_login = self.parser.parse_favourites_page(
-            html, requested_page=2
-        )
+        results, pagination, needs_login = self.parser.parse_favourites_page(html, requested_page=2)
 
         self.assertFalse(needs_login)
         self.assertEqual(len(results), 1)
@@ -97,9 +93,7 @@ class TestParserFavourites(unittest.TestCase):
             }
         )
 
-        results, pagination, needs_login = self.parser.parse_favourites_page(
-            html, requested_page=1
-        )
+        results, pagination, needs_login = self.parser.parse_favourites_page(html, requested_page=1)
 
         self.assertFalse(needs_login)
         self.assertEqual(len(results), 1)
@@ -107,9 +101,7 @@ class TestParserFavourites(unittest.TestCase):
         self.assertIsNotNone(pagination)
 
     def test_build_favourites_url_with_page(self):
-        self.assertEqual(
-            HComicParser._build_favourites_url(1), "https://h-comic.com/favourites"
-        )
+        self.assertEqual(HComicParser._build_favourites_url(1), "https://h-comic.com/favourites")
         self.assertEqual(
             HComicParser._build_favourites_url(3),
             "https://h-comic.com/favourites?page=3",
@@ -144,9 +136,7 @@ class TestAddToFavourites(unittest.TestCase):
     def test_add_to_favourites_http_401(self):
         error_response = MagicMock()
         error_response.status_code = 401
-        self.parser.session.request = MagicMock(
-            side_effect=requests.HTTPError(response=error_response)
-        )
+        self.parser.session.request = MagicMock(side_effect=requests.HTTPError(response=error_response))
 
         with self.assertRaises(ParserResponseError) as ctx:
             self.parser.add_to_favourites("123")
@@ -155,18 +145,14 @@ class TestAddToFavourites(unittest.TestCase):
     def test_add_to_favourites_http_403(self):
         error_response = MagicMock()
         error_response.status_code = 403
-        self.parser.session.request = MagicMock(
-            side_effect=requests.HTTPError(response=error_response)
-        )
+        self.parser.session.request = MagicMock(side_effect=requests.HTTPError(response=error_response))
 
         with self.assertRaises(ParserResponseError) as ctx:
             self.parser.add_to_favourites("123")
         self.assertIn("认证已失效", str(ctx.exception))
 
     def test_add_to_favourites_network_error(self):
-        self.parser.session.request = MagicMock(
-            side_effect=requests.ConnectionError("网络错误")
-        )
+        self.parser.session.request = MagicMock(side_effect=requests.ConnectionError("网络错误"))
 
         with self.assertRaises(ParserResponseError) as ctx:
             self.parser.add_to_favourites("123")
@@ -228,9 +214,7 @@ class TestCheckFavourite(unittest.TestCase):
     def test_check_favourite_http_401(self):
         error_response = MagicMock()
         error_response.status_code = 401
-        self.parser.session.request = MagicMock(
-            side_effect=requests.HTTPError(response=error_response)
-        )
+        self.parser.session.request = MagicMock(side_effect=requests.HTTPError(response=error_response))
 
         with self.assertRaises(ParserResponseError) as ctx:
             self.parser.check_favourite("abc")

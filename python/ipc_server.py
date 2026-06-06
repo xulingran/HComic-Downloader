@@ -11,9 +11,7 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
 # Re-export names used by test files:
@@ -52,7 +50,6 @@ class IPCServer(
     HistoryMixin,
     FavouriteTagsMixin,
 ):
-
     def __init__(self):
         from cbz_builder import CBZBuilder
         from config import Config
@@ -91,9 +88,7 @@ class IPCServer(
             prepare_comic=self.parser.prepare_for_download,
             output_format=self.config.output_format,
         )
-        self._download_manager.set_auto_retry_max_attempts(
-            self.config.auto_retry_max_attempts
-        )
+        self._download_manager.set_auto_retry_max_attempts(self.config.auto_retry_max_attempts)
         self._download_manager.set_delay_after(self.config.batch_download_delay)
         self._download_manager.set_callbacks(on_task_update=self._on_download_update)
         self._download_manager.start()
@@ -102,16 +97,12 @@ class IPCServer(
         from download_history import DownloadHistoryDB
 
         self._history_db = DownloadHistoryDB(
-            os.path.join(
-                os.path.expanduser("~"), ".hcomic_downloader", "download_history.db"
-            )
+            os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "download_history.db")
         )
         self._download_manager.on_download_success = self._on_download_success_record
 
         # Thread pool for async cover fetches — keeps main loop responsive
-        self._cover_executor = ThreadPoolExecutor(
-            max_workers=_COVER_POOL_MAX_WORKERS, thread_name_prefix="cover"
-        )
+        self._cover_executor = ThreadPoolExecutor(max_workers=_COVER_POOL_MAX_WORKERS, thread_name_prefix="cover")
         try:
             # Reader page fetches must not queue behind cover thumbnails.
             self._preview_executor = ThreadPoolExecutor(
@@ -145,12 +136,8 @@ class IPCServer(
         for _method_name, attr_name in self._HANDLER_NAMES.items():
             handler = getattr(self, attr_name)
             sig = inspect.signature(handler)
-            has_var_keyword = any(
-                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
-            )
-            self._handler_param_keys[attr_name] = (
-                None if has_var_keyword else set(sig.parameters.keys())
-            )
+            has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
+            self._handler_param_keys[attr_name] = None if has_var_keyword else set(sig.parameters.keys())
 
     # ── backward-compatible static helpers (delegated to image_utils) ─────
 
@@ -278,9 +265,7 @@ class IPCServer(
         cover_stats = self._cover_cache.get_stats()
         preview_stats = self._preview_cache.get_stats()
         total_file_count = cover_stats["file_count"] + preview_stats["file_count"]
-        total_size_bytes = (
-            cover_stats["total_size_bytes"] + preview_stats["total_size_bytes"]
-        )
+        total_size_bytes = cover_stats["total_size_bytes"] + preview_stats["total_size_bytes"]
         return {
             "cover": cover_stats,
             "preview": preview_stats,

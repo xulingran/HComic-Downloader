@@ -39,13 +39,9 @@ class DownloadHistoryDB:
             )
         """)
         # 列迁移：为多章节专辑判定补充 album_id / album_total_chapters。
-        existing = {
-            row[1] for row in self._conn.execute("PRAGMA table_info(download_history)")
-        }
+        existing = {row[1] for row in self._conn.execute("PRAGMA table_info(download_history)")}
         if "album_id" not in existing:
-            self._conn.execute(
-                "ALTER TABLE download_history ADD COLUMN album_id TEXT NOT NULL DEFAULT ''"
-            )
+            self._conn.execute("ALTER TABLE download_history ADD COLUMN album_id TEXT NOT NULL DEFAULT ''")
         if "album_total_chapters" not in existing:
             self._conn.execute(
                 "ALTER TABLE download_history ADD COLUMN album_total_chapters INTEGER NOT NULL DEFAULT 1"
@@ -56,9 +52,7 @@ class DownloadHistoryDB:
     def _migrate_album_ids(self):
         """旧记录 album_id 为空时回填为 comic_id，使其按单本专辑(1/1)正确判定。"""
         with self._lock:
-            self._conn.execute(
-                "UPDATE download_history SET album_id = comic_id WHERE album_id = ''"
-            )
+            self._conn.execute("UPDATE download_history SET album_id = comic_id WHERE album_id = ''")
             self._conn.commit()
 
     def record_download(self, comic: ComicInfo, output_path: str, output_format: str):
@@ -116,10 +110,7 @@ class DownloadHistoryDB:
         if len(comic_keys) <= BATCH_SIZE:
             batches = [comic_keys]
         else:
-            batches = [
-                comic_keys[i : i + BATCH_SIZE]
-                for i in range(0, len(comic_keys), BATCH_SIZE)
-            ]
+            batches = [comic_keys[i : i + BATCH_SIZE] for i in range(0, len(comic_keys), BATCH_SIZE)]
 
         from cbz_builder import CBZBuilder
 
@@ -147,9 +138,7 @@ class DownloadHistoryDB:
                 # 按 (site, album_id, source) 聚合：统计仍存在的章数与总章数。
                 from collections import defaultdict
 
-                agg: dict[tuple[str, str, str], dict] = defaultdict(
-                    lambda: {"have": 0, "total": 1, "rec": None}
-                )
+                agg: dict[tuple[str, str, str], dict] = defaultdict(lambda: {"have": 0, "total": 1, "rec": None})
                 for row in cursor:
                     key = (row[0], row[1], row[2])
                     bucket = agg[key]
@@ -177,9 +166,7 @@ class DownloadHistoryDB:
                             source_site=key[0],
                             comic_source=key[2],
                         )
-                        expected_path = builder.get_output_path_for_format(
-                            comic, output_format, output_dir
-                        )
+                        expected_path = builder.get_output_path_for_format(comic, output_format, output_dir)
                         if os.path.exists(expected_path):
                             result[key] = "downloaded"
                         else:

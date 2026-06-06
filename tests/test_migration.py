@@ -22,9 +22,7 @@ def _cleanup_migration_logger():
 
 
 def test_migration_state_defaults():
-    state = MigrationState(
-        id="test-id", mode="full", source_dir="/old", target_dir="/new"
-    )
+    state = MigrationState(id="test-id", mode="full", source_dir="/old", target_dir="/new")
     assert state.status == "planning"
     assert state.total_items == 0
     assert state.completed_items == 0
@@ -52,9 +50,7 @@ def test_migration_state_to_dict_roundtrip():
 
 
 def test_migration_state_save_and_load(tmp_path):
-    state = MigrationState(
-        id="test-id", mode="full", source_dir="/old", target_dir="/new"
-    )
+    state = MigrationState(id="test-id", mode="full", source_dir="/old", target_dir="/new")
     path = str(tmp_path / "migration_state.json")
     state.save(path)
     assert os.path.exists(path)
@@ -379,8 +375,9 @@ def test_cross_drive_source_removal_failure_still_updates_db(tmp_path):
     engine = MigrationEngine(history_db=mock_db)
     state = engine.plan_full_migration(source_dir, target_dir)
 
-    with patch("migration.MigrationEngine._is_same_drive", return_value=False), patch(
-        "os.remove", side_effect=OSError("permission denied")
+    with (
+        patch("migration.MigrationEngine._is_same_drive", return_value=False),
+        patch("os.remove", side_effect=OSError("permission denied")),
     ):
         engine.execute(on_progress=lambda p: None)
 

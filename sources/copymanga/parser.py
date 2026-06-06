@@ -13,8 +13,8 @@ from sources.base import ParserContextMixin, ParserResponseError
 from utils import apply_system_proxy_to_session
 
 from .constants import (
-    API_HEADERS,
     AES_KEY_PAGE_URL,
+    API_HEADERS,
     CHAPTER_PAGE_URL_TEMPLATE,
     CHAPTERS_URL_TEMPLATE,
     PAGE_SIZE,
@@ -37,18 +37,14 @@ class CopyMangaParser(ParserContextMixin):
         apply_system_proxy_to_session(self.session)
         self._aes_key_cache = AesKeyCache()
 
-    def configure_auth(
-        self, cookie: str = "", user_agent: str = "", bearer_token: str = ""
-    ):
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置认证信息。拷贝漫画不需要认证，保留接口兼容。"""
 
     def verify_login_status(self) -> tuple[bool, str]:
         """拷贝漫画不需要登录，始终返回已就绪。"""
         return True, "拷贝漫画无需登录"
 
-    def favourites(
-        self, page: int = 1, raise_errors: bool = False
-    ) -> tuple[list, None, bool]:
+    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list, None, bool]:
         """拷贝漫画不支持收藏夹。"""
         return [], None, False
 
@@ -71,9 +67,7 @@ class CopyMangaParser(ParserContextMixin):
     def _request_text(self, url: str, *, headers: dict | None = None) -> str:
         """发起 GET 请求并返回响应文本。"""
         try:
-            resp = self.session.get(
-                url, headers=headers, timeout=self.timeout, allow_redirects=True
-            )
+            resp = self.session.get(url, headers=headers, timeout=self.timeout, allow_redirects=True)
             resp.raise_for_status()
             return resp.text
         except requests.Timeout as e:
@@ -86,9 +80,7 @@ class CopyMangaParser(ParserContextMixin):
     def _request_json(self, url: str, *, headers: dict | None = None) -> dict:
         """发起 GET 请求并返回解析后的 JSON 字典。"""
         try:
-            resp = self.session.get(
-                url, headers=headers, timeout=self.timeout, allow_redirects=True
-            )
+            resp = self.session.get(url, headers=headers, timeout=self.timeout, allow_redirects=True)
             resp.raise_for_status()
             return resp.json()
         except requests.Timeout as e:
@@ -127,9 +119,7 @@ class CopyMangaParser(ParserContextMixin):
     # 搜索
     # ------------------------------------------------------------------
 
-    def search(
-        self, keyword: str, page: int = 1, *, tag: str = ""
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。"""
         offset = (page - 1) * PAGE_SIZE
         url = SEARCH_URL_TEMPLATE.format(offset=offset, keyword=keyword)
@@ -166,9 +156,7 @@ class CopyMangaParser(ParserContextMixin):
         path_word = item.get("path_word", "")
         name = item.get("name", "未知标题")
         authors = item.get("author") or []
-        author_names = ", ".join(
-            a.get("name", "") for a in authors if a.get("name")
-        )
+        author_names = ", ".join(a.get("name", "") for a in authors if a.get("name"))
         cover = item.get("cover", "")
 
         # 从 last_chapter_name 提取章节数（如 "第243话" → 243）
@@ -240,28 +228,16 @@ class CopyMangaParser(ParserContextMixin):
             logger.error("CopyManga get_chapters failed: %s", e, exc_info=True)
             return []
 
-    def _parse_chapters_payload(
-        self, decrypted: dict, path_word: str
-    ) -> ComicInfo:
+    def _parse_chapters_payload(self, decrypted: dict, path_word: str) -> ComicInfo:
         """解析解密后的章节数据，构建 ComicInfo。"""
         build = decrypted.get("build") or {}
-        groups = decrypted.get("groups") or {}
         chapters = self._extract_chapters(decrypted)
 
         # 从 build 中提取元数据
         comic_name = build.get("name", path_word)
         comic_author = build.get("author") or []
-        author_names = ", ".join(
-            a.get("name", "")
-            for a in comic_author
-            if isinstance(a, dict) and a.get("name")
-        )
+        author_names = ", ".join(a.get("name", "") for a in comic_author if isinstance(a, dict) and a.get("name"))
         cover = build.get("cover", "")
-        status = build.get("status")
-        if isinstance(status, dict):
-            status_display = status.get("display", "")
-        else:
-            status_display = ""
 
         return ComicInfo(
             id=path_word,
@@ -301,9 +277,7 @@ class CopyMangaParser(ParserContextMixin):
     # 章节图片
     # ------------------------------------------------------------------
 
-    def get_chapter_images(
-        self, path_word: str, chapter_id: str
-    ) -> list[str]:
+    def get_chapter_images(self, path_word: str, chapter_id: str) -> list[str]:
         """获取章节图片 URL 列表。
 
         Args:
@@ -314,9 +288,7 @@ class CopyMangaParser(ParserContextMixin):
             图片 URL 列表
         """
         try:
-            url = CHAPTER_PAGE_URL_TEMPLATE.format(
-                path_word=path_word, chapter_id=chapter_id
-            )
+            url = CHAPTER_PAGE_URL_TEMPLATE.format(path_word=path_word, chapter_id=chapter_id)
             html_text = self._request_text(url)
             content_key = self._extract_content_key(html_text)
             image_data = self._decrypt(content_key)
@@ -326,9 +298,7 @@ class CopyMangaParser(ParserContextMixin):
                     urls.append(item["url"])
             return urls
         except Exception as e:
-            logger.error(
-                "CopyManga get_chapter_images failed: %s", e, exc_info=True
-            )
+            logger.error("CopyManga get_chapter_images failed: %s", e, exc_info=True)
             return []
 
     @staticmethod

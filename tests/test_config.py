@@ -143,12 +143,8 @@ class TestMultiSourceConfig(unittest.TestCase):
 
         try:
             config = Config(default_source="moeimg")
-            config.set_source_auth(
-                "hcomic", AuthSourceData(cookie="hc=1", user_agent="HC-UA")
-            )
-            config.set_source_auth(
-                "moeimg", AuthSourceData(cookie="mi=2", user_agent="MI-UA")
-            )
+            config.set_source_auth("hcomic", AuthSourceData(cookie="hc=1", user_agent="HC-UA"))
+            config.set_source_auth("moeimg", AuthSourceData(cookie="mi=2", user_agent="MI-UA"))
             config.save(config_path)
 
             loaded = Config.load(config_path)
@@ -175,12 +171,8 @@ class TestMultiSourceConfig(unittest.TestCase):
 
         try:
             loaded = Config.load(config_path)
-            self.assertEqual(
-                loaded.get_source_auth("hcomic")["cookie"], "legacy_cookie=1"
-            )
-            self.assertEqual(
-                loaded.get_source_auth("hcomic")["user_agent"], "Legacy-UA/1.0"
-            )
+            self.assertEqual(loaded.get_source_auth("hcomic")["cookie"], "legacy_cookie=1")
+            self.assertEqual(loaded.get_source_auth("hcomic")["user_agent"], "Legacy-UA/1.0")
             self.assertEqual(loaded.get_source_auth("moeimg")["cookie"], "")
         finally:
             os.unlink(config_path)
@@ -257,9 +249,7 @@ class TestConfigLoadCorrupted(unittest.TestCase):
             Config.load(config_path)
             with open(backup_path) as f:
                 second_backup = f.read()
-            self.assertEqual(
-                first_backup, second_backup, "第二次损坏不应覆盖已有的 .corrupted 备份"
-            )
+            self.assertEqual(first_backup, second_backup, "第二次损坏不应覆盖已有的 .corrupted 备份")
         finally:
             if os.path.exists(backup_path):
                 os.unlink(backup_path)

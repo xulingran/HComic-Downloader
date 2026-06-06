@@ -14,11 +14,7 @@ def _make_homepage_resp(username: str = "testuser", status: int = 200) -> MagicM
     resp.status_code = status
     resp.encoding = "utf-8"
     resp.url = "https://18comic.vip/"
-    resp.text = (
-        f"<html><body>"
-        f'<a href="/user/{username}/favorite/albums">收藏</a>'
-        f"</body></html>"
-    )
+    resp.text = f'<html><body><a href="/user/{username}/favorite/albums">收藏</a></body></html>'
     return resp
 
 
@@ -124,9 +120,7 @@ class TestJmcomicFavourites(unittest.TestCase):
     def test_favourites_handles_network_error_on_fav_page(self):
         """收藏夹页面网络错误时静默返回空列表"""
         self.parser._username = "testuser"
-        self.parser.session.get = MagicMock(
-            side_effect=requests.ConnectionError("网络错误")
-        )
+        self.parser.session.get = MagicMock(side_effect=requests.ConnectionError("网络错误"))
 
         comics, pagination, needs_login = self.parser.favourites(page=1)
 
@@ -137,9 +131,7 @@ class TestJmcomicFavourites(unittest.TestCase):
     def test_favourites_raises_when_raise_errors_true(self):
         """raise_errors=True 时，收藏夹页面网络错误向上传播"""
         self.parser._username = "testuser"
-        self.parser.session.get = MagicMock(
-            side_effect=requests.ConnectionError("网络错误")
-        )
+        self.parser.session.get = MagicMock(side_effect=requests.ConnectionError("网络错误"))
 
         with self.assertRaises(requests.ConnectionError):
             self.parser.favourites(page=1, raise_errors=True)
@@ -229,9 +221,7 @@ class TestJmcomicAddToFavourites(unittest.TestCase):
 
     def test_add_to_favourites_network_error(self):
         """测试网络错误"""
-        self.parser.session.post = MagicMock(
-            side_effect=requests.ConnectionError("网络错误")
-        )
+        self.parser.session.post = MagicMock(side_effect=requests.ConnectionError("网络错误"))
 
         with self.assertRaises(RuntimeError) as ctx:
             self.parser.add_to_favourites("12345")
@@ -279,9 +269,7 @@ class TestJmcomicCheckFavourite(unittest.TestCase):
 
     def test_check_favourite_network_error(self):
         """测试网络错误"""
-        self.parser.session.get = MagicMock(
-            side_effect=requests.ConnectionError("网络错误")
-        )
+        self.parser.session.get = MagicMock(side_effect=requests.ConnectionError("网络错误"))
 
         with self.assertRaises(RuntimeError) as ctx:
             self.parser.check_favourite("12345")
@@ -311,9 +299,7 @@ class TestJmcomicRemoveFromFavourites(unittest.TestCase):
 
     def test_remove_from_favourites_network_error(self):
         """测试网络错误"""
-        self.parser.session.post = MagicMock(
-            side_effect=requests.ConnectionError("网络错误")
-        )
+        self.parser.session.post = MagicMock(side_effect=requests.ConnectionError("网络错误"))
 
         with self.assertRaises(RuntimeError) as ctx:
             self.parser.remove_from_favourites("12345")
@@ -347,12 +333,8 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(
-                id="1", title="Title A", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
-            ComicInfo(
-                id="2", title="Title B", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
+            ComicInfo(id="1", title="Title A", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="2", title="Title B", source_site="jmcomic", comic_source="JMCOMIC"),
         ]
         # _serialize_cookies_for_title_fetch 不应被调用（所有标题已存在）
 
@@ -369,17 +351,11 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(
-                id="1", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
-            ComicInfo(
-                id="2", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
+            ComicInfo(id="1", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="2", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
         ]
 
-        detail_html = (
-            "<html><body>" '<h1 id="book-name">补全的标题</h1>' "</body></html>"
-        )
+        detail_html = '<html><body><h1 id="book-name">补全的标题</h1></body></html>'
 
         mock_thread_session = MagicMock()
         mock_resp = MagicMock()
@@ -389,16 +365,21 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/album/2"
         mock_thread_session.get.return_value = mock_resp
 
-        with patch("time.sleep", lambda x: None), patch(
-            "sources.jmcomic.title_resolver._create_thread_session",
-            return_value=mock_thread_session,
-        ), patch(
-            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
-            lambda s: None,
-        ), patch.object(
-            self.parser,
-            "_serialize_cookies_for_title_fetch",
-            return_value=[("ck", "val")],
+        with (
+            patch("time.sleep", lambda x: None),
+            patch(
+                "sources.jmcomic.title_resolver._create_thread_session",
+                return_value=mock_thread_session,
+            ),
+            patch(
+                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                lambda s: None,
+            ),
+            patch.object(
+                self.parser,
+                "_serialize_cookies_for_title_fetch",
+                return_value=[("ck", "val")],
+            ),
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -412,9 +393,7 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(
-                id="3", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
+            ComicInfo(id="3", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
         ]
 
         mock_thread_session = MagicMock()
@@ -425,16 +404,21 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/login"
         mock_thread_session.get.return_value = mock_resp
 
-        with patch("time.sleep", lambda x: None), patch(
-            "sources.jmcomic.title_resolver._create_thread_session",
-            return_value=mock_thread_session,
-        ), patch(
-            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
-            lambda s: None,
-        ), patch.object(
-            self.parser,
-            "_serialize_cookies_for_title_fetch",
-            return_value=[("ck", "val")],
+        with (
+            patch("time.sleep", lambda x: None),
+            patch(
+                "sources.jmcomic.title_resolver._create_thread_session",
+                return_value=mock_thread_session,
+            ),
+            patch(
+                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                lambda s: None,
+            ),
+            patch.object(
+                self.parser,
+                "_serialize_cookies_for_title_fetch",
+                return_value=[("ck", "val")],
+            ),
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -448,9 +432,7 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(
-                id="4", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
+            ComicInfo(id="4", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
         ]
 
         mock_thread_session = MagicMock()
@@ -461,16 +443,21 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/error/404"
         mock_thread_session.get.return_value = mock_resp
 
-        with patch("time.sleep", lambda x: None), patch(
-            "sources.jmcomic.title_resolver._create_thread_session",
-            return_value=mock_thread_session,
-        ), patch(
-            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
-            lambda s: None,
-        ), patch.object(
-            self.parser,
-            "_serialize_cookies_for_title_fetch",
-            return_value=[("ck", "val")],
+        with (
+            patch("time.sleep", lambda x: None),
+            patch(
+                "sources.jmcomic.title_resolver._create_thread_session",
+                return_value=mock_thread_session,
+            ),
+            patch(
+                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                lambda s: None,
+            ),
+            patch.object(
+                self.parser,
+                "_serialize_cookies_for_title_fetch",
+                return_value=[("ck", "val")],
+            ),
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -483,9 +470,7 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(
-                id="5", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
+            ComicInfo(id="5", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
         ]
 
         detail_html = (
@@ -505,16 +490,21 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/album/5"
         mock_thread_session.get.return_value = mock_resp
 
-        with patch("time.sleep", lambda x: None), patch(
-            "sources.jmcomic.title_resolver._create_thread_session",
-            return_value=mock_thread_session,
-        ), patch(
-            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
-            lambda s: None,
-        ), patch.object(
-            self.parser,
-            "_serialize_cookies_for_title_fetch",
-            return_value=[("ck", "val")],
+        with (
+            patch("time.sleep", lambda x: None),
+            patch(
+                "sources.jmcomic.title_resolver._create_thread_session",
+                return_value=mock_thread_session,
+            ),
+            patch(
+                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                lambda s: None,
+            ),
+            patch.object(
+                self.parser,
+                "_serialize_cookies_for_title_fetch",
+                return_value=[("ck", "val")],
+            ),
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -527,27 +517,28 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(
-                id="6", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
-            ComicInfo(
-                id="7", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"
-            ),
+            ComicInfo(id="6", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="7", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"),
         ]
 
         mock_thread_session = MagicMock()
         mock_thread_session.get.side_effect = requests.ConnectionError("network down")
 
-        with patch("time.sleep", lambda x: None), patch(
-            "sources.jmcomic.title_resolver._create_thread_session",
-            return_value=mock_thread_session,
-        ), patch(
-            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
-            lambda s: None,
-        ), patch.object(
-            self.parser,
-            "_serialize_cookies_for_title_fetch",
-            return_value=[("ck", "val")],
+        with (
+            patch("time.sleep", lambda x: None),
+            patch(
+                "sources.jmcomic.title_resolver._create_thread_session",
+                return_value=mock_thread_session,
+            ),
+            patch(
+                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                lambda s: None,
+            ),
+            patch.object(
+                self.parser,
+                "_serialize_cookies_for_title_fetch",
+                return_value=[("ck", "val")],
+            ),
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 

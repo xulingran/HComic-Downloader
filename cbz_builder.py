@@ -23,9 +23,7 @@ logger = logging.getLogger(__name__)
 ALLOWED_FILENAME_PLACEHOLDERS = {"author", "title", "id"}
 
 # XML 1.0 不允许的字符：控制字符 (0x00-0x08, 0x0B-0x0C, 0x0E-0x1F) + 代理对 (0xD800-0xDFFF)
-_XML_INVALID_CHARS_RE = re.compile(
-    r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff]"
-)
+_XML_INVALID_CHARS_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x84\x86-\x9f\ud800-\udfff]")
 
 
 class CBZBuilder:
@@ -56,9 +54,7 @@ class CBZBuilder:
         Raises ValueError if the template is invalid.
         """
         if not isinstance(template, str) or len(template) == 0 or len(template) > 256:
-            raise ValueError(
-                "Filename template must be a non-empty string ≤ 256 characters"
-            )
+            raise ValueError("Filename template must be a non-empty string ≤ 256 characters")
         if "/" in template or "\\" in template or ".." in template:
             raise ValueError("Filename template must not contain path separators")
 
@@ -85,9 +81,7 @@ class CBZBuilder:
 
         # Reject bare {} positional placeholder
         if "{}" in template:
-            raise ValueError(
-                "Filename template must not contain positional placeholders"
-            )
+            raise ValueError("Filename template must not contain positional placeholders")
 
         # Only allow whitelisted placeholders
         parts = re.findall(r"\{[^{}]+\}", template)
@@ -148,9 +142,7 @@ class CBZBuilder:
         logger.info("Building %s: %s", options.log_label, options.output_path)
 
         basename = os.path.basename(options.output_path)
-        fd, tmp_path = tempfile.mkstemp(
-            dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp"
-        )
+        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
         os.close(fd)
         try:
             with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -159,9 +151,7 @@ class CBZBuilder:
                     zf.writestr("ComicInfo.xml", comic_info_xml)
 
                 for i, img_path in enumerate(image_files, 1):
-                    arcname = PAGE_FILENAME_FORMAT.format(
-                        page=i, ext=os.path.splitext(img_path)[1]
-                    )
+                    arcname = PAGE_FILENAME_FORMAT.format(page=i, ext=os.path.splitext(img_path)[1])
                     zf.write(img_path, arcname)
                     logger.debug("Added: %s", arcname)
 
@@ -317,9 +307,7 @@ class CBZBuilder:
             pass
         return "", "", ""
 
-    def _generate_output_path(
-        self, comic: ComicInfo, download_dir: str | None = None
-    ) -> str:
+    def _generate_output_path(self, comic: ComicInfo, download_dir: str | None = None) -> str:
         """生成输出路径
 
         Args:
@@ -436,14 +424,10 @@ class CBZBuilder:
             if not overwrite:
                 raise FileExistsError(f"Output folder already exists: {output_path}")
             # 用唯一临时目录名做备份，避免误删已有的同名 .tmp_old
-            backup_path = tempfile.mkdtemp(
-                dir=output_dir, prefix=f".{folder_name}.old."
-            )
+            backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
             # mkdtemp 会创建目录，但我们需要 move 到它上面，所以先删掉空目录
             os.rmdir(backup_path)
-            logger.info(
-                "Target folder exists, backing up: %s -> %s", output_path, backup_path
-            )
+            logger.info("Target folder exists, backing up: %s -> %s", output_path, backup_path)
             shutil.move(output_path, backup_path)
             try:
                 logger.info("Moving folder: %s -> %s", image_dir, output_path)
@@ -533,9 +517,7 @@ class CBZBuilder:
             folder_name = self._generate_folder_name(comic)
             output_path = os.path.join(download_dir, folder_name)
         elif output_format == "zip":
-            output_path = self._generate_output_path_for_format(
-                comic, "zip", download_dir
-            )
+            output_path = self._generate_output_path_for_format(comic, "zip", download_dir)
         else:  # cbz
             output_path = self._generate_output_path(comic, download_dir)
         # 校验路径在下载目录内
