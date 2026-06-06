@@ -229,18 +229,25 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
+  const authMap = {
+    hcomic: hcomicAuth,
+    jmcomic: jmcomicAuth,
+    moeimg: moeimgAuth,
+    bika: bikaAuth,
+  } as const
+
   const handleApplyAuth = async (curlText: string, source: string = 'hcomic') => {
-    const auth = source === 'jmcomic' ? jmcomicAuth : source === 'moeimg' ? moeimgAuth : hcomicAuth
+    const auth = authMap[source as keyof typeof authMap] ?? hcomicAuth
     await auth.apply(curlText)
   }
 
   const handleTestAuth = async (source: string = 'hcomic') => {
-    const auth = source === 'jmcomic' ? jmcomicAuth : source === 'moeimg' ? moeimgAuth : hcomicAuth
+    const auth = authMap[source as keyof typeof authMap] ?? hcomicAuth
     await auth.test()
   }
 
   const handleOpenLoginWindow = async (source: string = 'hcomic') => {
-    const auth = source === 'jmcomic' ? jmcomicAuth : hcomicAuth
+    const auth = authMap[source as keyof typeof authMap] ?? hcomicAuth
     await auth.openWindow(auth.status)
   }
 

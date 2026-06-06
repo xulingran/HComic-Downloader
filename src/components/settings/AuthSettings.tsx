@@ -114,7 +114,7 @@ export function AuthSettings({
       </AuthSourceCard>
 
       <AuthSourceCard
-        label="禁漫天堂"
+        label="jmcomic"
         status={jmcomicLoginStatus}
         message={jmcomicLoginMessage}
       >
@@ -128,13 +128,13 @@ export function AuthSettings({
           >
             {jmcomicLoginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
           </button>
-          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录禁漫天堂账号</span>
+          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 jmcomic 账号</span>
         </div>
 
         <textarea
           value={jmcomicCurlText}
           onChange={(e) => setJmcomicCurlText(e.target.value)}
-          placeholder="粘贴禁漫天堂的 Cookie 字符串或 curl 命令"
+          placeholder="粘贴 jmcomic 的 Cookie 字符串或 curl 命令"
           rows={3}
           className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                      text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]

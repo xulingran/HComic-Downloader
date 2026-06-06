@@ -28,7 +28,7 @@ class MultiSourceParser:
     SOURCE_OPTIONS = (
         ("hcomic", "h-comic"),
         ("moeimg", "moeimg.fan"),
-        ("jmcomic", "禁漫天堂"),
+        ("jmcomic", "jmcomic"),
         ("bika", "哔咔"),
         ("copymanga", "拷贝漫画"),
     )
@@ -41,9 +41,7 @@ class MultiSourceParser:
         auth: AuthConfig | None = None,
     ):
         self.timeout = timeout
-        self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(
-            source_auth
-        )
+        self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
         # 兼容旧调用：若传了全局 auth，作为 hcomic 默认认证。
         _cookie = auth.cookie if auth else ""
         _user_agent = auth.user_agent if auth else ""
@@ -92,9 +90,7 @@ class MultiSourceParser:
                 bika_auth.get("username", ""),
                 bika_auth.get("password", ""),
             )
-        self.current_source = (
-            default_source if default_source in self.parsers else "hcomic"
-        )
+        self.current_source = default_source if default_source in self.parsers else "hcomic"
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
@@ -164,9 +160,7 @@ class MultiSourceParser:
             "user_agent": user_agent,
             "bearer_token": bearer_token,
         }
-        self.parsers[current].configure_auth(
-            cookie=cookie, user_agent=user_agent, bearer_token=bearer_token
-        )
+        self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
 
     def verify_login_status(self, source: str | None = None) -> tuple[bool, str]:
         src = self._resolve_source(source)
@@ -178,9 +172,7 @@ class MultiSourceParser:
         src = self._resolve_source(source)
         return self.parsers[src].search(keyword, page=page, tag=tag)
 
-    def random(
-        self, source: str | None = None
-    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = self._resolve_source(source)
         if src not in ("hcomic", "jmcomic"):
             raise ValueError(f"Random is not supported for source: {src}")
@@ -212,9 +204,7 @@ class MultiSourceParser:
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 
-    def get_comic_detail(
-        self, comic_id: str, slug: str = "", source: str | None = None
-    ) -> ComicInfo | None:
+    def get_comic_detail(self, comic_id: str, slug: str = "", source: str | None = None) -> ComicInfo | None:
         src = self._resolve_source(source)
         return self.parsers[src].get_comic_detail(comic_id, slug=slug)
 

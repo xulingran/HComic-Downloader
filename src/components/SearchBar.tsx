@@ -2,7 +2,7 @@ import { PaginationInfo } from '@shared/types'
 import { PaginationControls } from './common/PaginationControls'
 import { BatchControls } from './common/BatchControls'
 import { useSources, useSearchModes, useRankingOptions } from '../hooks/useSourceOptions'
-import { sourceSupportsRandom } from '../utils/source'
+import { sourceSupportsRanking } from '../utils/source'
 
 
 interface SearchBarProps {
@@ -81,7 +81,7 @@ export function SearchBar({
         </select>
 
         <div className="flex-1 relative">
-          {mode === 'ranking' && source === 'jmcomic' ? (
+          {mode === 'ranking' && sourceSupportsRanking(source) ? (
             <select
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}

@@ -1,11 +1,11 @@
 import { useEffect, useState, useCallback, useMemo } from 'react'
-import { SearchMode, type ComicInfo, type TagBlacklist } from '@shared/types'
+import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
 import { Toast } from './common/Toast'
 import { isAuthError } from '../utils/auth'
-import { normalizeSourceKey } from '../utils/source'
+import { normalizeSourceKey, sourceSupportsFavourites, sourceNeedsDetailEnrich } from '../utils/source'
 
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
@@ -68,7 +68,7 @@ export function ComicInfoDrawer() {
     if (!isOpen || !drawerComic?.id) {
       return
     }
-    if (comicSource !== 'moeimg' && comicSource !== 'jmcomic') {
+    if (!sourceNeedsDetailEnrich(comicSource)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setEnrichedComic(null)
       return
@@ -87,7 +87,7 @@ export function ComicInfoDrawer() {
   }, [isOpen, drawerComic?.id, comicSource])
 
   useEffect(() => {
-    if (!isOpen || !drawerComic?.id || (comicSource !== 'hcomic' && comicSource !== 'moeimg')) {
+    if (!isOpen || !drawerComic?.id || !sourceSupportsFavourites(comicSource)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFavouritesState('idle')
       return
@@ -250,7 +250,7 @@ export function ComicInfoDrawer() {
             </div>
           </div>
 
-          {(comicSource === 'hcomic' || comicSource === 'bika') && (
+          {sourceSupportsFavourites(comicSource) && (
             <div>
               <button
                 onClick={handleToggleFavourites}

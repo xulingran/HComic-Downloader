@@ -7,7 +7,7 @@ describe('useSourceOptions hooks', () => {
     expect(result.current).toHaveLength(5)
     expect(result.current[0]).toEqual({ value: 'hcomic', label: 'HComic' })
     expect(result.current[1]).toEqual({ value: 'moeimg', label: 'MoeImg' })
-    expect(result.current[2]).toEqual({ value: 'jmcomic', label: '禁漫天堂' })
+    expect(result.current[2]).toEqual({ value: 'jmcomic', label: 'jmcomic' })
     expect(result.current[3]).toEqual({ value: 'bika', label: '哔咔' })
     expect(result.current[4]).toEqual({ value: 'copymanga', label: '拷贝漫画' })
   })

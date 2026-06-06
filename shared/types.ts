@@ -570,36 +570,48 @@ export const SOURCE_META = {
     supportsRandom: true,
     supportsFavourites: true,
     requiresAuth: false,
+    supportsRanking: false,
+    needsDetailEnrich: false,
   },
   moeimg: {
     label: 'MoeImg',
     supportsRandom: false,
     supportsFavourites: true,
     requiresAuth: false,
+    supportsRanking: false,
+    needsDetailEnrich: true,
   },
   jmcomic: {
-    label: '禁漫天堂',
+    label: 'jmcomic',
     supportsRandom: true,
     supportsFavourites: true,
     requiresAuth: true,
+    supportsRanking: true,
+    needsDetailEnrich: true,
   },
   bika: {
     label: '哔咔',
     supportsRandom: false,
     supportsFavourites: true,
     requiresAuth: false,
+    supportsRanking: false,
+    needsDetailEnrich: false,
   },
   copymanga: {
     label: '拷贝漫画',
     supportsRandom: false,
     supportsFavourites: false,
     requiresAuth: false,
+    supportsRanking: false,
+    needsDetailEnrich: false,
   },
 } as const satisfies Record<ComicSource, {
   label: string
   supportsRandom: boolean
   supportsFavourites: boolean
   requiresAuth: boolean
+  supportsRanking: boolean
+  needsDetailEnrich: boolean
 }>
 
 /** 来源标签映射（便捷访问） */

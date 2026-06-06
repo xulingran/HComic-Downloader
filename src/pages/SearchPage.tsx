@@ -17,10 +17,10 @@ import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
-import { sourceSupportsRandom } from '../utils/source'
+import { sourceSupportsRandom, normalizeSourceKey } from '../utils/source'
 import type { DownloadProgressData } from '../hooks/useIpc'
 import { requiresAuth, isAuthError } from '../utils/auth'
-import { normalizeSourceKey } from '../utils/source'
+import { sourceLabel } from '../utils/source'
 
 
 interface SearchPageProps {
@@ -376,7 +376,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
 
       {!isLoading && needsLogin && requiresAuth(source) && (
         <div className="text-center py-12">
-          <div className="text-[var(--text-secondary)] mb-4">jmcomic 登录信息已过期或未配置，请前往设置页面重新登录</div>
+          <div className="text-[var(--text-secondary)] mb-4">{sourceLabel(source)} 登录信息已过期或未配置，请前往设置页面重新登录</div>
           {onNavigateToSettings && (
             <button
               onClick={onNavigateToSettings}

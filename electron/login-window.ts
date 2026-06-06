@@ -379,7 +379,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
 
   const jmcomicDomain = resolvedDomain || '18comic.vip'
   const loginUrl = source === 'jmcomic' ? `https://${jmcomicDomain}` : 'https://h-comic.com'
-  const loginTitle = source === 'jmcomic' ? '登录禁漫天堂' : '登录 H-Comic'
+  const loginTitle = source === 'jmcomic' ? '登录 jmcomic' : '登录 H-Comic'
   const loginDomain = source === 'jmcomic' ? jmcomicDomain : 'h-comic.com'
 
   return new Promise((resolve) => {
