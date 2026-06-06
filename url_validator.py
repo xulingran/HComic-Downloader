@@ -43,12 +43,29 @@ class UrlValidator:
         ipaddress.ip_network("::/128"),
         ipaddress.ip_network("::ffff:0:0/96"),
     ]
+    # 已知可信 CDN 域名，跳过 DNS 解析验证以防止 TOCTOU 攻击
+    _TRUSTED_CDN_DOMAINS: set[str] = {
+        "h-comic.com",
+        "h-comic.link",
+        "moeimg.fan",
+        "18comic.vip",
+        "18comic.org",
+        "jmcomic.me",
+        "jm-comic.me",
+        "jm-comic1.me",
+        "jm-comic2.me",
+        "jmcomic-zzz.one",
+        "picacg.com",
+        "picacomic.com",
+        "picaapi.picacomic.com",
+    }
 
     def __init__(
         self,
         hcomic_domains: set[str] | None = None,
         blocked_ipv4: list[ipaddress.IPv4Network] | None = None,
         blocked_ipv6: list[ipaddress.IPv6Network] | None = None,
+        trusted_cdn_domains: set[str] | None = None,
     ):
         if hcomic_domains is not None:
             self._HCOMIC_DOMAINS = hcomic_domains
@@ -56,6 +73,9 @@ class UrlValidator:
             self._BLOCKED_IPV4 = blocked_ipv4
         if blocked_ipv6 is not None:
             self._BLOCKED_IPV6 = blocked_ipv6
+        if trusted_cdn_domains is not None:
+            # 修改类属性以便 @classmethod _is_trusted_cdn 能读取
+            self.__class__._TRUSTED_CDN_DOMAINS = trusted_cdn_domains
 
     @classmethod
     def is_hcomic_url(cls, url: str) -> bool:
@@ -71,6 +91,13 @@ class UrlValidator:
     def is_blocked_ip(cls, ip) -> bool:
         networks = cls._BLOCKED_IPV4 if ip.version == 4 else cls._BLOCKED_IPV6
         return any(ip in net for net in networks)
+
+    @classmethod
+    def _is_trusted_cdn(cls, hostname: str) -> bool:
+        """检查域名是否在可信 CDN 白名单中（含子域名匹配）。"""
+        return hostname in cls._TRUSTED_CDN_DOMAINS or any(
+            hostname.endswith("." + d) for d in cls._TRUSTED_CDN_DOMAINS
+        )
 
     @staticmethod
     def validate_url(url: str):
@@ -90,6 +117,9 @@ class UrlValidator:
             return
         except ValueError:
             pass
+        # 已知可信 CDN 域名跳过 DNS 解析验证，防止 TOCTOU 攻击
+        if UrlValidator._is_trusted_cdn(hostname):
+            return
         try:
             addrs = socket.getaddrinfo(
                 hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM

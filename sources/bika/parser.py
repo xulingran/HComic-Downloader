@@ -11,7 +11,7 @@ from typing import Any
 import requests
 
 from models import ChapterInfo, ComicInfo, PaginationInfo
-from sources.base import ParserContextMixin
+from sources.base import ParserContextMixin, ParserResponseError
 from utils import apply_system_proxy_to_session
 
 from .constants import (
@@ -24,10 +24,6 @@ from .constants import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class ParserResponseError(RuntimeError):
-    """响应读取/解析相关异常。"""
 
 
 class BikaParser(ParserContextMixin):

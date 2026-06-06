@@ -1,11 +1,8 @@
 """下载管理器核心模块"""
 
-import contextlib
 import copy
 import logging
 import os
-import shutil
-import tempfile
 import threading
 import time
 from collections.abc import Callable
@@ -13,6 +10,7 @@ from collections.abc import Callable
 from downloader import DownloadOptions, DownloadResult
 from image_formats import SUPPORTED_IMAGE_EXTENSIONS
 from models import ComicInfo, DownloadCancelledError, DownloadStatus, DownloadTask
+from output_staging import OutputStagingManager
 
 logger = logging.getLogger(__name__)
 
@@ -431,160 +429,23 @@ class DownloadManager:
 
     def get_stats(self) -> dict:
         """获取队列统计信息"""
+        from collections import Counter
+
         with self._lock:
-            stats = {
-                "total": len(self.tasks),
-                "incomplete": sum(
-                    1
-                    for t in self.tasks.values()
-                    if t.status
-                    not in (DownloadStatus.COMPLETED, DownloadStatus.CANCELLED)
-                ),
-                "queued": sum(
-                    1 for t in self.tasks.values() if t.status == DownloadStatus.QUEUED
-                ),
-                "downloading": sum(
-                    1
-                    for t in self.tasks.values()
-                    if t.status == DownloadStatus.DOWNLOADING
-                ),
-                "paused": sum(
-                    1 for t in self.tasks.values() if t.status == DownloadStatus.PAUSED
-                ),
-                "completed": sum(
-                    1
-                    for t in self.tasks.values()
-                    if t.status == DownloadStatus.COMPLETED
-                ),
-                "failed": sum(
-                    1 for t in self.tasks.values() if t.status == DownloadStatus.FAILED
-                ),
-                "cancelled": sum(
-                    1
-                    for t in self.tasks.values()
-                    if t.status == DownloadStatus.CANCELLED
-                ),
-            }
-            return stats
-
-
-class OutputStagingManager:
-    """管理下载输出的 staging/commit/cleanup 文件系统操作。"""
-
-    def __init__(self, output_dir: str, cbz_builder, output_format: str = "cbz"):
-        self.output_dir = output_dir
-        self.cbz_builder = cbz_builder
-        self.output_format = output_format
-
-    @staticmethod
-    def _rmtree_onerror(func, path, exc_info):
-        logger.warning("Failed to remove %s during rmtree: %s", path, exc_info)
-
-    @staticmethod
-    def safe_rmtree(path: str, parent_dir: str) -> None:
-        """验证路径在 parent_dir 内后再执行删除。"""
-        try:
-            real_path = os.path.realpath(path)
-            real_parent = os.path.realpath(parent_dir)
-        except (TypeError, ValueError, OSError):
-            logger.warning("Refusing to rmtree unresolvable path: %s", path)
-            return
-        if real_path != real_parent and not real_path.startswith(real_parent + os.sep):
-            logger.warning("Refusing to rmtree path outside output dir: %s", path)
-            return
-
-        shutil.rmtree(
-            path, ignore_errors=False, onerror=OutputStagingManager._rmtree_onerror
-        )
-
-    def build(self, temp_dir: str, comic) -> tuple[str, str, str | None]:
-        """Build the requested output into a staging path.
-
-        Returns:
-            (staged_path, final_path, staging_root)
-        """
-        final_path = self.cbz_builder.get_output_path_for_format(
-            comic, self.output_format, self.output_dir
-        )
-
-        if self.output_format == "folder":
-            staging_root = tempfile.mkdtemp(
-                dir=self.output_dir, prefix=".hcomic_stage_"
-            )
-            try:
-                staged_path = self.cbz_builder.save_as_folder(
-                    temp_dir, comic, staging_root, overwrite=False
-                )
-                return staged_path, final_path, staging_root
-            except Exception:
-                self.safe_rmtree(staging_root, self.output_dir)
-                raise
-
-        output_dir = os.path.dirname(final_path)
-        os.makedirs(output_dir, exist_ok=True)
-        basename = os.path.basename(final_path)
-        ext = ".zip" if self.output_format == "zip" else ".cbz"
-        fd, staged_path = tempfile.mkstemp(
-            dir=output_dir,
-            prefix=f".{basename}.stage.",
-            suffix=ext,
-        )
-        os.close(fd)
-        os.unlink(staged_path)
-
-        if self.output_format == "zip":
-            self.cbz_builder.build_zip(temp_dir, comic, staged_path, overwrite=True)
-        else:
-            self.cbz_builder.build_cbz(temp_dir, comic, staged_path, overwrite=True)
-        return staged_path, final_path, None
-
-    def cleanup(self, staged_path: str | None, staging_root: str | None = None) -> None:
-        """Remove a staged output without touching the final destination."""
-        if staging_root and os.path.exists(staging_root):
-            self.safe_rmtree(staging_root, self.output_dir)
-            return
-        if not staged_path or not os.path.exists(staged_path):
-            return
-        if os.path.isdir(staged_path):
-            self.safe_rmtree(staged_path, self.output_dir)
-        else:
-            with contextlib.suppress(FileNotFoundError):
-                os.remove(staged_path)
-
-    def commit(
-        self,
-        staged_path: str,
-        final_path: str,
-        overwrite: bool = False,
-    ) -> str:
-        """Atomically commit staged output to the final destination when possible."""
-        if os.path.exists(final_path) and not overwrite:
-            raise FileExistsError(f"Output already exists: {final_path}")
-
-        if not os.path.isdir(staged_path):
-            os.replace(staged_path, final_path)
-            return final_path
-
-        output_dir = os.path.dirname(final_path)
-        os.makedirs(output_dir, exist_ok=True)
-        if not os.path.exists(final_path):
-            shutil.move(staged_path, final_path)
-            return final_path
-
-        folder_name = os.path.basename(final_path)
-        backup_path = tempfile.mkdtemp(dir=output_dir, prefix=f".{folder_name}.old.")
-        os.rmdir(backup_path)
-        shutil.move(final_path, backup_path)
-        try:
-            shutil.move(staged_path, final_path)
-            self.safe_rmtree(backup_path, self.output_dir)
-        except Exception:
-            if os.path.exists(final_path):
-                self.safe_rmtree(final_path, self.output_dir)
-            if os.path.exists(backup_path):
-                shutil.move(backup_path, final_path)
-            raise
-        return final_path
+            status_counts = Counter(t.status for t in self.tasks.values())
+            total = len(self.tasks)
+        return {
+            "total": total,
+            "incomplete": total
+            - status_counts.get(DownloadStatus.COMPLETED, 0)
+            - status_counts.get(DownloadStatus.CANCELLED, 0),
+            "queued": status_counts.get(DownloadStatus.QUEUED, 0),
+            "downloading": status_counts.get(DownloadStatus.DOWNLOADING, 0),
+            "paused": status_counts.get(DownloadStatus.PAUSED, 0),
+            "completed": status_counts.get(DownloadStatus.COMPLETED, 0),
+            "failed": status_counts.get(DownloadStatus.FAILED, 0),
+            "cancelled": status_counts.get(DownloadStatus.CANCELLED, 0),
+        }
 
 
 class ComicDownloadManager(DownloadManager):
@@ -880,11 +741,17 @@ class ComicDownloadManager(DownloadManager):
 
     def _attempt_auto_retry(self, task: DownloadTask) -> None:
         """尝试自动重试任务。若重试次数已用尽则标记为 FAILED。"""
+        should_notify = False
         with self._lock:
             if task.retry_count < self.auto_retry_max_attempts:
                 task.retry_count += 1
                 task.status = DownloadStatus.QUEUED
-        if task.status == DownloadStatus.QUEUED:
+                should_notify = True
+            else:
+                task.status = DownloadStatus.FAILED
+                task.current_downloading_page = 0
+
+        if should_notify:
             logger.warning(
                 "Task %s failed, auto-retrying (%s/%s): %s",
                 task.task_id,
@@ -894,9 +761,6 @@ class ComicDownloadManager(DownloadManager):
             )
             self._notify_queue_changed()
         else:
-            with self._lock:
-                task.status = DownloadStatus.FAILED
-                task.current_downloading_page = 0
             logger.error(
                 "Task %s failed after %s retries: %s",
                 task.task_id,

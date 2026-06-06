@@ -354,11 +354,7 @@ class TestFillMissingTitles(unittest.TestCase):
                 id="2", title="Title B", source_site="jmcomic", comic_source="JMCOMIC"
             ),
         ]
-        # cookies.get_dict 不应被调用
-        self.parser.session.cookies = MagicMock()
-        self.parser.session.cookies.get_dict = MagicMock(
-            side_effect=AssertionError("Should not be called")
-        )
+        # _serialize_cookies_for_title_fetch 不应被调用（所有标题已存在）
 
         self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -393,13 +389,16 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/album/2"
         mock_thread_session.get.return_value = mock_resp
 
-        self.parser.session.cookies = MagicMock()
-        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
-
         with patch("time.sleep", lambda x: None), patch(
-            "requests.Session", return_value=mock_thread_session
+            "sources.jmcomic.title_resolver._create_thread_session",
+            return_value=mock_thread_session,
         ), patch(
-            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+            lambda s: None,
+        ), patch.object(
+            self.parser,
+            "_serialize_cookies_for_title_fetch",
+            return_value=[("ck", "val")],
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -426,13 +425,16 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/login"
         mock_thread_session.get.return_value = mock_resp
 
-        self.parser.session.cookies = MagicMock()
-        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
-
         with patch("time.sleep", lambda x: None), patch(
-            "requests.Session", return_value=mock_thread_session
+            "sources.jmcomic.title_resolver._create_thread_session",
+            return_value=mock_thread_session,
         ), patch(
-            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+            lambda s: None,
+        ), patch.object(
+            self.parser,
+            "_serialize_cookies_for_title_fetch",
+            return_value=[("ck", "val")],
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -459,13 +461,16 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/error/404"
         mock_thread_session.get.return_value = mock_resp
 
-        self.parser.session.cookies = MagicMock()
-        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
-
         with patch("time.sleep", lambda x: None), patch(
-            "requests.Session", return_value=mock_thread_session
+            "sources.jmcomic.title_resolver._create_thread_session",
+            return_value=mock_thread_session,
         ), patch(
-            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+            lambda s: None,
+        ), patch.object(
+            self.parser,
+            "_serialize_cookies_for_title_fetch",
+            return_value=[("ck", "val")],
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -500,13 +505,16 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_resp.url = "https://18comic.vip/album/5"
         mock_thread_session.get.return_value = mock_resp
 
-        self.parser.session.cookies = MagicMock()
-        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
-
         with patch("time.sleep", lambda x: None), patch(
-            "requests.Session", return_value=mock_thread_session
+            "sources.jmcomic.title_resolver._create_thread_session",
+            return_value=mock_thread_session,
         ), patch(
-            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+            lambda s: None,
+        ), patch.object(
+            self.parser,
+            "_serialize_cookies_for_title_fetch",
+            return_value=[("ck", "val")],
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 
@@ -530,13 +538,16 @@ class TestFillMissingTitles(unittest.TestCase):
         mock_thread_session = MagicMock()
         mock_thread_session.get.side_effect = requests.ConnectionError("network down")
 
-        self.parser.session.cookies = MagicMock()
-        self.parser.session.cookies.get_dict.return_value = {"ck": "val"}
-
         with patch("time.sleep", lambda x: None), patch(
-            "requests.Session", return_value=mock_thread_session
+            "sources.jmcomic.title_resolver._create_thread_session",
+            return_value=mock_thread_session,
         ), patch(
-            "sources.jmcomic.parser.apply_system_proxy_to_session", lambda s: None
+            "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+            lambda s: None,
+        ), patch.object(
+            self.parser,
+            "_serialize_cookies_for_title_fetch",
+            return_value=[("ck", "val")],
         ):
             self.parser._fill_missing_titles(comics, "18comic.vip")
 

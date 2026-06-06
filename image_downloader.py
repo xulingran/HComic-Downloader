@@ -8,13 +8,11 @@ import tempfile
 
 import requests
 from PIL import Image
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
 from constants import DEFAULT_USER_AGENT
 from image_formats import DEFAULT_IMAGE_EXT, MIME_TO_EXT, PIL_FORMAT_TO_EXT
 from url_validator import DownloadError, UrlValidator
-from utils import apply_system_proxy_to_session, ensure_dir
+from utils import create_downloader_session, ensure_dir
 
 logger = logging.getLogger(__name__)
 
@@ -49,31 +47,11 @@ class ImageDownloader:
 
     def _create_session(self) -> requests.Session:
         """创建配置了重试和代理的会话"""
-        session = requests.Session()
-        apply_system_proxy_to_session(session)
-        session.headers.update(
-            {
-                "User-Agent": DEFAULT_USER_AGENT,
-                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-                "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
-                "Referer": "https://h-comic.com/",
-            }
-        )
-
-        retry_strategy = Retry(
-            total=self.retry_times,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-        )
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
+        return create_downloader_session(
+            retry_times=self.retry_times,
             pool_connections=self.POOL_CONNECTIONS,
             pool_maxsize=self.POOL_MAX_SIZE,
         )
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-
-        return session
 
     def _init_session_pool(self) -> None:
         """预创建 pool_size 个 Session 放入池中"""

@@ -13,17 +13,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 
-from constants import DEFAULT_USER_AGENT
 from image_downloader import ImageDownloader
 from image_formats import PAGE_FILENAME_FORMAT
 from models import ComicInfo, DownloadCancelledError
 from url_validator import UrlValidator
 from utils import (
-    apply_system_proxy_to_session,
     configure_session_auth,
+    create_downloader_session,
     ensure_dir,
     sanitize_filename,
 )
@@ -127,29 +124,7 @@ class ComicDownloader:
 
     def _create_session(self) -> requests.Session:
         """创建配置了重试的会话（用于主 Session，与 parser 等共享）"""
-        session = requests.Session()
-        apply_system_proxy_to_session(session)
-        session.headers.update(
-            {
-                "User-Agent": DEFAULT_USER_AGENT,
-                "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
-                "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
-                "Referer": "https://h-comic.com/",
-            }
-        )
-
-        retry_strategy = Retry(
-            total=self.retry_times,
-            backoff_factor=1,
-            status_forcelist=[429, 500, 502, 503, 504],
-        )
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy, pool_connections=10, pool_maxsize=10
-        )
-        session.mount("https://", adapter)
-        session.mount("http://", adapter)
-
-        return session
+        return create_downloader_session(retry_times=self.retry_times)
 
     def create_isolated_session(self) -> requests.Session:
         """Create an independent session (public wrapper for _create_session)."""

@@ -313,7 +313,7 @@ class CBZBuilder:
                 return parts[0], parts[1], ""
             elif len(parts) == 1:
                 return parts[0], "", ""
-        except Exception:
+        except (ValueError, TypeError, AttributeError):
             pass
         return "", "", ""
 

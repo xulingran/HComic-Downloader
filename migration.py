@@ -143,6 +143,19 @@ class MigrationEngine:
         self._migration_logger.addHandler(self._log_handler)
         self._migration_logger.setLevel(logging.DEBUG)
 
+    def close(self):
+        """关闭日志文件 handler，释放文件资源。"""
+        if self._log_handler:
+            self._migration_logger.removeHandler(self._log_handler)
+            self._log_handler.close()
+            self._log_handler = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
     @property
     def state(self) -> MigrationState | None:
         return self._state

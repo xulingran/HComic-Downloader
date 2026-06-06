@@ -2,8 +2,11 @@
 
 import os
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.request import getproxies
+
+if TYPE_CHECKING:
+    import requests
 
 
 def sanitize_filename(name: str) -> str:
@@ -157,3 +160,43 @@ def configure_session_auth(
         session.headers["Authorization"] = f"Bearer {bt}"
     else:
         session.headers.pop("Authorization", None)
+
+
+def create_downloader_session(
+    retry_times: int = 3,
+    pool_connections: int = 10,
+    pool_maxsize: int = 10,
+) -> "requests.Session":
+    """创建配置了重试、代理和标准 headers 的 requests.Session。
+
+    供 ComicDownloader 和 ImageDownloader 共用，避免重复配置逻辑。
+    """
+    import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util.retry import Retry
+
+    from constants import DEFAULT_USER_AGENT
+
+    session = requests.Session()
+    apply_system_proxy_to_session(session)
+    session.headers.update(
+        {
+            "User-Agent": DEFAULT_USER_AGENT,
+            "Accept": "image/avif,image/webp,image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5",
+            "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
+        }
+    )
+
+    retry_strategy = Retry(
+        total=retry_times,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+    )
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_connections=pool_connections,
+        pool_maxsize=pool_maxsize,
+    )
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    return session

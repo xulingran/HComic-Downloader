@@ -1,6 +1,10 @@
 """Shared base classes for source parsers."""
 
 
+class ParserResponseError(RuntimeError):
+    """响应读取/解析相关异常。"""
+
+
 class ParserContextMixin:
     """Mixin providing context-manager support (close/__enter__/__exit__).
 

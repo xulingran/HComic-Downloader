@@ -7,6 +7,13 @@ from enum import Enum
 from constants import IMAGE_API_BASE
 from utils import sanitize_filename
 
+# 图片 URL 后缀映射（基于 comic_source 类型）
+_IMAGE_URL_SUFFIX_MAP = {
+    "MMCG_SHORT": "mms",
+    "MMCG_LONG": "mml",
+}
+_DEFAULT_IMAGE_URL_SUFFIX = "nh"
+
 
 @dataclass
 class ChapterInfo:
@@ -63,12 +70,6 @@ class ComicInfo:
     album_id: str = ""  # 多章节时为专辑 id；单本时等于 id
     album_total_chapters: int = 1  # 专辑总章数；单本/其他来源为 1
 
-    _IMAGE_URL_SUFFIX_MAP = {
-        "MMCG_SHORT": "mms",
-        "MMCG_LONG": "mml",
-    }
-    _DEFAULT_IMAGE_URL_SUFFIX = "nh"
-
     @property
     def safe_title(self) -> str:
         """获取安全的标题（用于文件名）"""
@@ -93,8 +94,8 @@ class ComicInfo:
         Returns:
             图片 URL
         """
-        suffix = self._IMAGE_URL_SUFFIX_MAP.get(
-            self.comic_source.upper(), self._DEFAULT_IMAGE_URL_SUFFIX
+        suffix = _IMAGE_URL_SUFFIX_MAP.get(
+            self.comic_source.upper(), _DEFAULT_IMAGE_URL_SUFFIX
         )
         return f"{IMAGE_API_BASE}/{suffix}/{self.media_id}/pages/{page}"
 

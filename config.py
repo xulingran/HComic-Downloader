@@ -80,6 +80,11 @@ class Config:
         # 归一化主题模式
         if self.theme_mode not in ("auto", "light", "dark"):
             self.theme_mode = "auto"
+        self._migrate_legacy_fields()
+        self._validate_ranges()
+
+    def _migrate_legacy_fields(self):
+        """将旧版 auth_cookie/auth_user_agent 迁移到 source_auth["hcomic"]。"""
         hcomic_auth = self.get_source_auth("hcomic")
         if (
             not hcomic_auth.get("cookie")
@@ -99,8 +104,6 @@ class Config:
         # 保持 auth_cookie/auth_user_agent 与 source_auth["hcomic"] 同步
         self.auth_cookie = hcomic_auth.get("cookie", "")
         self.auth_user_agent = hcomic_auth.get("user_agent", "")
-
-        self._validate_ranges()
 
     def _validate_ranges(self):
         for attr, lo, hi, default in [
@@ -127,10 +130,7 @@ class Config:
         auth.setdefault("cookie", "")
         auth.setdefault("user_agent", "")
         auth.setdefault("bearer_token", "")
-        if source == "moeimg":
-            auth.setdefault("username", "")
-            auth.setdefault("password", "")
-        if source == "bika":
+        if source in ("moeimg", "bika"):
             auth.setdefault("username", "")
             auth.setdefault("password", "")
         return auth
@@ -149,10 +149,7 @@ class Config:
             "user_agent": user_agent,
             "bearer_token": bearer_token,
         }
-        if source == "moeimg":
-            self.source_auth[source]["username"] = (data.username or "").strip()
-            self.source_auth[source]["password"] = (data.password or "").strip()
-        if source == "bika":
+        if source in ("moeimg", "bika"):
             self.source_auth[source]["username"] = (data.username or "").strip()
             self.source_auth[source]["password"] = (data.password or "").strip()
         if source == "hcomic":

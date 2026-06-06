@@ -5,7 +5,10 @@ from __future__ import annotations
 import json
 import logging
 from collections.abc import Callable
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
+
+from sources.base import ParserResponseError
 
 from .types import AuthRequiredError
 
@@ -108,6 +111,25 @@ class SearchMixin:
         msg = str(error).lower()
         return any(kw in msg for kw in _AUTH_KEYWORDS)
 
+    @contextmanager
+    def _auth_error_guard(self, source: str):
+        """Context manager that converts source auth errors to AuthRequiredError."""
+        try:
+            yield
+        except ParserResponseError as e:
+            msg = str(e)
+            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
+                raise AuthRequiredError(msg) from e
+            raise RuntimeError(msg) from e
+        except (ValueError, json.JSONDecodeError, TypeError) as e:
+            logger.error("Parse error in %s handler: %s", source, e)
+            raise RuntimeError(f"Parse error: {e}") from e
+        except Exception as e:
+            logger.error("Unexpected error in %s handler: %s", source, e)
+            if self._is_source_auth_error(source, e):
+                raise AuthRequiredError(f"{source} 登录凭证已失效: {e}") from e
+            raise
+
     @staticmethod
     def _pagination_to_dict(pagination, fallback_page: int = 1) -> dict:
         if not pagination:
@@ -147,7 +169,9 @@ class SearchMixin:
             )
         except Exception as e:
             if self._is_source_auth_error(effective_source, e):
-                raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
+                raise AuthRequiredError(
+                    f"{effective_source} 登录凭证已失效: {e}"
+                ) from e
             raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
@@ -163,7 +187,9 @@ class SearchMixin:
             comics, pagination = self.parser.random(source=effective_source)
         except Exception as e:
             if self._is_source_auth_error(effective_source, e):
-                raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
+                raise AuthRequiredError(
+                    f"{effective_source} 登录凭证已失效: {e}"
+                ) from e
             raise
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
@@ -171,12 +197,10 @@ class SearchMixin:
         }
 
     def handle_get_favourites(self, page: int = 1, source: str = "hcomic") -> dict:
-        from sources import ParserResponseError
-
         valid_sources = _VALID_SOURCES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         self._check_source_auth(effective_source)
-        try:
+        with self._auth_error_guard(effective_source):
             comics, pagination, needs_login = self.parser.favourites(
                 page=page, raise_errors=True, source=effective_source
             )
@@ -200,71 +224,37 @@ class SearchMixin:
                 "pagination": self._pagination_to_dict(pagination, fallback_page=page),
                 "needsLogin": needs_login,
             }
-        except ParserResponseError as e:
-            msg = str(e)
-            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
-                raise AuthRequiredError(msg) from e
-            raise RuntimeError(msg) from e
-        except (ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error("Get favourites parse error: %s", e)
-            raise RuntimeError(f"Parse error: {e}") from e
-        except Exception as e:
-            logger.error("Get favourites unexpected error: %s", e)
-            if self._is_source_auth_error(effective_source, e):
-                raise AuthRequiredError(f"jmcomic 登录凭证已失效: {e}") from e
-            raise
 
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
-        from sources import ParserResponseError
-
         valid_sources = _VALID_SOURCES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
-        try:
+        with self._auth_error_guard(effective_source):
             success = self.parser.add_to_favourites(comic_id, source=effective_source)
             if success:
                 self._update_tags_on_favourite_add(comic_id, effective_source)
             return {"success": success}
-        except (ParserResponseError, RuntimeError) as e:
-            msg = str(e)
-            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
-                raise AuthRequiredError(msg) from e
-            raise RuntimeError(msg) from e
 
     def handle_check_favourite(self, comic_id: str, source: str = "hcomic") -> dict:
-        from sources import ParserResponseError
-
         valid_sources = _VALID_SOURCES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
-        try:
+        with self._auth_error_guard(effective_source):
             is_favourited = self.parser.check_favourite(
                 comic_id, source=effective_source
             )
             return {"isFavourited": is_favourited}
-        except (ParserResponseError, RuntimeError) as e:
-            msg = str(e)
-            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
-                raise AuthRequiredError(msg) from e
-            raise RuntimeError(msg) from e
 
     def handle_remove_from_favourites(
         self, comic_id: str, source: str = "hcomic"
     ) -> dict:
-        from sources import ParserResponseError
-
         valid_sources = _VALID_SOURCES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
-        try:
+        with self._auth_error_guard(effective_source):
             success = self.parser.remove_from_favourites(
                 comic_id, source=effective_source
             )
             if success:
                 self._favourite_tags_db.remove_comic(comic_id, effective_source)
             return {"success": success}
-        except (ParserResponseError, RuntimeError) as e:
-            msg = str(e)
-            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
-                raise AuthRequiredError(msg) from e
-            raise RuntimeError(msg) from e
 
     def handle_get_preview_urls(self, comic_data: dict) -> dict:
         """Return all image URLs after applying the same metadata preparation as downloads."""

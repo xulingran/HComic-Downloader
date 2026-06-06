@@ -13,14 +13,10 @@ import requests
 
 from constants import DEFAULT_USER_AGENT
 from models import ComicInfo, PaginationInfo
-from sources.base import ParserContextMixin
+from sources.base import ParserContextMixin, ParserResponseError
 from utils import apply_system_proxy_to_session, configure_session_auth
 
 logger = logging.getLogger(__name__)
-
-
-class ParserResponseError(RuntimeError):
-    """响应读取/解析相关异常。"""
 
 
 class AuthRequiredError(RuntimeError):

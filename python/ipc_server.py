@@ -1,3 +1,4 @@
+import inspect
 import json
 import logging
 import os
@@ -225,7 +226,18 @@ class IPCServer(
         if attr_name:
             handler = getattr(self, attr_name)
             try:
-                result = handler(**params)
+                # 过滤 params 到 handler 实际接受的参数，防止客户端注入未预期参数
+                sig = inspect.signature(handler)
+                has_var_keyword = any(
+                    p.kind == inspect.Parameter.VAR_KEYWORD
+                    for p in sig.parameters.values()
+                )
+                valid_params = (
+                    params
+                    if has_var_keyword
+                    else {k: v for k, v in params.items() if k in sig.parameters}
+                )
+                result = handler(**valid_params)
                 return {"jsonrpc": "2.0", "id": req_id, "result": result}
             except AuthRequiredError as e:
                 return {
@@ -233,8 +245,15 @@ class IPCServer(
                     "id": req_id,
                     "error": {"code": -32001, "message": str(e)},
                 }
+            except TypeError as e:
+                logger.warning("Handler %s received invalid params: %s", method, e)
+                return {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32602, "message": f"Invalid params: {e}"},
+                }
             except Exception as e:
-                logger.error(f"Handler error for {method}: {e}")
+                logger.error("Handler error for %s: %s", method, e)
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
