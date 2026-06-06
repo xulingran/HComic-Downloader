@@ -6,7 +6,7 @@ API_DOMAIN = "api.2026copy.com"
 # 搜索 API
 SEARCH_URL_TEMPLATE = (
     f"https://{API_DOMAIN}/api/v3/search/comic"
-    "?platform=1&limit=30&offset={{offset}}&q_type=&_update=false&q={{keyword}}"
+    f"?platform=1&limit=30&offset={{offset}}&q_type=&_update=false&q={{keyword}}"
 )
 
 # 章节详情 API（path_word 占位）

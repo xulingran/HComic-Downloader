@@ -1,0 +1,21 @@
+{
+  "build": {
+    "path_word": "onepunchman",
+    "name": "一拳超人",
+    "author": [
+      {"name": "ONE", "path_word": "one"},
+      {"name": "村田雄介", "path_word": "murata"}
+    ],
+    "cover": "https://cover.example.com/onepunchman.jpg",
+    "status": {"value": 0, "display": "连载中"}
+  },
+  "groups": {
+    "default": {
+      "chapters": [
+        {"id": "ch001", "name": "第1话"},
+        {"id": "ch002", "name": "第2话"},
+        {"id": "ch003", "name": "第3话"}
+      ]
+    }
+  }
+}
