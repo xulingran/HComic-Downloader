@@ -140,7 +140,7 @@ class HComicParser(ParserContextMixin):
         try:
             return self.parse_search_page(self._request_text(url), requested_page=page)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error("Search failed: %s", e)
+            logger.error("Search failed: %s", e, exc_info=True)
             return [], None
 
     def random(self) -> tuple[list[ComicInfo], PaginationInfo | None]:
@@ -148,7 +148,7 @@ class HComicParser(ParserContextMixin):
         try:
             return self.parse_search_page(self._request_text(url))
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error("Random failed: %s", e)
+            logger.error("Random failed: %s", e, exc_info=True)
             return [], None
 
     def favourites(
@@ -169,7 +169,7 @@ class HComicParser(ParserContextMixin):
                 self._request_text(url), requested_page=page
             )
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error("Load favourites failed: %s", e)
+            logger.error("Load favourites failed: %s", e, exc_info=True)
             if raise_errors:
                 raise
             return [], None, False
@@ -203,7 +203,7 @@ class HComicParser(ParserContextMixin):
                 body = ""
                 with contextlib.suppress(Exception):
                     body = e.response.text[:500] if e.response is not None else ""
-                logger.error("%s HTTP %s: %s", log_name, status, body)
+                logger.error("%s HTTP %s: %s", log_name, status, body, exc_info=True)
             raise ParserResponseError(f"{error_prefix}失败 (HTTP {status})") from e
         except requests.RequestException as e:
             raise ParserResponseError(f"{error_prefix}请求失败: {e}") from e
@@ -294,7 +294,7 @@ class HComicParser(ParserContextMixin):
         try:
             return self.parse_comic_detail(self._request_text(url))
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
-            logger.error("Get comic detail failed: %s", e)
+            logger.error("Get comic detail failed: %s", e, exc_info=True)
             return None
 
     def parse_search_page(

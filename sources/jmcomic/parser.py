@@ -191,6 +191,13 @@ class JmParser(ParserContextMixin):
             # 检测 Cloudflare 拦截
             if resp.status_code == 403 and "Just a moment" in resp.text[:200]:
                 return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
+            if resp.status_code == 200 and self._is_challenge_page(resp.text):
+                logger.debug(
+                    "jmcomic verify_login: challenge page detected at status 200 "
+                    "(first 500 chars): %s",
+                    resp.text[:500],
+                )
+                return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
             if resp.status_code != 200:
                 logger.warning(
                     "jmcomic verify_login: unexpected status=%d url=%s",
@@ -232,6 +239,10 @@ class JmParser(ParserContextMixin):
             )
             if login_links:
                 return False, "登录已失效，请重新登录"
+            logger.debug(
+                "jmcomic verify_login response HTML (first 500 chars): %s",
+                html[:500],
+            )
             logger.warning(
                 "jmcomic verify_login: cannot determine login state "
                 "(status=%d, fav_links=%d, login_links=%d)",
@@ -281,7 +292,7 @@ class JmParser(ParserContextMixin):
             # 如果返回了结果但不是明确的失败，也认为成功（某些站点返回空对象）
             return True
         except requests.RequestException as e:
-            logger.error("jmcomic add_to_favourites failed: %s", e)
+            logger.error("jmcomic add_to_favourites failed: %s", e, exc_info=True)
             raise RuntimeError(f"加入收藏夹失败: {e}") from e
 
     def check_favourite(self, comic_id: str) -> bool:
@@ -320,7 +331,7 @@ class JmParser(ParserContextMixin):
                 or result.get("status") == "ok"
             )
         except requests.RequestException as e:
-            logger.error("jmcomic check_favourite failed: %s", e)
+            logger.error("jmcomic check_favourite failed: %s", e, exc_info=True)
             raise RuntimeError(f"检查收藏状态失败: {e}") from e
 
     def remove_from_favourites(self, comic_id: str) -> bool:
@@ -350,7 +361,7 @@ class JmParser(ParserContextMixin):
             resp.raise_for_status()
             return True
         except requests.RequestException as e:
-            logger.error("jmcomic remove_from_favourites failed: %s", e)
+            logger.error("jmcomic remove_from_favourites failed: %s", e, exc_info=True)
             raise RuntimeError(f"移除收藏夹失败: {e}") from e
 
     def search(
@@ -366,7 +377,7 @@ class JmParser(ParserContextMixin):
             html = self._request_text(url)
             return self._parse_search_results(html, domain=domain)
         except Exception as e:
-            logger.error("jmcomic search failed: %s", e)
+            logger.error("jmcomic search failed: %s", e, exc_info=True)
             return [], None
 
     def random(self) -> tuple[list[ComicInfo], PaginationInfo | None]:
@@ -377,7 +388,7 @@ class JmParser(ParserContextMixin):
             html = self._request_text(url)
             return self._parse_search_results(html, domain=domain)
         except Exception as e:
-            logger.error("jmcomic random failed: %s", e)
+            logger.error("jmcomic random failed: %s", e, exc_info=True)
             return [], None
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
@@ -388,7 +399,7 @@ class JmParser(ParserContextMixin):
             html = self._request_text(url)
             return self._parse_detail(html, comic_id=comic_id, domain=domain)
         except Exception as e:
-            logger.error("jmcomic get_comic_detail failed: %s", e)
+            logger.error("jmcomic get_comic_detail failed: %s", e, exc_info=True)
             return None
 
     def get_chapter_images(self, chapter_id: str) -> tuple[list[str], str]:
@@ -550,7 +561,7 @@ class JmParser(ParserContextMixin):
             self._fill_missing_titles(comics, domain)
             return comics, pagination, False
         except Exception as e:
-            logger.error("jmcomic favourites failed: %s", e)
+            logger.error("jmcomic favourites failed: %s", e, exc_info=True)
             if raise_errors:
                 raise
             return [], None, False
@@ -631,7 +642,7 @@ class JmParser(ParserContextMixin):
             html = self._request_text(url)
             return self._parse_search_results(html, domain=domain)
         except Exception as e:
-            logger.error("jmcomic ranking search failed: %s", e)
+            logger.error("jmcomic ranking search failed: %s", e, exc_info=True)
             return [], None
 
     @staticmethod

@@ -187,7 +187,7 @@ class MoeImgParser(ParserContextMixin):
             pagination = self._parse_bookmarks_pagination(html, page_num, len(comics))
             return comics, pagination, False
         except Exception as e:
-            logger.error("moeimg favourites failed: %s", e)
+            logger.error("moeimg favourites failed: %s", e, exc_info=True)
             if raise_errors:
                 raise
             return [], None, False
@@ -290,7 +290,9 @@ class MoeImgParser(ParserContextMixin):
             data = resp.json()
             return data.get("status") == 1
         except Exception as e:
-            logger.error("moeimg check_favourite failed for %s: %s", manga_id, e)
+            logger.error(
+                "moeimg check_favourite failed for %s: %s", manga_id, e, exc_info=True
+            )
             return False
 
     def add_to_favourites(self, manga_id: str) -> bool:
@@ -310,7 +312,9 @@ class MoeImgParser(ParserContextMixin):
             data = resp.json()
             return data.get("status") == 1
         except Exception as e:
-            logger.error("moeimg add_to_favourites failed for %s: %s", manga_id, e)
+            logger.error(
+                "moeimg add_to_favourites failed for %s: %s", manga_id, e, exc_info=True
+            )
             return False
 
     def remove_from_favourites(self, manga_id: str) -> bool:
@@ -330,7 +334,12 @@ class MoeImgParser(ParserContextMixin):
             data = resp.json()
             return data.get("status") == -1
         except Exception as e:
-            logger.error("moeimg remove_from_favourites failed for %s: %s", manga_id, e)
+            logger.error(
+                "moeimg remove_from_favourites failed for %s: %s",
+                manga_id,
+                e,
+                exc_info=True,
+            )
             return False
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
@@ -431,7 +440,9 @@ class MoeImgParser(ParserContextMixin):
             resp.raise_for_status()
             html = resp.text
         except requests.RequestException as e:
-            logger.error("MoeImg HTML detail fetch failed: %s (%s)", url, e)
+            logger.error(
+                "MoeImg HTML detail fetch failed: %s (%s)", url, e, exc_info=True
+            )
             return None
 
         soup = BeautifulSoup(html, "html.parser")
@@ -567,7 +578,7 @@ class MoeImgParser(ParserContextMixin):
             response.raise_for_status()
             return response.json()
         except (requests.RequestException, ValueError) as e:
-            logger.error("MoeImg request failed: %s (%s)", url, e)
+            logger.error("MoeImg request failed: %s (%s)", url, e, exc_info=True)
             raise ParserResponseError(f"MoeImg request failed: {url} ({e})") from e
 
     def _search_entity(self, mode: str, keyword: str, page: int) -> dict | None:

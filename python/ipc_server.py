@@ -260,7 +260,7 @@ class IPCServer(
                     "error": {"code": -32602, "message": f"Invalid params: {e}"},
                 }
             except Exception as e:
-                logger.error("Handler error for %s: %s", method, e)
+                logger.error("Handler error for %s: %s", method, e, exc_info=True)
                 return {
                     "jsonrpc": "2.0",
                     "id": req_id,
@@ -376,7 +376,7 @@ class IPCServer(
                 response = self.handle_request(request)
                 self._write_response(response)
             except json.JSONDecodeError as e:
-                logger.error(f"JSON parse error: {e}")
+                logger.error(f"JSON parse error: {e}", exc_info=True)
                 self._write_response(
                     {
                         "jsonrpc": "2.0",
@@ -385,7 +385,7 @@ class IPCServer(
                     }
                 )
             except Exception as e:
-                logger.error(f"Unexpected error: {e}")
+                logger.error(f"Unexpected error: {e}", exc_info=True)
                 self._write_response(
                     {
                         "jsonrpc": "2.0",

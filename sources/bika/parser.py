@@ -227,7 +227,7 @@ class BikaParser(ParserContextMixin):
             )
             return self._parse_comics_response(result)
         except ParserResponseError as e:
-            logger.error("Bika search failed: %s", e)
+            logger.error("Bika search failed: %s", e, exc_info=True)
             return [], None
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
@@ -251,7 +251,7 @@ class BikaParser(ParserContextMixin):
                 comic.chapters = chapters
             return comic
         except ParserResponseError as e:
-            logger.error("Bika get_comic_detail failed: %s", e)
+            logger.error("Bika get_comic_detail failed: %s", e, exc_info=True)
             return None
 
     def get_chapters(self, comic_id: str) -> list[ChapterInfo]:
@@ -287,7 +287,7 @@ class BikaParser(ParserContextMixin):
                 page += 1
 
         except ParserResponseError as e:
-            logger.error("Bika get_chapters failed: %s", e)
+            logger.error("Bika get_chapters failed: %s", e, exc_info=True)
 
         return chapters
 
@@ -334,7 +334,7 @@ class BikaParser(ParserContextMixin):
                 page += 1
 
         except ParserResponseError as e:
-            logger.error("Bika get_chapter_images failed: %s", e)
+            logger.error("Bika get_chapter_images failed: %s", e, exc_info=True)
 
         return images
 
@@ -360,7 +360,7 @@ class BikaParser(ParserContextMixin):
             comics, pagination = self._parse_comics_response(result)
             return comics, pagination, False
         except ParserResponseError as e:
-            logger.error("Bika favourites failed: %s", e)
+            logger.error("Bika favourites failed: %s", e, exc_info=True)
             if raise_errors:
                 raise
             return [], None, False
@@ -378,7 +378,7 @@ class BikaParser(ParserContextMixin):
             self._request(Method.POST, f"comics/{comic_id}/favourite")
             return True
         except ParserResponseError as e:
-            logger.error("Bika add_to_favourites failed: %s", e)
+            logger.error("Bika add_to_favourites failed: %s", e, exc_info=True)
             return False
 
     def check_favourite(self, comic_id: str) -> bool:
@@ -410,7 +410,7 @@ class BikaParser(ParserContextMixin):
             self._request(Method.POST, f"comics/{comic_id}/favourite")
             return True
         except ParserResponseError as e:
-            logger.error("Bika remove_from_favourites failed: %s", e)
+            logger.error("Bika remove_from_favourites failed: %s", e, exc_info=True)
             return False
 
     def _parse_comics_response(
