@@ -296,7 +296,7 @@ class CBZBuilder:
         elem = SubElement(parent, tag)
         elem.text = self._sanitize_xml_text(text)
 
-    def _parse_date(self, date_str: str) -> tuple:
+    def _parse_date(self, date_str: str) -> tuple[str, str, str]:
         """解析日期字符串
 
         Args:

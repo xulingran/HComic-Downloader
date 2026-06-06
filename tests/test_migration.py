@@ -352,7 +352,7 @@ def test_same_drive_target_exists_reports_clear_error(tmp_path):
 # ── T6: Cross-drive source removal failure ────────────────────────────
 
 
-def test_cross_drive_source_removal_failure_keeps_db_path(tmp_path):
+def test_cross_drive_source_removal_failure_still_updates_db(tmp_path):
     source_dir = str(tmp_path / "source")
     target_dir = str(tmp_path / "target")
     os.makedirs(source_dir, exist_ok=True)
@@ -385,7 +385,10 @@ def test_cross_drive_source_removal_failure_keeps_db_path(tmp_path):
         engine.execute(on_progress=lambda p: None)
 
     assert state.plan[0].status == "done"
-    mock_db.update_output_path.assert_not_called()
+    mock_db.update_output_path.assert_called_once_with(
+        ("hcomic", "100", "MMCG_SHORT"),
+        os.path.join(target_dir, "comic.cbz"),
+    )
 
 
 def test_cross_drive_full_success_updates_db(tmp_path):

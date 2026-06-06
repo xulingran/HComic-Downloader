@@ -80,30 +80,32 @@ class Config:
         # 归一化主题模式
         if self.theme_mode not in ("auto", "light", "dark"):
             self.theme_mode = "auto"
-        self._migrate_legacy_fields()
+        self._sync_legacy_fields()
         self._validate_ranges()
 
-    def _migrate_legacy_fields(self):
-        """将旧版 auth_cookie/auth_user_agent 迁移到 source_auth["hcomic"]。"""
+    def _sync_legacy_fields(self):
+        """将 source_auth["hcomic"] 与旧版 auth_cookie/auth_user_agent 保持同步。
+
+        如果旧字段有值但 source_auth["hcomic"] 为空（直接构造 Config 的场景），
+        则将旧字段迁移到 source_auth。否则以 source_auth 为准回写到旧字段。
+        Config.load 中也有类似逻辑，但直接构造 Config 时不会经过 load。
+        """
         hcomic_auth = self.get_source_auth("hcomic")
         if (
             not hcomic_auth.get("cookie")
             and not hcomic_auth.get("user_agent")
             and (self.auth_cookie or self.auth_user_agent)
         ):
-            # 旧字段迁移：auth_cookie/auth_user_agent → source_auth["hcomic"]
             self.set_source_auth(
                 "hcomic",
                 AuthSourceData(
                     cookie=self.auth_cookie, user_agent=self.auth_user_agent
                 ),
             )
-            self.auth_cookie = ""
-            self.auth_user_agent = ""
-            hcomic_auth = self.get_source_auth("hcomic")
-        # 保持 auth_cookie/auth_user_agent 与 source_auth["hcomic"] 同步
-        self.auth_cookie = hcomic_auth.get("cookie", "")
-        self.auth_user_agent = hcomic_auth.get("user_agent", "")
+        else:
+            # 以 source_auth 为准回写到旧字段
+            self.auth_cookie = hcomic_auth.get("cookie", "")
+            self.auth_user_agent = hcomic_auth.get("user_agent", "")
 
     def _validate_ranges(self):
         for attr, lo, hi, default in [

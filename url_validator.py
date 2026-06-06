@@ -74,8 +74,9 @@ class UrlValidator:
         if blocked_ipv6 is not None:
             self._BLOCKED_IPV6 = blocked_ipv6
         if trusted_cdn_domains is not None:
-            # 修改类属性以便 @classmethod _is_trusted_cdn 能读取
-            self.__class__._TRUSTED_CDN_DOMAINS = trusted_cdn_domains
+            self._trusted_cdn_domains = trusted_cdn_domains
+        else:
+            self._trusted_cdn_domains = self._TRUSTED_CDN_DOMAINS
 
     @classmethod
     def is_hcomic_url(cls, url: str) -> bool:
@@ -92,15 +93,16 @@ class UrlValidator:
         networks = cls._BLOCKED_IPV4 if ip.version == 4 else cls._BLOCKED_IPV6
         return any(ip in net for net in networks)
 
-    @classmethod
-    def _is_trusted_cdn(cls, hostname: str) -> bool:
+    def _is_trusted_cdn(self, hostname: str) -> bool:
         """检查域名是否在可信 CDN 白名单中（含子域名匹配）。"""
-        return hostname in cls._TRUSTED_CDN_DOMAINS or any(
-            hostname.endswith("." + d) for d in cls._TRUSTED_CDN_DOMAINS
+        return hostname in self._trusted_cdn_domains or any(
+            hostname.endswith("." + d) for d in self._trusted_cdn_domains
         )
 
-    @staticmethod
-    def validate_url(url: str):
+    @classmethod
+    def validate_url(cls, url: str):
+        # 需要实例来检查 trusted_cdn，但作为类方法被外部直接调用
+        # 使用类属性作为默认白名单
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             raise DownloadError(f"Blocked URL scheme: {parsed.scheme}")
@@ -112,13 +114,15 @@ class UrlValidator:
             raise DownloadError(f"Blocked localhost URL: {hostname}")
         try:
             ip = ipaddress.ip_address(hostname)
-            if UrlValidator.is_blocked_ip(ip):
+            if cls.is_blocked_ip(ip):
                 raise DownloadError(f"Blocked private/reserved IP: {hostname}")
             return
         except ValueError:
             pass
         # 已知可信 CDN 域名跳过 DNS 解析验证，防止 TOCTOU 攻击
-        if UrlValidator._is_trusted_cdn(hostname):
+        if hostname in cls._TRUSTED_CDN_DOMAINS or any(
+            hostname.endswith("." + d) for d in cls._TRUSTED_CDN_DOMAINS
+        ):
             return
         try:
             addrs = socket.getaddrinfo(
@@ -128,7 +132,7 @@ class UrlValidator:
             raise DownloadError(f"Cannot resolve hostname: {hostname}") from None
         for _family, _type, _proto, _canon, sockaddr in addrs:
             ip = ipaddress.ip_address(sockaddr[0])
-            if UrlValidator.is_blocked_ip(ip):
+            if cls.is_blocked_ip(ip):
                 raise DownloadError(f"Hostname {hostname} resolves to blocked IP: {ip}")
 
     def resolve_redirects(

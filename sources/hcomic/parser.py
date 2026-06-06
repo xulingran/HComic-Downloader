@@ -12,7 +12,12 @@ from urllib.parse import quote
 import requests
 
 from constants import DEFAULT_USER_AGENT
-from models import ComicInfo, PaginationInfo
+from models import (
+    _DEFAULT_IMAGE_URL_SUFFIX,
+    _IMAGE_URL_SUFFIX_MAP,
+    ComicInfo,
+    PaginationInfo,
+)
 from sources.base import ParserContextMixin, ParserResponseError
 from utils import apply_system_proxy_to_session, configure_session_auth
 
@@ -565,13 +570,9 @@ class HComicParser(ParserContextMixin):
     @classmethod
     def _get_image_prefix(cls, comic_source: str) -> str:
         """获取图片前缀"""
-        source_upper = (comic_source or "").upper()
-        if source_upper == "MMCG_SHORT":
-            suffix = "mms"
-        elif source_upper == "MMCG_LONG":
-            suffix = "mml"
-        else:
-            suffix = "nh"
+        suffix = _IMAGE_URL_SUFFIX_MAP.get(
+            (comic_source or "").upper(), _DEFAULT_IMAGE_URL_SUFFIX
+        )
         return f"{cls.IMAGE_SERVER}/{suffix}"
 
     @classmethod

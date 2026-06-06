@@ -140,6 +140,18 @@ class IPCServer(
         # Favourite tags index database
         self._init_favourite_tags()
 
+        # Pre-compute handler parameter sets for request routing
+        self._handler_param_keys: dict[str, set[str] | None] = {}
+        for _method_name, attr_name in self._HANDLER_NAMES.items():
+            handler = getattr(self, attr_name)
+            sig = inspect.signature(handler)
+            has_var_keyword = any(
+                p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+            )
+            self._handler_param_keys[attr_name] = (
+                None if has_var_keyword else set(sig.parameters.keys())
+            )
+
     # ── backward-compatible static helpers (delegated to image_utils) ─────
 
     @staticmethod
@@ -227,16 +239,11 @@ class IPCServer(
             handler = getattr(self, attr_name)
             try:
                 # 过滤 params 到 handler 实际接受的参数，防止客户端注入未预期参数
-                sig = inspect.signature(handler)
-                has_var_keyword = any(
-                    p.kind == inspect.Parameter.VAR_KEYWORD
-                    for p in sig.parameters.values()
-                )
-                valid_params = (
-                    params
-                    if has_var_keyword
-                    else {k: v for k, v in params.items() if k in sig.parameters}
-                )
+                param_keys = self._handler_param_keys.get(attr_name)
+                if param_keys is not None:
+                    valid_params = {k: v for k, v in params.items() if k in param_keys}
+                else:
+                    valid_params = params
                 result = handler(**valid_params)
                 return {"jsonrpc": "2.0", "id": req_id, "result": result}
             except AuthRequiredError as e:

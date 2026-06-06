@@ -416,7 +416,6 @@ class MigrationEngine:
                     self._write_log(
                         "WARNING", f"Source dir removal failed: {item.source} — {e}"
                     )
-                    return
             else:
                 shutil.copy2(item.source, item.target)
                 try:
@@ -430,7 +429,6 @@ class MigrationEngine:
                     self._write_log(
                         "WARNING", f"Source file removal failed: {item.source} — {e}"
                     )
-                    return
 
         self._history_db.update_output_path(item.db_key, item.target)
 

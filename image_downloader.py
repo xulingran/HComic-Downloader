@@ -5,6 +5,7 @@ import os
 import queue
 import shutil
 import tempfile
+import threading
 
 import requests
 from PIL import Image
@@ -43,6 +44,7 @@ class ImageDownloader:
         self._pending_ua = ""
         self._checked_out: set[requests.Session] = set()
         self._stale_sessions: set[requests.Session] = set()
+        self._sets_lock = threading.Lock()
         self._init_session_pool()
 
     def _create_session(self) -> requests.Session:
@@ -66,15 +68,19 @@ class ImageDownloader:
     def _acquire_session(self) -> requests.Session:
         """从池中获取一个 Session（阻塞等待），自动应用最新认证头"""
         session = self._session_pool.get()
-        self._checked_out.add(session)
+        with self._sets_lock:
+            self._checked_out.add(session)
         self._apply_pending_auth(session)
         return session
 
     def _release_session(self, session: requests.Session) -> None:
         """将 Session 归还到池中；若 session 已过期则直接关闭"""
-        self._checked_out.discard(session)
-        if session in self._stale_sessions:
-            self._stale_sessions.discard(session)
+        with self._sets_lock:
+            self._checked_out.discard(session)
+            is_stale = session in self._stale_sessions
+            if is_stale:
+                self._stale_sessions.discard(session)
+        if is_stale:
             session.close()
             return
         self._session_pool.put(session)
@@ -116,8 +122,9 @@ class ImageDownloader:
                 break
 
         # 标记 checked-out Session 为过期，归还时自动关闭
-        for s in self._checked_out:
-            self._stale_sessions.add(s)
+        with self._sets_lock:
+            stale = set(self._checked_out)
+            self._stale_sessions.update(stale)
 
         self._init_session_pool()
         self.configure_auth(cookie=saved_cookie, user_agent=saved_ua)
@@ -260,3 +267,10 @@ class ImageDownloader:
                 self._session_pool.get_nowait().close()
             except queue.Empty:
                 break
+        with self._sets_lock:
+            for s in self._checked_out:
+                s.close()
+            for s in self._stale_sessions:
+                s.close()
+            self._checked_out.clear()
+            self._stale_sessions.clear()

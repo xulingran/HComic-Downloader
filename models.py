@@ -108,15 +108,16 @@ class ComicInfo:
     def __hash__(self) -> int:
         """使 ComicInfo 可哈希，用于存储在 set 中。
 
-        Warning: hash 基于 (source_site, id, comic_source)。将 ComicInfo
-        加入 set 后修改这三个字段中的任何一个，会导致 set 查找失败。
+        IMPORTANT: hash 基于 (source_site, id, comic_source)。将 ComicInfo
+        加入 set 后**绝不能**修改这三个字段中的任何一个，否则会导致
+        set 查找失败和重复元素。如需修改，先从 set 中移除再重新添加。
         """
         return hash((self.source_site, self.id, self.comic_source))
 
     def __eq__(self, other) -> bool:
         """比较两个 ComicInfo 是否相等。
 
-        Warning: 与 __hash__ 保持一致，仅比较 (source_site, id, comic_source)。
+        与 __hash__ 保持一致，仅比较 (source_site, id, comic_source)。
         """
         if not isinstance(other, ComicInfo):
             return False

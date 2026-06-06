@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 import time
+from collections import Counter
 from collections.abc import Callable
 
 from downloader import DownloadOptions, DownloadResult
@@ -429,8 +430,6 @@ class DownloadManager:
 
     def get_stats(self) -> dict:
         """获取队列统计信息"""
-        from collections import Counter
-
         with self._lock:
             status_counts = Counter(t.status for t in self.tasks.values())
             total = len(self.tasks)
