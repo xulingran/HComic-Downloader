@@ -147,8 +147,8 @@ def test_descramble_roundtrip():
 
         orig_img = Image.open(BytesIO(original))
         desc_img = Image.open(BytesIO(descrambled))
-        assert list(orig_img.getdata()) == list(
-            desc_img.getdata()
+        assert list(orig_img.get_flattened_data()) == list(
+            desc_img.get_flattened_data()
         ), f"Roundtrip failed for height={height}"
 
 
@@ -177,8 +177,8 @@ def test_descramble_roundtrip_various_pages():
 
         orig_img = Image.open(BytesIO(original))
         desc_img = Image.open(BytesIO(descrambled))
-        assert list(orig_img.getdata()) == list(
-            desc_img.getdata()
+        assert list(orig_img.get_flattened_data()) == list(
+            desc_img.get_flattened_data()
         ), f"Roundtrip failed for page_num={page_num}, num={num}"
 
 
@@ -232,4 +232,4 @@ def test_descramble_algorithm_matches_reference():
             (0, y_dst, width, y_dst + move),
         )
 
-    assert list(src_img.getdata()) == list(result.getdata())
+    assert list(src_img.get_flattened_data()) == list(result.get_flattened_data())

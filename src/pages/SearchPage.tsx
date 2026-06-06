@@ -19,13 +19,8 @@ import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import type { DownloadProgressData } from '../hooks/useIpc'
 import { requiresAuth, isAuthError } from '../utils/auth'
+import { normalizeSourceKey } from '../utils/source'
 
-function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' | 'bika' {
-  if (source === 'moeimg') return 'moeimg'
-  if (source === 'jmcomic') return 'jmcomic'
-  if (source === 'bika') return 'bika'
-  return 'hcomic'
-}
 
 interface SearchPageProps {
   onNavigateToSettings?: () => void
@@ -234,7 +229,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }, [favouriteTagHighlight, source, favTags])
 
   const filteredComics = useMemo(() => {
-    const key = effectiveSourceKey(source)
+    const key = normalizeSourceKey(source)
     const blocked = new Set(tagBlacklist[key].map(t => t.toLowerCase()))
     const hasBlockedTags = blocked.size > 0
     return comics.map(c => {
@@ -362,7 +357,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         historyDropdownRef={historyDropdownRef}
         hasFilterEnabled={filterEnabled}
         onFilterToggle={() => setFilterEnabled(!filterEnabled)}
-        hasBlacklistedTags={tagBlacklist[effectiveSourceKey(source)].length > 0}
+        hasBlacklistedTags={tagBlacklist[normalizeSourceKey(source)].length > 0}
         pagination={pagination}
         blockedCount={blockedCount}
         hasComics={comics.length > 0}
@@ -417,8 +412,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           ))}
         </div>
       )}
-
-
 
       {/* ── Page jump dialog ── */}
       {showJumpDialog && (

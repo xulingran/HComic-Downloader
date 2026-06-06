@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { TagBlacklist, CardStyle } from '@shared/types'
+import { normalizeSourceKey } from '../utils/source'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
 
@@ -40,7 +41,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     const trimmed = tag.trim()
     if (!trimmed) return
     set((state) => {
-      const key = (source === 'moeimg' ? 'moeimg' : source === 'jmcomic' ? 'jmcomic' : source === 'bika' ? 'bika' : 'hcomic') as keyof TagBlacklist
+      const key = normalizeSourceKey(source)
       const list = state.tagBlacklist[key]
       if (list.some(t => t.toLowerCase() === trimmed.toLowerCase())) return state
       return {
@@ -53,7 +54,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   },
   removeTag: (source, tag) => {
     set((state) => {
-      const key = (source === 'moeimg' ? 'moeimg' : source === 'jmcomic' ? 'jmcomic' : source === 'bika' ? 'bika' : 'hcomic') as keyof TagBlacklist
+      const key = normalizeSourceKey(source)
       const lower = tag.toLowerCase()
       return {
         tagBlacklist: {

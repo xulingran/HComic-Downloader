@@ -586,6 +586,7 @@ export const IPC_CHANNELS = {
   APPLY_AUTH: 'python:apply-auth',
   VERIFY_AUTH: 'python:verify-auth',
   MOEIMG_LOGIN: 'python:moeimg-login',
+  BIKA_LOGIN: 'python:bika-login',
   SHUTDOWN: 'python:shutdown',
   FETCH_COVER: 'python:fetch-cover',
   OPEN_EXTERNAL: 'open-external',

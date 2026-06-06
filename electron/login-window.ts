@@ -196,9 +196,10 @@ function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      // Disable OS-level sandbox — it causes silent native crashes on
-      // Windows when loading complex SPAs like Auth0. The login window
-      // only loads trusted remote content (h-comic.com / auth0.com).
+      // TODO: Re-enable sandbox after Electron upgrade — currently disabled because
+      // OS-level sandbox causes silent native crashes on Windows when loading
+      // complex SPAs like Auth0. Mitigated by contextIsolation + nodeIntegration:false.
+      // Track: periodically re-test with sandbox:true after each Electron major upgrade.
       sandbox: false,
     },
   })

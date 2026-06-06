@@ -495,6 +495,7 @@ function registerSearchHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.RANDOM, async (_, source?: string) => {
     const params: Record<string, unknown> = {}
     if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'random source')
       params.source = source
     }
     return bridge.call('random', params)
@@ -680,7 +681,7 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('moeimg_login', { username: username.trim(), password: password.trim() })
   })
 
-  ipcMain.handle('python:bika-login', async (_, username, password) => {
+  ipcMain.handle(IPC_CHANNELS.BIKA_LOGIN, async (_, username, password) => {
     if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) {
       throw new Error('Invalid bika username')
     }
