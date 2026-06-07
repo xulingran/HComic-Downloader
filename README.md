@@ -8,9 +8,11 @@
 
 | 来源 | 站点 | 搜索 | 收藏 | 登录方式 |
 |------|------|------|------|---------|
-| hcomic | h-comic.com | ✅ | ✅ | curl 导入 / 内嵌浏览器 |
-| moeimg | moeimg.fan | ✅ | — | curl 导入 |
+| hcomic | h-comic.com | ✅ | ✅ | curl 导入 / 应用内用户名密码 / 内嵌浏览器 |
+| moeimg | moeimg.fan | ✅ | ✅ | curl 导入 / 应用内用户名密码 |
 | jmcomic | jmcomic（含镜像） | ✅ | ✅ | curl 导入 / 内嵌浏览器 |
+| bika | 哔咔 | ✅ | ✅ | 应用内用户名密码（API 登录） |
+| copymanga | 拷贝漫画 | ✅ | — | curl 导入 |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
 - **随机推荐**：hcomic、jmcomic 支持
@@ -45,12 +47,14 @@
 
 ### 收藏与历史
 
-- 收藏夹（hcomic / jmcomic）
+- 收藏夹（hcomic / jmcomic / moeimg / bika）
 - 阅读历史记录（最近阅读、章节定位）
+- 收藏标签推荐与高亮（从收藏夹提取标签，搜索结果中高亮推荐标签）
 - 批量选择 + 批量下载
 
 ### 其他功能
 
+- 工具箱标签页（标签过滤、推荐标签管理、重复漫画检测）
 - 亮色 / 暗色 / 跟随系统 三种主题
 - 自定义字体（跨平台 CJK 字体自动检测）与字号（12-20）
 - 代理设置（HTTP / HTTPS / NO_PROXY 系统代理）
@@ -83,7 +87,7 @@
 - **Zustand 4** — 状态管理
 - **Tailwind CSS 3.4** — 样式
 - **electron-vite 2** + **Vite 5** — 构建 / 开发服务器
-- **Vitest 4** + Testing Library — 单元测试（39 个测试文件）
+- **Vitest 4** + Testing Library — 单元测试（46 个测试文件）
 
 ### 后端技术栈
 
@@ -124,10 +128,12 @@ hcomic_downloader/
 │   │   ├── DownloadPage.tsx
 │   │   ├── FavouritesPage.tsx
 │   │   ├── HistoryPage.tsx
+│   │   ├── ToolboxPage.tsx    # 工具箱（标签过滤 / 推荐标签 / 重复检测）
 │   │   └── SettingsPage.tsx
 │   ├── components/            # 业务组件（Reader / Drawer / Sidebar / ChapterPicker 等）
 │   ├── components/common/     # 通用组件（Toast / Pagination / ProgressBar 等）
-│   ├── components/settings/   # 设置面板分组（外观 / 下载 / 认证 / 通知 / 代理 / 缓存 / 标签过滤 / 迁移）
+│   ├── components/settings/   # 设置面板分组（外观 / 下载 / 认证 / 通知 / 代理 / 缓存 / 标签过滤 / 推荐标签 / 迁移）
+│   ├── components/tools/      # 工具箱组件（DuplicateDetector 等）
 │   ├── hooks/                 # React hooks（useIpc / useTheme / useComicReader / useMigration 等）
 │   ├── stores/                # Zustand 状态仓库
 │   └── styles/                # 全局样式
@@ -144,19 +150,29 @@ hcomic_downloader/
 │       ├── auth_mixin.py
 │       ├── migration_mixin.py
 │       ├── history_mixin.py
+│       ├── favourite_tags_mixin.py  # 收藏标签推荐
 │       ├── cover_cache.py     # 封面缓存（SQLite）
 │       ├── preview_cache.py   # 预览图片缓存（带大小上限）
 │       ├── image_utils.py
 │       └── types.py
 │
 ├── sources/                   # 漫画来源解析器
+│   ├── base.py                # 解析器基类（ParserContextMixin）
 │   ├── hcomic/                # h-comic 解析器
 │   ├── moeimg/                # moeimg 解析器
-│   └── jmcomic/               # jmcomic 解析器（含反混淆）
+│   ├── jmcomic/               # jmcomic 解析器（含反混淆）
+│   │   ├── parser.py
+│   │   ├── descrambler.py     # 图片反混淆
+│   │   ├── session.py         # 认证与请求
+│   │   ├── domain.py          # 镜像域名管理
+│   │   ├── title_resolver.py  # 标题解析
+│   │   └── constants.py
+│   ├── bika/                  # 哔咔解析器（API 登录 + 收藏夹）
+│   │   ├── parser.py
+│   │   └── constants.py
+│   └── copymanga/             # 拷贝漫画解析器（AES 解密）
 │       ├── parser.py
-│       ├── descrambler.py     # 图片反混淆
-│       ├── session.py         # 认证与请求
-│       ├── domain.py          # 镜像域名管理
+│       ├── crypto.py          # AES-CBC 解密工具
 │       └── constants.py
 │
 ├── shared/                    # 前后端共享类型
@@ -170,16 +186,18 @@ hcomic_downloader/
 │
 ├── scripts/                   # 构建与工具脚本
 │   ├── lint-py.mjs            # 跨平台 Python lint 封装
+│   ├── format-py.mjs          # Python 格式化封装（black）
 │   └── generate-icons.mjs     # 图标生成
 │
 ├── tests/                     # 测试
-│   ├── test_*.py              # Python 单元测试（28 个文件，369 用例）
-│   └── unit/                  # TypeScript/React 单元测试（39 个文件）
+│   ├── test_*.py              # Python 单元测试（32 个文件）
+│   └── unit/                  # TypeScript/React 单元测试（46 个文件）
 │
 ├── config.py                  # 配置管理（dataclass + JSON 持久化）
 ├── downloader.py              # 多线程下载器（断点续传 + 重试）
 ├── download_manager.py        # 下载任务队列与状态机
 ├── download_history.py        # 下载历史数据库（SQLite）
+├── output_staging.py          # 输出暂存（临时目录 + 原子移动）
 ├── cbz_builder.py             # CBZ 打包 + ComicInfo.xml 生成
 ├── auth_parser.py             # 从 curl 命令提取 Cookie / User-Agent
 ├── url_validator.py           # URL 校验工具
@@ -299,13 +317,14 @@ venv\Scripts\black.exe .            # 格式化
 | `autoRetryMaxAttempts` | number | 失败自动重试次数 | 2 | 0-5 |
 | `notifyOnComplete` | boolean | 下载完成系统通知 | `true` | — |
 | `notifyWhenForeground` | string | 通知触发策略 | `inactive` | `inactive` / `always` |
-| `defaultSource` | string | 默认搜索来源 | `hcomic` | `hcomic` / `moeimg` / `jmcomic` |
+| `defaultSource` | string | 默认搜索来源 | `hcomic` | `hcomic` / `moeimg` / `jmcomic` / `bika` / `copymanga` |
 | `fontName` | string | 自定义字体 | `""`（自动检测 CJK） | — |
 | `fontSize` | number | 基础字号 | 12 | 12-20 |
 | `sfwMode` | boolean | SFW 安全模式（隐藏封面） | `true` | — |
 | `tagBlacklist` | object | 标签黑名单（按来源） | `{hcomic:[], moeimg:[], jmcomic:[]}` | 每项 ≤ 64 字符 |
 | `previewCacheSizeLimitMB` | number | 预览缓存上限（MB） | 500 | 100-2048 |
 | `jmcomicDomain` | string | jmcomic 自定义域名 | `""`（自动） | — |
+| `favouriteTagHighlight` | boolean | 收藏标签推荐高亮 | `false` | — |
 
 ## 许可证
 
