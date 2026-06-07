@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { TAG_RECOMMENDATION_SOURCES, SOURCE_LABELS } from '@shared/types'
 import { useFavouriteTags, useFavourites } from '../../hooks/useIpc'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 
@@ -11,6 +12,7 @@ export function FavouriteTagSettings() {
   const { favouriteTagHighlight, setFavouriteTagHighlight } = useSettingsStore()
   const { getFavouriteTags, clearFavouriteTags, removeFavouriteTag } = useFavouriteTags()
   const { getFavourites } = useFavourites()
+  const [source, setSource] = useState('hcomic')
   const [tags, setTags] = useState<TagItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
@@ -21,14 +23,14 @@ export function FavouriteTagSettings() {
   const loadTags = useCallback(async () => {
     setIsLoading(true)
     try {
-      const result = await getFavouriteTags('hcomic')
+      const result = await getFavouriteTags(source)
       setTags(result.tags)
     } catch {
       setTags([])
     } finally {
       setIsLoading(false)
     }
-  }, [getFavouriteTags])
+  }, [getFavouriteTags, source])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -40,16 +42,16 @@ export function FavouriteTagSettings() {
     setSyncedCount(null)
     setSyncProgress(null)
     try {
-      await clearFavouriteTags('hcomic')
+      await clearFavouriteTags(source)
 
-      const first = await getFavourites(1, 'hcomic')
+      const first = await getFavourites(1, source)
       const totalPages = first.pagination?.totalPages ?? 1
       let total = first.comics.length
       setSyncProgress(`正在同步 1/${totalPages}...`)
 
       for (let page = 2; page <= totalPages; page++) {
         try {
-          const result = await getFavourites(page, 'hcomic')
+          const result = await getFavourites(page, source)
           total += result.comics.length
           setSyncProgress(`正在同步 ${page}/${totalPages}...`)
         } catch {
@@ -70,7 +72,7 @@ export function FavouriteTagSettings() {
 
   const handleRemoveTag = async (tag: string) => {
     try {
-      await removeFavouriteTag(tag, 'hcomic')
+      await removeFavouriteTag(tag, source)
       setTags(prev => prev.filter(t => t.tag !== tag))
     } catch {
       // Ignore removal errors — user can retry
@@ -105,6 +107,18 @@ export function FavouriteTagSettings() {
       </p>
 
       <div className="flex items-center gap-3">
+        <select
+          value={source}
+          onChange={e => setSource(e.target.value)}
+          disabled={isSyncing}
+          className="px-3 py-1.5 text-sm bg-[var(--bg-secondary)] border border-[var(--border)]
+                     rounded-lg text-[var(--text-primary)]"
+        >
+          {TAG_RECOMMENDATION_SOURCES.map(s => (
+            <option key={s} value={s}>{SOURCE_LABELS[s]}</option>
+          ))}
+        </select>
+
         <button
           onClick={handleSync}
           disabled={isSyncing}

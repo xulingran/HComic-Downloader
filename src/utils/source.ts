@@ -30,6 +30,11 @@ export function sourceNeedsDetailEnrich(source: string): boolean {
   return SOURCE_META[source as ComicSource]?.needsDetailEnrich ?? false
 }
 
+/** 来源是否支持标签推荐 */
+export function sourceSupportsTagRecommendation(source: string): boolean {
+  return SOURCE_META[source as ComicSource]?.supportsTagRecommendation ?? false
+}
+
 /**
  * Normalize a source identifier to a valid ComicSource.
  * Unknown sources default to 'hcomic'.

@@ -11,6 +11,8 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+_TAG_RECOMMENDATION_SOURCES = ("hcomic", "jmcomic", "bika")
+
 
 class FavouriteTagsDB:
     """SQLite-backed favourite tag frequency index."""
@@ -159,17 +161,17 @@ class FavouriteTagsMixin:
         self._favourite_tags_db = FavouriteTagsDB(db_path)
 
     def handle_get_favourite_tags(self, source: str = "hcomic") -> dict:
-        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        effective_source = source if source in _TAG_RECOMMENDATION_SOURCES else "hcomic"
         tags = self._favourite_tags_db.get_tags(effective_source)
         return {"tags": tags}
 
     def handle_clear_favourite_tags(self, source: str = "hcomic") -> dict:
         """清空指定来源的推荐标签索引（轻量操作，无 HTTP 请求）。"""
-        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        effective_source = source if source in _TAG_RECOMMENDATION_SOURCES else "hcomic"
         self._favourite_tags_db.clear(effective_source)
         return {"success": True}
 
     def handle_remove_favourite_tag(self, tag: str, source: str = "hcomic") -> dict:
-        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        effective_source = source if source in _TAG_RECOMMENDATION_SOURCES else "hcomic"
         self._favourite_tags_db.remove_tag(tag, effective_source)
         return {"success": True}

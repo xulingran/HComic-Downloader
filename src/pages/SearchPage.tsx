@@ -17,7 +17,7 @@ import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
-import { sourceSupportsRandom, normalizeSourceKey } from '../utils/source'
+import { sourceSupportsRandom, sourceSupportsTagRecommendation, normalizeSourceKey } from '../utils/source'
 import type { DownloadProgressData } from '../hooks/useIpc'
 import { requiresAuth, isAuthError } from '../utils/auth'
 import { sourceLabel } from '../utils/source'
@@ -216,16 +216,16 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode])
 
   useEffect(() => {
-    if (!favouriteTagHighlight || source !== 'hcomic') {
+    if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(source)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFavTags([])
       return
     }
-    getFavouriteTags('hcomic').then(result => setFavTags(result.tags)).catch(() => setFavTags([]))
+    getFavouriteTags(source).then(result => setFavTags(result.tags)).catch(() => setFavTags([]))
   }, [favouriteTagHighlight, source, getFavouriteTags])
 
   const recommendedTags = useMemo(() => {
-    if (!favouriteTagHighlight || source !== 'hcomic') return new Set<string>()
+    if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(source)) return new Set<string>()
     return new Set(favTags.slice(0, 10).map(t => t.tag.toLowerCase()))
   }, [favouriteTagHighlight, source, favTags])
 

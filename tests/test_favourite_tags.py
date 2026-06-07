@@ -106,3 +106,45 @@ def test_remove_comic_not_exist(tmp_path):
     db.remove_comic("nonexistent", "hcomic")
     tags = db.get_tags("hcomic")
     assert tags == []
+
+
+def test_bika_source_isolated(tmp_path):
+    """Bika tag data is isolated from other sources."""
+    db = _make_db(tmp_path)
+    db.upsert_comic("c1", "hcomic", ["tag:A"])
+    db.upsert_comic("c1", "jmcomic", ["tag:X"])
+    db.upsert_comic("c1", "bika", ["全彩", "紳士"])
+    hcomic_tags = db.get_tags("hcomic")
+    jmcomic_tags = db.get_tags("jmcomic")
+    bika_tags = db.get_tags("bika")
+    assert len(hcomic_tags) == 1
+    assert len(jmcomic_tags) == 1
+    assert len(bika_tags) == 2
+    assert hcomic_tags[0]["tag"] == "tag:A"
+    assert jmcomic_tags[0]["tag"] == "tag:X"
+    bika_tag_names = {t["tag"] for t in bika_tags}
+    assert bika_tag_names == {"全彩", "紳士"}
+
+
+def test_bika_upsert_and_get_tags(tmp_path):
+    """Bika source full CRUD flow: upsert, get, remove, clear."""
+    db = _make_db(tmp_path)
+    # Upsert multiple comics
+    db.upsert_comic("b1", "bika", ["全彩", "長篇"])
+    db.upsert_comic("b2", "bika", ["全彩", "完結"])
+    tags = db.get_tags("bika")
+    tag_map = {t["tag"]: t["count"] for t in tags}
+    assert tag_map["全彩"] == 2
+    assert tag_map["長篇"] == 1
+    assert tag_map["完結"] == 1
+
+    # Remove a comic
+    db.remove_comic("b1", "bika")
+    tags = db.get_tags("bika")
+    tag_map = {t["tag"]: t["count"] for t in tags}
+    assert tag_map["全彩"] == 1
+    assert "長篇" not in tag_map  # count went to 0 and was cleaned up
+
+    # Clear
+    db.clear("bika")
+    assert db.get_tags("bika") == []

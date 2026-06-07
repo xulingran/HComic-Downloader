@@ -5,7 +5,7 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
 import { Toast } from './common/Toast'
 import { isAuthError } from '../utils/auth'
-import { normalizeSourceKey, sourceSupportsFavourites, sourceNeedsDetailEnrich } from '../utils/source'
+import { normalizeSourceKey, sourceSupportsFavourites, sourceSupportsTagRecommendation, sourceNeedsDetailEnrich } from '../utils/source'
 
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
@@ -27,7 +27,7 @@ export function ComicInfoDrawer() {
   const comicSource = drawerComic?.sourceSite || 'hcomic'
 
   const recommendedTagSet = useMemo(() => {
-    if (!favouriteTagHighlight || comicSource !== 'hcomic') return new Set<string>()
+    if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(comicSource)) return new Set<string>()
     return new Set(drawerFavTags.slice(0, 10).map(t => t.tag.toLowerCase()))
   }, [favouriteTagHighlight, comicSource, drawerFavTags])
 
@@ -53,12 +53,12 @@ export function ComicInfoDrawer() {
   }, [isOpen])
 
   useEffect(() => {
-    if (!isOpen || !favouriteTagHighlight || comicSource !== 'hcomic') {
+    if (!isOpen || !favouriteTagHighlight || !sourceSupportsTagRecommendation(comicSource)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDrawerFavTags([])
       return
     }
-    getFavouriteTags('hcomic').then(result => setDrawerFavTags(result.tags)).catch(() => setDrawerFavTags([]))
+    getFavouriteTags(comicSource).then(result => setDrawerFavTags(result.tags)).catch(() => setDrawerFavTags([]))
   }, [isOpen, favouriteTagHighlight, comicSource, getFavouriteTags])
 
   // Fetch full detail for sources where search results lack complete metadata.

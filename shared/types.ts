@@ -580,6 +580,7 @@ export const SOURCE_META = {
     requiresAuth: false,
     supportsRanking: false,
     needsDetailEnrich: false,
+    supportsTagRecommendation: true,
   },
   moeimg: {
     label: 'MoeImg',
@@ -588,6 +589,7 @@ export const SOURCE_META = {
     requiresAuth: false,
     supportsRanking: false,
     needsDetailEnrich: true,
+    supportsTagRecommendation: false,
   },
   jmcomic: {
     label: 'jmcomic',
@@ -596,6 +598,7 @@ export const SOURCE_META = {
     requiresAuth: true,
     supportsRanking: true,
     needsDetailEnrich: true,
+    supportsTagRecommendation: true,
   },
   bika: {
     label: '哔咔',
@@ -604,6 +607,7 @@ export const SOURCE_META = {
     requiresAuth: false,
     supportsRanking: false,
     needsDetailEnrich: false,
+    supportsTagRecommendation: true,
   },
   copymanga: {
     label: '拷贝漫画',
@@ -612,6 +616,7 @@ export const SOURCE_META = {
     requiresAuth: true,
     supportsRanking: true,
     needsDetailEnrich: false,
+    supportsTagRecommendation: false,
   },
 } as const satisfies Record<ComicSource, {
   label: string
@@ -620,6 +625,7 @@ export const SOURCE_META = {
   requiresAuth: boolean
   supportsRanking: boolean
   needsDetailEnrich: boolean
+  supportsTagRecommendation: boolean
 }>
 
 /** 来源标签映射（便捷访问） */
@@ -636,6 +642,11 @@ export const SOURCES_WITH_FAVOURITES = COMIC_SOURCES.filter(
 /** 需要认证的来源列表 */
 export const AUTH_REQUIRED_SOURCES = COMIC_SOURCES.filter(
   s => SOURCE_META[s].requiresAuth
+)
+
+/** 支持标签推荐的来源列表 */
+export const TAG_RECOMMENDATION_SOURCES = COMIC_SOURCES.filter(
+  s => SOURCE_META[s].supportsTagRecommendation
 )
 
 /** JSON-RPC application error codes (Python backend) */
