@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import re
 from http.cookiejar import Cookie
-from urllib.parse import urlparse
 
 import requests
 from lxml import html as lxml_html
@@ -132,9 +131,7 @@ class CopyMangaParser(ParserContextMixin):
             resp = self.session.get(url, headers=headers, timeout=self.timeout, allow_redirects=True)
             resp.raise_for_status()
             if not resp.content or not resp.content.strip():
-                raise ValueError(
-                    f"Empty response body (status={resp.status_code}, len={len(resp.content)})"
-                )
+                raise ValueError(f"Empty response body (status={resp.status_code}, len={len(resp.content)})")
             return resp.json()
         except requests.Timeout as e:
             raise ParserResponseError(f"请求超时: {url}") from e
@@ -545,7 +542,5 @@ class CopyMangaParser(ParserContextMixin):
             raise ValueError("contentKey value not found")
         key = match.group(1)
         if not key:
-            raise ValueError(
-                "contentKey is empty — 拷贝漫画需要登录才能查看漫画内容，请在设置中配置登录凭证"
-            )
+            raise ValueError("contentKey is empty — 拷贝漫画需要登录才能查看漫画内容，请在设置中配置登录凭证")
         return key

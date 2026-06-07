@@ -219,7 +219,6 @@ hcomic_downloader/
 ├── package.json
 ├── requirements.txt           # Python 依赖
 ├── requirements-dev.txt       # Python 开发依赖
-├── run.bat / run.sh           # 旧版 tkinter 启动脚本（保留兼容）
 └── README.md
 ```
 
@@ -251,8 +250,6 @@ npm run dev
 ```
 
 开发模式下，`electron-vite` 启动 Vite 开发服务器并加载 Electron 主进程，主进程通过 `python-bridge.ts` 自动 spawn Python 子进程（`python python/ipc_server.py`），前端通过 IPC 与 Python 通信，热重载生效。
-
-> `run.bat` / `run.sh` 是历史遗留的 tkinter 启动入口，已不推荐使用。
 
 ### 构建
 
@@ -328,4 +325,4 @@ venv\Scripts\black.exe .            # 格式化
 
 ## 许可证
 
-本项目仅供学习和个人使用。
+[MIT License](LICENSE)

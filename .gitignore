@@ -28,7 +28,10 @@ coverage/
 .deepseek/
 .superpowers/
 .trae/
+.claude/
+.agents/
 .playwright-mcp/
+.ruff_cache/
 *.swp
 *.swo
 *~
@@ -52,6 +55,22 @@ dist/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Generated reports
+eslint-report*.json
+
+# Internal docs
+openspec/
+docs/plans/
+docs/superpowers/
+docs/code-review*.md
+docs/CLAUDE.md
+docs/font_config.md
+tests/CLAUDE.md
+
+# Dev tools
+icon-preview.html
+npm run dev.bat
 
 # Temporary / Generated documents
 code review.txt

@@ -382,7 +382,7 @@ class TestCopyMangaStubMethods:
         ok, msg = copymanga_parser.verify_login_status()
         assert ok is False
         assert "\u767b\u5f55" in msg
-    
+
     def test_verify_login_status_with_token_cookie(self, copymanga_parser):
         """配置了 token cookie 时返回已登录。"""
         copymanga_parser.configure_auth(cookie="token=abc123; sessionid=xyz")
