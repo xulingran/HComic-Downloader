@@ -135,8 +135,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 52 total
-      expect(handleCalls.length).toBe(52)
+      // 53 total
+      expect(handleCalls.length).toBe(53)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -182,7 +182,7 @@ describe('main.ts', () => {
       'python:clear-preview-cache',
       'python:clear-all-cache',
       'python:get-favourite-tags',
-      'python:sync-favourite-tags',
+      'python:clear-favourite-tags',
       'python:remove-favourite-tag',
       'select-directory',
       'open-login-window',
@@ -226,8 +226,8 @@ describe('main.ts', () => {
         'add_to_favourites', 'check_favourite', 'remove_from_favourites',
         'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
         'get_history', 'add_history', 'delete_history', 'clear_history',
-        'get_comic_detail', 'get_favourite_tags', 'sync_favourite_tags', 'remove_favourite_tag',
-        'moeimg_login', 'bika_login', 'get_jmcomic_domains',
+        'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
+        'moeimg_login', 'bika_login', 'hcomic_login', 'get_jmcomic_domains',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),

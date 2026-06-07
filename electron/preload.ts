@@ -123,6 +123,12 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.BIKA_LOGIN, username, password)
   },
 
+  hcomicLogin: (username: unknown, password: unknown) => {
+    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
+    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')
+    return ipcRenderer.invoke(IPC_CHANNELS.HCOMIC_LOGIN, username, password)
+  },
+
   shutdown: () => ipcRenderer.invoke(IPC_CHANNELS.SHUTDOWN),
 
   openUrl: (url: unknown) => {
@@ -274,9 +280,9 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_FAVOURITE_TAGS, source ?? undefined)
   },
 
-  syncFavouriteTags: (source?: unknown) => {
+  clearFavouriteTags: (source?: unknown) => {
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
-    return ipcRenderer.invoke(IPC_CHANNELS.SYNC_FAVOURITE_TAGS, source ?? undefined)
+    return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_FAVOURITE_TAGS, source ?? undefined)
   },
 
   removeFavouriteTag: (tag: unknown, source?: unknown) => {

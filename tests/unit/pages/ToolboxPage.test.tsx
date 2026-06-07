@@ -11,7 +11,7 @@ vi.mock('@/hooks/useIpc', () => ({
   }),
   useFavouriteTags: () => ({
     getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
-    syncFavouriteTags: vi.fn(),
+    clearFavouriteTags: vi.fn(),
     removeFavouriteTag: vi.fn(),
   }),
 }))

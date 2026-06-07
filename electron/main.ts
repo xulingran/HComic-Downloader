@@ -691,6 +691,16 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('bika_login', { username: username.trim(), password: password.trim() })
   })
 
+  ipcMain.handle(IPC_CHANNELS.HCOMIC_LOGIN, async (_, username, password) => {
+    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) {
+      throw new Error('Invalid hcomic username')
+    }
+    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) {
+      throw new Error('Invalid hcomic password')
+    }
+    return bridge.call('hcomic_login', { username: username.trim(), password: password.trim() })
+  })
+
   ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
     // 对 jmcomic，先获取配置以更新域名
     if (source === 'jmcomic' && !jmcomicMainDomain) {
@@ -936,13 +946,13 @@ function registerFavouriteTagHandlers(bridge: Bridge) {
     return bridge.call('get_favourite_tags', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.SYNC_FAVOURITE_TAGS, async (_, source?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.CLEAR_FAVOURITE_TAGS, async (_, source?: unknown) => {
     const params: Record<string, unknown> = {}
     if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'sync_favourite_tags source')
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'clear_favourite_tags source')
       params.source = source
     }
-    return bridge.call('sync_favourite_tags', params)
+    return bridge.call('clear_favourite_tags', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.REMOVE_FAVOURITE_TAG, async (_, tag: unknown, source?: unknown) => {

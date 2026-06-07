@@ -90,6 +90,7 @@ export interface AppConfig {
   jmcomicDomain?: string
   moeimgUsername?: string
   bikaUsername?: string
+  hcomicUsername?: string
   favouriteTagHighlight?: boolean
 }
 
@@ -296,6 +297,10 @@ export interface IPCMethods {
     params: { username: string; password: string }
     result: { success: boolean; message: string }
   }
+  hcomic_login: {
+    params: { username: string; password: string }
+    result: { success: boolean; message: string }
+  }
   shutdown: {
     params: Record<string, never>
     result: { success: boolean; cancelledTasks: number }
@@ -416,9 +421,9 @@ export interface IPCMethods {
     params: { source?: string }
     result: { tags: Array<{tag: string; count: number}> }
   }
-  sync_favourite_tags: {
+  clear_favourite_tags: {
     params: { source?: string }
-    result: { synced: number }
+    result: { success: boolean }
   }
   remove_favourite_tag: {
     params: { tag: string; source?: string }
@@ -448,6 +453,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:verify-auth': 'verify_auth',
   'python:moeimg-login': 'moeimg_login',
   'python:bika-login': 'bika_login',
+  'python:hcomic-login': 'hcomic_login',
   'python:shutdown': 'shutdown',
   'python:fetch-cover': 'fetch_cover',
   'python:pause-task': 'pause_task',
@@ -478,7 +484,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:delete-history': 'delete_history',
   'python:clear-history': 'clear_history',
   'python:get-favourite-tags': 'get_favourite_tags',
-  'python:sync-favourite-tags': 'sync_favourite_tags',
+  'python:clear-favourite-tags': 'clear_favourite_tags',
   'python:remove-favourite-tag': 'remove_favourite_tag',
   'python:get-jmcomic-domains': 'get_jmcomic_domains',
 } as const
@@ -513,6 +519,7 @@ export interface HcomicAPI {
   verifyAuth(source?: string): Promise<{ valid: boolean; message: string }>
   moeimgLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   bikaLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
+  hcomicLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   fetchCover(url: string): Promise<{ dataUri: string }>
   openUrl(url: string): Promise<void>
@@ -548,7 +555,7 @@ export interface HcomicAPI {
   deleteHistory(comicId: string, source: string): Promise<{ success: boolean }>
   clearHistory(): Promise<{ success: boolean }>
   getFavouriteTags(source?: string): Promise<{ tags: Array<{tag: string; count: number}> }>
-  syncFavouriteTags(source?: string): Promise<{ synced: number }>
+  clearFavouriteTags(source?: string): Promise<{ success: boolean }>
   removeFavouriteTag(tag: string, source?: string): Promise<{ success: boolean }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
@@ -655,6 +662,7 @@ export const IPC_CHANNELS = {
   VERIFY_AUTH: 'python:verify-auth',
   MOEIMG_LOGIN: 'python:moeimg-login',
   BIKA_LOGIN: 'python:bika-login',
+  HCOMIC_LOGIN: 'python:hcomic-login',
   SHUTDOWN: 'python:shutdown',
   FETCH_COVER: 'python:fetch-cover',
   OPEN_EXTERNAL: 'open-external',
@@ -688,7 +696,7 @@ export const IPC_CHANNELS = {
   DELETE_HISTORY: 'python:delete-history',
   CLEAR_HISTORY: 'python:clear-history',
   GET_FAVOURITE_TAGS: 'python:get-favourite-tags',
-  SYNC_FAVOURITE_TAGS: 'python:sync-favourite-tags',
+  CLEAR_FAVOURITE_TAGS: 'python:clear-favourite-tags',
   REMOVE_FAVOURITE_TAG: 'python:remove-favourite-tag',
   SELECT_DIRECTORY: 'select-directory',
 } as const

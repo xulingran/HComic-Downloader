@@ -154,8 +154,6 @@ class FavouriteTagsMixin:
     parser: Any
     _write_response: Any
 
-    MAX_SYNC_PAGES = 200
-
     def _init_favourite_tags(self) -> None:
         db_path = os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "favourite_tags.db")
         self._favourite_tags_db = FavouriteTagsDB(db_path)
@@ -165,39 +163,11 @@ class FavouriteTagsMixin:
         tags = self._favourite_tags_db.get_tags(effective_source)
         return {"tags": tags}
 
-    def handle_sync_favourite_tags(self, source: str = "hcomic") -> dict:
+    def handle_clear_favourite_tags(self, source: str = "hcomic") -> dict:
+        """清空指定来源的推荐标签索引（轻量操作，无 HTTP 请求）。"""
         effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
         self._favourite_tags_db.clear(effective_source)
-        synced = 0
-        page = 1
-        failed_pages: list[int] = []
-        while page <= self.MAX_SYNC_PAGES:
-            try:
-                comics, pagination, _needs_login = self.parser.favourites(
-                    page=page, raise_errors=True, source=effective_source
-                )
-            except Exception as e:
-                logger.error("sync_favourite_tags page %d error: %s", page, e)
-                failed_pages.append(page)
-                page += 1
-                continue
-            for comic in comics:
-                tags = getattr(comic, "tags", None) or []
-                if tags:
-                    self._favourite_tags_db.upsert_comic(comic.id, effective_source, tags)
-                synced += 1
-            if not pagination or page >= pagination.total_pages:
-                break
-            page += 1
-        if failed_pages:
-            logger.warning("sync_favourite_tags failed on pages: %s", failed_pages)
-        if page > self.MAX_SYNC_PAGES:
-            logger.warning(
-                "sync_favourite_tags hit MAX_SYNC_PAGES=%d limit for source=%s",
-                self.MAX_SYNC_PAGES,
-                effective_source,
-            )
-        return {"synced": synced}
+        return {"success": True}
 
     def handle_remove_favourite_tag(self, tag: str, source: str = "hcomic") -> dict:
         effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"

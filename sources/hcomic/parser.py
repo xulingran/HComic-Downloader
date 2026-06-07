@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import base64
 import contextlib
+import hashlib
 import json
 import logging
 import re
+import secrets
 from datetime import UTC, datetime
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 
@@ -38,6 +41,13 @@ class HComicParser(ParserContextMixin):
         "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,en-US;q=0.5,en;q=0.3",
     }
 
+    # Auth0 配置 (Authorization Code + PKCE)
+    AUTH0_DOMAIN = "h-comic.auth0.com"
+    AUTH0_CLIENT_ID = "06o2Ynemb0DbDy8RBImlEGbyta1gT7mS"
+    AUTH0_AUDIENCE = "https://h-comic.auth0.com/api/v2/"
+    AUTH0_SCOPE = "openid profile email offline_access"
+    AUTH0_REDIRECT_URI = "https://h-comic.com"
+
     # 正则表达式
     PAYLOAD_REGEX = re.compile(r"data:\s*\[null,\s*(\{.*?\})\s*],\s*form:", re.S)
     PAYLOAD_FALLBACK_REGEXES = (
@@ -57,14 +67,381 @@ class HComicParser(ParserContextMixin):
         self.session.headers.update(self.HEADERS)
         apply_system_proxy_to_session(self.session)
         self.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+        self._stored_username: str = ""
+        self._stored_password: str = ""
+        self._bearer_token: str = bearer_token
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置登录相关请求头。"""
+        if bearer_token:
+            self._bearer_token = bearer_token.strip()
         configure_session_auth(self.session, self.HEADERS, cookie, user_agent, bearer_token)
+
+    def set_stored_credentials(self, username: str, password: str):
+        """存储用户名密码用于懒登录。"""
+        self._stored_username = username or ""
+        self._stored_password = password or ""
+
+    def login(self, username: str, password: str) -> str:
+        """通过 Auth0 Authorization Code + PKCE 流程登录，返回 access_token。
+
+        由于 Auth0 客户端未启用 ROPG (password grant)，改用 PKCE 流程模拟浏览器登录:
+        1. 生成 PKCE code_verifier / code_challenge
+        2. GET /authorize 获取登录页面和内部 state
+        3. POST /u/login/identifier 提交用户名
+        4. POST /u/login/password 提交密码
+        5. 从回调重定向中捕获 authorization code
+        6. POST /oauth/token 用 code + code_verifier 换取 token
+
+        Args:
+            username: 用户名或邮箱
+            password: 密码
+
+        Returns:
+            access_token 字符串
+
+        Raises:
+            ParserResponseError: 登录失败
+        """
+        try:
+            return self._login_pkce(username, password)
+        except ParserResponseError:
+            raise
+        except Exception as e:
+            raise ParserResponseError(f"登录失败: {e}") from e
+
+    def _login_pkce(self, username: str, password: str) -> str:
+        """Auth0 Authorization Code + PKCE 登录实现。"""
+        # 使用干净的 session 避免已有的 Cookie/Authorization 头干扰 Auth0 登录流程
+        login_session = requests.Session()
+        login_session.headers.update(self.HEADERS)
+        apply_system_proxy_to_session(login_session)
+
+        # 1. 生成 PKCE 参数
+        code_verifier = secrets.token_urlsafe(32)
+        challenge_digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
+        code_challenge = base64.urlsafe_b64encode(challenge_digest).rstrip(b"=").decode("ascii")
+        oauth_state = secrets.token_urlsafe(32)
+
+        auth_params = {
+            "response_type": "code",
+            "client_id": self.AUTH0_CLIENT_ID,
+            "redirect_uri": self.AUTH0_REDIRECT_URI,
+            "audience": self.AUTH0_AUDIENCE,
+            "scope": self.AUTH0_SCOPE,
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "state": oauth_state,
+        }
+
+        # 2. GET /authorize — 跟随重定向到登录页
+        authorize_url = f"https://{self.AUTH0_DOMAIN}/authorize"
+        resp = login_session.get(
+            authorize_url,
+            params=auth_params,
+            timeout=self.timeout,
+            allow_redirects=False,
+        )
+        logger.debug("PKCE authorize: status=%s", resp.status_code)
+        if resp.status_code >= 400:
+            raise ParserResponseError(f"Auth0 授权页请求失败 (HTTP {resp.status_code})")
+
+        # 从 302 重定向 URL 提取 state 参数
+        location = resp.headers.get("Location", "")
+        if not location or "state=" not in location:
+            raise ParserResponseError("Auth0 授权响应异常，请尝试使用浏览器登录")
+        if location.startswith("/"):
+            location = f"https://{self.AUTH0_DOMAIN}{location}"
+
+        # 跟随重定向到登录页，获取会话 cookie
+        login_page_resp = login_session.get(location, timeout=self.timeout)
+        if login_page_resp.status_code >= 400:
+            raise ParserResponseError(f"Auth0 登录页请求失败 (HTTP {login_page_resp.status_code})")
+
+        login_page_url = login_page_resp.url
+        auth0_origin = f"https://{self.AUTH0_DOMAIN}"
+        logger.debug("PKCE login page URL: %s", login_page_url)
+
+        # 从登录页 HTML 表单中提取 state 字段值
+        form_state = self._extract_form_state(login_page_resp.text)
+        if not form_state:
+            raise ParserResponseError("无法从 Auth0 登录页提取表单 state，请尝试使用浏览器登录")
+
+        # 3. 单步登录：POST 用户名+密码到登录页 URL
+        # Auth0 新版 Universal Login 使用单步表单（同时包含 username 和 password）
+        # 表单无 action 属性，提交到当前页面 URL
+        login_data = {
+            "state": form_state,
+            "username": username,
+            "password": password,
+            "action": "default",
+        }
+        resp = login_session.post(
+            login_page_url,
+            data=login_data,
+            headers={
+                "Origin": auth0_origin,
+                "Referer": login_page_url,
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            timeout=self.timeout,
+            allow_redirects=False,
+        )
+        post_location = resp.headers.get("Location", "")
+        logger.debug("PKCE login POST: status=%s, Location=%s", resp.status_code, post_location)
+
+        # 登录提交可能返回 200（HTML 错误页）或 302（成功/失败重定向）
+        if resp.status_code == 200:
+            # Auth0 在密码错误时返回 200 + 带错误信息的 HTML
+            self._raise_login_error(resp, "登录失败：密码错误或账号不存在")
+
+        if resp.status_code >= 400:
+            self._raise_login_error(resp, "登录请求失败")
+
+        # 4. 跟随重定向获取 authorization code
+        if not post_location:
+            self._raise_login_error(resp, "登录失败：未收到重定向")
+
+        # 处理相对 URL
+        if post_location.startswith("/"):
+            post_location = f"{auth0_origin}{post_location}"
+
+        # 检查登录后是否被重定向回 Auth0 登录页（密码错误时可能返回 302 到登录页）
+        if "auth0.com" in post_location and ("/u/login" in post_location or "error=" in post_location):
+            parsed_loc = urlparse(post_location)
+            loc_params = parse_qs(parsed_loc.query)
+            loc_error = loc_params.get("error", [""])[0]
+            loc_error_desc = unquote(loc_params.get("error_description", [""])[0])
+            # 尝试获取错误页面 HTML 中的具体错误信息
+            err_detail = ""
+            try:
+                err_resp = login_session.get(post_location, timeout=self.timeout)
+                err_detail = self._extract_auth0_error_from_html(err_resp.text)
+            except Exception:
+                pass
+            logger.warning("PKCE login rejected, redirect: %s, html_error: %s", post_location, err_detail)
+            if loc_error:
+                raise ParserResponseError(f"登录失败: {loc_error_desc or loc_error}")
+            if err_detail:
+                raise ParserResponseError(f"登录失败: {err_detail}")
+            raise ParserResponseError("登录失败：密码错误或账号不存在")
+
+        callback_url = self._follow_redirects_to_callback(post_location, oauth_state, login_session)
+        logger.debug("PKCE callback URL: %s", callback_url)
+
+        # 从回调 URL 提取授权码（同时检查 query 和 fragment）
+        parsed = urlparse(callback_url)
+        params = parse_qs(parsed.query)
+        # 某些情况下 Auth0 把参数放在 fragment 中
+        if not params.get("code") and not params.get("error"):
+            fragment_params = parse_qs(parsed.fragment)
+            if fragment_params:
+                params = fragment_params
+        auth_code = params.get("code", [None])[0]
+        if not auth_code:
+            error = params.get("error", [""])[0]
+            error_desc = unquote(params.get("error_description", [""])[0])
+            # 构造有用的错误信息
+            if error:
+                msg = f"登录失败: {error}"
+                if error_desc:
+                    msg = f"{msg} — {error_desc}"
+            else:
+                # 回调 URL 中既无 code 也无 error，记录完整 URL 供调试
+                logger.warning("PKCE callback missing auth code, URL: %s", callback_url)
+                msg = "登录回调异常：未收到授权码，请尝试使用浏览器登录"
+            raise ParserResponseError(msg)
+
+        # 6. POST /oauth/token — 用授权码换取 token
+        token_resp = login_session.post(
+            f"{auth0_origin}/oauth/token",
+            json={
+                "grant_type": "authorization_code",
+                "client_id": self.AUTH0_CLIENT_ID,
+                "code": auth_code,
+                "code_verifier": code_verifier,
+                "redirect_uri": self.AUTH0_REDIRECT_URI,
+            },
+            timeout=self.timeout,
+        )
+        if token_resp.status_code >= 400:
+            detail = ""
+            with contextlib.suppress(Exception):
+                err_body = token_resp.json()
+                detail = err_body.get("error_description", "") or err_body.get("error", "")
+            raise ParserResponseError(f"Token 交换失败 (HTTP {token_resp.status_code}): {detail}")
+
+        result = token_resp.json()
+        access_token = result.get("access_token", "")
+        if not access_token:
+            error_desc = result.get("error_description", "") or result.get("error", "未知错误")
+            raise ParserResponseError(f"登录失败: {error_desc}")
+
+        # 登录成功，将 token 应用到主 session
+        self._bearer_token = access_token
+        self.session.headers.pop("Cookie", None)
+        configure_session_auth(
+            self.session,
+            self.HEADERS,
+            "",
+            "",
+            bearer_token=access_token,
+        )
+        return access_token
+
+    @staticmethod
+    def _extract_form_state(html: str) -> str:
+        """从 Auth0 登录页 HTML 表单中提取 state 隐藏字段的值。"""
+        # 匹配 <input type="hidden" name="state" value="..." />
+        m = re.search(
+            r'<input[^>]+name\s*=\s*["\']state["\'][^>]+value\s*=\s*["\']([^"\']+)["\']',
+            html,
+            re.IGNORECASE,
+        )
+        if not m:
+            # 尝试 value 在前、name 在后的顺序
+            m = re.search(
+                r'<input[^>]+value\s*=\s*["\']([^"\']+)["\'][^>]+name\s*=\s*["\']state["\']',
+                html,
+                re.IGNORECASE,
+            )
+        return m.group(1) if m else ""
+
+    def _follow_redirects_to_callback(
+        self,
+        start_url: str,
+        oauth_state: str,
+        session: requests.Session | None = None,
+    ) -> str:
+        """跟随 Auth0 重定向链直到回调 URL。
+
+        Args:
+            start_url: 重定向链起始 URL
+            oauth_state: OAuth state 参数
+            session: 用于请求的 session（默认 self.session）
+
+        Returns:
+            回调 URL（含 code 参数）
+        """
+        sess = session or self.session
+        current_url = start_url
+        for i in range(10):
+            if current_url.startswith(self.AUTH0_REDIRECT_URI):
+                return current_url
+            logger.debug("PKCE redirect step %d: %s", i, current_url)
+            resp = sess.get(
+                current_url,
+                timeout=self.timeout,
+                allow_redirects=False,
+            )
+            logger.debug("PKCE redirect step %d: status=%s", i, resp.status_code)
+            next_url = resp.headers.get("Location", "")
+            if not next_url:
+                # 可能是 200 页面（如 consent 页面），尝试从 HTML 中提取重定向 URL
+                if resp.status_code == 200:
+                    logger.warning("PKCE redirect chain got 200 page at: %s", current_url)
+                    raise ParserResponseError("登录重定向链中断：Auth0 返回了需要交互的页面，请使用浏览器登录")
+                raise ParserResponseError("登录重定向链中断")
+            if next_url.startswith("/"):
+                parsed = urlparse(current_url)
+                next_url = f"{parsed.scheme}://{parsed.netloc}{next_url}"
+            current_url = next_url
+        raise ParserResponseError("登录重定向次数过多")
+
+    @staticmethod
+    def _extract_hidden_form_fields(html: str) -> dict[str, str]:
+        """从 Auth0 登录页 HTML 中提取隐藏表单字段。
+
+        Auth0 可能要求在密码提交时附带 _csrf、csrf_token 等隐藏字段。
+
+        Returns:
+            {field_name: field_value} 字典
+        """
+        fields: dict[str, str] = {}
+        # 匹配 <input type="hidden" name="..." value="..." />
+        pattern = re.compile(
+            r'<input[^>]+type\s*=\s*["\']hidden["\'][^>]*>',
+            re.IGNORECASE,
+        )
+        for match in pattern.finditer(html):
+            tag = match.group(0)
+            name_m = re.search(r'name\s*=\s*["\']([^"\']+)["\']', tag, re.IGNORECASE)
+            value_m = re.search(r'value\s*=\s*["\']([^"\']*)["\']', tag, re.IGNORECASE)
+            if name_m:
+                name = name_m.group(1)
+                value = value_m.group(1) if value_m else ""
+                # 只提取 csrf 类字段，避免引入无关字段
+                if name.lower() in ("_csrf", "csrf_token", "_csrf_token", "csrfmiddlewaretoken"):
+                    fields[name] = value
+        return fields
+
+    @staticmethod
+    def _extract_auth0_error_from_html(html: str) -> str:
+        """从 Auth0 错误页面 HTML 中提取错误信息。"""
+        # 尝试多种选择器提取错误信息
+        patterns = [
+            re.compile(r'class=["\']ulc-error[^>]*>([^<]+)', re.IGNORECASE),
+            re.compile(r'class=["\']error[^>]*>([^<]+)', re.IGNORECASE),
+            re.compile(r'class=["\']alert[^>]*>([^<]+)', re.IGNORECASE),
+            re.compile(r'<p[^>]*class=["\'][^"\']*(?:error|alert)[^"\']*["\'][^>]*>([^<]+)', re.IGNORECASE),
+        ]
+        for pat in patterns:
+            m = pat.search(html)
+            if m:
+                text = m.group(1).strip()
+                if text:
+                    return text
+        return ""
+
+    def _raise_login_error(self, resp: requests.Response, prefix: str) -> None:
+        """从 Auth0 响应中提取错误信息并抛出。"""
+        detail = ""
+        with contextlib.suppress(Exception):
+            err_body = resp.json()
+            detail = err_body.get("error_description", "") or err_body.get("error", "")
+            if not detail:
+                # 尝试从 HTML 中提取错误
+                err_match = re.search(r"class=[\"']error[\"'][^>]*>([^<]+)", resp.text)
+                if err_match:
+                    detail = err_match.group(1).strip()
+        msg = f"{prefix} (HTTP {resp.status_code})"
+        if detail:
+            msg = f"{msg}: {detail}"
+        raise ParserResponseError(msg)
+
+    def _ensure_token(self):
+        """确保 token 有效，若不存在则使用存储的凭据自动登录。
+
+        Raises:
+            ParserResponseError: 无可用 token 且无存储凭据
+        """
+        if self._bearer_token:
+            return
+        if self._stored_username and self._stored_password:
+            logger.info(
+                "Auto-login hcomic with stored credentials for %s",
+                self._stored_username,
+            )
+            self.login(self._stored_username, self._stored_password)
+            return
+        raise ParserResponseError("未登录，请先登录 HComic")
 
     def verify_login_status(self) -> tuple[bool, str]:
         """通过访问收藏夹接口校验登录状态。"""
         try:
+            if self._bearer_token:
+                # Bearer token 认证：使用 API 端点
+                response = self._authenticated_request(
+                    "GET",
+                    "https://api.h-comic.com/api/favourites?page=1&limit=1",
+                    error_prefix="登录校验",
+                )
+                if response.status_code == 200:
+                    data = response.json()
+                    if isinstance(data, dict) and "docs" in data:
+                        return True, "登录校验通过"
+                return False, "登录已失效，请重新登录"
+            # Cookie 认证：解析 HTML 页面
             url = self._build_favourites_url(1)
             response = self._request_text(url)
             data = self._extract_payload_data(response)
@@ -153,14 +530,105 @@ class HComicParser(ParserContextMixin):
         Returns:
             (漫画信息列表, 分页信息, 是否需要登录)
         """
-        url = self._build_favourites_url(page)
         try:
+            if self._bearer_token:
+                # Bearer token 认证：使用 API 端点
+                return self._favourites_api(page)
+            # Cookie 认证：解析 HTML 页面
+            url = self._build_favourites_url(page)
             return self.parse_favourites_page(self._request_text(url), requested_page=page)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error("Load favourites failed: %s", e, exc_info=True)
             if raise_errors:
                 raise
             return [], None, False
+
+    def _favourites_api(
+        self,
+        page: int = 1,
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+        """通过 API 端点获取收藏夹数据（Bearer token 认证）。"""
+        response = self._authenticated_request(
+            "GET",
+            f"https://api.h-comic.com/api/favourites?page={page}&limit=20",
+            error_prefix="获取收藏夹",
+            log_name="favourites_api",
+        )
+        if response.status_code in (401, 403):
+            return [], None, True
+        response.raise_for_status()
+        data = response.json()
+        if not isinstance(data, dict):
+            return [], None, False
+
+        docs = data.get("docs") or []
+        comics = []
+        for item in docs:
+            if not isinstance(item, dict):
+                continue
+            comic_data = item.get("comic")
+            if not isinstance(comic_data, dict):
+                continue
+            try:
+                comics.append(self._parse_comic_item(comic_data))
+            except (KeyError, TypeError, ValueError) as e:
+                logger.debug("Parse favourites item skipped: %s", e)
+                continue
+
+        total_docs, total_pages, limit = self._extract_pagination_fields(data, page, len(comics))
+        pagination = PaginationInfo(
+            current_page=page,
+            total_pages=max(1, total_pages),
+            limit=max(1, limit),
+            total_items=max(0, total_docs),
+        )
+        return comics, pagination, False
+
+    @staticmethod
+    def _extract_pagination_fields(
+        data: dict,
+        current_page: int,
+        docs_count: int,
+    ) -> tuple[int, int, int]:
+        """从 API 响应中提取分页字段，兼容多种格式。
+
+        支持的格式:
+        - mongoose-paginate 标准: {totalDocs, totalPages, limit}
+        - 别名格式: {total, pages, limit}
+        - 嵌套格式: {pagination: {totalDocs, totalPages, limit}}
+
+        Returns:
+            (total_docs, total_pages, limit)
+        """
+        # 从顶层或嵌套的 pagination 对象中读取
+        nested = data.get("pagination")
+        pag: dict = nested if isinstance(nested, dict) else data
+
+        def _int(v: object, default: int) -> int:
+            try:
+                return max(0, int(v))  # type: ignore[arg-type]
+            except (TypeError, ValueError):
+                return default
+
+        total_docs = _int(pag.get("totalDocs") or pag.get("total"), 0)
+        total_pages = _int(pag.get("totalPages") or pag.get("pages"), 0)
+        limit = _int(pag.get("limit"), 20)
+
+        # totalPages 缺失时根据 totalDocs 和 limit 推算
+        if total_pages <= 0 and total_docs > 0 and limit > 0:
+            total_pages = -(-total_docs // limit)  # ceiling division
+
+        # 仍然无法确定时，利用 hasNextPage 推断至少有下一页
+        if total_pages <= 0:
+            has_next = pag.get("hasNextPage")
+            if has_next is True:
+                total_pages = current_page + 1
+            elif docs_count > 0:
+                total_pages = current_page
+            else:
+                total_pages = 1
+
+        return total_docs, total_pages, max(1, limit)
 
     _API_HEADERS = {
         "Origin": "https://h-comic.com",

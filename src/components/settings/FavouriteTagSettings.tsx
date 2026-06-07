@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useFavouriteTags } from '../../hooks/useIpc'
+import { useFavouriteTags, useFavourites } from '../../hooks/useIpc'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 
 interface TagItem {
@@ -9,10 +9,12 @@ interface TagItem {
 
 export function FavouriteTagSettings() {
   const { favouriteTagHighlight, setFavouriteTagHighlight } = useSettingsStore()
-  const { getFavouriteTags, syncFavouriteTags, removeFavouriteTag } = useFavouriteTags()
+  const { getFavouriteTags, clearFavouriteTags, removeFavouriteTag } = useFavouriteTags()
+  const { getFavourites } = useFavourites()
   const [tags, setTags] = useState<TagItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
+  const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [syncedCount, setSyncedCount] = useState<number | null>(null)
   const [confirmTag, setConfirmTag] = useState<string | null>(null)
 
@@ -36,12 +38,31 @@ export function FavouriteTagSettings() {
   const handleSync = async () => {
     setIsSyncing(true)
     setSyncedCount(null)
+    setSyncProgress(null)
     try {
-      const result = await syncFavouriteTags('hcomic')
-      setSyncedCount(result.synced)
+      await clearFavouriteTags('hcomic')
+
+      const first = await getFavourites(1, 'hcomic')
+      const totalPages = first.pagination?.totalPages ?? 1
+      let total = first.comics.length
+      setSyncProgress(`正在同步 1/${totalPages}...`)
+
+      for (let page = 2; page <= totalPages; page++) {
+        try {
+          const result = await getFavourites(page, 'hcomic')
+          total += result.comics.length
+          setSyncProgress(`正在同步 ${page}/${totalPages}...`)
+        } catch {
+          // Skip failed pages, continue
+        }
+      }
+
+      setSyncedCount(total)
+      setSyncProgress(null)
       await loadTags()
     } catch {
       setSyncedCount(null)
+      setSyncProgress(null)
     } finally {
       setIsSyncing(false)
     }
@@ -90,7 +111,7 @@ export function FavouriteTagSettings() {
           className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm
                      disabled:opacity-50 hover:bg-[var(--accent-hover)] transition-colors"
         >
-          {isSyncing ? '同步中...' : '从收藏夹同步标签'}
+          {isSyncing ? (syncProgress ?? '同步中...') : '从收藏夹同步标签'}
         </button>
         {syncedCount !== null && (
           <span className="text-sm text-[var(--text-secondary)]">

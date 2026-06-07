@@ -684,3 +684,304 @@ class TestHComicAuthenticatedRequest:
                 "https://api.h-comic.com/api/favourites/123",
                 error_prefix="检查收藏",
             )
+
+
+class TestHComicFavouritesAPI:
+    """测试 _favourites_api 方法（Bearer token 路径）"""
+
+    def test_favourites_api_pagination(self, parser, monkeypatch):
+        """测试 API 返回正确的分页信息"""
+        import json
+
+        mock_response = requests.Response()
+        mock_response.status_code = 200
+        mock_response._content = json.dumps(
+            {
+                "docs": [
+                    {
+                        "comic": {
+                            "id": "1",
+                            "media_id": "m1",
+                            "comic_source": "NH",
+                            "title": {"display": "Test Comic"},
+                            "num_pages": 10,
+                            "tags": [],
+                            "upload_date": 1704067200,
+                        }
+                    }
+                ],
+                "totalDocs": 50,
+                "totalPages": 3,
+                "limit": 20,
+                "page": 1,
+                "hasNextPage": True,
+                "hasPrevPage": False,
+            }
+        ).encode("utf-8")
+        mock_response.encoding = "utf-8"
+
+        def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr(parser.session, "request", mock_request)
+        parser._bearer_token = "test_token"
+
+        comics, pagination, need_login = parser._favourites_api(page=1)
+        assert len(comics) == 1
+        assert pagination is not None
+        assert pagination.total_pages == 3
+        assert pagination.total_items == 50
+        assert pagination.current_page == 1
+        assert not need_login
+
+    def test_favourites_api_page2(self, parser, monkeypatch):
+        """测试 API 返回第二页"""
+        import json
+
+        mock_response = requests.Response()
+        mock_response.status_code = 200
+        mock_response._content = json.dumps(
+            {
+                "docs": [
+                    {
+                        "comic": {
+                            "id": "21",
+                            "media_id": "m21",
+                            "comic_source": "NH",
+                            "title": {"display": "Page 2 Comic"},
+                            "num_pages": 8,
+                            "tags": [],
+                            "upload_date": 1704067200,
+                        }
+                    }
+                ],
+                "totalDocs": 50,
+                "totalPages": 3,
+                "limit": 20,
+                "page": 2,
+                "hasNextPage": True,
+                "hasPrevPage": True,
+            }
+        ).encode("utf-8")
+        mock_response.encoding = "utf-8"
+
+        def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr(parser.session, "request", mock_request)
+        parser._bearer_token = "test_token"
+
+        comics, pagination, need_login = parser._favourites_api(page=2)
+        assert len(comics) == 1
+        assert pagination is not None
+        assert pagination.total_pages == 3
+        assert pagination.current_page == 2
+        assert not need_login
+
+    def test_favourites_api_auth_required(self, parser, monkeypatch):
+        """测试 API 返回 401 需要登录"""
+        mock_response = requests.Response()
+        mock_response.status_code = 401
+        mock_response._content = b'{"error": "Unauthorized"}'
+
+        def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr(parser.session, "request", mock_request)
+        parser._bearer_token = "test_token"
+
+        comics, pagination, need_login = parser._favourites_api(page=1)
+        assert comics == []
+        assert pagination is None
+        assert need_login
+
+    def test_favourites_dispatches_to_api_with_bearer_token(self, parser, monkeypatch):
+        """测试 favourites 方法在有 bearer token 时使用 API 路径"""
+        import json
+
+        mock_response = requests.Response()
+        mock_response.status_code = 200
+        mock_response._content = json.dumps(
+            {
+                "docs": [],
+                "totalDocs": 0,
+                "totalPages": 1,
+                "limit": 20,
+                "page": 1,
+                "hasNextPage": False,
+                "hasPrevPage": False,
+            }
+        ).encode("utf-8")
+        mock_response.encoding = "utf-8"
+
+        def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr(parser.session, "request", mock_request)
+        parser._bearer_token = "test_token"
+
+        comics, pagination, need_login = parser.favourites(page=1)
+        assert comics == []
+        assert pagination is not None
+        assert pagination.total_pages == 1
+        assert not need_login
+
+    def test_authenticated_request_preserves_auth_header(self, parser, monkeypatch):
+        """测试 _authenticated_request 保留 Authorization header"""
+        captured_headers = {}
+
+        def mock_request(*args, **kwargs):
+            captured_headers.update(kwargs.get("headers", {}))
+            resp = requests.Response()
+            resp.status_code = 200
+            resp._content = b"{}"
+            return resp
+
+        monkeypatch.setattr(parser.session, "request", mock_request)
+        parser._bearer_token = "test_token_123"
+        parser.session.headers["Authorization"] = "Bearer test_token_123"
+
+        parser._authenticated_request(
+            "GET",
+            "https://api.h-comic.com/api/favourites?page=1&limit=20",
+            error_prefix="测试",
+            log_name="test",
+        )
+
+        # Verify that Origin and Referer are set from _API_HEADERS
+        assert captured_headers.get("Origin") == "https://h-comic.com"
+        assert captured_headers.get("Referer") == "https://h-comic.com/"
+
+
+class TestExtractPaginationFields:
+    """测试 _extract_pagination_fields 静态方法"""
+
+    def test_standard_mongoose_paginate_format(self):
+        """标准 mongoose-paginate 格式"""
+        data = {"totalDocs": 50, "totalPages": 3, "limit": 20}
+        total_docs, total_pages, limit = HComicParser._extract_pagination_fields(data, 1, 20)
+        assert total_docs == 50
+        assert total_pages == 3
+        assert limit == 20
+
+    def test_alias_format_pages_total(self):
+        """使用 pages/total 别名格式"""
+        data = {"total": 45, "pages": 3, "limit": 15}
+        total_docs, total_pages, limit = HComicParser._extract_pagination_fields(data, 1, 15)
+        assert total_docs == 45
+        assert total_pages == 3
+        assert limit == 15
+
+    def test_nested_pagination_object(self):
+        """分页字段嵌套在 pagination 对象中"""
+        data = {"docs": [], "pagination": {"totalDocs": 100, "totalPages": 5, "limit": 20}}
+        total_docs, total_pages, limit = HComicParser._extract_pagination_fields(data, 1, 0)
+        assert total_docs == 100
+        assert total_pages == 5
+        assert limit == 20
+
+    def test_calculates_pages_from_docs_and_limit(self):
+        """totalPages 缺失时从 totalDocs 和 limit 推算"""
+        data = {"totalDocs": 50, "limit": 20}
+        total_docs, total_pages, limit = HComicParser._extract_pagination_fields(data, 1, 20)
+        assert total_docs == 50
+        assert total_pages == 3  # ceil(50/20)
+        assert limit == 20
+
+    def test_has_next_page_infers_more_pages(self):
+        """只有 hasNextPage 时推断有更多页"""
+        data = {"hasNextPage": True}
+        total_docs, total_pages, limit = HComicParser._extract_pagination_fields(data, 1, 20)
+        assert total_pages == 2  # current_page + 1
+
+    def test_no_pagination_info_with_results(self):
+        """无分页信息但有结果时，至少返回当前页"""
+        data = {"docs": [{"comic": {}}]}
+        total_docs, total_pages, limit = HComicParser._extract_pagination_fields(data, 3, 20)
+        assert total_pages == 3
+
+    def test_empty_response_defaults_to_one_page(self):
+        """空响应默认为 1 页"""
+        data = {}
+        total_docs, total_pages, limit = HComicParser._extract_pagination_fields(data, 1, 0)
+        assert total_docs == 0
+        assert total_pages == 1
+        assert limit == 20
+
+    def test_favourites_api_with_missing_pagination_fields(self, parser, monkeypatch):
+        """API 响应缺少分页字段时仍能正确处理"""
+        import json
+
+        mock_response = requests.Response()
+        mock_response.status_code = 200
+        # API 返回 docs 但没有 totalPages/totalDocs
+        mock_response._content = json.dumps(
+            {
+                "docs": [
+                    {
+                        "comic": {
+                            "id": "1",
+                            "media_id": "m1",
+                            "comic_source": "NH",
+                            "title": {"display": "Test"},
+                            "num_pages": 5,
+                            "tags": [],
+                            "upload_date": 1704067200,
+                        }
+                    }
+                ],
+                "hasNextPage": True,
+            }
+        ).encode("utf-8")
+        mock_response.encoding = "utf-8"
+
+        def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr(parser.session, "request", mock_request)
+        parser._bearer_token = "test_token"
+
+        comics, pagination, need_login = parser._favourites_api(page=1)
+        assert len(comics) == 1
+        assert pagination is not None
+        assert pagination.total_pages == 2  # hasNextPage → current + 1
+        assert not need_login
+
+    def test_favourites_api_with_nested_pagination(self, parser, monkeypatch):
+        """API 响应分页字段嵌套在 pagination 对象中"""
+        import json
+
+        mock_response = requests.Response()
+        mock_response.status_code = 200
+        mock_response._content = json.dumps(
+            {
+                "docs": [
+                    {
+                        "comic": {
+                            "id": "1",
+                            "media_id": "m1",
+                            "comic_source": "NH",
+                            "title": {"display": "Test"},
+                            "num_pages": 5,
+                            "tags": [],
+                            "upload_date": 1704067200,
+                        }
+                    }
+                ],
+                "pagination": {"totalDocs": 50, "totalPages": 3, "limit": 20},
+            }
+        ).encode("utf-8")
+        mock_response.encoding = "utf-8"
+
+        def mock_request(*args, **kwargs):
+            return mock_response
+
+        monkeypatch.setattr(parser.session, "request", mock_request)
+        parser._bearer_token = "test_token"
+
+        comics, pagination, need_login = parser._favourites_api(page=1)
+        assert len(comics) == 1
+        assert pagination is not None
+        assert pagination.total_pages == 3
+        assert pagination.total_items == 50
+        assert not need_login

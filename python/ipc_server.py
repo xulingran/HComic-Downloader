@@ -171,6 +171,7 @@ class IPCServer(
         "verify_auth": "handle_verify_auth",
         "moeimg_login": "handle_moeimg_login",
         "bika_login": "handle_bika_login",
+        "hcomic_login": "handle_hcomic_login",
         "get_config": "handle_get_config",
         "set_config": "handle_set_config",
         "get_downloads": "handle_get_downloads",
@@ -205,7 +206,7 @@ class IPCServer(
         "delete_history": "handle_delete_history",
         "clear_history": "handle_clear_history",
         "get_favourite_tags": "handle_get_favourite_tags",
-        "sync_favourite_tags": "handle_sync_favourite_tags",
+        "clear_favourite_tags": "handle_clear_favourite_tags",
         "remove_favourite_tag": "handle_remove_favourite_tag",
     }
 
