@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import logging
-
-import requests
+from typing import Any
 
 from models import AuthConfig, ComicInfo, PaginationInfo
 from sources.bika.parser import BikaParser
@@ -90,6 +89,14 @@ class MultiSourceParser:
                 bika_auth.get("username", ""),
                 bika_auth.get("password", ""),
             )
+        # 为 hcomic 恢复存储的用户名密码（用于懒登录）
+        hcomic_auth = self.source_auth.get("hcomic", {})
+        hcomic_parser = self.parsers["hcomic"]
+        if isinstance(hcomic_parser, HComicParser):
+            hcomic_parser.set_stored_credentials(
+                hcomic_auth.get("username", ""),
+                hcomic_auth.get("password", ""),
+            )
         self.current_source = default_source if default_source in self.parsers else "hcomic"
 
     @staticmethod
@@ -101,10 +108,10 @@ class MultiSourceParser:
         return source or self.current_source
 
     @property
-    def session(self) -> requests.Session:
+    def session(self) -> Any:
         return self.parsers[self.current_source].session
 
-    def get_sessions(self) -> list[requests.Session]:
+    def get_sessions(self) -> list[Any]:
         return [
             self.parsers["hcomic"].session,
             self.parsers["moeimg"].session,
@@ -117,14 +124,14 @@ class MultiSourceParser:
         """返回 jmcomic 当前解析到的 CDN 域名。"""
         jm_parser = self.parsers.get("jmcomic")
         if jm_parser and hasattr(jm_parser, "cdn_domain"):
-            return jm_parser.cdn_domain
+            return jm_parser.cdn_domain  # type: ignore[union-attr]
         return None
 
     def set_jmcomic_domain(self, domain: str) -> None:
         """设置 jmcomic 自定义域名。传空字符串则恢复自动选择。"""
         jm = self.parsers.get("jmcomic")
         if jm and hasattr(jm, "set_custom_domain"):
-            jm.set_custom_domain(domain)
+            jm.set_custom_domain(domain)  # type: ignore[union-attr]
 
     def get_source_options(self) -> tuple[tuple[str, str], ...]:
         return self.SOURCE_OPTIONS
@@ -176,7 +183,7 @@ class MultiSourceParser:
         src = self._resolve_source(source)
         if src not in ("hcomic", "jmcomic"):
             raise ValueError(f"Random is not supported for source: {src}")
-        return self.parsers[src].random()
+        return self.parsers[src].random()  # type: ignore[union-attr]
 
     def favourites(
         self, page: int = 1, raise_errors: bool = False, source: str | None = None
@@ -234,7 +241,7 @@ class MultiSourceParser:
             if detail.chapters and len(detail.chapters) > 1:
                 return detail
             order = detail.chapters[0].index if detail.chapters else 1
-            detail.image_urls = parser.get_chapter_images(comic.id, order)
+            detail.image_urls = parser.get_chapter_images(comic.id, order)  # type: ignore[union-attr]
             detail.pages = len(detail.image_urls)
             return detail
         if source == "copymanga":
@@ -246,7 +253,7 @@ class MultiSourceParser:
                 return detail
             chapter_id = chapters[0].id if chapters else ""
             if chapter_id:
-                detail.image_urls = parser.get_chapter_images(comic.id, chapter_id)
+                detail.image_urls = parser.get_chapter_images(comic.id, chapter_id)  # type: ignore[union-attr]
                 detail.pages = len(detail.image_urls)
             return detail
         detail = parser.get_comic_detail(comic.id)

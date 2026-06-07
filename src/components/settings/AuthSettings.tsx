@@ -4,6 +4,7 @@ interface AuthSettingsProps {
   loginSectionRef: RefObject<HTMLDivElement>
   loginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   loginMessage: string
+  hcomicSavedUsername: string
   jmcomicLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   jmcomicLoginMessage: string
   moeimgLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
@@ -17,6 +18,7 @@ interface AuthSettingsProps {
   onApplyAuth: (curlText: string, source?: string) => Promise<void>
   onTestAuth: (source?: string) => Promise<void>
   onOpenLoginWindow: (source?: string) => Promise<void>
+  onHcomicLogin: (username: string, password: string) => Promise<void>
   onMoeimgLogin: (username: string, password: string) => Promise<void>
   onBikaLogin: (username: string, password: string) => Promise<void>
 }
@@ -27,6 +29,7 @@ export function AuthSettings({
   loginSectionRef,
   loginStatus,
   loginMessage,
+  hcomicSavedUsername,
   jmcomicLoginStatus,
   jmcomicLoginMessage,
   moeimgLoginStatus,
@@ -40,10 +43,14 @@ export function AuthSettings({
   onApplyAuth,
   onTestAuth,
   onOpenLoginWindow,
+  onHcomicLogin,
   onMoeimgLogin,
   onBikaLogin,
 }: AuthSettingsProps) {
   const [curlText, setCurlText] = useState('')
+  const [hcomicUsername, setHcomicUsername] = useState(hcomicSavedUsername || '')
+  const [hcomicPassword, setHcomicPassword] = useState('')
+  const [showHcomicPassword, setShowHcomicPassword] = useState(false)
   const [jmcomicCurlText, setJmcomicCurlText] = useState('')
   const [moeimgUsername, setMoeimgUsername] = useState(moeimgSavedUsername || '')
   const [moeimgPassword, setMoeimgPassword] = useState('')
@@ -65,6 +72,68 @@ export function AuthSettings({
         message={loginMessage}
         first
       >
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <label className="block text-xs text-[var(--text-secondary)] mb-1">用户名或邮箱</label>
+            <input
+              type="text"
+              value={hcomicUsername}
+              onChange={(e) => setHcomicUsername(e.target.value)}
+              placeholder="HComic 用户名或邮箱"
+              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+            />
+          </div>
+          <div className="flex-1">
+            <label className="block text-xs text-[var(--text-secondary)] mb-1">密码</label>
+            <div className="relative">
+              <input
+                type={showHcomicPassword ? 'text' : 'password'}
+                value={hcomicPassword}
+                onChange={(e) => setHcomicPassword(e.target.value)}
+                placeholder="HComic 密码"
+                className="w-full px-3 py-2 pr-10 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
+              />
+              <button
+                type="button"
+                onMouseDown={() => setShowHcomicPassword(true)}
+                onMouseUp={() => setShowHcomicPassword(false)}
+                onMouseLeave={() => setShowHcomicPassword(false)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1"
+                aria-label={showHcomicPassword ? '隐藏密码' : '显示密码'}
+              >
+                {showHcomicPassword ? (
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
+                    <line x1="1" y1="1" x2="23" y2="23" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                    <circle cx="12" cy="12" r="3" />
+                  </svg>
+                )}
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={async () => {
+              await onHcomicLogin(hcomicUsername, hcomicPassword)
+            }}
+            disabled={!hcomicUsername.trim() || !hcomicPassword.trim() || loginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--accent)] text-white hover:opacity-90
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loginStatus === 'verifying' ? '登录中...' : '登录'}
+          </button>
+        </div>
+
+        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-2">
+          <div className="flex-1 h-px bg-[var(--border)]" />
+          <span>或</span>
+          <div className="flex-1 h-px bg-[var(--border)]" />
+        </div>
+
         <div className="flex items-center gap-3">
           <button
             onClick={() => onOpenLoginWindow()}

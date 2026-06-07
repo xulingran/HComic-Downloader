@@ -110,3 +110,27 @@ class AuthMixin:
         bika_parser.set_stored_credentials(username, password)
         logger.info("bika login successful for user %s", username)
         return {"success": True, "message": "登录成功"}
+
+    def handle_hcomic_login(self, username: str, password: str) -> dict:
+        from config import AuthSourceData
+
+        if not username or not username.strip():
+            raise ValueError("请输入用户名")
+        if not password or not password.strip():
+            raise ValueError("请输入密码")
+        username = username.strip()
+        password = password.strip()
+        hcomic_parser = self.parser.parsers.get("hcomic")
+        if not hcomic_parser:
+            raise ValueError("hcomic 来源不可用")
+        token = hcomic_parser.login(username, password)
+        self.config.set_source_auth(
+            "hcomic",
+            AuthSourceData(bearer_token=token, username=username, password=password),
+        )
+        self.config.save(_get_config_path())
+        self.parser.configure_auth(bearer_token=token, source="hcomic")
+        self.downloader.configure_auth(bearer_token=token)
+        hcomic_parser.set_stored_credentials(username, password)
+        logger.info("hcomic login successful for user %s", username)
+        return {"success": True, "message": "登录成功"}

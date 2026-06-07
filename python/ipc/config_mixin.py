@@ -116,7 +116,9 @@ class ConfigMixin:
         for snake_key, value in raw.items():
             camel_key = reverse_map.get(snake_key, snake_key)
             config[camel_key] = value
-        config["hasAuth"] = bool(self.config.source_auth.get("hcomic", {}).get("cookie"))
+        hcomic_auth = self.config.source_auth.get("hcomic", {})
+        config["hasAuth"] = bool(hcomic_auth.get("cookie") or hcomic_auth.get("bearer_token"))
+        config["hcomicUsername"] = hcomic_auth.get("username", "")
         config["hasJmcomicAuth"] = bool(self.config.source_auth.get("jmcomic", {}).get("cookie"))
         config["hasMoeimgAuth"] = bool(self.config.source_auth.get("moeimg", {}).get("cookie"))
         config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get("username", "")

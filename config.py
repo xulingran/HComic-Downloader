@@ -126,7 +126,7 @@ class Config:
         auth.setdefault("cookie", "")
         auth.setdefault("user_agent", "")
         auth.setdefault("bearer_token", "")
-        if source in ("moeimg", "bika"):
+        if source in ("moeimg", "bika", "hcomic"):
             auth.setdefault("username", "")
             auth.setdefault("password", "")
         return auth
@@ -145,7 +145,7 @@ class Config:
             "user_agent": user_agent,
             "bearer_token": bearer_token,
         }
-        if source in ("moeimg", "bika"):
+        if source in ("moeimg", "bika", "hcomic"):
             self.source_auth[source]["username"] = (data.username or "").strip()
             self.source_auth[source]["password"] = (data.password or "").strip()
         if source == "hcomic":

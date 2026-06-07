@@ -32,6 +32,7 @@ interface ConfigState {
   jmcomicDomain: string
   moeimgUsername: string
   bikaUsername?: string
+  hcomicUsername?: string
 }
 
 interface SettingsPageProps {
@@ -67,6 +68,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     jmcomicDomain: '',
     moeimgUsername: '',
     bikaUsername: '',
+    hcomicUsername: '',
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -125,6 +127,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           jmcomicDomain: result.config.jmcomicDomain ?? '',
           moeimgUsername: result.config.moeimgUsername ?? '',
           bikaUsername: result.config.bikaUsername ?? '',
+          hcomicUsername: result.config.hcomicUsername ?? '',
         })
         setJmcomicDomainInput(result.config.jmcomicDomain ?? '')
         setJmcomicDomainMode(result.config.jmcomicDomain ? 'custom' : 'auto')
@@ -254,6 +257,25 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const handleOpenLoginWindow = async (source: string = 'hcomic') => {
     const auth = authMap[source as keyof typeof authMap] ?? hcomicAuth
     await auth.openWindow(auth.status)
+  }
+
+  const handleHcomicLogin = async (username: string, password: string) => {
+    hcomicAuth.setStatus('verifying')
+    hcomicAuth.setMessage('')
+    try {
+      const result = await window.hcomic?.hcomicLogin(username, password)
+      if (result?.success) {
+        await hcomicAuth.test()
+      } else {
+        hcomicAuth.setStatus('error')
+        hcomicAuth.setMessage(result?.message || '登录失败')
+      }
+    } catch (err) {
+      hcomicAuth.setStatus('error')
+      hcomicAuth.setMessage(
+        (err instanceof Error ? err.message : String(err)) || '登录失败',
+      )
+    }
   }
 
   const handleMoeimgLogin = async (username: string, password: string) => {
@@ -485,6 +507,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           loginSectionRef={loginSectionRef}
           loginStatus={hcomicAuth.status}
           loginMessage={hcomicAuth.message}
+          hcomicSavedUsername={config.hcomicUsername || ''}
           jmcomicLoginStatus={jmcomicAuth.status}
           jmcomicLoginMessage={jmcomicAuth.message}
           moeimgLoginStatus={moeimgAuth.status}
@@ -498,6 +521,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}
+          onHcomicLogin={handleHcomicLogin}
           onMoeimgLogin={handleMoeimgLogin}
           onBikaLogin={handleBikaLogin}
         />
