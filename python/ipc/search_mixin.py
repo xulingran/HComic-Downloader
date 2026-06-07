@@ -100,10 +100,12 @@ class SearchMixin:
         """Raise AuthRequiredError if source credentials are not configured."""
         if source == "jmcomic" and not self.config.source_auth.get("jmcomic", {}).get("cookie"):
             raise AuthRequiredError("jmcomic 未登录，请前往设置页面配置登录凭证")
+        if source == "copymanga" and not self.config.source_auth.get("copymanga", {}).get("cookie"):
+            raise AuthRequiredError("拷贝漫画未登录，请前往设置页面登录拷贝漫画")
 
     def _is_source_auth_error(self, source: str, error: Exception) -> bool:
         """Check if an exception indicates auth failure for the given source."""
-        if source != "jmcomic":
+        if source not in ("jmcomic", "copymanga"):
             return False
         msg = str(error).lower()
         return any(kw in msg for kw in _AUTH_KEYWORDS)
@@ -158,6 +160,9 @@ class SearchMixin:
             effective_tag = ""
         elif effective_source == "jmcomic" and mode == "ranking":
             effective_tag = ""
+        elif effective_source == "copymanga" and mode == "ranking":
+            effective_tag = query
+            effective_query = ""
         try:
             comics, pagination = self.parser.search(
                 effective_query, page=page, source=effective_source, tag=effective_tag
@@ -259,10 +264,14 @@ class SearchMixin:
             comic_data.get("source"),
         )
 
+        # copymanga 需要登录才能获取预览
+        if source_site == "copymanga":
+            self._check_source_auth(source_site)
+
         comic = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
 
         # 多章节专辑：不预取图片，返回章节列表供前端选章。
-        if comic.source_site in ("jmcomic", "bika") and len(getattr(comic, "chapters", None) or []) > 1:
+        if comic.source_site in ("jmcomic", "bika", "copymanga") and len(getattr(comic, "chapters", None) or []) > 1:
             return {
                 "imageUrls": [],
                 "totalPages": comic.pages or 0,

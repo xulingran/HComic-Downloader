@@ -377,10 +377,17 @@ class TestCopyMangaChapterImages:
 class TestCopyMangaStubMethods:
     """测试拷贝漫画不支持的功能返回安全默认值。"""
 
-    def test_verify_login_status_always_ready(self, copymanga_parser):
+    def test_verify_login_status_no_cookie(self, copymanga_parser):
+        """未配置 cookie 时返回未登录。"""
+        ok, msg = copymanga_parser.verify_login_status()
+        assert ok is False
+        assert "\u767b\u5f55" in msg
+    
+    def test_verify_login_status_with_token_cookie(self, copymanga_parser):
+        """配置了 token cookie 时返回已登录。"""
+        copymanga_parser.configure_auth(cookie="token=abc123; sessionid=xyz")
         ok, msg = copymanga_parser.verify_login_status()
         assert ok is True
-        assert "无需登录" in msg
 
     def test_favourites_returns_empty(self, copymanga_parser):
         comics, pagination, needs_login = copymanga_parser.favourites()

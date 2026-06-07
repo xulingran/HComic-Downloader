@@ -11,6 +11,8 @@ const LOGIN_COOKIE_SUCCESS_DELAY_MS = 5_000
 const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
 const JMCOMIC_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
 
+const COPYMANGA_LOGIN_COOKIE_NAMES = ['token', 'sessionid', 'copymanga_session']
+
 const DIAG_LOG = join(tmpdir(), 'hcomic-login-diag.log')
 
 function diag(msg: string) {
@@ -67,6 +69,14 @@ async function extractAndApplyCookies(
           }
         }
       }
+    } else if (source === 'copymanga') {
+      const domainCookies = await cookieSession.cookies.get({ url: `https://${domain}` })
+      if (domainCookies.length > 0) {
+        const cookieNames = domainCookies.map(c => c.name.toLowerCase())
+        if (COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+          cookies = domainCookies
+        }
+      }
     } else {
       cookies = await cookieSession.cookies.get({ url: `https://${domain}` })
     }
@@ -80,6 +90,14 @@ async function extractAndApplyCookies(
       const hasLoginCookie = JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
       if (!hasLoginCookie) {
         return { success: false, message: '未检测到登录状态，请确认已成功登录后重试' }
+      }
+    }
+
+    if (source === 'copymanga') {
+      const cookieNames = cookies.map(c => c.name.toLowerCase())
+      const hasLoginCookie = COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
+      if (!hasLoginCookie) {
+        return { success: false, message: '未检测到登录状态，请在拷贝漫画网站上登录后再关闭窗口' }
       }
     }
 
@@ -315,6 +333,62 @@ async function hasJmcomicLoginCookie(domain: string, cookieSession: Session = se
   }
 }
 
+function bindCopymangaLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
+  let pollingTimer: ReturnType<typeof setInterval> | null = null
+  const cookieSession = loginWin.webContents.session
+
+  const checkCopymangaCookies = async (): Promise<boolean> => {
+    try {
+      const cookies = await cookieSession.cookies.get({ url: `https://${domain}` })
+      const cookieNames = cookies.map(c => c.name.toLowerCase())
+      return COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
+    } catch {
+      return false
+    }
+  }
+
+  // Start polling for login cookies after the page loads
+  const startPolling = () => {
+    if (pollingTimer) return
+    pollingTimer = setInterval(async () => {
+      if (ctx.settled || ctx.extractInProgress) {
+        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
+        return
+      }
+      const hasLogin = await checkCopymangaCookies()
+      if (hasLogin) {
+        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
+        diag('copymanga: login cookies detected')
+        completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
+      }
+    }, 3000)
+  }
+
+  // Start polling once the page has loaded
+  loginWin.webContents.on('did-finish-load', () => {
+    startPolling()
+  })
+
+  loginWin.webContents.on('did-navigate', (_event, url) => {
+    diag(`copymanga did-navigate: ${url}`)
+    // If user navigates away from login page, check for cookies after a settle delay
+    if (!url.includes('/login') && !url.includes('/register')) {
+      setTimeout(async () => {
+        if (ctx.settled || ctx.extractInProgress) return
+        const hasLogin = await checkCopymangaCookies()
+        if (hasLogin) {
+          if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
+          completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
+        }
+      }, LOGIN_COOKIE_SETTLE_MS)
+    }
+  })
+
+  loginWin.on('closed', () => {
+    if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
+  })
+}
+
 function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
   let hasVisitedLogin = false
   let timeoutPending = false
@@ -378,9 +452,24 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
   }
 
   const jmcomicDomain = resolvedDomain || '18comic.vip'
-  const loginUrl = source === 'jmcomic' ? `https://${jmcomicDomain}` : 'https://h-comic.com'
-  const loginTitle = source === 'jmcomic' ? '登录 jmcomic' : '登录 H-Comic'
-  const loginDomain = source === 'jmcomic' ? jmcomicDomain : 'h-comic.com'
+  const copymangaDomain = 'www.2026copy.com'
+  let loginUrl: string
+  let loginTitle: string
+  let loginDomain: string
+
+  if (source === 'jmcomic') {
+    loginUrl = `https://${jmcomicDomain}`
+    loginTitle = '登录 jmcomic'
+    loginDomain = jmcomicDomain
+  } else if (source === 'copymanga') {
+    loginUrl = `https://${copymangaDomain}`
+    loginTitle = '登录拷贝漫画'
+    loginDomain = copymangaDomain
+  } else {
+    loginUrl = 'https://h-comic.com'
+    loginTitle = '登录 H-Comic'
+    loginDomain = 'h-comic.com'
+  }
 
   return new Promise((resolve) => {
     diag('openLoginWindow: creating window')
@@ -461,6 +550,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
       'www.h-comic.com',
       'auth0.com',
       ...JMCOMIC_MIRROR_DOMAINS,
+      copymangaDomain,
     ]
     loginWin.webContents.on('will-navigate', (event, url) => {
       let hostname: string
@@ -476,6 +566,8 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
 
     if (source === 'jmcomic') {
       bindJmcomicLoginTracking(loginWin, ctx, mainWindow, source, loginDomain)
+    } else if (source === 'copymanga') {
+      bindCopymangaLoginTracking(loginWin, ctx, mainWindow, source, loginDomain)
     } else {
       bindLoginNavigationTracking(loginWin, ctx, mainWindow, source, loginDomain)
     }

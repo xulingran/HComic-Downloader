@@ -24,7 +24,7 @@ interface SettingsState {
 }
 
 const DEFAULT_TAG_BLACKLIST: TagBlacklist = Object.fromEntries(
-  COMIC_SOURCES.map(s => [s, []])
+  COMIC_SOURCES.map(s => [s, [] as string[]])
 ) as TagBlacklist
 
 export const useSettingsStore = create<SettingsState>((set) => ({

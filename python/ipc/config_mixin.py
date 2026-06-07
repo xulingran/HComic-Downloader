@@ -125,6 +125,7 @@ class ConfigMixin:
             bika_auth.get("bearer_token") or (bika_auth.get("username") and bika_auth.get("password"))
         )
         config["bikaUsername"] = self.config.source_auth.get("bika", {}).get("username", "")
+        config["hasCopymangaAuth"] = bool(self.config.source_auth.get("copymanga", {}).get("cookie"))
         # 返回 jmcomic CDN 域名，供前端动态更新白名单
         jmcomic_cdn = self.parser.get_jmcomic_cdn_domain()
         if jmcomic_cdn:

@@ -1,7 +1,7 @@
 import { PaginationInfo } from '@shared/types'
 import { PaginationControls } from './common/PaginationControls'
 import { BatchControls } from './common/BatchControls'
-import { useSources, useSearchModes, useRankingOptions } from '../hooks/useSourceOptions'
+import { useSources, useSearchModes, useRankingOptions, useCopymangaCategories } from '../hooks/useSourceOptions'
 import { sourceSupportsRanking } from '../utils/source'
 
 
@@ -55,6 +55,8 @@ export function SearchBar({
   const sources = useSources()
   const searchModes = useSearchModes()
   const rankingOptions = useRankingOptions()
+  const copymangaCategories = useCopymangaCategories()
+  const isCopymangaCategory = mode === 'ranking' && source === 'copymanga'
   return (
     <div className="bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
       <div className="flex gap-3">
@@ -81,7 +83,7 @@ export function SearchBar({
         </select>
 
         <div className="flex-1 relative">
-          {mode === 'ranking' && sourceSupportsRanking(source) ? (
+          {mode === 'ranking' && sourceSupportsRanking(source) && !isCopymangaCategory ? (
             <select
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
@@ -90,6 +92,17 @@ export function SearchBar({
             >
               <option value="">选择排行</option>
               {rankingOptions.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          ) : isCopymangaCategory ? (
+            <select
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                         text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+            >
+              {copymangaCategories.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>

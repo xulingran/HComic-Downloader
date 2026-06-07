@@ -301,13 +301,18 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const handleSourceChange = async (newSource: string) => {
     setSource(newSource)
     sourceRef.current = newSource
-    setQuery('')
-    queryRef.current = ''
     setSearchTags('')
     searchTagsRef.current = ''
     clearSelection()
     setShowHistory(false)
     setNeedsLogin(false)
+    if (newSource === 'copymanga' && mode === 'ranking') {
+      setQuery('hot')
+      queryRef.current = 'hot'
+    } else {
+      setQuery('')
+      queryRef.current = ''
+    }
     if (requiresAuth(newSource)) {
       setLoading(true)
       const isValid = await verifySourceAuth(newSource)
@@ -341,7 +346,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         source={source}
         onSourceChange={handleSourceChange}
         mode={mode}
-        onModeChange={setMode}
+        onModeChange={(newMode: string) => {
+          setMode(newMode)
+          if (newMode === 'ranking' && source === 'copymanga' && !query) {
+            setQuery('hot')
+            queryRef.current = 'hot'
+          }
+        }}
         query={query}
         onQueryChange={setQuery}
         isLoading={isLoading}

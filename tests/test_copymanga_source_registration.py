@@ -39,7 +39,14 @@ class TestCopyMangaRegistration:
         parser = MultiSourceParser()
         assert parser.add_to_favourites("any_id", source="copymanga") is False
 
-    def test_copymanga_verify_login_always_ready(self):
+    def test_copymanga_verify_login_no_cookie(self):
         parser = MultiSourceParser()
+        ok, msg = parser.verify_login_status(source="copymanga")
+        assert ok is False
+        assert "\u767b\u5f55" in msg
+
+    def test_copymanga_verify_login_with_cookie(self):
+        parser = MultiSourceParser()
+        parser.configure_auth(cookie="token=abc", source="copymanga")
         ok, msg = parser.verify_login_status(source="copymanga")
         assert ok is True

@@ -86,6 +86,7 @@ export interface AppConfig {
   hasJmcomicAuth?: boolean
   hasMoeimgAuth?: boolean
   hasBikaAuth?: boolean
+  hasCopymangaAuth?: boolean
   jmcomicDomain?: string
   moeimgUsername?: string
   bikaUsername?: string
@@ -601,8 +602,8 @@ export const SOURCE_META = {
     label: '拷贝漫画',
     supportsRandom: false,
     supportsFavourites: false,
-    requiresAuth: false,
-    supportsRanking: false,
+    requiresAuth: true,
+    supportsRanking: true,
     needsDetailEnrich: false,
   },
 } as const satisfies Record<ComicSource, {

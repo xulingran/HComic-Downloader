@@ -20,6 +20,13 @@ const RANKING_OPTIONS_LIST = [
   '日收藏', '周收藏', '月收藏', '总收藏',
 ]
 
+const COPYMANGA_CATEGORY_OPTIONS = [
+  { value: 'hot', label: '热门更新' },
+  { value: 'popular', label: '人气排行' },
+  { value: 'recommend', label: '漫画推荐' },
+  { value: 'newest', label: '全新上架' },
+]
+
 /** 返回带标签的来源列表 */
 export function useSources(): Option[] {
   return useMemo(() =>
@@ -39,4 +46,9 @@ export function useRankingOptions(): Option[] {
   return useMemo(() =>
     RANKING_OPTIONS_LIST.map(r => ({ value: r, label: r })),
   [])
+}
+
+/** 返回拷贝漫画分类选项列表 */
+export function useCopymangaCategories(): Option[] {
+  return useMemo(() => COPYMANGA_CATEGORY_OPTIONS, [])
 }

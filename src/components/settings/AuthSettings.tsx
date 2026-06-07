@@ -12,6 +12,8 @@ interface AuthSettingsProps {
   bikaLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   bikaLoginMessage: string
   bikaSavedUsername: string
+  copymangaLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
+  copymangaLoginMessage: string
   onApplyAuth: (curlText: string, source?: string) => Promise<void>
   onTestAuth: (source?: string) => Promise<void>
   onOpenLoginWindow: (source?: string) => Promise<void>
@@ -33,6 +35,8 @@ export function AuthSettings({
   bikaLoginStatus,
   bikaLoginMessage,
   bikaSavedUsername,
+  copymangaLoginStatus,
+  copymangaLoginMessage,
   onApplyAuth,
   onTestAuth,
   onOpenLoginWindow,
@@ -319,6 +323,37 @@ export function AuthSettings({
         <p className="text-xs text-[var(--text-secondary)] mt-2">
           使用哔咔用户名和密码登录
         </p>
+      </AuthSourceCard>
+
+      <AuthSourceCard
+        label="拷贝漫画"
+        status={copymangaLoginStatus}
+        message={copymangaLoginMessage}
+      >
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => onOpenLoginWindow('copymanga')}
+            disabled={copymangaLoginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--accent)] text-white hover:opacity-90
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {copymangaLoginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
+          </button>
+          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录拷贝漫画账号，登录完成后关闭弹窗即可自动识别 Cookie</span>
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={() => onTestAuth('copymanga')}
+            disabled={copymangaLoginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {copymangaLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
+          </button>
+        </div>
       </AuthSourceCard>
     </div>
   )

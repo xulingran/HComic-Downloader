@@ -47,6 +47,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const jmcomicAuth = useAuthState('jmcomic')
   const moeimgAuth = useAuthState('moeimg')
   const bikaAuth = useAuthState('bika')
+    const copymangaAuth = useAuthState('copymanga')
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
   const { getJmcomicDomains } = useJmcomicDomains()
@@ -145,6 +146,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         if (result.config.hasBikaAuth) {
           bikaAuth.verifyFromConfig(true)
         }
+        if (result.config.hasCopymangaAuth) {
+          copymangaAuth.verifyFromConfig(true)
+        }
         if (result.config.fontName) setFontName(result.config.fontName)
         if (result.config.fontSize) setFontSize(result.config.fontSize)
         if (typeof result.config.previewCacheSizeLimitMB === 'number') {
@@ -234,6 +238,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     jmcomic: jmcomicAuth,
     moeimg: moeimgAuth,
     bika: bikaAuth,
+    copymanga: copymangaAuth,
   } as const
 
   const handleApplyAuth = async (curlText: string, source: string = 'hcomic') => {
@@ -488,6 +493,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           bikaLoginStatus={bikaAuth.status}
           bikaLoginMessage={bikaAuth.message}
           bikaSavedUsername={config.bikaUsername || ''}
+          copymangaLoginStatus={copymangaAuth.status}
+          copymangaLoginMessage={copymangaAuth.message}
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}

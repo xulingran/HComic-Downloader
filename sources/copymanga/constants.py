@@ -12,6 +12,12 @@ SEARCH_URL_TEMPLATE = (
     f"?platform=1&limit=30&offset={{offset}}&q_type=&_update=false&q={{keyword}}"
 )
 
+# 漫画列表 API（空关键词搜索时使用）
+COMICS_LIST_URL_TEMPLATE = (
+    f"https://{API_DOMAIN}/api/v3/comics"
+    f"?platform=1&limit={{limit}}&offset={{offset}}&_update=false&ordering={{ordering}}"
+)
+
 # 章节详情 API（path_word 占位）
 CHAPTERS_URL_TEMPLATE = f"https://{PC_DOMAIN}/comicdetail/{{path_word}}/chapters"
 
@@ -20,6 +26,18 @@ CHAPTER_PAGE_URL_TEMPLATE = f"https://{PC_DOMAIN}/comic/{{path_word}}/chapter/{{
 
 # AES 密钥提取页面（固定访问一拳超人）
 AES_KEY_PAGE_URL = f"https://{PC_DOMAIN}/comic/yiquanchaoren"
+
+# HTML 列表页（推荐 / 全新上架）
+RECOMMEND_URL = f"https://{PC_DOMAIN}/recommend"
+NEWEST_URL = f"https://{PC_DOMAIN}/newest"
+
+# 空关键词搜索时的分类标识及其对应的排序 / 页面
+CATEGORY_CONFIG: dict[str, dict] = {
+    "hot": {"ordering": "-datetime_updated"},
+    "popular": {"ordering": "-popular"},
+    "recommend": {"url": RECOMMEND_URL},
+    "newest": {"url": NEWEST_URL},
+}
 
 # 每页条目数
 PAGE_SIZE = 30
