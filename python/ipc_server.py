@@ -269,6 +269,19 @@ class IPCServer(
                 "error": {"code": -32601, "message": f"Method not found: {method}"},
             }
 
+    def _async_search(self, params: dict, req_id: str | None) -> None:
+        """Thread-pool target: run search without blocking the main loop."""
+        try:
+            param_keys = self._handler_param_keys.get("handle_search")
+            valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
+            result = self.handle_search(**valid_params)
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
+        except AuthRequiredError as e:
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32001, "message": str(e)}})
+        except Exception as e:
+            logger.error("async search failed: %s", e, exc_info=True)
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}})
+
     def _async_sync_favourite_tags(self, params: dict, req_id: str | None) -> None:
         """Thread-pool target: run sync_favourite_tags without blocking the main loop."""
         try:
@@ -278,9 +291,7 @@ class IPCServer(
             self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
         except Exception as e:
             logger.error("async sync_favourite_tags failed: %s", e, exc_info=True)
-            self._write_response(
-                {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
-            )
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}})
 
     def _async_refresh_tag_list(self, params: dict, req_id: str | None) -> None:
         """Thread-pool target: run refresh_tag_list without blocking the main loop."""
@@ -291,9 +302,7 @@ class IPCServer(
             self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
         except Exception as e:
             logger.error("async refresh_tag_list failed: %s", e, exc_info=True)
-            self._write_response(
-                {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
-            )
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}})
 
     def handle_get_cache_stats(self) -> dict:
         """Return combined cache statistics for cover and preview caches."""
@@ -391,6 +400,11 @@ class IPCServer(
                         scramble_id=scramble_id,
                         comic_id=comic_id,
                     )
+                    continue
+
+                # ── search: dispatch to thread pool so other requests aren't blocked ──
+                if method == "search":
+                    self._cover_executor.submit(self._async_search, params, req_id)
                     continue
 
                 # ── sync_favourite_tags: long-running sync dispatched to thread pool ──

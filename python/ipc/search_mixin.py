@@ -172,8 +172,8 @@ class SearchMixin:
                 raise AuthRequiredError(f"{effective_source} 登录凭证已失效: {e}") from e
             raise
 
-        # Incrementally collect tags for hcomic source
-        if effective_source == "hcomic" and comics:
+        # Incrementally collect tags for supported sources
+        if effective_source in ("hcomic", "moeimg", "bika") and comics:
             self._collect_tags_from_comics(comics, effective_source)
 
         return {

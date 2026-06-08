@@ -245,12 +245,13 @@ def test_refresh_page1_failure_preserves_existing_data(tmp_path):
             self._tag_list_db = tag_list_db
             self._favourite_tags_db = MagicMock()
             self.parser = MagicMock()
-            self._refresh_lock = threading.Lock()
+            self._refresh_locks = {"hcomic": threading.Lock()}
 
     fake = _Fake()
     fake.parser.search.side_effect = RuntimeError("network error")
 
     import contextlib
+
     with contextlib.suppress(RuntimeError):
         fake.handle_refresh_tag_list("hcomic")
 
@@ -275,7 +276,7 @@ def test_refresh_later_page_failure_preserves_partial_data(tmp_path):
             self._tag_list_db = tag_list_db
             self._favourite_tags_db = MagicMock()
             self.parser = MagicMock()
-            self._refresh_lock = threading.Lock()
+            self._refresh_locks = {"hcomic": threading.Lock()}
 
     fake = _Fake()
 
@@ -310,7 +311,7 @@ def test_refresh_concurrent_rejected(tmp_path):
             self._tag_list_db = tag_list_db
             self._favourite_tags_db = MagicMock()
             self.parser = MagicMock()
-            self._refresh_lock = threading.Lock()
+            self._refresh_locks = {"hcomic": threading.Lock()}
 
     fake = _Fake()
     # Simulate a long-running search that blocks
@@ -335,4 +336,3 @@ def test_refresh_concurrent_rejected(tmp_path):
     result = fake.handle_refresh_tag_list("hcomic")
     assert "error" in result
     t1.join()
-

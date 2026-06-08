@@ -12,7 +12,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_TAG_LIST_SOURCES = ("hcomic",)
+_TAG_LIST_SOURCES = ("hcomic", "moeimg", "bika")
 
 
 class TagListDB:
@@ -36,9 +36,7 @@ class TagListDB:
                 UNIQUE(tag, source)
             )
         """)
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_tag_list_source ON tag_list(source)"
-        )
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tag_list_source ON tag_list(source)")
         self._conn.commit()
 
     def upsert_tags(self, tags: list[str], source: str) -> None:
@@ -125,12 +123,12 @@ class TagListMixin:
     parser: Any
     _write_response: Any
     _cover_executor: Any
-    _refresh_lock: threading.Lock
+    _refresh_locks: dict[str, threading.Lock]
 
     def _init_tag_list(self) -> None:
         db_path = os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "tag_list.db")
         self._tag_list_db = TagListDB(db_path)
-        self._refresh_lock = threading.Lock()
+        self._refresh_locks = {s: threading.Lock() for s in _TAG_LIST_SOURCES}
         self._seed_tag_list_from_favourites()
 
     def _seed_tag_list_from_favourites(self) -> None:
@@ -147,7 +145,8 @@ class TagListMixin:
                         self._tag_list_db.upsert_tags(tags_list, source)
                         logger.info(
                             "Seeded tag_list from favourite_tags for source=%s: %d tags",
-                            source, len(tags_list),
+                            source,
+                            len(tags_list),
                         )
         except Exception as e:
             logger.debug("Failed to seed tag list from favourites: %s", e)
@@ -166,7 +165,10 @@ class TagListMixin:
         if limit < 1 or limit > 500:
             limit = 200
         tags, total = self._tag_list_db.get_tags(
-            effective_source, keyword=keyword, page=page, limit=limit,
+            effective_source,
+            keyword=keyword,
+            page=page,
+            limit=limit,
         )
         return {"tags": tags, "total": total}
 
@@ -180,13 +182,14 @@ class TagListMixin:
         effective_source = source if source in _TAG_LIST_SOURCES else "hcomic"
 
         # Prevent concurrent refreshes for the same source
-        if not self._refresh_lock.acquire(blocking=False):
+        lock = self._refresh_locks[effective_source]
+        if not lock.acquire(blocking=False):
             return {"error": "refresh already in progress"}
 
         try:
             return self._do_refresh_tag_list(effective_source)
         finally:
-            self._refresh_lock.release()
+            lock.release()
 
     def _do_refresh_tag_list(self, effective_source: str) -> dict:
         """Collect tags in memory, then atomically replace DB contents."""
@@ -198,7 +201,10 @@ class TagListMixin:
         # Fetch page 1 to get pagination info
         try:
             comics, pagination = self.parser.search(
-                "", page=1, source=effective_source, tag="",
+                "",
+                page=1,
+                source=effective_source,
+                tag="",
             )
         except Exception as e:
             logger.error("refresh_tag_list page 1 failed: %s", e, exc_info=True)
@@ -217,7 +223,10 @@ class TagListMixin:
             time.sleep(random.uniform(0.3, 0.8))
             try:
                 comics, _pagination = self.parser.search(
-                    "", page=page, source=effective_source, tag="",
+                    "",
+                    page=page,
+                    source=effective_source,
+                    tag="",
                 )
                 self._accumulate_tags(comics, collected)
                 total_comics += len(comics)
@@ -233,7 +242,10 @@ class TagListMixin:
         total_tags = self._tag_list_db.get_tag_count(effective_source)
         logger.info(
             "refresh_tag_list done: source=%s pages=%d comics=%d tags=%d",
-            effective_source, total_pages_done, total_comics, total_tags,
+            effective_source,
+            total_pages_done,
+            total_comics,
+            total_tags,
         )
         return {
             "totalTags": total_tags,

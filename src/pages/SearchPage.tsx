@@ -9,6 +9,7 @@ import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { SearchBar } from '../components/SearchBar'
+import { TagDialog } from '../components/TagDialog'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
@@ -36,6 +37,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
+  const [showTagDialog, setShowTagDialog] = useState(false)
   const [needsLogin, setNeedsLogin] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
@@ -362,21 +364,23 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const newSearchTags = newSelectedTags.join(',')
     setSearchTags(newSearchTags)
     searchTagsRef.current = newSearchTags
-    // Trigger search immediately (skip if already loading)
+    // Trigger search immediately with the NEW tags value (skip if already loading)
     if (!isLoadingRef.current) {
-      handleSearch()
+      clearSelection()
+      withLoading(() => search(queryRef.current, modeRef.current, 1, sourceRef.current, newSearchTags || undefined))
     }
-  }, [tagPanel, handleSearch])
+  }, [tagPanel, withLoading, search, clearSelection])
 
   const handleClearAllTags = useCallback(() => {
     tagPanel.clearAll()
     setSearchTags('')
     searchTagsRef.current = ''
-    // Trigger search immediately (skip if already loading)
+    // Trigger search immediately with cleared tags (skip if already loading)
     if (!isLoadingRef.current) {
-      handleSearch()
+      clearSelection()
+      withLoading(() => search(queryRef.current, modeRef.current, 1, sourceRef.current, undefined))
     }
-  }, [tagPanel, handleSearch])
+  }, [tagPanel, withLoading, search, clearSelection])
 
   return (
     <div className="space-y-3">
@@ -421,10 +425,19 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         onPageNavigate={handleSearch}
         // Tag panel
         showTagPanel={sourceSupportsTagList(source)}
-        tagPanelExpanded={tagPanel.expanded}
-        onTagPanelToggle={() => tagPanel.setExpanded(!tagPanel.expanded)}
-        tagPanelLoading={tagPanel.loading}
-        tagPanelRefreshing={tagPanel.refreshing}
+        onTagPanelToggle={() => {
+          tagPanel.setExpanded(true)
+          setShowTagDialog(true)
+        }}
+        selectedTags={tagPanel.selectedTags}
+      />
+
+      {/* Tag dialog */}
+      <TagDialog
+        open={showTagDialog}
+        onClose={() => setShowTagDialog(false)}
+        loading={tagPanel.loading}
+        refreshing={tagPanel.refreshing}
         filteredTags={tagPanel.filteredTags}
         selectedTags={tagPanel.selectedTags}
         tagKeyword={tagPanel.keyword}

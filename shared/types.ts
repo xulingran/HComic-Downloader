@@ -621,7 +621,7 @@ export const SOURCE_META = {
     supportsRanking: false,
     needsDetailEnrich: true,
     supportsTagRecommendation: true,
-    supportsTagList: false,
+    supportsTagList: true,
   },
   jmcomic: {
     label: 'jmcomic',
@@ -641,7 +641,7 @@ export const SOURCE_META = {
     supportsRanking: false,
     needsDetailEnrich: false,
     supportsTagRecommendation: true,
-    supportsTagList: false,
+    supportsTagList: true,
   },
   copymanga: {
     label: '拷贝漫画',

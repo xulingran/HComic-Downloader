@@ -48,6 +48,7 @@ describe('IPC Channel Consistency', () => {
       'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
       'get_history', 'add_history', 'delete_history', 'clear_history',
       'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
+      'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
       'moeimg_login', 'bika_login', 'hcomic_login', 'get_jmcomic_domains',
     ]
 

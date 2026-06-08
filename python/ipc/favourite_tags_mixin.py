@@ -190,7 +190,9 @@ class FavouriteTagsMixin:
 
         try:
             comics, pagination, needs_login = self.parser.favourites(
-                page=1, raise_errors=True, source=effective_source,
+                page=1,
+                raise_errors=True,
+                source=effective_source,
             )
         except Exception as e:
             logger.error("sync_favourite_tags page 1 failed: %s", e, exc_info=True)
@@ -210,7 +212,9 @@ class FavouriteTagsMixin:
         for page in range(2, total_pages + 1):
             try:
                 comics, pagination, _needs_login = self.parser.favourites(
-                    page=page, raise_errors=False, source=effective_source,
+                    page=page,
+                    raise_errors=False,
+                    source=effective_source,
                 )
                 total_comics += len(comics)
                 empty = self._update_tags_from_favourites_page(comics, effective_source, collect_empty=True)
@@ -227,7 +231,11 @@ class FavouriteTagsMixin:
         tags = self._favourite_tags_db.get_tags(effective_source)
         logger.info(
             "sync_favourite_tags done: source=%s total=%d enrich_needed=%d enriched=%d skipped=%d",
-            effective_source, total_comics, enrich_needed, enriched_count, skipped_pages,
+            effective_source,
+            total_comics,
+            enrich_needed,
+            enriched_count,
+            skipped_pages,
         )
         return {
             "tags": tags,
