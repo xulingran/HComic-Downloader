@@ -17,10 +17,11 @@ import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore } from '../stores/useSearchCacheStore'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
-import { sourceSupportsRandom, sourceSupportsTagRecommendation, normalizeSourceKey } from '../utils/source'
+import { sourceSupportsRandom, sourceSupportsTagRecommendation, sourceSupportsTagList, normalizeSourceKey } from '../utils/source'
 import type { DownloadProgressData } from '../hooks/useIpc'
 import { requiresAuth, isAuthError } from '../utils/auth'
 import { sourceLabel } from '../utils/source'
+import { useTagPanel } from '../hooks/useTagPanel'
 
 
 interface SearchPageProps {
@@ -74,6 +75,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const { progress: downloadProgress } = useDownloadProgress()
   const tasks = useDownloadStore((s) => s.tasks)
 
+  // Tag panel hook (manages tags, selection, filtering, loading)
+  const tagPanel = useTagPanel(source, sourceSupportsTagList(source))
+
   const activeDownloadMap = useMemo(() => {
     const map = new Map<string, DownloadProgressData>()
     for (const t of tasks) {
@@ -100,6 +104,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       setMode(cached.mode)
       setSource(cached.source)
       setSearchTags(cached.searchTags)
+      // Restore selectedTags from cached searchTags
+      if (cached.searchTags) {
+        const restored = cached.searchTags.split(',').filter(Boolean)
+        tagPanel.setSelectedTags(restored)
+      }
       setComics(cached.comics)
       if (cached.pagination) setPagination(cached.pagination)
       return
@@ -173,6 +182,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       const existing = finalTags ? finalTags.split(',') : []
       const deduped = [...new Set([...existing, searchQuery])]
       finalTags = deduped.join(',')
+      // Sync selectedTags state
+      tagPanel.setSelectedTags(deduped)
     } else if (append) {
       finalQuery = [finalQuery, searchQuery].filter(Boolean).join(' ')
     } else {
@@ -213,7 +224,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }).finally(() => {
       if (gen === searchGenRef.current) setLoading(false)
     })
-  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode])
+  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, tagPanel])
 
   useEffect(() => {
     if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(source)) {
@@ -278,7 +289,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
   }, [setLoading, setError, setComics, setPagination])
 
-  const handleSearch = async (page: number = 1) => {
+  const handleSearch = useCallback(async (page: number = 1) => {
     if (requiresAuth(source) && needsLogin) return
     clearSelection()
     setShowHistory(false)
@@ -286,7 +297,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       addHistory(searchTags ? `${query} [${searchTags}]` : query.trim())
     }
     await withLoading(() => search(query, mode, page, source, searchTags || undefined))
-  }
+  }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search])
 
   const handleRandom = async () => {
     if (requiresAuth(source) && needsLogin) return
@@ -294,6 +305,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     clearPendingSearch()
     setQuery('')
     setSearchTags('')
+    tagPanel.clearAll()
     setShowHistory(false)
     await withLoading(() => random(source))
   }
@@ -303,6 +315,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     sourceRef.current = newSource
     setSearchTags('')
     searchTagsRef.current = ''
+    tagPanel.clearAll()
     clearSelection()
     setShowHistory(false)
     setNeedsLogin(false)
@@ -339,6 +352,31 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
     await downloadWithConflictCheck(comic)
   }
+
+  const isLoadingRef = useRef(isLoading)
+  isLoadingRef.current = isLoading // eslint-disable-line react-hooks/refs
+
+  // Tag toggle: update selected tags + immediately trigger search
+  const handleToggleTag = useCallback((tag: string) => {
+    const newSelectedTags = tagPanel.toggleTag(tag)
+    const newSearchTags = newSelectedTags.join(',')
+    setSearchTags(newSearchTags)
+    searchTagsRef.current = newSearchTags
+    // Trigger search immediately (skip if already loading)
+    if (!isLoadingRef.current) {
+      handleSearch()
+    }
+  }, [tagPanel, handleSearch])
+
+  const handleClearAllTags = useCallback(() => {
+    tagPanel.clearAll()
+    setSearchTags('')
+    searchTagsRef.current = ''
+    // Trigger search immediately (skip if already loading)
+    if (!isLoadingRef.current) {
+      handleSearch()
+    }
+  }, [tagPanel, handleSearch])
 
   return (
     <div className="space-y-3">
@@ -381,6 +419,19 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         onBatchDownload={handleBatchDownload}
         onPageJump={() => setShowJumpDialog(true)}
         onPageNavigate={handleSearch}
+        // Tag panel
+        showTagPanel={sourceSupportsTagList(source)}
+        tagPanelExpanded={tagPanel.expanded}
+        onTagPanelToggle={() => tagPanel.setExpanded(!tagPanel.expanded)}
+        tagPanelLoading={tagPanel.loading}
+        tagPanelRefreshing={tagPanel.refreshing}
+        filteredTags={tagPanel.filteredTags}
+        selectedTags={tagPanel.selectedTags}
+        tagKeyword={tagPanel.keyword}
+        onTagKeywordChange={tagPanel.setKeyword}
+        onToggleTag={handleToggleTag}
+        onClearAllTags={handleClearAllTags}
+        onRefreshTags={tagPanel.refresh}
       />
 
       <ErrorDisplay message={error} />

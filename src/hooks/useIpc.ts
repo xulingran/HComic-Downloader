@@ -257,3 +257,17 @@ export function useFavouriteTags() {
 
   return { getFavouriteTags, clearFavouriteTags, removeFavouriteTag, syncFavouriteTags }
 }
+
+export function useTagList() {
+  const { invoke } = useIpc()
+
+  const getTagList = useCallback(async (source?: string, keyword?: string, page?: number, limit?: number) => {
+    return invoke(() => window.hcomic!.getTagList(source, keyword, page, limit))
+  }, [invoke])
+
+  const refreshTagList = useCallback(async (source?: string) => {
+    return invoke(() => window.hcomic!.refreshTagList(source))
+  }, [invoke])
+
+  return { getTagList, refreshTagList }
+}

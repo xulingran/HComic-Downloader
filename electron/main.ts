@@ -975,6 +975,38 @@ function registerFavouriteTagHandlers(bridge: Bridge) {
   })
 }
 
+function registerTagListHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.GET_TAG_LIST, async (_, source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'get_tag_list source')
+      params.source = source
+    }
+    if (keyword !== undefined && keyword !== null) {
+      assert(and(string(), maxLength(128), noControlChars()), keyword, 'get_tag_list keyword')
+      params.keyword = keyword
+    }
+    if (page !== undefined && page !== null) {
+      assert(integer(), page, 'get_tag_list page')
+      params.page = page
+    }
+    if (limit !== undefined && limit !== null) {
+      assert(and(integer(), range(1, 500)), limit, 'get_tag_list limit')
+      params.limit = limit
+    }
+    return bridge.call('get_tag_list', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.REFRESH_TAG_LIST, async (_, source?: unknown) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'refresh_tag_list source')
+      params.source = source
+    }
+    return bridge.call('refresh_tag_list', params, 300_000) // 5 min timeout for full sync
+  })
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
@@ -990,6 +1022,7 @@ function registerIPCHandlers() {
   registerCacheHandlers(bridge)
   registerHistoryHandlers(bridge)
   registerFavouriteTagHandlers(bridge)
+  registerTagListHandlers(bridge)
 }
 
 // ── Single instance lock ──

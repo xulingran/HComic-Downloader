@@ -18,6 +18,7 @@ export function FavouriteTagSettings() {
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [syncedCount, setSyncedCount] = useState<number | null>(null)
   const [confirmTag, setConfirmTag] = useState<string | null>(null)
+  const [showAllTags, setShowAllTags] = useState(false)
 
   const loadTags = useCallback(async () => {
     setIsLoading(true)
@@ -122,25 +123,76 @@ export function FavouriteTagSettings() {
       ) : tags.length === 0 ? (
         <p className="text-sm text-[var(--text-secondary)] py-4 text-center">请先同步收藏夹数据以生成推荐标签</p>
       ) : (
-        <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto content-start">
-          {tags.slice(0, 10).map(({ tag, count }) => (
-            <span
-              key={tag}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                         bg-amber-500/10 text-amber-600 text-sm"
+        <>
+          <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto content-start">
+            {tags.slice(0, 10).map(({ tag, count }) => (
+              <span
+                key={tag}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                           bg-amber-500/10 text-amber-600 text-sm"
+              >
+                {tag}
+                <span className="text-xs opacity-60">({count})</span>
+                <button
+                  onClick={() => setConfirmTag(tag)}
+                  className="w-4 h-4 rounded-full text-[10px] flex items-center justify-center
+                             text-amber-600/60 hover:text-[var(--error)] hover:bg-[var(--error)]/10 transition-colors"
+                  title="移除"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+          {tags.length > 10 && (
+            <button
+              onClick={() => setShowAllTags(true)}
+              className="text-sm text-[var(--accent)] hover:underline"
             >
-              {tag}
-              <span className="text-xs opacity-60">({count})</span>
+              管理全部标签 (共 {tags.length} 个)
+            </button>
+          )}
+        </>
+      )}
+
+      {showAllTags && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowAllTags(false)}>
+          <div
+            className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-lg w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-medium text-[var(--text-primary)]">
+                全部推荐标签 ({SOURCE_LABELS[source as keyof typeof SOURCE_LABELS]})
+              </h3>
               <button
-                onClick={() => setConfirmTag(tag)}
-                className="w-4 h-4 rounded-full text-[10px] flex items-center justify-center
-                           text-amber-600/60 hover:text-[var(--error)] hover:bg-[var(--error)]/10 transition-colors"
-                title="移除"
+                onClick={() => setShowAllTags(false)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-lg leading-none"
               >
                 ✕
               </button>
-            </span>
-          ))}
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-[60vh] overflow-y-auto content-start">
+              {tags.map(({ tag, count }) => (
+                <span
+                  key={tag}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
+                             bg-amber-500/10 text-amber-600 text-sm"
+                >
+                  {tag}
+                  <span className="text-xs opacity-60">({count})</span>
+                  <button
+                    onClick={() => setConfirmTag(tag)}
+                    className="w-4 h-4 rounded-full text-[10px] flex items-center justify-center
+                               text-amber-600/60 hover:text-[var(--error)] hover:bg-[var(--error)]/10 transition-colors"
+                    title="移除"
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 

@@ -29,6 +29,7 @@ from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: E4
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
 from ipc.search_mixin import SearchMixin  # noqa: E402
+from ipc.tag_list_mixin import TagListMixin  # noqa: E402
 from ipc.types import (  # noqa: E402,F401
     _COVER_POOL_MAX_WORKERS,
     _PREVIEW_IMAGE_MAX_SIZE,
@@ -49,6 +50,7 @@ class IPCServer(
     MigrationMixin,
     HistoryMixin,
     FavouriteTagsMixin,
+    TagListMixin,
 ):
     def __init__(self):
         from cbz_builder import CBZBuilder
@@ -131,6 +133,9 @@ class IPCServer(
         # Favourite tags index database
         self._init_favourite_tags()
 
+        # Tag list catalog database
+        self._init_tag_list()
+
         # Pre-compute handler parameter sets for request routing
         self._handler_param_keys: dict[str, set[str] | None] = {}
         for _method_name, attr_name in self._HANDLER_NAMES.items():
@@ -209,6 +214,8 @@ class IPCServer(
         "clear_favourite_tags": "handle_clear_favourite_tags",
         "remove_favourite_tag": "handle_remove_favourite_tag",
         "sync_favourite_tags": "handle_sync_favourite_tags",
+        "get_tag_list": "handle_get_tag_list",
+        "refresh_tag_list": "handle_refresh_tag_list",
     }
 
     def handle_request(self, request: dict) -> dict:
@@ -265,11 +272,25 @@ class IPCServer(
     def _async_sync_favourite_tags(self, params: dict, req_id: str | None) -> None:
         """Thread-pool target: run sync_favourite_tags without blocking the main loop."""
         try:
-            valid_params = {k: v for k, v in params.items()}
+            param_keys = self._handler_param_keys.get("handle_sync_favourite_tags")
+            valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
             result = self.handle_sync_favourite_tags(**valid_params)
             self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
         except Exception as e:
             logger.error("async sync_favourite_tags failed: %s", e, exc_info=True)
+            self._write_response(
+                {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
+            )
+
+    def _async_refresh_tag_list(self, params: dict, req_id: str | None) -> None:
+        """Thread-pool target: run refresh_tag_list without blocking the main loop."""
+        try:
+            param_keys = self._handler_param_keys.get("handle_refresh_tag_list")
+            valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
+            result = self.handle_refresh_tag_list(**valid_params)
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
+        except Exception as e:
+            logger.error("async refresh_tag_list failed: %s", e, exc_info=True)
             self._write_response(
                 {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
             )
@@ -375,6 +396,11 @@ class IPCServer(
                 # ── sync_favourite_tags: long-running sync dispatched to thread pool ──
                 if method == "sync_favourite_tags":
                     self._cover_executor.submit(self._async_sync_favourite_tags, params, req_id)
+                    continue
+
+                # ── refresh_tag_list: long-running sync dispatched to thread pool ──
+                if method == "refresh_tag_list":
+                    self._cover_executor.submit(self._async_refresh_tag_list, params, req_id)
                     continue
 
                 response = self.handle_request(request)

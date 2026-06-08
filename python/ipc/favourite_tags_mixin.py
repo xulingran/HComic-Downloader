@@ -196,6 +196,9 @@ class FavouriteTagsMixin:
             logger.error("sync_favourite_tags page 1 failed: %s", e, exc_info=True)
             raise
 
+        if needs_login:
+            raise RuntimeError(f"{effective_source} 未登录或会话已过期，请先登录后再同步")
+
         # 1. 第一页成功后才清空该来源的标签索引
         self._favourite_tags_db.clear(effective_source)
 

@@ -311,4 +311,21 @@ contextBridge.exposeInMainWorld('hcomic', {
   onLoginCookieSuccess: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, callback, false)
   },
+
+  getTagList: (source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    if (keyword !== undefined && keyword !== null && typeof keyword !== 'string') throw new Error('Invalid keyword')
+    if (page !== undefined && page !== null) {
+      if (typeof page !== 'number' || !Number.isFinite(page) || !Number.isInteger(page) || page < 1) throw new Error('Invalid page')
+    }
+    if (limit !== undefined && limit !== null) {
+      if (typeof limit !== 'number' || !Number.isFinite(limit) || !Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error('Invalid limit')
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_TAG_LIST, source ?? undefined, keyword ?? undefined, page ?? undefined, limit ?? undefined)
+  },
+
+  refreshTagList: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.REFRESH_TAG_LIST, source ?? undefined)
+  },
 })

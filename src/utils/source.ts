@@ -35,8 +35,12 @@ export function sourceSupportsTagRecommendation(source: string): boolean {
   return SOURCE_META[source as ComicSource]?.supportsTagRecommendation ?? false
 }
 
+/** 来源是否支持标签列表 */
+export function sourceSupportsTagList(source: string): boolean {
+  return SOURCE_META[source as ComicSource]?.supportsTagList ?? false
+}
+
 /**
- * Normalize a source identifier to a valid ComicSource.
  * Unknown sources default to 'hcomic'.
  */
 export function normalizeSourceKey(source: string): ComicSource {

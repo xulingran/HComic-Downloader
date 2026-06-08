@@ -171,6 +171,11 @@ class SearchMixin:
             if self._is_source_auth_error(effective_source, e):
                 raise AuthRequiredError(f"{effective_source} 登录凭证已失效: {e}") from e
             raise
+
+        # Incrementally collect tags for hcomic source
+        if effective_source == "hcomic" and comics:
+            self._collect_tags_from_comics(comics, effective_source)
+
         return {
             "comics": [self._comic_to_dict(c) for c in comics],
             "pagination": self._pagination_to_dict(pagination, fallback_page=page),
@@ -382,6 +387,8 @@ class SearchMixin:
             comic = self.parser.get_comic_detail(comic_id, source=source)
             if comic and hasattr(comic, "tags") and comic.tags:
                 self._favourite_tags_db.upsert_comic(comic_id, source, comic.tags)
+                # Also feed tags to tag list catalog
+                self._tag_list_db.upsert_tags(comic.tags, source)
         except Exception as e:
             logger.debug("Failed to update tags on favourite add: %s", e)
 
@@ -397,9 +404,11 @@ class SearchMixin:
             当 collect_empty=True 时返回需 enrichment 的漫画列表；否则返回空列表。
         """
         empty_tag_comics: list = []
+        all_new_tags: list[str] = []
         for comic in comics:
             tags = getattr(comic, "tags", None) or []
             if tags:
+                all_new_tags.extend(tags)
                 existing = self._favourite_tags_db.get_comic_tags(comic.id, source)
                 if set(existing) != set(tags):
                     self._favourite_tags_db.upsert_comic(comic.id, source, tags)
@@ -407,6 +416,9 @@ class SearchMixin:
                 existing = self._favourite_tags_db.get_comic_tags(comic.id, source)
                 if not existing:
                     empty_tag_comics.append(comic)
+        # Also feed tags to tag list catalog
+        if all_new_tags:
+            self._tag_list_db.upsert_tags(all_new_tags, source)
         return empty_tag_comics
 
     def _enrich_tags_for_comics(self, comics: list, source: str) -> int:
@@ -431,6 +443,8 @@ class SearchMixin:
                 detail = self.parser.get_comic_detail(comic.id, source=source)
                 if detail and hasattr(detail, "tags") and detail.tags:
                     self._favourite_tags_db.upsert_comic(comic.id, source, detail.tags)
+                    # Also feed tags to tag list catalog
+                    self._tag_list_db.upsert_tags(detail.tags, source)
                     enriched += 1
             except Exception as e:
                 logger.debug("Tag enrichment failed for %s (%s): %s", comic.id, source, e)

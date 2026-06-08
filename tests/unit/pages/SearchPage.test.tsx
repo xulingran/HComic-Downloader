@@ -67,6 +67,10 @@ vi.mock('@/hooks/useIpc', () => ({
   useAuth: vi.fn().mockReturnValue({
     verifyAuth: mockVerifyAuth,
   }),
+  useTagList: vi.fn().mockReturnValue({
+    getTagList: vi.fn().mockResolvedValue({ tags: [], total: 0 }),
+    refreshTagList: vi.fn().mockResolvedValue(undefined),
+  }),
 }))
 
 vi.mock('@/stores/useComicStore', () => ({

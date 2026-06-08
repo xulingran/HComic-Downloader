@@ -443,6 +443,14 @@ export interface IPCMethods {
     params: Record<string, never>
     result: { domains: string[] }
   }
+  get_tag_list: {
+    params: { source?: string; keyword?: string; page?: number; limit?: number }
+    result: { tags: Array<{ tag: string; count: number }>; total: number }
+  }
+  refresh_tag_list: {
+    params: { source?: string }
+    result: { totalTags: number; totalComics: number; totalPages: number }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -498,6 +506,8 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:remove-favourite-tag': 'remove_favourite_tag',
   'python:sync-favourite-tags': 'sync_favourite_tags',
   'python:get-jmcomic-domains': 'get_jmcomic_domains',
+  'python:get-tag-list': 'get_tag_list',
+  'python:refresh-tag-list': 'refresh_tag_list',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -543,6 +553,8 @@ export interface HcomicAPI {
   getProxyStatus(): Promise<ProxyStatus>
   getAvailableFonts(): Promise<{ fonts: FontInfo[] }>
   getJmcomicDomains(): Promise<{ domains: string[] }>
+  getTagList(source?: string, keyword?: string, page?: number, limit?: number): Promise<{ tags: Array<{ tag: string; count: number }>; total: number }>
+  refreshTagList(source?: string): Promise<{ totalTags: number; totalComics: number; totalPages: number }>
   openDownloadDir(): Promise<{ success: boolean }>
   selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
@@ -599,6 +611,7 @@ export const SOURCE_META = {
     supportsRanking: false,
     needsDetailEnrich: false,
     supportsTagRecommendation: true,
+    supportsTagList: true,
   },
   moeimg: {
     label: 'MoeImg',
@@ -608,6 +621,7 @@ export const SOURCE_META = {
     supportsRanking: false,
     needsDetailEnrich: true,
     supportsTagRecommendation: true,
+    supportsTagList: false,
   },
   jmcomic: {
     label: 'jmcomic',
@@ -617,6 +631,7 @@ export const SOURCE_META = {
     supportsRanking: true,
     needsDetailEnrich: true,
     supportsTagRecommendation: true,
+    supportsTagList: false,
   },
   bika: {
     label: '哔咔',
@@ -626,6 +641,7 @@ export const SOURCE_META = {
     supportsRanking: false,
     needsDetailEnrich: false,
     supportsTagRecommendation: true,
+    supportsTagList: false,
   },
   copymanga: {
     label: '拷贝漫画',
@@ -635,6 +651,7 @@ export const SOURCE_META = {
     supportsRanking: true,
     needsDetailEnrich: false,
     supportsTagRecommendation: false,
+    supportsTagList: false,
   },
 } as const satisfies Record<ComicSource, {
   label: string
@@ -644,6 +661,7 @@ export const SOURCE_META = {
   supportsRanking: boolean
   needsDetailEnrich: boolean
   supportsTagRecommendation: boolean
+  supportsTagList: boolean
 }>
 
 /** 来源标签映射（便捷访问） */
@@ -703,6 +721,8 @@ export const IPC_CHANNELS = {
   GET_PROXY_STATUS: 'python:get-proxy-status',
   GET_AVAILABLE_FONTS: 'python:get-available-fonts',
   GET_JMCOMIC_DOMAINS: 'python:get-jmcomic-domains',
+  GET_TAG_LIST: 'python:get-tag-list',
+  REFRESH_TAG_LIST: 'python:refresh-tag-list',
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
   GET_PREVIEW_URLS: 'python:get-preview-urls',

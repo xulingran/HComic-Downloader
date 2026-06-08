@@ -9,6 +9,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from models import ComicInfo
 from python.ipc.favourite_tags_mixin import FavouriteTagsDB
 from python.ipc.search_mixin import SearchMixin
+from python.ipc.tag_list_mixin import TagListDB
 
 
 def _make_db(tmp_path):
@@ -28,8 +29,9 @@ def _make_comic(comic_id: str, title: str = "Test", tags: list[str] | None = Non
 class _FakeSearchMixin(SearchMixin):
     """Minimal SearchMixin with injected dependencies for testing."""
 
-    def __init__(self, db: FavouriteTagsDB, parser_mock: MagicMock):
+    def __init__(self, db: FavouriteTagsDB, parser_mock: MagicMock, tag_list_db: TagListDB | None = None):
         self._favourite_tags_db = db
+        self._tag_list_db = tag_list_db or TagListDB(str(db._db_path).replace("ft.db", "tl.db"))
         self.parser = parser_mock
 
 
