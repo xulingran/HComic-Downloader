@@ -429,6 +429,16 @@ export interface IPCMethods {
     params: { tag: string; source?: string }
     result: { success: boolean }
   }
+  sync_favourite_tags: {
+    params: { source?: string }
+    result: {
+      tags: Array<{tag: string; count: number}>
+      totalComics: number
+      enrichedCount: number
+      enrichNeeded: number
+      skippedPages: number
+    }
+  }
   get_jmcomic_domains: {
     params: Record<string, never>
     result: { domains: string[] }
@@ -486,6 +496,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-favourite-tags': 'get_favourite_tags',
   'python:clear-favourite-tags': 'clear_favourite_tags',
   'python:remove-favourite-tag': 'remove_favourite_tag',
+  'python:sync-favourite-tags': 'sync_favourite_tags',
   'python:get-jmcomic-domains': 'get_jmcomic_domains',
 } as const
 
@@ -557,6 +568,13 @@ export interface HcomicAPI {
   getFavouriteTags(source?: string): Promise<{ tags: Array<{tag: string; count: number}> }>
   clearFavouriteTags(source?: string): Promise<{ success: boolean }>
   removeFavouriteTag(tag: string, source?: string): Promise<{ success: boolean }>
+  syncFavouriteTags(source?: string): Promise<{
+    tags: Array<{tag: string; count: number}>
+    totalComics: number
+    enrichedCount: number
+    enrichNeeded: number
+    skippedPages: number
+  }>
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
   onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
@@ -589,7 +607,7 @@ export const SOURCE_META = {
     requiresAuth: false,
     supportsRanking: false,
     needsDetailEnrich: true,
-    supportsTagRecommendation: false,
+    supportsTagRecommendation: true,
   },
   jmcomic: {
     label: 'jmcomic',
@@ -709,6 +727,7 @@ export const IPC_CHANNELS = {
   GET_FAVOURITE_TAGS: 'python:get-favourite-tags',
   CLEAR_FAVOURITE_TAGS: 'python:clear-favourite-tags',
   REMOVE_FAVOURITE_TAG: 'python:remove-favourite-tag',
+  SYNC_FAVOURITE_TAGS: 'python:sync-favourite-tags',
   SELECT_DIRECTORY: 'select-directory',
 } as const
 

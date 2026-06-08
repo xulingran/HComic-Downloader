@@ -175,7 +175,7 @@ export class PythonBridge {
     this.notificationHandlers.set(method, handler)
   }
 
-  async call(method: string, params: Record<string, unknown> = {}): Promise<unknown> {
+  async call(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<unknown> {
     const proc = this.process
     if (!proc) {
       throw new Error('Python process not running')
@@ -199,7 +199,7 @@ export class PythonBridge {
           this.pendingRequests.delete(id)
           reject(new Error('Request timeout'))
         }
-      }, REQUEST_TIMEOUT_MS)
+      }, timeoutMs ?? REQUEST_TIMEOUT_MS)
 
       this.pendingRequests.set(id, { resolve, reject, timer })
       try {

@@ -11,7 +11,7 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-_TAG_RECOMMENDATION_SOURCES = ("hcomic", "jmcomic", "bika")
+_TAG_RECOMMENDATION_SOURCES = ("hcomic", "jmcomic", "bika", "moeimg")
 
 
 class FavouriteTagsDB:
@@ -175,3 +175,61 @@ class FavouriteTagsMixin:
         effective_source = source if source in _TAG_RECOMMENDATION_SOURCES else "hcomic"
         self._favourite_tags_db.remove_tag(tag, effective_source)
         return {"success": True}
+
+    def handle_sync_favourite_tags(self, source: str = "hcomic") -> dict:
+        """一站式同步：获取全部收藏 → 清空索引 → 更新有标签漫画 → 补全无标签漫画。
+
+        先获取第一页确认可访问，再清空索引，避免未登录时丢失已有数据。
+        """
+        effective_source = source if source in _TAG_RECOMMENDATION_SOURCES else "hcomic"
+
+        # 2. 逐页获取收藏夹，收集有/无标签漫画
+        all_empty: list = []
+        total_comics = 0
+        skipped_pages = 0
+
+        try:
+            comics, pagination, needs_login = self.parser.favourites(
+                page=1, raise_errors=True, source=effective_source,
+            )
+        except Exception as e:
+            logger.error("sync_favourite_tags page 1 failed: %s", e, exc_info=True)
+            raise
+
+        # 1. 第一页成功后才清空该来源的标签索引
+        self._favourite_tags_db.clear(effective_source)
+
+        total_pages = pagination.total_pages if pagination else 1
+        total_comics += len(comics)
+        empty = self._update_tags_from_favourites_page(comics, effective_source, collect_empty=True)
+        all_empty.extend(empty)
+
+        for page in range(2, total_pages + 1):
+            try:
+                comics, pagination, _needs_login = self.parser.favourites(
+                    page=page, raise_errors=False, source=effective_source,
+                )
+                total_comics += len(comics)
+                empty = self._update_tags_from_favourites_page(comics, effective_source, collect_empty=True)
+                all_empty.extend(empty)
+            except Exception as e:
+                logger.warning("sync_favourite_tags page %d failed: %s", page, e)
+                skipped_pages += 1
+
+        # 3. 对无标签漫画做 enrichment
+        enrich_needed = len(all_empty)
+        enriched_count = self._enrich_tags_for_comics(all_empty, effective_source)
+
+        # 4. 返回最终标签列表
+        tags = self._favourite_tags_db.get_tags(effective_source)
+        logger.info(
+            "sync_favourite_tags done: source=%s total=%d enrich_needed=%d enriched=%d skipped=%d",
+            effective_source, total_comics, enrich_needed, enriched_count, skipped_pages,
+        )
+        return {
+            "tags": tags,
+            "totalComics": total_comics,
+            "enrichedCount": enriched_count,
+            "enrichNeeded": enrich_needed,
+            "skippedPages": skipped_pages,
+        }

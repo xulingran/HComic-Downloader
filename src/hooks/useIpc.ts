@@ -251,5 +251,9 @@ export function useFavouriteTags() {
     return invoke(() => window.hcomic!.removeFavouriteTag(tag, source))
   }, [invoke])
 
-  return { getFavouriteTags, clearFavouriteTags, removeFavouriteTag }
+  const syncFavouriteTags = useCallback(async (source?: string) => {
+    return invoke(() => window.hcomic!.syncFavouriteTags(source))
+  }, [invoke])
+
+  return { getFavouriteTags, clearFavouriteTags, removeFavouriteTag, syncFavouriteTags }
 }

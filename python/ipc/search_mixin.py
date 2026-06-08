@@ -385,12 +385,56 @@ class SearchMixin:
         except Exception as e:
             logger.debug("Failed to update tags on favourite add: %s", e)
 
-    def _update_tags_from_favourites_page(self, comics: list, source: str) -> None:
-        """Compare comic tags against stored snapshots and update index if they differ."""
+    def _update_tags_from_favourites_page(self, comics: list, source: str, *, collect_empty: bool = False) -> list:
+        """Compare comic tags against stored snapshots and update index if they differ.
+
+        Args:
+            comics: 漫画列表
+            source: 来源标识
+            collect_empty: 如果为 True，收集无标签且未索引的漫画并返回
+
+        Returns:
+            当 collect_empty=True 时返回需 enrichment 的漫画列表；否则返回空列表。
+        """
+        empty_tag_comics: list = []
         for comic in comics:
             tags = getattr(comic, "tags", None) or []
-            if not tags:
-                continue
-            existing = self._favourite_tags_db.get_comic_tags(comic.id, source)
-            if set(existing) != set(tags):
-                self._favourite_tags_db.upsert_comic(comic.id, source, tags)
+            if tags:
+                existing = self._favourite_tags_db.get_comic_tags(comic.id, source)
+                if set(existing) != set(tags):
+                    self._favourite_tags_db.upsert_comic(comic.id, source, tags)
+            elif collect_empty:
+                existing = self._favourite_tags_db.get_comic_tags(comic.id, source)
+                if not existing:
+                    empty_tag_comics.append(comic)
+        return empty_tag_comics
+
+    def _enrich_tags_for_comics(self, comics: list, source: str) -> int:
+        """通过 get_comic_detail 为无标签漫画补全标签。
+
+        顺序调用，带随机延迟控制请求频率。
+
+        Returns:
+            成功补全标签的漫画数量。
+        """
+        import random
+        import time
+
+        if not comics:
+            return 0
+
+        enriched = 0
+        for i, comic in enumerate(comics):
+            if i > 0:
+                time.sleep(random.uniform(0.3, 0.6))
+            try:
+                detail = self.parser.get_comic_detail(comic.id, source=source)
+                if detail and hasattr(detail, "tags") and detail.tags:
+                    self._favourite_tags_db.upsert_comic(comic.id, source, detail.tags)
+                    enriched += 1
+            except Exception as e:
+                logger.debug("Tag enrichment failed for %s (%s): %s", comic.id, source, e)
+
+        if enriched:
+            logger.info("Enriched tags for %d/%d comics (source=%s)", enriched, len(comics), source)
+        return enriched

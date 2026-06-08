@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { TAG_RECOMMENDATION_SOURCES, SOURCE_LABELS } from '@shared/types'
-import { useFavouriteTags, useFavourites } from '../../hooks/useIpc'
+import { useFavouriteTags } from '../../hooks/useIpc'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 
 interface TagItem {
@@ -10,8 +10,7 @@ interface TagItem {
 
 export function FavouriteTagSettings() {
   const { favouriteTagHighlight, setFavouriteTagHighlight } = useSettingsStore()
-  const { getFavouriteTags, clearFavouriteTags, removeFavouriteTag } = useFavouriteTags()
-  const { getFavourites } = useFavourites()
+  const { getFavouriteTags, removeFavouriteTag, syncFavouriteTags } = useFavouriteTags()
   const [source, setSource] = useState('hcomic')
   const [tags, setTags] = useState<TagItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -40,28 +39,12 @@ export function FavouriteTagSettings() {
   const handleSync = async () => {
     setIsSyncing(true)
     setSyncedCount(null)
-    setSyncProgress(null)
+    setSyncProgress('正在同步...')
     try {
-      await clearFavouriteTags(source)
-
-      const first = await getFavourites(1, source)
-      const totalPages = first.pagination?.totalPages ?? 1
-      let total = first.comics.length
-      setSyncProgress(`正在同步 1/${totalPages}...`)
-
-      for (let page = 2; page <= totalPages; page++) {
-        try {
-          const result = await getFavourites(page, source)
-          total += result.comics.length
-          setSyncProgress(`正在同步 ${page}/${totalPages}...`)
-        } catch {
-          // Skip failed pages, continue
-        }
-      }
-
-      setSyncedCount(total)
+      const result = await syncFavouriteTags(source)
+      setSyncedCount(result.totalComics)
+      setTags(result.tags)
       setSyncProgress(null)
-      await loadTags()
     } catch {
       setSyncedCount(null)
       setSyncProgress(null)

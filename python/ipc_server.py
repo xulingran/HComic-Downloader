@@ -208,6 +208,7 @@ class IPCServer(
         "get_favourite_tags": "handle_get_favourite_tags",
         "clear_favourite_tags": "handle_clear_favourite_tags",
         "remove_favourite_tag": "handle_remove_favourite_tag",
+        "sync_favourite_tags": "handle_sync_favourite_tags",
     }
 
     def handle_request(self, request: dict) -> dict:
@@ -260,6 +261,18 @@ class IPCServer(
                 "id": req_id,
                 "error": {"code": -32601, "message": f"Method not found: {method}"},
             }
+
+    def _async_sync_favourite_tags(self, params: dict, req_id: str | None) -> None:
+        """Thread-pool target: run sync_favourite_tags without blocking the main loop."""
+        try:
+            valid_params = {k: v for k, v in params.items()}
+            result = self.handle_sync_favourite_tags(**valid_params)
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
+        except Exception as e:
+            logger.error("async sync_favourite_tags failed: %s", e, exc_info=True)
+            self._write_response(
+                {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}}
+            )
 
     def handle_get_cache_stats(self) -> dict:
         """Return combined cache statistics for cover and preview caches."""
@@ -357,6 +370,11 @@ class IPCServer(
                         scramble_id=scramble_id,
                         comic_id=comic_id,
                     )
+                    continue
+
+                # ── sync_favourite_tags: long-running sync dispatched to thread pool ──
+                if method == "sync_favourite_tags":
+                    self._cover_executor.submit(self._async_sync_favourite_tags, params, req_id)
                     continue
 
                 response = self.handle_request(request)

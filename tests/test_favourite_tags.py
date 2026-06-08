@@ -148,3 +148,41 @@ def test_bika_upsert_and_get_tags(tmp_path):
     # Clear
     db.clear("bika")
     assert db.get_tags("bika") == []
+
+
+def test_moeimg_source_isolated(tmp_path):
+    """Moeimg tag data is isolated from other sources."""
+    db = _make_db(tmp_path)
+    db.upsert_comic("c1", "hcomic", ["tag:A"])
+    db.upsert_comic("c1", "moeimg", ["触手", "NTR"])
+    hcomic_tags = db.get_tags("hcomic")
+    moeimg_tags = db.get_tags("moeimg")
+    assert len(hcomic_tags) == 1
+    assert len(moeimg_tags) == 2
+    assert hcomic_tags[0]["tag"] == "tag:A"
+    moeimg_tag_names = {t["tag"] for t in moeimg_tags}
+    assert moeimg_tag_names == {"触手", "NTR"}
+
+
+def test_moeimg_upsert_and_get_tags(tmp_path):
+    """Moeimg source full CRUD flow: upsert, get, remove, clear."""
+    db = _make_db(tmp_path)
+    # Upsert multiple comics
+    db.upsert_comic("m1", "moeimg", ["触手", "NTR"])
+    db.upsert_comic("m2", "moeimg", ["触手", "人妻"])
+    tags = db.get_tags("moeimg")
+    tag_map = {t["tag"]: t["count"] for t in tags}
+    assert tag_map["触手"] == 2
+    assert tag_map["NTR"] == 1
+    assert tag_map["人妻"] == 1
+
+    # Remove a comic
+    db.remove_comic("m1", "moeimg")
+    tags = db.get_tags("moeimg")
+    tag_map = {t["tag"]: t["count"] for t in tags}
+    assert tag_map["触手"] == 1
+    assert "NTR" not in tag_map  # count went to 0 and was cleaned up
+
+    # Clear
+    db.clear("moeimg")
+    assert db.get_tags("moeimg") == []

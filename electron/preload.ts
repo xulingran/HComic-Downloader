@@ -291,6 +291,11 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.REMOVE_FAVOURITE_TAG, tag, source ?? undefined)
   },
 
+  syncFavouriteTags: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.SYNC_FAVOURITE_TAGS, source ?? undefined)
+  },
+
   onMigrationProgress: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.MIGRATION_PROGRESS, callback)
   },

@@ -964,6 +964,15 @@ function registerFavouriteTagHandlers(bridge: Bridge) {
     }
     return bridge.call('remove_favourite_tag', params)
   })
+
+  ipcMain.handle(IPC_CHANNELS.SYNC_FAVOURITE_TAGS, async (_, source?: unknown) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'sync_favourite_tags source')
+      params.source = source
+    }
+    return bridge.call('sync_favourite_tags', params, 300_000) // 5 min timeout for large sync + enrichment
+  })
 }
 
 function registerIPCHandlers() {
