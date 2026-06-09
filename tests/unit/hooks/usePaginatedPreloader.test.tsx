@@ -1,6 +1,15 @@
-import { renderHook, waitFor } from '@testing-library/react'
+import { act, renderHook, waitFor } from '@testing-library/react'
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { getPreloadCandidates, usePaginatedPreloader } from '@/hooks/usePaginatedPreloader'
+
+function createDeferred() {
+  let resolve!: () => void
+  const promise = new Promise<void>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+
+  return { promise, resolve }
+}
 
 describe('getPreloadCandidates', () => {
   it('returns nearby pages in priority order for middle pages', () => {
@@ -58,6 +67,46 @@ describe('usePaginatedPreloader', () => {
     expect(loadPage).not.toHaveBeenCalled()
   })
 
+  it('does not preload when total pages is one or less', async () => {
+    const loadPage = vi.fn().mockResolvedValue(undefined)
+
+    renderHook(() => usePaginatedPreloader({
+      currentPage: 1,
+      totalPages: 1,
+      contextKey: 'history',
+      enabled: true,
+      hasPage: () => false,
+      loadPage,
+    }))
+
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(loadPage).not.toHaveBeenCalled()
+  })
+
+  it('uses a default concurrency limit of two', async () => {
+    let active = 0
+    let maxActive = 0
+    const loadPage = vi.fn(async () => {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      await new Promise(resolve => setTimeout(resolve, 10))
+      active -= 1
+    })
+
+    renderHook(() => usePaginatedPreloader({
+      currentPage: 5,
+      totalPages: 10,
+      contextKey: 'history',
+      enabled: true,
+      hasPage: () => false,
+      loadPage,
+    }))
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(active).toBe(0))
+    expect(maxActive).toBeLessThanOrEqual(2)
+  })
+
   it('limits concurrent preload requests to two', async () => {
     let active = 0
     let maxActive = 0
@@ -83,6 +132,39 @@ describe('usePaginatedPreloader', () => {
     expect(maxActive).toBeLessThanOrEqual(2)
   })
 
+  it('does not request an in-flight page again', async () => {
+    const deferred = createDeferred()
+    const loadPage = vi.fn(async (page: number) => {
+      if (page === 6) {
+        await deferred.promise
+      }
+    })
+
+    const { rerender } = renderHook(
+      ({ currentPage }) => usePaginatedPreloader({
+        currentPage,
+        totalPages: 10,
+        contextKey: 'history',
+        enabled: true,
+        hasPage: () => false,
+        loadPage,
+        concurrency: 1,
+      }),
+      { initialProps: { currentPage: 5 } },
+    )
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledWith(6, 'preload'))
+    rerender({ currentPage: 4 })
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
+    expect(loadPage.mock.calls.filter(([page]) => page === 6)).toHaveLength(1)
+
+    await act(async () => {
+      deferred.resolve()
+      await deferred.promise
+    })
+  })
+
   it('does not report preload errors to page state by default', async () => {
     const loadPage = vi.fn().mockRejectedValue(new Error('network failed'))
 
@@ -96,6 +178,66 @@ describe('usePaginatedPreloader', () => {
     }))
 
     await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
+  })
+
+  it('reports preload errors through the optional callback', async () => {
+    const error = new Error('network failed')
+    const loadPage = vi.fn().mockRejectedValue(error)
+    const onPreloadError = vi.fn()
+
+    renderHook(() => usePaginatedPreloader({
+      currentPage: 1,
+      totalPages: 2,
+      contextKey: 'history',
+      enabled: true,
+      hasPage: () => false,
+      loadPage,
+      onPreloadError,
+    }))
+
+    await waitFor(() => expect(onPreloadError).toHaveBeenCalledWith(2, error))
+  })
+
+  it('does not commit completed preload results after context changes', async () => {
+    const firstRequest = createDeferred()
+    const secondRequest = createDeferred()
+    const loadPage = vi.fn()
+      .mockImplementationOnce(() => firstRequest.promise)
+      .mockImplementationOnce(() => secondRequest.promise)
+    const commitPage = vi.fn()
+
+    const { rerender } = renderHook(
+      ({ contextKey }) => usePaginatedPreloader({
+        currentPage: 1,
+        totalPages: 2,
+        contextKey,
+        enabled: true,
+        hasPage: () => false,
+        loadPage,
+        commitPage,
+      }),
+      { initialProps: { contextKey: 'search:first' } },
+    )
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(1))
+    rerender({ contextKey: 'search:second' })
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
+
+    await act(async () => {
+      firstRequest.resolve()
+      await firstRequest.promise
+    })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(commitPage).not.toHaveBeenCalled()
+
+    await act(async () => {
+      secondRequest.resolve()
+      await secondRequest.promise
+    })
+
+    await waitFor(() => expect(commitPage).toHaveBeenCalledWith(2, 'search:second'))
+    expect(commitPage).toHaveBeenCalledTimes(1)
   })
 
   it('starts a new generation when context changes', async () => {

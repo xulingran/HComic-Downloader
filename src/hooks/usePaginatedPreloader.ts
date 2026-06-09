@@ -9,6 +9,7 @@ interface UsePaginatedPreloaderArgs {
   enabled: boolean
   hasPage: (page: number) => boolean
   loadPage: (page: number, reason: PreloadReason) => Promise<void>
+  commitPage?: (page: number, contextKey: string) => void | Promise<void>
   onPreloadError?: (page: number, error: unknown) => void
   concurrency?: number
 }
@@ -25,6 +26,7 @@ export function usePaginatedPreloader({
   enabled,
   hasPage,
   loadPage,
+  commitPage,
   onPreloadError,
   concurrency = 2,
 }: UsePaginatedPreloaderArgs) {
@@ -60,6 +62,9 @@ export function usePaginatedPreloader({
         inFlightRef.current.add(requestKey)
         try {
           await loadPage(page, 'preload')
+          if (!cancelled && generation === generationRef.current) {
+            await commitPage?.(page, contextKey)
+          }
         } catch (error) {
           onPreloadError?.(page, error)
         } finally {
@@ -74,5 +79,5 @@ export function usePaginatedPreloader({
     return () => {
       cancelled = true
     }
-  }, [currentPage, totalPages, contextKey, enabled, hasPage, loadPage, onPreloadError, concurrency])
+  }, [currentPage, totalPages, contextKey, enabled, hasPage, loadPage, commitPage, onPreloadError, concurrency])
 }
