@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
-import { useSearchCacheStore } from '@/stores/useSearchCacheStore'
+import { useSearchCacheStore, createSearchContextKey } from '@/stores/useSearchCacheStore'
 import type { ComicInfo, PaginationInfo } from '@shared/types'
 
 const mockComic: ComicInfo = {
@@ -7,88 +7,110 @@ const mockComic: ComicInfo = {
   title: 'Test Comic',
   url: 'https://example.com/comic/1',
   coverUrl: 'https://example.com/cover.jpg',
-  source: 'test'
+  source: 'test',
 }
 
 const mockPagination: PaginationInfo = {
   currentPage: 3,
   totalPages: 10,
-  totalItems: 100
+  totalItems: 100,
 }
 
 describe('useSearchCacheStore', () => {
   beforeEach(() => {
-    useSearchCacheStore.setState({ cache: null, hasCache: false })
-  })
-
-  it('应有正确的初始状态', () => {
-    const state = useSearchCacheStore.getState()
-    expect(state.cache).toBeNull()
-    expect(state.hasCache).toBe(false)
-  })
-
-  it('应能写入缓存', () => {
-    useSearchCacheStore.getState().setCache({
-      query: 'test query',
-      mode: 'keyword',
-      source: 'hcomic',
-      searchTags: '',
-      comics: [mockComic],
-      pagination: mockPagination
+    useSearchCacheStore.setState({
+      contexts: {},
+      currentContextKey: null,
+      currentPage: 1,
+      hasCache: false,
     })
-
-    const state = useSearchCacheStore.getState()
-    expect(state.hasCache).toBe(true)
-    expect(state.cache).not.toBeNull()
-    expect(state.cache!.query).toBe('test query')
-    expect(state.cache!.mode).toBe('keyword')
-    expect(state.cache!.source).toBe('hcomic')
-    expect(state.cache!.searchTags).toBe('')
-    expect(state.cache!.comics).toEqual([mockComic])
-    expect(state.cache!.pagination).toEqual(mockPagination)
   })
 
-  it('应能覆盖已有缓存', () => {
-    useSearchCacheStore.getState().setCache({
-      query: 'first',
-      mode: 'keyword',
-      source: 'hcomic',
-      searchTags: '',
-      comics: [],
-      pagination: null
-    })
-    useSearchCacheStore.getState().setCache({
-      query: 'second',
-      mode: 'author',
-      source: 'jmcomic',
-      searchTags: 'tag1',
-      comics: [mockComic],
-      pagination: mockPagination
-    })
-
-    const state = useSearchCacheStore.getState()
-    expect(state.cache!.query).toBe('second')
-    expect(state.cache!.mode).toBe('author')
-    expect(state.cache!.source).toBe('jmcomic')
-    expect(state.cache!.searchTags).toBe('tag1')
-    expect(state.cache!.comics).toEqual([mockComic])
-    expect(state.cache!.pagination).toEqual(mockPagination)
+  it('creates stable context keys', () => {
+    expect(createSearchContextKey({ query: 'abc', mode: 'keyword', source: 'hcomic', searchTags: '' }))
+      .toBe('hcomic\u001fkeyword\u001fabc\u001f')
   })
 
-  it('应能清除缓存', () => {
-    useSearchCacheStore.getState().setCache({
+  it('stores and reads a page in a search context', () => {
+    const key = createSearchContextKey({ query: 'test', mode: 'keyword', source: 'hcomic', searchTags: '' })
+
+    useSearchCacheStore.getState().setPage(key, 3, {
       query: 'test',
       mode: 'keyword',
       source: 'hcomic',
       searchTags: '',
       comics: [mockComic],
-      pagination: mockPagination
+      pagination: mockPagination,
+    })
+
+    const state = useSearchCacheStore.getState()
+    expect(state.hasCache).toBe(true)
+    expect(state.currentContextKey).toBe(key)
+    expect(state.currentPage).toBe(3)
+    expect(state.getPage(key, 3)?.comics).toEqual([mockComic])
+    expect(state.hasPage(key, 3)).toBe(true)
+    expect(state.hasPage(key, 4)).toBe(false)
+  })
+
+  it('keeps pages isolated by context', () => {
+    const firstKey = createSearchContextKey({ query: 'first', mode: 'keyword', source: 'hcomic', searchTags: '' })
+    const secondKey = createSearchContextKey({ query: 'first', mode: 'keyword', source: 'jmcomic', searchTags: '' })
+
+    useSearchCacheStore.getState().setPage(firstKey, 1, {
+      query: 'first',
+      mode: 'keyword',
+      source: 'hcomic',
+      searchTags: '',
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 1 },
+    })
+
+    expect(useSearchCacheStore.getState().getPage(secondKey, 1)).toBeUndefined()
+  })
+
+  it('clears one context without clearing others', () => {
+    const firstKey = createSearchContextKey({ query: 'first', mode: 'keyword', source: 'hcomic', searchTags: '' })
+    const secondKey = createSearchContextKey({ query: 'second', mode: 'keyword', source: 'hcomic', searchTags: '' })
+
+    useSearchCacheStore.getState().setPage(firstKey, 1, {
+      query: 'first',
+      mode: 'keyword',
+      source: 'hcomic',
+      searchTags: '',
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 1 },
+    })
+    useSearchCacheStore.getState().setPage(secondKey, 1, {
+      query: 'second',
+      mode: 'keyword',
+      source: 'hcomic',
+      searchTags: '',
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 1 },
+    })
+
+    useSearchCacheStore.getState().clearContext(firstKey)
+
+    expect(useSearchCacheStore.getState().getPage(firstKey, 1)).toBeUndefined()
+    expect(useSearchCacheStore.getState().getPage(secondKey, 1)).toBeDefined()
+  })
+
+  it('clears all search cache', () => {
+    const key = createSearchContextKey({ query: 'test', mode: 'keyword', source: 'hcomic', searchTags: '' })
+    useSearchCacheStore.getState().setPage(key, 1, {
+      query: 'test',
+      mode: 'keyword',
+      source: 'hcomic',
+      searchTags: '',
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 1 },
     })
 
     useSearchCacheStore.getState().clearCache()
 
     const state = useSearchCacheStore.getState()
-    expect(state.cache).toBeNull()
+    expect(state.contexts).toEqual({})
+    expect(state.currentContextKey).toBeNull()
     expect(state.hasCache).toBe(false)
   })
 })
