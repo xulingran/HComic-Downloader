@@ -380,6 +380,7 @@ function createWindow() {
       sandbox: true,
       webviewTag: false,
     },
+    icon: path.join(__dirname, '../../assets/icon.svg'),
     show: false
   })
 

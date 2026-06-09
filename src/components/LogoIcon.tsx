@@ -1,0 +1,71 @@
+interface LogoIconProps {
+  size?: number
+  className?: string
+}
+
+export function LogoIcon({ size = 80, className = '' }: LogoIconProps) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 512 512"
+      width={size}
+      height={size}
+      className={className}
+    >
+      <defs>
+        <linearGradient id="logoBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#6366f1" stopOpacity={1} />
+          <stop offset="50%" stopColor="#8b5cf6" stopOpacity={1} />
+          <stop offset="100%" stopColor="#a855f7" stopOpacity={1} />
+        </linearGradient>
+        <linearGradient id="logoPageGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity={1} />
+          <stop offset="100%" stopColor="#f1f5f9" stopOpacity={1} />
+        </linearGradient>
+        <linearGradient id="logoArrowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#22d3ee" stopOpacity={1} />
+          <stop offset="100%" stopColor="#06b6d4" stopOpacity={1} />
+        </linearGradient>
+      </defs>
+
+      <rect x="16" y="16" width="480" height="480" rx="96" ry="96" fill="url(#logoBgGrad)" />
+
+      <circle cx="400" cy="120" r="60" fill="#fff" opacity={0.1} />
+      <circle cx="440" cy="160" r="30" fill="#fff" opacity={0.08} />
+
+      <g transform="translate(120, 100)">
+        <rect x="20" y="20" width="240" height="300" rx="8" fill="#c4b5fd" opacity={0.5} />
+        <rect x="10" y="10" width="240" height="300" rx="8" fill="#ddd6fe" opacity={0.7} />
+        <rect x="0" y="0" width="240" height="300" rx="8" fill="url(#logoPageGrad)" />
+        <rect x="30" y="40" width="180" height="12" rx="6" fill="#e2e8f0" />
+        <rect x="30" y="70" width="140" height="12" rx="6" fill="#e2e8f0" />
+        <rect x="30" y="100" width="160" height="12" rx="6" fill="#e2e8f0" />
+        <rect x="30" y="140" width="180" height="120" rx="8" fill="#f0f9ff" stroke="#bfdbfe" strokeWidth={2} strokeDasharray="8 4" />
+        <g transform="translate(90, 170)">
+          <path d="M30 0 L60 20 L60 50 L0 50 L0 20 Z" fill="#93c5fd" opacity={0.5} />
+          <circle cx="20" cy="25" r="8" fill="#60a5fa" />
+          <path d="M35 35 L55 50 L15 50 Z" fill="#60a5fa" />
+        </g>
+        <rect x="30" y="280" width="100" height="8" rx="4" fill="#e2e8f0" />
+        <rect x="140" y="280" width="70" height="8" rx="4" fill="#e2e8f0" />
+      </g>
+
+      <g transform="translate(300, 300)">
+        <circle cx="60" cy="60" r="70" fill="#0891b2" opacity={0.9} />
+        <circle cx="60" cy="60" r="65" fill="url(#logoArrowGrad)" />
+        <g transform="translate(25, 20)">
+          <path d="M50 0 L50 50 L70 50 L35 90 L0 50 L20 50 L20 0 Z" fill="white" opacity={0.95} />
+          <rect x="0" y="95" width="70" height="8" rx="4" fill="white" opacity={0.95} />
+        </g>
+      </g>
+
+      <circle cx="100" cy="400" r="15" fill="#fbbf24" opacity={0.8} />
+      <circle cx="130" cy="420" r="10" fill="#f472b6" opacity={0.8} />
+
+      <g opacity={0.6}>
+        <path d="M380 80 L385 90 L395 90 L387 97 L390 107 L380 100 L370 107 L373 97 L365 90 L375 90 Z" fill="white" />
+        <path d="M420 200 L423 206 L430 206 L425 211 L427 218 L420 213 L413 218 L415 211 L410 206 L417 206 Z" fill="white" opacity={0.4} />
+      </g>
+    </svg>
+  )
+}

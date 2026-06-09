@@ -1,5 +1,9 @@
 # HComic Downloader
 
+<p align="center">
+  <img src="assets/icon.svg" alt="HComic Downloader Logo" width="128">
+</p>
+
 一个跨平台的漫画下载与管理工具，基于 Electron + React + TypeScript 前端 + Python 后端构建，支持多个漫画来源的搜索、下载、阅读、收藏管理和数据迁移。
 
 ## 功能特性
