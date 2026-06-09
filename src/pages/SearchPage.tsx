@@ -433,6 +433,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     cacheSearchPage(contextKey, page, cached)
   }, [cacheSearchPage])
 
+  useEffect(() => {
+    preloadedPagesRef.current.clear()
+  }, [searchContextKey])
+
   usePaginatedPreloader({
     currentPage: pagination?.currentPage ?? 1,
     totalPages: pagination?.totalPages ?? 1,

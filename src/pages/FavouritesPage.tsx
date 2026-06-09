@@ -214,6 +214,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     cache.setPage(source, page, cached)
   }, [cache, source])
 
+  useEffect(() => {
+    preloadedPagesRef.current.clear()
+  }, [source])
+
   usePaginatedPreloader({
     currentPage,
     totalPages: pagination?.totalPages ?? 1,

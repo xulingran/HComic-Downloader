@@ -1,6 +1,9 @@
 import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
 import react from '@vitejs/plugin-react'
 import path from 'path'
+import { readFileSync } from 'fs'
+
+const pkg = JSON.parse(readFileSync(path.resolve(__dirname, 'package.json'), 'utf8'))
 
 export default defineConfig({
   main: {
@@ -30,6 +33,11 @@ export default defineConfig({
   renderer: {
     plugins: [react()],
     root: '.',
+    define: {
+      __APP_NAME__: JSON.stringify(pkg.name),
+      __APP_DESCRIPTION__: JSON.stringify(pkg.description),
+      __APP_VERSION__: JSON.stringify(pkg.version),
+    },
     build: {
       rollupOptions: {
         input: {

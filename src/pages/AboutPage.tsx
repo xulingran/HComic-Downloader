@@ -1,5 +1,8 @@
 import { LogoIcon } from '../components/LogoIcon'
-import packageJson from '../../package.json'
+
+declare const __APP_NAME__: string
+declare const __APP_DESCRIPTION__: string
+declare const __APP_VERSION__: string
 
 export function AboutPage() {
   return (
@@ -15,10 +18,10 @@ export function AboutPage() {
         {/* 应用名称 */}
         <div className="text-center">
           <h3 className="text-2xl font-bold text-[var(--text-primary)]">
-            {packageJson.name}
+            {__APP_NAME__}
           </h3>
           <p className="text-sm text-[var(--text-secondary)] mt-2">
-            {packageJson.description}
+            {__APP_DESCRIPTION__}
           </p>
         </div>
 
@@ -27,7 +30,7 @@ export function AboutPage() {
           <div className="flex items-center justify-between py-2 px-4 rounded-lg bg-[var(--bg-secondary)]">
             <span className="text-sm text-[var(--text-secondary)]">版本号</span>
             <span className="text-sm font-medium text-[var(--text-primary)]">
-              v{packageJson.version}
+              v{__APP_VERSION__}
             </span>
           </div>
         </div>
