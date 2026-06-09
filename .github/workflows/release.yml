@@ -26,7 +26,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - run: npm ci
+      - run: npm install
 
       - name: Build Python backend
         run: npm run build:python
@@ -61,7 +61,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - run: npm ci
+      - run: npm install
 
       - name: Build Python backend
         run: npm run build:python
@@ -97,7 +97,7 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt pyinstaller
 
-      - run: npm ci
+      - run: npm install
 
       - name: Build Python backend
         run: npm run build:python
