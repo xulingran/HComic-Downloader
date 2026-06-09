@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 
 export type PreloadReason = 'preload'
 
@@ -50,7 +50,7 @@ export function usePaginatedPreloader({
   const latestStateRef = useRef<PreloadState | null>(null)
   const drainRef = useRef<() => void>(() => {})
 
-  drainRef.current = () => {
+  const drain = useCallback(() => {
     const state = latestStateRef.current
     if (!state || state.cancelled || !state.enabled || state.totalPages <= 1 || state.generation !== generationRef.current) return
 
@@ -88,7 +88,11 @@ export function usePaginatedPreloader({
         }
       })()
     }
-  }
+  }, [])
+
+  useEffect(() => {
+    drainRef.current = drain
+  }, [drain])
 
   useEffect(() => {
     generationRef.current += 1

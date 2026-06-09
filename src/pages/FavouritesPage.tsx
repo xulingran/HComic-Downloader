@@ -11,7 +11,8 @@ import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
-import { useFavouritesStore } from '../stores/useFavouritesStore'
+import { useFavouritesStore, type FavouritesPageCache } from '../stores/useFavouritesStore'
+import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useSources } from '../hooks/useSourceOptions'
@@ -50,6 +51,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const latestPageRef = useRef(1)
   const mountedRef = useRef(true)
+  const preloadedPagesRef = useRef(new Map<string, FavouritesPageCache>())
   const { progress: downloadProgress } = useDownloadProgress()
   const tasks = useDownloadStore((s) => s.tasks)
 
@@ -67,36 +69,62 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const getTaskId = (comic: ComicInfo) =>
     `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
 
-  const loadFavourites = useCallback(async (page: number = 1, selectedSource?: string) => {
-    setIsLoading(true)
-    setError(null)
-    setNeedsLogin(false)
+  const cacheFavouritesPage = useCallback((effectiveSource: string, page: number, result: { comics: ComicInfo[]; pagination?: PaginationInfo | null }, statusMap: Record<string, 'downloaded' | 'unknown'> = {}) => {
+    cache.setPage(effectiveSource, page, {
+      comics: result.comics,
+      pagination: result.pagination ?? null,
+      currentPage: page,
+      downloadedStatus: statusMap,
+    })
+  }, [cache])
 
-    try {
-      const effectiveSource = selectedSource || source
-      const result = await getFavourites(page, effectiveSource)
-      setComics(result.comics)
-      setPagination(result.pagination ?? null)
-      setNeedsLogin(result.needsLogin)
-      setCurrentPage(page)
+  const loadFavourites = useCallback(async (page: number = 1, selectedSource?: string, reason: 'user' | 'preload' = 'user') => {
+    const effectiveSource = selectedSource || source
+    const cachedPage = cache.getPage(effectiveSource, page)
 
+    if (reason === 'user' && cachedPage) {
       const pageSnapshot = page
       latestPageRef.current = pageSnapshot
-      const cacheData = {
-        comics: result.comics,
-        pagination: result.pagination ?? null,
-        currentPage: page,
-        downloadedStatus: {} as Record<string, 'downloaded' | 'unknown'>,
-      }
-      checkDownloadedStatus(result.comics).then((statusResult) => {
-        if (latestPageRef.current !== pageSnapshot) return
+      setComics(cachedPage.comics)
+      setPagination(cachedPage.pagination)
+      setCurrentPage(page)
+      setDownloadedStatus(cachedPage.downloadedStatus)
+      setError(null)
+
+      getFavourites(page, effectiveSource).then(async (result) => {
+        const statusResult = await checkDownloadedStatus(result.comics).catch(() => ({ statusMap: {} }))
+        if (!mountedRef.current || latestPageRef.current !== pageSnapshot) return
+        setComics(result.comics)
+        setPagination(result.pagination ?? null)
+        setNeedsLogin(Boolean(result.needsLogin))
         setDownloadedStatus(statusResult.statusMap)
-        cache.setCache({ ...cacheData, downloadedStatus: statusResult.statusMap }, effectiveSource)
-      }).catch((err) => {
-        console.error('Failed to check downloaded status:', err)
-        cache.setCache(cacheData, effectiveSource)
-      })
+        cacheFavouritesPage(effectiveSource, page, result, statusResult.statusMap)
+      }).catch((err) => { console.debug('Background favourites refresh failed:', err) })
+      return
+    }
+
+    if (reason === 'user') {
+      setIsLoading(true)
+      setError(null)
+      setNeedsLogin(false)
+    }
+
+    try {
+      const result = await getFavourites(page, effectiveSource)
+      const statusResult = await checkDownloadedStatus(result.comics).catch(() => ({ statusMap: {} }))
+      const resolvedPage = result.pagination?.currentPage ?? page
+      cacheFavouritesPage(effectiveSource, resolvedPage, result, statusResult.statusMap)
+
+      if (reason === 'user') {
+        latestPageRef.current = resolvedPage
+        setComics(result.comics)
+        setPagination(result.pagination ?? null)
+        setNeedsLogin(Boolean(result.needsLogin))
+        setCurrentPage(resolvedPage)
+        setDownloadedStatus(statusResult.statusMap)
+      }
     } catch (err) {
+      if (reason === 'preload') return
       const msg = err instanceof Error ? err.message : 'Failed to load favourites'
       if (isAuthError(err)) {
         setNeedsLogin(true)
@@ -104,32 +132,28 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         setError(msg)
       }
     } finally {
-      setIsLoading(false)
+      if (reason === 'user') setIsLoading(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [getFavourites, checkDownloadedStatus, cache.setCache, source])
+  }, [getFavourites, checkDownloadedStatus, cache, cacheFavouritesPage, source])
 
   useEffect(() => {
     mountedRef.current = true
-    // 检查当前源是否有缓存
-    const currentCache = cache.caches[source]
+    const currentCache = cache.getPage(source, cache.currentPage)
     if (currentCache && currentCache.comics.length > 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setComics(currentCache.comics)
       setPagination(currentCache.pagination)
       setCurrentPage(currentCache.currentPage)
+      latestPageRef.current = currentCache.currentPage
       setDownloadedStatus(currentCache.downloadedStatus)
 
-      // 后台静默刷新下载状态，不影响展示和页码
       checkDownloadedStatus(currentCache.comics).then((statusResult) => {
         if (!mountedRef.current) return
         setDownloadedStatus(statusResult.statusMap)
-        cache.setCache({
+        cacheFavouritesPage(source, currentCache.currentPage, {
           comics: currentCache.comics,
           pagination: currentCache.pagination,
-          currentPage: currentCache.currentPage,
-          downloadedStatus: statusResult.statusMap,
-        }, source)
+        }, statusResult.statusMap)
       }).catch((err) => { console.debug('Background downloaded status refresh failed:', err) })
     } else {
       loadFavourites(1)
@@ -171,6 +195,35 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     await downloadWithConflictCheck(comic)
   }
 
+  const preloadFavouritesPage = useCallback(async (page: number) => {
+    const result = await getFavourites(page, source)
+    const statusResult = await checkDownloadedStatus(result.comics).catch(() => ({ statusMap: {} }))
+    preloadedPagesRef.current.set(`favourites:${source}:${page}`, {
+      comics: result.comics,
+      pagination: result.pagination ?? null,
+      currentPage: page,
+      downloadedStatus: statusResult.statusMap,
+    })
+  }, [getFavourites, checkDownloadedStatus, source])
+
+  const commitPreloadedFavouritesPage = useCallback((page: number, contextKey: string) => {
+    const requestKey = `${contextKey}:${page}`
+    const cached = preloadedPagesRef.current.get(requestKey)
+    if (!cached) return
+    preloadedPagesRef.current.delete(requestKey)
+    cache.setPage(source, page, cached)
+  }, [cache, source])
+
+  usePaginatedPreloader({
+    currentPage,
+    totalPages: pagination?.totalPages ?? 1,
+    contextKey: `favourites:${source}`,
+    enabled: !needsLogin && !isLoading && Boolean(pagination && pagination.totalPages > 1),
+    hasPage: (page) => cache.hasPage(source, page),
+    loadPage: preloadFavouritesPage,
+    commitPage: commitPreloadedFavouritesPage,
+  })
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -183,12 +236,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             onChange={(e) => {
               const newSource = e.target.value
               setSource(newSource)
-              // 检查新源是否有缓存
-              const cachedData = cache.caches[newSource]
-              if (cachedData && cachedData.comics.length > 0) {
+              cache.setCurrentSource(newSource)
+              const cachedData = cache.getPage(newSource, cache.currentPage)
+              if (cachedData) {
                 setComics(cachedData.comics)
                 setPagination(cachedData.pagination)
                 setCurrentPage(cachedData.currentPage)
+                latestPageRef.current = cachedData.currentPage
                 setDownloadedStatus(cachedData.downloadedStatus)
               } else {
                 setComics([])

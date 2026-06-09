@@ -15,7 +15,8 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
-import { useSearchCacheStore } from '../stores/useSearchCacheStore'
+import { useSearchCacheStore, createSearchContextKey, type SearchPageCache } from '../stores/useSearchCacheStore'
+import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { sourceSupportsRandom, sourceSupportsTagRecommendation, sourceSupportsTagList, normalizeSourceKey } from '../utils/source'
@@ -98,15 +99,33 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   queryRef.current = query // eslint-disable-line react-hooks/refs
   const searchTagsRef = useRef(searchTags)
   searchTagsRef.current = searchTags // eslint-disable-line react-hooks/refs
+  const modeRef = useRef(mode)
+  modeRef.current = mode // eslint-disable-line react-hooks/refs
+  const sourceRef = useRef(source)
+  sourceRef.current = source // eslint-disable-line react-hooks/refs
+  const preloadedPagesRef = useRef(new Map<string, SearchPageCache>())
+
+  const searchContextKey = useMemo(() => createSearchContextKey({
+    query,
+    mode,
+    source,
+    searchTags,
+  }), [query, mode, source, searchTags])
+
+  const cacheSearchPage = useCallback((contextKey: string, page: number, data: SearchPageCache) => {
+    searchCacheRef.current.setPage(contextKey, page, data)
+  }, [])
 
   useEffect(() => {
-    const cached = searchCacheRef.current.cache
+    const cachedContextKey = searchCacheRef.current.currentContextKey
+    const cached = cachedContextKey
+      ? searchCacheRef.current.getPage(cachedContextKey, searchCacheRef.current.currentPage)
+      : undefined
     if (cached) {
       setQuery(cached.query)
       setMode(cached.mode)
       setSource(cached.source)
       setSearchTags(cached.searchTags)
-      // Restore selectedTags from cached searchTags
       if (cached.searchTags) {
         const restored = cached.searchTags.split(',').filter(Boolean)
         tagPanel.setSelectedTags(restored)
@@ -212,9 +231,16 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       if (gen !== searchGenRef.current) return
       setComics(result.comics)
       setPagination(result.pagination)
-      searchCacheRef.current.setCache({
+      const finalMode = searchMode === 'tag' && !finalQuery ? 'tag' : searchMode
+      const contextKey = createSearchContextKey({
         query: finalQuery,
-        mode: searchMode === 'tag' && !finalQuery ? 'tag' : searchMode,
+        mode: finalMode,
+        source,
+        searchTags: finalTags,
+      })
+      cacheSearchPage(contextKey, result.pagination?.currentPage ?? 1, {
+        query: finalQuery,
+        mode: finalMode,
         source,
         searchTags: finalTags,
         comics: result.comics,
@@ -226,7 +252,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }).finally(() => {
       if (gen === searchGenRef.current) setLoading(false)
     })
-  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, tagPanel])
+  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, tagPanel, cacheSearchPage])
 
   useEffect(() => {
     if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(source)) {
@@ -253,11 +279,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     })
   }, [comics, filterEnabled, tagBlacklist, source, recommendedTags])
 
-  const modeRef = useRef(mode)
-  modeRef.current = mode // eslint-disable-line react-hooks/refs
-  const sourceRef = useRef(source)
-  sourceRef.current = source // eslint-disable-line react-hooks/refs
-
   const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
   const withLoading = useCallback(async (fn: () => Promise<{ comics: ComicInfo[]; pagination: PaginationInfo | null }>) => {
@@ -270,7 +291,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       setNeedsLogin(false)
       setComics(result.comics)
       if (result.pagination) setPagination(result.pagination)
-      searchCacheRef.current.setCache({
+      const contextKey = createSearchContextKey({
+        query: queryRef.current,
+        mode: modeRef.current,
+        source: sourceRef.current,
+        searchTags: searchTagsRef.current,
+      })
+      cacheSearchPage(contextKey, result.pagination?.currentPage ?? 1, {
         query: queryRef.current,
         mode: modeRef.current,
         source: sourceRef.current,
@@ -289,7 +316,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     } finally {
       if (gen === searchGenRef.current) setLoading(false)
     }
-  }, [setLoading, setError, setComics, setPagination])
+  }, [setLoading, setError, setComics, setPagination, cacheSearchPage])
 
   const handleSearch = useCallback(async (page: number = 1) => {
     if (requiresAuth(source) && needsLogin) return
@@ -298,8 +325,32 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     if (query.trim()) {
       addHistory(searchTags ? `${query} [${searchTags}]` : query.trim())
     }
+
+    const contextKey = createSearchContextKey({ query, mode, source, searchTags })
+    const cachedPage = searchCacheRef.current.getPage(contextKey, page)
+    if (cachedPage) {
+      const gen = ++searchGenRef.current
+      setComics(cachedPage.comics)
+      if (cachedPage.pagination) setPagination(cachedPage.pagination)
+      setError(null)
+      search(query, mode, page, source, searchTags || undefined).then((result) => {
+        if (gen !== searchGenRef.current) return
+        setComics(result.comics)
+        setPagination(result.pagination)
+        cacheSearchPage(contextKey, page, {
+          query,
+          mode,
+          source,
+          searchTags,
+          comics: result.comics,
+          pagination: result.pagination ?? null,
+        })
+      }).catch(() => {})
+      return
+    }
+
     await withLoading(() => search(query, mode, page, source, searchTags || undefined))
-  }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search])
+  }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search, setComics, setPagination, setError, cacheSearchPage])
 
   const handleRandom = async () => {
     if (requiresAuth(source) && needsLogin) return
@@ -354,6 +405,42 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
     await downloadWithConflictCheck(comic)
   }
+
+  const preloadSearchPage = useCallback(async (page: number) => {
+    const contextKey = createSearchContextKey({
+      query: queryRef.current,
+      mode: modeRef.current,
+      source: sourceRef.current,
+      searchTags: searchTagsRef.current,
+    })
+    const result = await search(queryRef.current, modeRef.current, page, sourceRef.current, searchTagsRef.current || undefined)
+    preloadedPagesRef.current.set(`${contextKey}:${page}`, {
+      query: queryRef.current,
+      mode: modeRef.current,
+      source: sourceRef.current,
+      searchTags: searchTagsRef.current,
+      comics: result.comics,
+      pagination: result.pagination ?? null,
+    })
+  }, [search])
+
+  const commitPreloadedSearchPage = useCallback((page: number, contextKey: string) => {
+    const requestKey = `${contextKey}:${page}`
+    const cached = preloadedPagesRef.current.get(requestKey)
+    if (!cached) return
+    preloadedPagesRef.current.delete(requestKey)
+    cacheSearchPage(contextKey, page, cached)
+  }, [cacheSearchPage])
+
+  usePaginatedPreloader({
+    currentPage: pagination?.currentPage ?? 1,
+    totalPages: pagination?.totalPages ?? 1,
+    contextKey: searchContextKey,
+    enabled: !needsLogin && !isLoading && Boolean(pagination && pagination.totalPages > 1),
+    hasPage: (page) => searchCacheRef.current.hasPage(searchContextKey, page),
+    loadPage: preloadSearchPage,
+    commitPage: commitPreloadedSearchPage,
+  })
 
   const isLoadingRef = useRef(isLoading)
   isLoadingRef.current = isLoading // eslint-disable-line react-hooks/refs

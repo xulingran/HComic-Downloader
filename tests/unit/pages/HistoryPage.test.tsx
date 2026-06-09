@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { ComicInfo, HistoryItem } from '@shared/types'
 
 const { mockGetHistory, mockDeleteHistory, mockClearHistory, mockOpenReader } = vi.hoisted(() => ({
@@ -21,15 +22,20 @@ vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' }),
 }))
 
-vi.mock('@/stores/useHistoryStore', () => ({
-  useHistoryStore: vi.fn().mockReturnValue({
-    items: [],
-    pagination: null,
+const { mockHistoryStore } = vi.hoisted(() => ({
+  mockHistoryStore: {
+    pages: {} as Record<number, unknown>,
     currentPage: 1,
     hasCache: false,
-    setCache: vi.fn(),
+    setPage: vi.fn(),
+    getPage: vi.fn(),
+    hasPage: vi.fn().mockReturnValue(false),
     clearCache: vi.fn(),
-  }),
+  },
+}))
+
+vi.mock('@/stores/useHistoryStore', () => ({
+  useHistoryStore: vi.fn().mockReturnValue(mockHistoryStore),
 }))
 
 vi.mock('@/stores/useReaderStore', () => ({
@@ -71,6 +77,14 @@ describe('HistoryPage', () => {
       items: [],
       pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
     })
+    mockHistoryStore.pages = {}
+    mockHistoryStore.currentPage = 1
+    mockHistoryStore.hasCache = false
+    mockHistoryStore.setPage.mockReset()
+    mockHistoryStore.getPage.mockReset()
+    mockHistoryStore.hasPage.mockReset()
+    mockHistoryStore.hasPage.mockReturnValue(false)
+    mockHistoryStore.clearCache.mockReset()
   })
 
   it('shows source site labels for history records', async () => {
@@ -90,5 +104,40 @@ describe('HistoryPage', () => {
     expect(screen.getByText('HComic')).toBeInTheDocument()
     expect(screen.getByText('Moeimg')).toBeInTheDocument()
     expect(screen.getByText('JMComic')).toBeInTheDocument()
+  })
+
+  it('shows cached history page immediately and refreshes it in background', async () => {
+    mockHistoryStore.hasPage.mockReturnValue(true)
+    mockGetHistory.mockResolvedValueOnce({
+      items: [makeHistoryItem({ id: 1, comicId: 'current', title: 'Current History' })],
+      pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+    }).mockReturnValueOnce(new Promise(() => {}))
+    mockHistoryStore.getPage.mockImplementation((page: number) => {
+      if (page !== 2) return undefined
+      return {
+        items: [makeHistoryItem({ id: 2, comicId: 'cached', title: 'Cached History' })],
+        pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+        currentPage: 2,
+      }
+    })
+
+    render(<HistoryPage />)
+
+    await userEvent.click(await screen.findByText('下一页'))
+
+    expect(await screen.findByText('Cached History')).toBeInTheDocument()
+    expect(mockGetHistory).toHaveBeenCalledWith(2)
+  })
+
+  it('preloads nearby history pages after current page is loaded', async () => {
+    mockGetHistory.mockResolvedValue({
+      items: [makeHistoryItem({ id: 5, comicId: 'current', title: 'Current History' })],
+      pagination: { currentPage: 5, totalPages: 10, totalItems: 100 },
+    })
+
+    render(<HistoryPage />)
+
+    await screen.findByText('Current History')
+    await waitFor(() => expect(mockGetHistory).toHaveBeenCalledWith(6))
   })
 })

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComicInfo } from '@shared/types'
 
@@ -44,17 +44,22 @@ vi.mock('@/stores/useDownloadStore', () => ({
   useDownloadStore: vi.fn().mockReturnValue([])
 }))
 
-vi.mock('@/stores/useFavouritesStore', () => ({
-  useFavouritesStore: vi.fn().mockReturnValue({
-    caches: {},
-    comics: [],
-    pagination: null,
+const { mockFavouritesStore } = vi.hoisted(() => ({
+  mockFavouritesStore: {
+    caches: {} as Record<string, unknown>,
+    currentSource: 'hcomic',
     currentPage: 1,
-    downloadedStatus: {},
     hasCache: false,
-    setCache: vi.fn(),
+    setPage: vi.fn(),
+    getPage: vi.fn(),
+    hasPage: vi.fn().mockReturnValue(false),
     clearCache: vi.fn(),
-  }),
+    setCurrentSource: vi.fn(),
+  },
+}))
+
+vi.mock('@/stores/useFavouritesStore', () => ({
+  useFavouritesStore: vi.fn().mockReturnValue(mockFavouritesStore),
 }))
 
 vi.mock('@/components/common/ComicCard', () => ({
@@ -70,6 +75,17 @@ describe('FavouritesPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mockGetFavourites.mockResolvedValue({ comics: [] })
+    mockCheckDownloadedStatus.mockResolvedValue({ statusMap: {} })
+    mockFavouritesStore.caches = {}
+    mockFavouritesStore.currentSource = 'hcomic'
+    mockFavouritesStore.currentPage = 1
+    mockFavouritesStore.hasCache = false
+    mockFavouritesStore.getPage.mockReset()
+    mockFavouritesStore.hasPage.mockReset()
+    mockFavouritesStore.hasPage.mockReturnValue(false)
+    mockFavouritesStore.setPage.mockReset()
+    mockFavouritesStore.clearCache.mockReset()
+    mockFavouritesStore.setCurrentSource.mockReset()
   })
 
   it('renders page content with title', async () => {
@@ -140,5 +156,43 @@ describe('FavouritesPage', () => {
     render(<FavouritesPage />)
 
     expect(screen.getByText('加载中...')).toBeInTheDocument()
+  })
+
+  it('shows cached favourites page immediately and refreshes it in background', async () => {
+    mockFavouritesStore.hasPage.mockReturnValue(true)
+    mockGetFavourites.mockResolvedValueOnce({
+      comics: [{ id: '1', title: 'Current Favourite', url: 'https://example.com/1', coverUrl: '', source: 'test' }],
+      pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+      needsLogin: false,
+    }).mockReturnValueOnce(new Promise(() => {}))
+    mockFavouritesStore.getPage.mockImplementation((_source: string, page: number) => {
+      if (page !== 2) return undefined
+      return {
+        comics: [{ id: '2', title: 'Cached Favourite', url: 'https://example.com/2', coverUrl: '', source: 'test' }],
+        pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+        currentPage: 2,
+        downloadedStatus: {},
+      }
+    })
+
+    render(<FavouritesPage />)
+
+    await userEvent.click(await screen.findByText('下一页'))
+
+    expect(await screen.findByText('Cached Favourite')).toBeInTheDocument()
+    expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic')
+  })
+
+  it('preloads nearby favourites pages after current page is loaded', async () => {
+    mockGetFavourites.mockResolvedValue({
+      comics: [{ id: '5', title: 'Current Favourite', url: 'https://example.com/5', coverUrl: '', source: 'test' }],
+      pagination: { currentPage: 5, totalPages: 10, totalItems: 100 },
+      needsLogin: false,
+    })
+
+    render(<FavouritesPage />)
+
+    await screen.findByText('Current Favourite')
+    await waitFor(() => expect(mockGetFavourites).toHaveBeenCalledWith(6, 'hcomic'))
   })
 })
