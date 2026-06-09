@@ -6,13 +6,13 @@
 
 ### 多来源支持
 
-| 来源 | 站点 | 搜索 | 收藏 | 登录方式 |
-|------|------|------|------|---------|
-| hcomic | h-comic.com | ✅ | ✅ | curl 导入 / 应用内用户名密码 / 内嵌浏览器 |
-| moeimg | moeimg.fan | ✅ | ✅ | curl 导入 / 应用内用户名密码 |
-| jmcomic | jmcomic（含镜像） | ✅ | ✅ | curl 导入 / 内嵌浏览器 |
-| bika | 哔咔 | ✅ | ✅ | 应用内用户名密码（API 登录） |
-| copymanga | 拷贝漫画 | ✅ | — | curl 导入 |
+| 来源        | 站点           | 搜索  | 收藏  | 登录方式                       |
+| --------- | ------------ | --- | --- | -------------------------- |
+| hcomic    | h-comic.com  | ✅   | ✅   | curl 导入 / 应用内用户名密码 / 内嵌浏览器 |
+| moeimg    | moeimg.fan   | ✅   | ✅   | curl 导入 / 应用内用户名密码         |
+| jmcomic   | jmcomic（含镜像） | ✅   | ✅   | curl 导入 / 内嵌浏览器            |
+| bika      | 哔咔           | ✅   | ✅   | 应用内用户名密码（API 登录）           |
+| copymanga | 拷贝漫画         | —   | —   | curl 导入                    |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
 - **随机推荐**：hcomic、jmcomic 支持
@@ -68,14 +68,14 @@
 
 ```
 ┌────────────────────────────────────────────────┐
-│              Electron 主进程 (TypeScript)         │
-│   窗口管理 · 单实例锁 · IPC 路由 · 输入验证        │
-│   CSP · Referer 注入 · 域名白名单 · 协议注册        │
+│              Electron 主进程 (TypeScript)       │
+│   窗口管理 · 单实例锁 · IPC 路由 · 输入验证         │
+│   CSP · Referer 注入 · 域名白名单 · 协议注册       │
 ├──────────────────┬─────────────────────────────┤
 │  React 渲染进程   │        Python 后端           │
 │  TypeScript      │   解析 · 下载 · 打包 · 缓存    │
-│  Tailwind CSS    │   JSON-RPC 2.0 over          │
-│  Zustand         │   stdin/stdout               │
+│  Tailwind CSS    │   JSON-RPC 2.0 over         │
+│  Zustand         │   stdin/stdout              │
 │  electron-vite   │                             │
 └──────────────────┴─────────────────────────────┘
 ```
@@ -301,27 +301,34 @@ venv\Scripts\black.exe .            # 格式化
 
 应用配置存储在用户数据目录下的 JSON 文件中（`~/.hcomic_downloader/config.json`），支持以下配置项：
 
-| 配置项 | 类型 | 说明 | 默认值 | 范围 |
-|--------|------|------|--------|------|
-| `themeMode` | string | 主题模式 | `auto` | `light` / `dark` / `auto` |
-| `outputFormat` | string | 输出格式 | `cbz` | `folder` / `zip` / `cbz` |
-| `downloadDir` | string | 下载目录 | `~/Downloads/hcomic` | 绝对路径 |
-| `concurrentDownloads` | number | 并发下载线程数 | 4 | 1-10 |
-| `timeout` | number | 请求超时（秒） | 30 | 5-300 |
-| `retryTimes` | number | 单请求重试次数 | 3 | 0-10 |
-| `cbzFilenameTemplate` | string | CBZ 文件名模板 | `{author}-{title}.cbz` | 占位符 `{author}` `{title}` `{id}` |
-| `batchDownloadDelay` | number | 批量下载间隔（秒） | 1 | 0-60 |
-| `autoRetryMaxAttempts` | number | 失败自动重试次数 | 2 | 0-5 |
-| `notifyOnComplete` | boolean | 下载完成系统通知 | `true` | — |
-| `notifyWhenForeground` | string | 通知触发策略 | `inactive` | `inactive` / `always` |
-| `defaultSource` | string | 默认搜索来源 | `hcomic` | `hcomic` / `moeimg` / `jmcomic` / `bika` / `copymanga` |
-| `fontName` | string | 自定义字体 | `""`（自动检测 CJK） | — |
-| `fontSize` | number | 基础字号 | 12 | 12-20 |
-| `sfwMode` | boolean | SFW 安全模式（隐藏封面） | `true` | — |
-| `tagBlacklist` | object | 标签黑名单（按来源） | `{hcomic:[], moeimg:[], jmcomic:[]}` | 每项 ≤ 64 字符 |
-| `previewCacheSizeLimitMB` | number | 预览缓存上限（MB） | 500 | 100-2048 |
-| `jmcomicDomain` | string | jmcomic 自定义域名 | `""`（自动） | — |
-| `favouriteTagHighlight` | boolean | 收藏标签推荐高亮 | `false` | — |
+| 配置项                       | 类型      | 说明             | 默认值                                  | 范围                                                     |
+| ------------------------- | ------- | -------------- | ------------------------------------ | ------------------------------------------------------ |
+| `themeMode`               | string  | 主题模式           | `auto`                               | `light` / `dark` / `auto`                              |
+| `outputFormat`            | string  | 输出格式           | `cbz`                                | `folder` / `zip` / `cbz`                               |
+| `downloadDir`             | string  | 下载目录           | `~/Downloads/hcomic`                 | 绝对路径                                                   |
+| `concurrentDownloads`     | number  | 并发下载线程数        | 4                                    | 1-10                                                   |
+| `timeout`                 | number  | 请求超时（秒）        | 30                                   | 5-300                                                  |
+| `retryTimes`              | number  | 单请求重试次数        | 3                                    | 0-10                                                   |
+| `cbzFilenameTemplate`     | string  | CBZ 文件名模板      | `{author}-{title}.cbz`               | 占位符 `{author}` `{title}` `{id}`                        |
+| `batchDownloadDelay`      | number  | 批量下载间隔（秒）      | 1                                    | 0-60                                                   |
+| `autoRetryMaxAttempts`    | number  | 失败自动重试次数       | 2                                    | 0-5                                                    |
+| `notifyOnComplete`        | boolean | 下载完成系统通知       | `true`                               | —                                                      |
+| `notifyWhenForeground`    | string  | 通知触发策略         | `inactive`                           | `inactive` / `always`                                  |
+| `defaultSource`           | string  | 默认搜索来源         | `hcomic`                             | `hcomic` / `moeimg` / `jmcomic` / `bika` / `copymanga` |
+| `fontName`                | string  | 自定义字体          | `""`（自动检测 CJK）                       | —                                                      |
+| `fontSize`                | number  | 基础字号           | 12                                   | 12-20                                                  |
+| `sfwMode`                 | boolean | SFW 安全模式（隐藏封面） | `true`                               | —                                                      |
+| `tagBlacklist`            | object  | 标签黑名单（按来源）     | `{hcomic:[], moeimg:[], jmcomic:[]}` | 每项 ≤ 64 字符                                             |
+| `previewCacheSizeLimitMB` | number  | 预览缓存上限（MB）     | 500                                  | 100-2048                                               |
+| `jmcomicDomain`           | string  | jmcomic 自定义域名  | `""`（自动）                             | —                                                      |
+| `favouriteTagHighlight`   | boolean | 收藏标签推荐高亮       | `false`                              | —                                                      |
+
+## 致谢
+
+感谢以下开源项目提供的灵感与参考：
+
+- [ComicGUISpider](https://github.com/jasoneri/ComicGUISpider) — 漫画下载工具
+- [haka_comic](https://github.com/raoxwup/haka_comic) — 漫画下载工具
 
 ## 许可证
 
