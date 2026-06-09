@@ -7,7 +7,8 @@ import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { HistoryItem, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
-import { useHistoryStore } from '../stores/useHistoryStore'
+import { useHistoryStore, type HistoryPageCache } from '../stores/useHistoryStore'
+import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
 
 function formatRelativeTime(isoString: string): string {
@@ -51,45 +52,79 @@ function getSourceSiteLabel(sourceSite: string): string {
 
 export function HistoryPage() {
   const cache = useHistoryStore()
-  const [items, setItems] = useState<HistoryItem[]>(cache.hasCache ? cache.items : [])
+  const initialCache = cache.getPage(cache.currentPage)
+  const [items, setItems] = useState<HistoryItem[]>(initialCache?.items ?? [])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [pagination, setPagination] = useState<PaginationInfo | null>(cache.hasCache ? cache.pagination : null)
-  const [currentPage, setCurrentPage] = useState(cache.hasCache ? cache.currentPage : 1)
+  const [pagination, setPagination] = useState<PaginationInfo | null>(initialCache?.pagination ?? null)
+  const [currentPage, setCurrentPage] = useState(initialCache?.currentPage ?? 1)
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
+  const [cacheVersion, setCacheVersion] = useState(0)
   const { getHistory, deleteHistory, clearHistory } = useHistory()
   const { cardStyle } = useSettingsStore()
   const { openReader } = useReaderStore()
-  const latestPageRef = useRef(1)
+  const latestPageRef = useRef(initialCache?.currentPage ?? 1)
   const mountedRef = useRef(true)
+  const preloadedPagesRef = useRef(new Map<string, HistoryPageCache>())
 
-  const loadHistory = useCallback(async (page: number = 1) => {
-    setIsLoading(true)
-    setError(null)
+  const loadHistory = useCallback(async (page: number = 1, reason: 'user' | 'preload' = 'user') => {
+    const cachedPage = cache.getPage(page)
+
+    if (reason === 'user' && cachedPage) {
+      const pageSnapshot = page
+      latestPageRef.current = pageSnapshot
+      setItems(cachedPage.items)
+      setPagination(cachedPage.pagination)
+      setCurrentPage(cachedPage.currentPage)
+      setError(null)
+
+      getHistory(page).then((result) => {
+        if (!mountedRef.current || latestPageRef.current !== pageSnapshot) return
+        const resolvedPage = result.pagination?.currentPage ?? page
+        setItems(result.items)
+        setPagination(result.pagination ?? null)
+        setCurrentPage(resolvedPage)
+        latestPageRef.current = resolvedPage
+        cache.setPage(resolvedPage, {
+          items: result.items,
+          pagination: result.pagination ?? null,
+          currentPage: resolvedPage,
+        })
+      }).catch((err) => { console.debug('Background history refresh failed:', err) })
+      return
+    }
+
+    if (reason === 'user') {
+      setIsLoading(true)
+      setError(null)
+    }
 
     try {
       const result = await getHistory(page)
-      setItems(result.items)
-      setPagination(result.pagination ?? null)
-      setCurrentPage(page)
-      latestPageRef.current = page
-      cache.setCache({
+      const resolvedPage = result.pagination?.currentPage ?? page
+      cache.setPage(resolvedPage, {
         items: result.items,
         pagination: result.pagination ?? null,
-        currentPage: page,
+        currentPage: resolvedPage,
       })
+      if (reason === 'user') {
+        setItems(result.items)
+        setPagination(result.pagination ?? null)
+        setCurrentPage(resolvedPage)
+        latestPageRef.current = resolvedPage
+      }
     } catch (err) {
+      if (reason === 'preload') return
       setError(err instanceof Error ? err.message : '加载历史记录失败')
     } finally {
-      setIsLoading(false)
+      if (reason === 'user') setIsLoading(false)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- only setCache is used, not the entire cache object
-  }, [getHistory, cache.setCache])
+  }, [getHistory, cache])
 
   useEffect(() => {
     mountedRef.current = true
-    if (!cache.hasCache) {
+    if (!cache.getPage(cache.currentPage)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       loadHistory(1)
     }
@@ -109,6 +144,8 @@ export function HistoryPage() {
     try {
       await deleteHistory(item.comicId, item.source)
       cache.clearCache()
+      preloadedPagesRef.current.clear()
+      setCacheVersion((version) => version + 1)
       loadHistory(currentPage)
     } catch (err) {
       console.error('Failed to delete history item:', err)
@@ -120,6 +157,8 @@ export function HistoryPage() {
       await clearHistory()
       setShowClearConfirm(false)
       cache.clearCache()
+      preloadedPagesRef.current.clear()
+      setCacheVersion((version) => version + 1)
       setItems([])
       setPagination(null)
       loadHistory(1)
@@ -127,6 +166,36 @@ export function HistoryPage() {
       console.error('Failed to clear history:', err)
     }
   }
+
+  const historyContextKey = `history:${cacheVersion}`
+
+  const preloadHistoryPage = useCallback(async (page: number) => {
+    const result = await getHistory(page)
+    const resolvedPage = result.pagination?.currentPage ?? page
+    preloadedPagesRef.current.set(`${historyContextKey}:${resolvedPage}`, {
+      items: result.items,
+      pagination: result.pagination ?? null,
+      currentPage: resolvedPage,
+    })
+  }, [getHistory, historyContextKey])
+
+  const commitPreloadedHistoryPage = useCallback((page: number, contextKey: string) => {
+    const requestKey = `${contextKey}:${page}`
+    const cached = preloadedPagesRef.current.get(requestKey)
+    if (!cached) return
+    preloadedPagesRef.current.delete(requestKey)
+    cache.setPage(page, cached)
+  }, [cache])
+
+  usePaginatedPreloader({
+    currentPage,
+    totalPages: pagination?.totalPages ?? 1,
+    contextKey: historyContextKey,
+    enabled: !isLoading && Boolean(pagination && pagination.totalPages > 1),
+    hasPage: (page) => cache.hasPage(page),
+    loadPage: preloadHistoryPage,
+    commitPage: commitPreloadedHistoryPage,
+  })
 
   if (isLoading) {
     return (

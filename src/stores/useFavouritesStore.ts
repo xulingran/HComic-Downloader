@@ -1,22 +1,25 @@
 import { create } from 'zustand'
 import type { ComicInfo, PaginationInfo } from '@shared/types'
 
-interface FavouritesCache {
+export interface FavouritesPageCache {
   comics: ComicInfo[]
   pagination: PaginationInfo | null
   currentPage: number
   downloadedStatus: Record<string, 'downloaded' | 'unknown'>
 }
 
+interface SourceFavouritesCache {
+  pages: Record<number, FavouritesPageCache>
+}
+
 interface FavouritesStoreState {
-  caches: Record<string, FavouritesCache>
+  caches: Record<string, SourceFavouritesCache>
   currentSource: string
-  hasCache: boolean
-  comics: ComicInfo[]
-  pagination: PaginationInfo | null
   currentPage: number
-  downloadedStatus: Record<string, 'downloaded' | 'unknown'>
-  setCache: (data: FavouritesCache, source?: string) => void
+  hasCache: boolean
+  setPage: (source: string, page: number, data: FavouritesPageCache) => void
+  getPage: (source: string, page: number) => FavouritesPageCache | undefined
+  hasPage: (source: string, page: number) => boolean
   clearCache: (source?: string) => void
   setCurrentSource: (source: string) => void
 }
@@ -24,55 +27,46 @@ interface FavouritesStoreState {
 export const useFavouritesStore = create<FavouritesStoreState>((set, get) => ({
   caches: {},
   currentSource: 'hcomic',
-  hasCache: false,
-  comics: [],
-  pagination: null,
   currentPage: 1,
-  downloadedStatus: {},
-  setCache: (data, source) => {
-    const effectiveSource = source || get().currentSource
-    const caches = { ...get().caches, [effectiveSource]: data }
+  hasCache: false,
+  setPage: (source, page, data) => {
+    const caches = get().caches
+    const sourceCache = caches[source] ?? { pages: {} }
     set({
-      caches,
-      ...data,
-      hasCache: data.comics.length > 0,
-      currentSource: effectiveSource,
+      caches: {
+        ...caches,
+        [source]: {
+          pages: {
+            ...sourceCache.pages,
+            [page]: data,
+          },
+        },
+      },
+      currentSource: source,
+      currentPage: page,
+      hasCache: true,
     })
   },
+  getPage: (source, page) => get().caches[source]?.pages[page],
+  hasPage: (source, page) => Boolean(get().caches[source]?.pages[page]),
   clearCache: (source) => {
-    const effectiveSource = source || get().currentSource
-    const caches = { ...get().caches }
-    delete caches[effectiveSource]
-    if (effectiveSource === get().currentSource) {
-      set({
-        caches,
-        comics: [],
-        pagination: null,
-        currentPage: 1,
-        downloadedStatus: {},
-        hasCache: false,
-      })
-    } else {
-      set({ caches })
+    if (!source) {
+      set({ caches: {}, currentPage: 1, hasCache: false })
+      return
     }
+    const caches = { ...get().caches }
+    delete caches[source]
+    set({
+      caches,
+      currentPage: source === get().currentSource ? 1 : get().currentPage,
+      hasCache: Object.keys(caches).length > 0,
+    })
   },
   setCurrentSource: (source) => {
-    const cache = get().caches[source]
-    if (cache) {
-      set({
-        currentSource: source,
-        ...cache,
-        hasCache: cache.comics.length > 0,
-      })
-    } else {
-      set({
-        currentSource: source,
-        comics: [],
-        pagination: null,
-        currentPage: 1,
-        downloadedStatus: {},
-        hasCache: false,
-      })
-    }
+    set({
+      currentSource: source,
+      currentPage: 1,
+      hasCache: Boolean(get().caches[source]),
+    })
   },
 }))

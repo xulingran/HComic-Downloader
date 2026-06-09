@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -87,15 +87,21 @@ vi.mock('@/stores/useSettingsStore', () => ({
 
 const { mockSearchCacheStore } = vi.hoisted(() => {
   const store = {
-    cache: null as Record<string, unknown> | null,
+    contexts: {} as Record<string, unknown>,
+    currentContextKey: null as string | null,
+    currentPage: 1,
     hasCache: false,
-    setCache: vi.fn(),
-    clearCache: vi.fn()
+    setPage: vi.fn(),
+    getPage: vi.fn(),
+    hasPage: vi.fn().mockReturnValue(false),
+    clearContext: vi.fn(),
+    clearCache: vi.fn(),
   }
   return { mockSearchCacheStore: store }
 })
 
 vi.mock('@/stores/useSearchCacheStore', () => ({
+  createSearchContextKey: ({ query, mode, source, searchTags }: { query: string; mode: string; source: string; searchTags: string }) => [source, mode, query.trim(), searchTags].join('\u001f'),
   useSearchCacheStore: vi.fn(() => mockSearchCacheStore)
 }))
 
@@ -116,8 +122,16 @@ describe('SearchPage', () => {
     mockStoreState.pagination = null
     mockStoreState.isLoading = false
     mockStoreState.error = null
-    mockSearchCacheStore.cache = null
+    mockSearchCacheStore.contexts = {}
+    mockSearchCacheStore.currentContextKey = null
+    mockSearchCacheStore.currentPage = 1
     mockSearchCacheStore.hasCache = false
+    mockSearchCacheStore.setPage.mockReset()
+    mockSearchCacheStore.getPage.mockReset()
+    mockSearchCacheStore.hasPage.mockReset()
+    mockSearchCacheStore.hasPage.mockReturnValue(false)
+    mockSearchCacheStore.clearContext.mockReset()
+    mockSearchCacheStore.clearCache.mockReset()
   })
 
   it('renders search input area', () => {
@@ -238,27 +252,45 @@ describe('SearchPage', () => {
     expect(screen.queryByText('暂无搜索结果')).not.toBeInTheDocument()
   })
 
-  it('restores state from cache on mount without calling search', () => {
-    const cachedComics: ComicInfo[] = [
-      { id: '1', title: 'Cached Comic', url: 'https://example.com/1', coverUrl: '', source: 'test' }
+  it('shows cached search page immediately and refreshes it in background', async () => {
+    mockStoreState.comics = [
+      { id: '1', title: 'Page 1 Comic', url: 'https://example.com/1', coverUrl: '', source: 'test' },
     ]
-    mockSearchCacheStore.cache = {
-      query: 'cached query',
-      mode: 'author',
-      source: 'jmcomic',
-      searchTags: 'tag1',
-      comics: cachedComics,
-      pagination: { currentPage: 3, totalPages: 5, totalItems: 50 }
-    }
-    mockSearchCacheStore.hasCache = true
-    mockStoreState.comics = cachedComics
-    mockStoreState.pagination = { currentPage: 3, totalPages: 5, totalItems: 50 }
+    mockStoreState.pagination = { currentPage: 1, totalPages: 3, totalItems: 30 }
+    mockSearchCacheStore.getPage.mockReturnValue({
+      query: '',
+      mode: 'keyword',
+      source: 'hcomic',
+      searchTags: '',
+      comics: [{ id: '2', title: 'Cached Page 2 Comic', url: 'https://example.com/2', coverUrl: '', source: 'test' }],
+      pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+    })
+    mockSearch.mockResolvedValue({
+      comics: [{ id: '2fresh', title: 'Fresh Page 2 Comic', url: 'https://example.com/2fresh', coverUrl: '', source: 'test' }],
+      pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+    })
 
     render(<SearchPage />)
 
-    expect(mockSearch).not.toHaveBeenCalled()
-    expect(screen.getByText('Cached Comic')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('cached query')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('下一页'))
+
+    expect(mockStoreState.setComics).toHaveBeenCalledWith([
+      { id: '2', title: 'Cached Page 2 Comic', url: 'https://example.com/2', coverUrl: '', source: 'test' },
+    ])
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined)
+  })
+
+  it('preloads nearby search pages after current page is available', async () => {
+    mockStoreState.comics = [
+      { id: '5', title: 'Page 5 Comic', url: 'https://example.com/5', coverUrl: '', source: 'test' },
+    ]
+    mockStoreState.pagination = { currentPage: 5, totalPages: 10, totalItems: 100 }
+    mockSearch.mockResolvedValue({ comics: [], pagination: { currentPage: 6, totalPages: 10, totalItems: 100 } })
+
+    render(<SearchPage />)
+
+    await screen.findByText('Page 5 Comic')
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 6, 'hcomic', undefined))
   })
 
   describe('container layout by cardStyle', () => {
