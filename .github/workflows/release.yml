@@ -28,6 +28,9 @@ jobs:
 
       - run: npm install
 
+      - name: Set version from git tag
+        run: npm run version:from-git
+
       - name: Build Python backend
         run: npm run build:python
 
@@ -62,6 +65,9 @@ jobs:
         run: pip install -r requirements.txt pyinstaller
 
       - run: npm install
+
+      - name: Set version from git tag
+        run: npm run version:from-git
 
       - name: Build Python backend
         run: npm run build:python
@@ -98,6 +104,9 @@ jobs:
         run: pip install -r requirements.txt pyinstaller
 
       - run: npm install
+
+      - name: Set version from git tag
+        run: npm run version:from-git
 
       - name: Build Python backend
         run: npm run build:python
