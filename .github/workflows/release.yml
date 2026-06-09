@@ -35,7 +35,7 @@ jobs:
         run: npm run build
 
       - name: Package for Windows
-        run: npx electron-builder --win
+        run: npx electron-builder --win --publish never
 
       - uses: actions/upload-artifact@v4
         with:
@@ -70,7 +70,7 @@ jobs:
         run: npm run build
 
       - name: Package for macOS (arm64)
-        run: npx electron-builder --mac --arm64
+        run: npx electron-builder --mac --arm64 --publish never
 
       - uses: actions/upload-artifact@v4
         with:
@@ -106,7 +106,7 @@ jobs:
         run: npm run build
 
       - name: Package for Linux
-        run: npx electron-builder --linux
+        run: npx electron-builder --linux --publish never
 
       - uses: actions/upload-artifact@v4
         with:
