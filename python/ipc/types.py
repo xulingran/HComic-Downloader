@@ -33,6 +33,7 @@ CONFIG_KEY_MAP = {
     "previewCacheSizeLimitMB": "preview_cache_size_limit_mb",
     "jmcomicDomain": "jmcomic_domain",
     "favouriteTagHighlight": "favourite_tag_highlight",
+    "favouriteTagMinMatches": "favourite_tag_min_matches",
 }
 
 _COVER_POOL_MAX_WORKERS = 4

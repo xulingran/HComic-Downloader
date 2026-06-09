@@ -9,7 +9,7 @@ interface TagItem {
 }
 
 export function FavouriteTagSettings() {
-  const { favouriteTagHighlight, setFavouriteTagHighlight } = useSettingsStore()
+  const { favouriteTagHighlight, setFavouriteTagHighlight, favouriteTagMinMatches, setFavouriteTagMinMatches } = useSettingsStore()
   const { getFavouriteTags, removeFavouriteTag, syncFavouriteTags } = useFavouriteTags()
   const [source, setSource] = useState('hcomic')
   const [tags, setTags] = useState<TagItem[]>([])
@@ -89,6 +89,36 @@ export function FavouriteTagSettings() {
       <p className="text-sm text-[var(--text-secondary)]">
         基于收藏夹中的漫画标签，推荐你可能感兴趣的内容。开启后，搜索结果中包含推荐标签的漫画会被高亮显示。
       </p>
+
+      <div className="flex items-center gap-3">
+        <span className="text-sm text-[var(--text-secondary)]">最少命中标签数</span>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={() => setFavouriteTagMinMatches(Math.max(1, favouriteTagMinMatches - 1))}
+            disabled={favouriteTagMinMatches <= 1}
+            className="w-7 h-7 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)]
+                       text-[var(--text-primary)] flex items-center justify-center
+                       disabled:opacity-30 hover:bg-[var(--bg-tertiary)] transition-colors text-sm"
+          >
+            −
+          </button>
+          <span className="w-8 text-center text-sm font-medium text-[var(--text-primary)] tabular-nums">
+            {favouriteTagMinMatches}
+          </span>
+          <button
+            onClick={() => setFavouriteTagMinMatches(Math.min(10, favouriteTagMinMatches + 1))}
+            disabled={favouriteTagMinMatches >= 10}
+            className="w-7 h-7 rounded-md bg-[var(--bg-secondary)] border border-[var(--border)]
+                       text-[var(--text-primary)] flex items-center justify-center
+                       disabled:opacity-30 hover:bg-[var(--bg-tertiary)] transition-colors text-sm"
+          >
+            +
+          </button>
+        </div>
+        <span className="text-xs text-[var(--text-secondary)]">
+          漫画命中推荐标签数 ≥ 该值时才高亮
+        </span>
+      </div>
 
       <div className="flex items-center gap-3">
         <select

@@ -68,7 +68,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   // clearPendingSearch also used by handleRandom below
   const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
-  const { favouriteTagHighlight } = useSettingsStore()
+  const { favouriteTagHighlight, favouriteTagMinMatches } = useSettingsStore()
   const { getFavouriteTags } = useFavouriteTags()
   const [favTags, setFavTags] = useState<Array<{tag: string; count: number}>>([])
   const searchCache = useSearchCacheStore()
@@ -248,10 +248,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const hasBlockedTags = blocked.size > 0
     return comics.map(c => {
       const isBlocked = filterEnabled && hasBlockedTags && (c.tags?.some(t => blocked.has(t.toLowerCase())) ?? false)
-      const isRecommended = !isBlocked && recommendedTags.size > 0 && (c.tags?.some(t => recommendedTags.has(t.toLowerCase())) ?? false)
+      const matchCount = c.tags?.filter(t => recommendedTags.has(t.toLowerCase())).length ?? 0
+      const isRecommended = !isBlocked && recommendedTags.size > 0 && matchCount >= favouriteTagMinMatches
       return { comic: c, isBlocked, isRecommended }
     })
-  }, [comics, filterEnabled, tagBlacklist, source, recommendedTags])
+  }, [comics, filterEnabled, tagBlacklist, source, recommendedTags, favouriteTagMinMatches])
 
   const modeRef = useRef(mode)
   modeRef.current = mode // eslint-disable-line react-hooks/refs

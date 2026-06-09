@@ -12,6 +12,7 @@ interface SettingsState {
   tagBlacklist: TagBlacklist
   filterEnabled: boolean
   favouriteTagHighlight: boolean
+  favouriteTagMinMatches: number
   setThemeMode: (mode: ThemeMode) => void
   setCardStyle: (style: CardStyle) => void
   setSfwMode: (enabled: boolean) => void
@@ -21,6 +22,7 @@ interface SettingsState {
   setTagBlacklist: (blacklist: TagBlacklist) => void
   setFilterEnabled: (enabled: boolean) => void
   setFavouriteTagHighlight: (enabled: boolean) => void
+  setFavouriteTagMinMatches: (n: number) => void
 }
 
 const DEFAULT_TAG_BLACKLIST: TagBlacklist = Object.fromEntries(
@@ -35,6 +37,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   tagBlacklist: { ...DEFAULT_TAG_BLACKLIST },
   filterEnabled: true,
   favouriteTagHighlight: false,
+  favouriteTagMinMatches: 1,
   setThemeMode: (mode) => set({ themeMode: mode }),
   setCardStyle: (style) => set({ cardStyle: style }),
   setSfwMode: (enabled) => set({ sfwMode: enabled }),
@@ -69,6 +72,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setTagBlacklist: (blacklist) => set({ tagBlacklist: blacklist }),
   setFilterEnabled: (enabled) => set({ filterEnabled: enabled }),
   setFavouriteTagHighlight: (enabled) => set({ favouriteTagHighlight: enabled }),
+  setFavouriteTagMinMatches: (n) => set({ favouriteTagMinMatches: n }),
 }))
 
 /** Subscribe to tagBlacklist changes and persist via setConfig. */
@@ -89,6 +93,17 @@ export function subscribeToFavouriteTagHighlightChanges(setConfig: (key: 'favour
     if (state.favouriteTagHighlight !== prev) {
       prev = state.favouriteTagHighlight
       setConfig('favouriteTagHighlight', state.favouriteTagHighlight).catch(() => {})
+    }
+  })
+}
+
+/** Subscribe to favouriteTagMinMatches changes and persist via setConfig. */
+export function subscribeToFavouriteTagMinMatchesChanges(setConfig: (key: 'favouriteTagMinMatches', value: number) => Promise<unknown>) {
+  let prev = useSettingsStore.getState().favouriteTagMinMatches
+  return useSettingsStore.subscribe((state) => {
+    if (state.favouriteTagMinMatches !== prev) {
+      prev = state.favouriteTagMinMatches
+      setConfig('favouriteTagMinMatches', state.favouriteTagMinMatches).catch(() => {})
     }
   })
 }

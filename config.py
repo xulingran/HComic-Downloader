@@ -65,6 +65,8 @@ class Config:
     preview_cache_size_limit_mb: int = 500
     # 推荐标签高亮开关
     favourite_tag_highlight: bool = False
+    # 推荐标签最少命中数
+    favourite_tag_min_matches: int = 1
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
@@ -94,7 +96,12 @@ class Config:
         ):
             self.set_source_auth(
                 "hcomic",
-                AuthSourceData(cookie=self.auth_cookie, user_agent=self.auth_user_agent),
+                AuthSourceData(
+                    cookie=self.auth_cookie,
+                    user_agent=self.auth_user_agent,
+                    username=hcomic_auth.get("username", ""),
+                    password=hcomic_auth.get("password", ""),
+                ),
             )
         else:
             # 以 source_auth 为准回写到旧字段

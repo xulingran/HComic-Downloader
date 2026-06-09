@@ -209,6 +209,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
   jmcomicDomain: and(string(), maxLength(256)),
   favouriteTagHighlight: boolean(),
+  favouriteTagMinMatches: and(number(), integer(), range(1, 10)),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────

@@ -92,6 +92,7 @@ export interface AppConfig {
   bikaUsername?: string
   hcomicUsername?: string
   favouriteTagHighlight?: boolean
+  favouriteTagMinMatches?: number
 }
 
 export type TagBlacklist = Record<ComicSource, string[]>
@@ -178,7 +179,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
   | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
-  | 'jmcomicDomain' | 'favouriteTagHighlight'
+  | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -200,6 +201,7 @@ export type ConfigValueMap = {
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
   favouriteTagHighlight: boolean
+  favouriteTagMinMatches: number
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -771,5 +773,5 @@ export const CONFIG_KEYS = [
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
   'fontName', 'fontSize', 'sfwMode', 'tagBlacklist', 'previewCacheSizeLimitMB',
-  'jmcomicDomain', 'favouriteTagHighlight',
+  'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches',
 ] as const

@@ -1,11 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { COMIC_SOURCES, type TagBlacklist } from '@shared/types'
-import { useSettingsStore, subscribeToBlacklistChanges, subscribeToFavouriteTagHighlightChanges } from '../stores/useSettingsStore'
+import { useSettingsStore, subscribeToBlacklistChanges, subscribeToFavouriteTagHighlightChanges, subscribeToFavouriteTagMinMatchesChanges } from '../stores/useSettingsStore'
 import { useConfig } from './useIpc'
 
 export function useInitConfig() {
   const {
-    setThemeMode, setSfwMode, setTagBlacklist, setFavouriteTagHighlight,
+    setThemeMode, setSfwMode, setTagBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches,
   } = useSettingsStore()
   const { getConfig, setConfig } = useConfig()
   const subscribedRef = useRef(false)
@@ -34,13 +34,19 @@ export function useInitConfig() {
         setFavouriteTagHighlight(result.config.favouriteTagHighlight)
       }
 
+      if (typeof result.config?.favouriteTagMinMatches === 'number' && result.config.favouriteTagMinMatches >= 1) {
+        setFavouriteTagMinMatches(result.config.favouriteTagMinMatches)
+      }
+
       if (!subscribedRef.current) {
         subscribedRef.current = true
         const unsubBlacklist = subscribeToBlacklistChanges(setConfig)
         const unsubHighlight = subscribeToFavouriteTagHighlightChanges(setConfig)
+        const unsubMinMatches = subscribeToFavouriteTagMinMatchesChanges(setConfig)
         unsubRef.current = () => {
           unsubBlacklist()
           unsubHighlight()
+          unsubMinMatches()
         }
       }
     }).catch(() => {
@@ -52,7 +58,7 @@ export function useInitConfig() {
       unsubRef.current = null
       subscribedRef.current = false
     }
-  }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist, setFavouriteTagHighlight])
+  }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches])
 
   return { setSfwMode, setConfig }
 }

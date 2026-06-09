@@ -111,6 +111,7 @@ class ConfigMixin:
             "preview_cache_size_limit_mb": getattr(self.config, "preview_cache_size_limit_mb", 500),
             "jmcomic_domain": getattr(self.config, "jmcomic_domain", ""),
             "favourite_tag_highlight": getattr(self.config, "favourite_tag_highlight", False),
+            "favourite_tag_min_matches": getattr(self.config, "favourite_tag_min_matches", 1),
         }
         config = {}
         for snake_key, value in raw.items():
