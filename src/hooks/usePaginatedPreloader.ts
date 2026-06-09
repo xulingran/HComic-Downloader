@@ -50,7 +50,11 @@ export function usePaginatedPreloader({
 
     if (queue.length === 0) return
 
-    const workerCount = Math.min(concurrency, queue.length)
+    const activeInContext = Array.from(inFlightRef.current).filter((requestKey) => requestKey.startsWith(`${contextKey}:`)).length
+    const availableSlots = Math.max(0, concurrency - activeInContext)
+    const workerCount = Math.min(availableSlots, queue.length)
+
+    if (workerCount === 0) return
 
     const runWorker = async () => {
       while (!cancelled && queue.length > 0 && generation === generationRef.current) {

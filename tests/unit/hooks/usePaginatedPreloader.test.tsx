@@ -107,7 +107,7 @@ describe('usePaginatedPreloader', () => {
     expect(maxActive).toBeLessThanOrEqual(2)
   })
 
-  it('limits concurrent preload requests to two', async () => {
+  it('honors an explicit concurrency override of three', async () => {
     let active = 0
     let maxActive = 0
     const loadPage = vi.fn(async () => {
@@ -124,12 +124,52 @@ describe('usePaginatedPreloader', () => {
       enabled: true,
       hasPage: () => false,
       loadPage,
-      concurrency: 2,
+      concurrency: 3,
     }))
 
     await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(4))
     await waitFor(() => expect(active).toBe(0))
+    expect(maxActive).toBe(3)
+  })
+
+  it('counts existing in-flight requests toward concurrency after current page changes', async () => {
+    const requests: ReturnType<typeof createDeferred>[] = []
+    let active = 0
+    let maxActive = 0
+    const loadPage = vi.fn(async () => {
+      active += 1
+      maxActive = Math.max(maxActive, active)
+      const request = createDeferred()
+      requests.push(request)
+      await request.promise
+      active -= 1
+    })
+
+    const { rerender } = renderHook(
+      ({ currentPage }) => usePaginatedPreloader({
+        currentPage,
+        totalPages: 10,
+        contextKey: 'history',
+        enabled: true,
+        hasPage: () => false,
+        loadPage,
+        concurrency: 2,
+      }),
+      { initialProps: { currentPage: 5 } },
+    )
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
+    rerender({ currentPage: 6 })
+    await new Promise(resolve => setTimeout(resolve, 0))
+
+    expect(loadPage).toHaveBeenCalledTimes(2)
+    expect(active).toBe(2)
     expect(maxActive).toBeLessThanOrEqual(2)
+
+    await act(async () => {
+      requests.forEach((request) => request.resolve())
+      await Promise.all(requests.map((request) => request.promise))
+    })
   })
 
   it('does not request an in-flight page again', async () => {
@@ -155,8 +195,9 @@ describe('usePaginatedPreloader', () => {
 
     await waitFor(() => expect(loadPage).toHaveBeenCalledWith(6, 'preload'))
     rerender({ currentPage: 4 })
+    await new Promise(resolve => setTimeout(resolve, 0))
 
-    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
+    expect(loadPage).toHaveBeenCalledTimes(1)
     expect(loadPage.mock.calls.filter(([page]) => page === 6)).toHaveLength(1)
 
     await act(async () => {
