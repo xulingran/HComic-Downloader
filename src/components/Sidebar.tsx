@@ -9,7 +9,8 @@ const menuItems = [
   { id: 'favourites', label: '收藏夹', icon: '⭐' },
   { id: 'history', label: '历史记录', icon: '🕐' },
   { id: 'toolbox', label: '工具箱', icon: '🧰' },
-  { id: 'settings', label: '设置', icon: '⚙️' }
+  { id: 'settings', label: '设置', icon: '⚙️' },
+  { id: 'about', label: '关于', icon: 'ℹ️' }
 ]
 
 export function Sidebar({ activePage, onPageChange }: SidebarProps) {

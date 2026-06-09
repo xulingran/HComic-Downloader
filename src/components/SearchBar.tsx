@@ -81,13 +81,14 @@ export function SearchBar({
         {showTagPanel && (
           <button
             onClick={onTagPanelToggle}
-            className="px-3 py-2 rounded-lg border border-[var(--border)]
-                       text-[var(--text-primary)] bg-[var(--bg-secondary)]
+            className="flex items-center gap-1 px-3 py-2 rounded-lg border border-[var(--border)]
+                       text-sm text-[var(--text-primary)] bg-[var(--bg-secondary)]
                        hover:bg-[var(--bg-primary)] transition-colors whitespace-nowrap"
           >
             <span>🏷</span>
+            <span>标签</span>
             {selectedTags.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.5 text-xs rounded-full bg-[var(--accent)] text-white">
+              <span className="px-1.5 py-0.5 text-xs rounded-full bg-[var(--accent)] text-white">
                 {selectedTags.length}
               </span>
             )}
