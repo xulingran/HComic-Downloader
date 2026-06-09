@@ -105,7 +105,7 @@ class SearchMixin:
 
     def _is_source_auth_error(self, source: str, error: Exception) -> bool:
         """Check if an exception indicates auth failure for the given source."""
-        if source not in ("jmcomic", "copymanga"):
+        if source not in ("jmcomic", "copymanga", "hcomic"):
             return False
         msg = str(error).lower()
         return any(kw in msg for kw in _AUTH_KEYWORDS)

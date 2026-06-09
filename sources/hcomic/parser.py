@@ -644,11 +644,29 @@ class HComicParser(ParserContextMixin):
         log_name: str = "",
         **kwargs,
     ) -> requests.Response:
-        """发送认证相关的 HTTP 请求，统一处理超时、认证失效和网络错误。"""
+        """发送认证相关的 HTTP 请求，统一处理超时、认证失效和网络错误。
+
+        当收到 401 且有存储的账号密码时，自动重新登录并重试一次。
+        """
         kwargs.setdefault("timeout", self.timeout)
         kwargs.setdefault("headers", self._API_HEADERS)
         try:
-            return self.session.request(method, url, **kwargs)
+            response = self.session.request(method, url, **kwargs)
+            if response.status_code in (401, 403):
+                if self._stored_username and self._stored_password:
+                    logger.info("Token expired, auto re-login for %s", self._stored_username)
+                    self._bearer_token = ""
+                    try:
+                        self.login(self._stored_username, self._stored_password)
+                    except Exception as e:
+                        logger.warning("Auto re-login failed: %s", e)
+                        raise ParserResponseError(f"认证已失效，自动重新登录失败: {e}") from e
+                    response = self.session.request(method, url, **kwargs)
+                    if response.status_code in (401, 403):
+                        raise ParserResponseError("认证已失效，请重新登录")
+                else:
+                    raise ParserResponseError("认证已失效，请重新登录")
+            return response
         except requests.Timeout as e:
             raise ParserResponseError(f"{error_prefix}请求超时") from e
         except requests.HTTPError as e:
