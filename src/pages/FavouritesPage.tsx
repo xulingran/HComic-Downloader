@@ -218,12 +218,14 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     preloadedPagesRef.current.clear()
   }, [source])
 
+  const hasFavouritesPage = useCallback((page: number) => cache.hasPage(source, page), [cache, source])
+
   usePaginatedPreloader({
     currentPage,
     totalPages: pagination?.totalPages ?? 1,
     contextKey: `favourites:${source}`,
     enabled: !needsLogin && !isLoading && Boolean(pagination && pagination.totalPages > 1),
-    hasPage: (page) => cache.hasPage(source, page),
+    hasPage: hasFavouritesPage,
     loadPage: preloadFavouritesPage,
     commitPage: commitPreloadedFavouritesPage,
   })

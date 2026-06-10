@@ -191,12 +191,14 @@ export function HistoryPage() {
     preloadedPagesRef.current.clear()
   }, [historyContextKey])
 
+  const hasHistoryPage = useCallback((page: number) => cache.hasPage(page), [cache])
+
   usePaginatedPreloader({
     currentPage,
     totalPages: pagination?.totalPages ?? 1,
     contextKey: historyContextKey,
     enabled: !isLoading && Boolean(pagination && pagination.totalPages > 1),
-    hasPage: (page) => cache.hasPage(page),
+    hasPage: hasHistoryPage,
     loadPage: preloadHistoryPage,
     commitPage: commitPreloadedHistoryPage,
   })

@@ -437,12 +437,17 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     preloadedPagesRef.current.clear()
   }, [searchContextKey])
 
+  const hasSearchPage = useCallback((page: number) =>
+    searchCacheRef.current.hasPage(searchContextKey, page),
+    [searchContextKey],
+  )
+
   usePaginatedPreloader({
     currentPage: pagination?.currentPage ?? 1,
     totalPages: pagination?.totalPages ?? 1,
     contextKey: searchContextKey,
     enabled: !needsLogin && !isLoading && Boolean(pagination && pagination.totalPages > 1),
-    hasPage: (page) => searchCacheRef.current.hasPage(searchContextKey, page),
+    hasPage: hasSearchPage,
     loadPage: preloadSearchPage,
     commitPage: commitPreloadedSearchPage,
   })
