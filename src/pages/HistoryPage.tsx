@@ -187,6 +187,10 @@ export function HistoryPage() {
     cache.setPage(page, cached)
   }, [cache])
 
+  useEffect(() => {
+    preloadedPagesRef.current.clear()
+  }, [historyContextKey])
+
   usePaginatedPreloader({
     currentPage,
     totalPages: pagination?.totalPages ?? 1,

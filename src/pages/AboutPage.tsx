@@ -10,10 +10,12 @@ const REPOSITORY_URL = 'https://github.com/xulingran/HComic-Downloader'
 
 export function AboutPage() {
   const openRepository = (event: MouseEvent<HTMLAnchorElement>) => {
-    if (!window.hcomic) return
-
     event.preventDefault()
-    window.hcomic.openUrl(REPOSITORY_URL)
+    if (window.hcomic) {
+      window.hcomic.openUrl(REPOSITORY_URL)
+    } else {
+      window.open(REPOSITORY_URL, '_blank')
+    }
   }
 
   return (

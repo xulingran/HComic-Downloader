@@ -346,7 +346,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           comics: result.comics,
           pagination: result.pagination ?? null,
         })
-      }).catch(() => {})
+      }).catch((err) => { console.debug('Background search refresh failed:', err) })
       return
     }
 
