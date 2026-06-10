@@ -52,6 +52,7 @@ const DEV_SERVER_RETRY_DELAY_MS = 1_000
 const SHUTDOWN_TIMEOUT_MS = 5_000
 
 const ALLOWED_EXTERNAL_DOMAINS = [
+  'github.com',
   'h-comic.com',
   'moeimg.net',
   'moeimg.fan',

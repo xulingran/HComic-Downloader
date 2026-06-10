@@ -1,10 +1,21 @@
+import type { MouseEvent } from 'react'
+
 import { LogoIcon } from '../components/LogoIcon'
 
 declare const __APP_NAME__: string
 declare const __APP_DESCRIPTION__: string
 declare const __APP_VERSION__: string
 
+const REPOSITORY_URL = 'https://github.com/xulingran/HComic-Downloader'
+
 export function AboutPage() {
+  const openRepository = (event: MouseEvent<HTMLAnchorElement>) => {
+    if (!window.hcomic) return
+
+    event.preventDefault()
+    window.hcomic.openUrl(REPOSITORY_URL)
+  }
+
   return (
     <div className="max-w-2xl">
       <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-6">关于</h2>
@@ -32,6 +43,17 @@ export function AboutPage() {
             <span className="text-sm font-medium text-[var(--text-primary)]">
               v{__APP_VERSION__}
             </span>
+          </div>
+
+          <div className="flex items-center justify-between gap-4 py-2 px-4 rounded-lg bg-[var(--bg-secondary)]">
+            <span className="text-sm text-[var(--text-secondary)]">仓库地址</span>
+            <a
+              href={REPOSITORY_URL}
+              onClick={openRepository}
+              className="text-sm font-medium text-[var(--accent)] hover:underline truncate"
+            >
+              {REPOSITORY_URL}
+            </a>
           </div>
         </div>
       </div>

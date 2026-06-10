@@ -96,6 +96,11 @@ describe('open-external security', () => {
     await handler!.handler({}, 'https://h-comic.com')
   })
 
+  it('should accept GitHub repository links', async () => {
+    const handler = handleCalls.find(h => h.channel === 'open-external')!
+    await handler!.handler({}, 'https://github.com/xulingran/HComic-Downloader')
+  })
+
   it('should reject invalid URL format', async () => {
     const handler = handleCalls.find(h => h.channel === 'open-external')!
     await expect(handler!.handler({}, 'not-a-url')).rejects.toThrow()
