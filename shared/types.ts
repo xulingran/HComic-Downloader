@@ -93,6 +93,7 @@ export interface AppConfig {
   hcomicUsername?: string
   favouriteTagHighlight?: boolean
   favouriteTagMinMatches?: number
+  checkUpdateOnStart?: boolean
 }
 
 export type TagBlacklist = Record<ComicSource, string[]>
@@ -174,12 +175,22 @@ export interface MigrationStatusResponse {
   target_dir: string
 }
 
+export interface UpdateInfo {
+  latestVersion: string
+  changelog: string
+  releaseUrl: string
+}
+
+export type UpdateCheckResult =
+  | { hasUpdate: true; latestVersion: string; changelog: string; releaseUrl: string }
+  | { hasUpdate: false; error?: string }
+
 /** Keys that can be persisted via set-config */
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
   | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
-  | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches'
+  | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -202,6 +213,7 @@ export type ConfigValueMap = {
   jmcomicDomain: string
   favouriteTagHighlight: boolean
   favouriteTagMinMatches: number
+  checkUpdateOnStart: boolean
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -593,6 +605,8 @@ export interface HcomicAPI {
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
   onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
   onLoginCookieSuccess(callback: () => void): () => void
+  checkForUpdates(): Promise<UpdateCheckResult>
+  onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
 }
 
 /** Valid search modes — shared between preload and main */
@@ -751,6 +765,7 @@ export const IPC_CHANNELS = {
   REMOVE_FAVOURITE_TAG: 'python:remove-favourite-tag',
   SYNC_FAVOURITE_TAGS: 'python:sync-favourite-tags',
   SELECT_DIRECTORY: 'select-directory',
+  UPDATE_CHECK: 'update:check',
 } as const
 
 export const NOTIFICATION_CHANNELS = {
@@ -759,6 +774,7 @@ export const NOTIFICATION_CHANNELS = {
   MIGRATION_COMPLETE: 'migration:complete',
   MIGRATION_ERROR: 'migration:error',
   LOGIN_COOKIE_SUCCESS: 'login:cookie-success',
+  UPDATE_CHECK_RESULT: 'update:check-result',
 } as const
 
 export const PYTHON_NOTIFICATION_METHODS = {
@@ -773,5 +789,5 @@ export const CONFIG_KEYS = [
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
   'fontName', 'fontSize', 'sfwMode', 'tagBlacklist', 'previewCacheSizeLimitMB',
-  'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches',
+  'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
 ] as const

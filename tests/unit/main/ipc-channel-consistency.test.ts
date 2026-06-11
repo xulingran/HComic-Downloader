@@ -24,7 +24,7 @@ describe('IPC Channel Consistency', () => {
       ).toBeDefined()
     }
 
-    const knownNonPython = ['open-external', 'select-directory', 'open-login-window']
+    const knownNonPython = ['open-external', 'select-directory', 'open-login-window', 'check']
     for (const ch of nonPythonChannels) {
       expect(
         knownNonPython,
@@ -61,7 +61,7 @@ describe('IPC Channel Consistency', () => {
   })
 
   it('NOTIFICATION_CHANNELS and PYTHON_NOTIFICATION_METHODS should have matching keys (excluding Electron-only channels)', () => {
-    const electronOnlyNotifications = new Set(['LOGIN_COOKIE_SUCCESS'])
+    const electronOnlyNotifications = new Set(['LOGIN_COOKIE_SUCCESS', 'UPDATE_CHECK_RESULT'])
     const notifKeys = Object.keys(NOTIFICATION_CHANNELS).filter(k => !electronOnlyNotifications.has(k))
     const pyNotifKeys = Object.keys(PYTHON_NOTIFICATION_METHODS)
     expect(notifKeys.sort()).toEqual(pyNotifKeys.sort())

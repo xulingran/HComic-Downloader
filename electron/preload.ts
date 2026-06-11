@@ -312,6 +312,14 @@ contextBridge.exposeInMainWorld('hcomic', {
     return onChannel(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, callback, false)
   },
 
+  checkForUpdates: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK)
+  },
+
+  onUpdateAvailable: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.UPDATE_CHECK_RESULT, callback)
+  },
+
   getTagList: (source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
     if (keyword !== undefined && keyword !== null && typeof keyword !== 'string') throw new Error('Invalid keyword')

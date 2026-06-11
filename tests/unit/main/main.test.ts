@@ -135,8 +135,8 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 56 total
-      expect(handleCalls.length).toBe(56)
+      // 57 total
+      expect(handleCalls.length).toBe(57)
     })
 
     it('should call get_config on startup to sync notification settings', () => {

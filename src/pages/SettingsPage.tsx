@@ -27,6 +27,7 @@ interface ConfigState {
   autoRetryMaxAttempts: number
   notifyOnComplete: boolean
   notifyWhenForeground: NotifyWhenForeground
+  checkUpdateOnStart: boolean
   defaultSource: string
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
@@ -63,6 +64,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     autoRetryMaxAttempts: 2,
     notifyOnComplete: true,
     notifyWhenForeground: 'inactive',
+    checkUpdateOnStart: true,
     defaultSource: 'hcomic',
     previewCacheSizeLimitMB: 500,
     jmcomicDomain: '',
@@ -122,6 +124,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           autoRetryMaxAttempts: result.config.autoRetryMaxAttempts ?? 2,
           notifyOnComplete: result.config.notifyOnComplete !== false,
           notifyWhenForeground: result.config.notifyWhenForeground ?? 'inactive',
+          checkUpdateOnStart: result.config.checkUpdateOnStart !== false,
           defaultSource: result.config.defaultSource ?? 'hcomic',
           previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
           jmcomicDomain: result.config.jmcomicDomain ?? '',
@@ -539,6 +542,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         <NotificationSettings
           notifyOnComplete={config.notifyOnComplete}
           notifyWhenForeground={config.notifyWhenForeground}
+          checkUpdateOnStart={config.checkUpdateOnStart}
           onConfigChange={handleConfigChange}
         />
       </div>

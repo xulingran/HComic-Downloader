@@ -10,6 +10,7 @@ __pycache__/
 venv/
 ENV/
 .mypy_cache/
+uv.lock
 
 # Testing
 .pytest_cache/

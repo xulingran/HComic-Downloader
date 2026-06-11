@@ -5,12 +5,14 @@ type NotifyWhenForeground = 'inactive' | 'always'
 interface NotificationSettingsProps {
   notifyOnComplete: boolean
   notifyWhenForeground: NotifyWhenForeground
+  checkUpdateOnStart: boolean
   onConfigChange: (key: ConfigKey, value: unknown) => void
 }
 
 export function NotificationSettings({
   notifyOnComplete,
   notifyWhenForeground,
+  checkUpdateOnStart,
   onConfigChange,
 }: NotificationSettingsProps) {
   return (
@@ -51,6 +53,20 @@ export function NotificationSettings({
               </button>
             ))}
           </div>
+        </div>
+
+        <div className="flex items-center justify-between pt-2">
+          <label className="text-sm font-medium text-[var(--text-primary)]">启动时检查更新</label>
+          <button
+            onClick={() => onConfigChange('checkUpdateOnStart', !checkUpdateOnStart)}
+            className={`relative w-12 h-6 rounded-full transition-colors ${
+              checkUpdateOnStart ? 'bg-[var(--accent)]' : 'bg-[var(--border)]'
+            }`}
+          >
+            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+              checkUpdateOnStart ? 'left-7' : 'left-1'
+            }`} />
+          </button>
         </div>
       </div>
     </div>

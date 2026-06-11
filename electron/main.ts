@@ -1,6 +1,7 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, crashReporter } from 'electron'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
+import { checkForUpdates } from './update-checker'
 import { NotificationManager } from './notification-manager'
 import { openLoginWindow } from './login-window'
 import {
@@ -211,6 +212,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   jmcomicDomain: and(string(), maxLength(256)),
   favouriteTagHighlight: boolean(),
   favouriteTagMinMatches: and(number(), integer(), range(1, 10)),
+  checkUpdateOnStart: boolean(),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────
@@ -1026,6 +1028,36 @@ function registerIPCHandlers() {
   registerHistoryHandlers(bridge)
   registerFavouriteTagHandlers(bridge)
   registerTagListHandlers(bridge)
+
+  ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
+    return checkForUpdates()
+  })
+}
+
+function scheduleStartupUpdateCheck() {
+  const bridge = getPythonBridge()
+  bridge.call('get_config').then((result: unknown) => {
+    const config = (result as Record<string, unknown>)?.config as Record<string, unknown> | undefined
+    if (!config) return
+    if (config.checkUpdateOnStart === false) return
+
+    setTimeout(async () => {
+      try {
+        const updateResult = await checkForUpdates()
+        if (updateResult.hasUpdate && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(NOTIFICATION_CHANNELS.UPDATE_CHECK_RESULT, {
+            latestVersion: updateResult.latestVersion,
+            changelog: updateResult.changelog,
+            releaseUrl: updateResult.releaseUrl,
+          })
+        }
+      } catch {
+        // Silent failure for auto-check
+      }
+    }, 3000)
+  }).catch(() => {
+    // Failed to read config, skip update check
+  })
 }
 
 // ── Single instance lock ──
@@ -1057,6 +1089,7 @@ app.whenReady().then(() => {
 
     createWindow()
     registerIPCHandlers()
+    scheduleStartupUpdateCheck()
   } catch (err) {
     dialog.showErrorBox('启动失败', '应用初始化失败: ' + (err as Error).message)
     app.quit()

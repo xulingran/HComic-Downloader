@@ -14,8 +14,10 @@ import { AboutPage } from './pages/AboutPage'
 import { Toast } from './components/common/Toast'
 import { ComicInfoDrawer } from './components/ComicInfoDrawer'
 import { ComicReaderModal } from './components/ComicReaderModal'
+import { UpdateDialog } from './components/UpdateDialog'
 import { useDrawerStore } from './stores/useDrawerStore'
 import { useReaderStore } from './stores/useReaderStore'
+import type { UpdateInfo } from '@shared/types'
 
 function App() {
   const { sfwToastDismissed, dismissSfwToast } = useSettingsStore()
@@ -36,6 +38,15 @@ function App() {
     setShowSfwToast(false)
     dismissSfwToast()
   }, [dismissSfwToast])
+
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null)
+
+  useEffect(() => {
+    const unsubscribe = window.hcomic?.onUpdateAvailable((info: UpdateInfo) => {
+      setUpdateInfo(info)
+    })
+    return () => { unsubscribe?.() }
+  }, [])
 
   const [activePage, setActivePage] = useState('search')
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
@@ -91,6 +102,12 @@ function App() {
         open={!!readerComic}
         onClose={closeReader}
       />
+      {updateInfo && (
+        <UpdateDialog
+          info={updateInfo}
+          onClose={() => setUpdateInfo(null)}
+        />
+      )}
     </div>
   )
 }
