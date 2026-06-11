@@ -130,7 +130,7 @@ class MoeImgParser(ParserContextMixin):
             else:
                 data = self._search_entity(mode=mode, keyword=keyword, page=page_num)
         except ParserResponseError:
-            return [], None
+            raise
 
         if not data:
             return [], None

@@ -182,9 +182,8 @@ class TestHComicParserNetworkMethods:
 
         monkeypatch.setattr(parser.session, "get", mock_get)
 
-        comics, pagination = parser.search("test")
-        assert comics == []
-        assert pagination is None
+        with pytest.raises(ParserResponseError, match="请求失败"):
+            parser.search("test")
 
     def test_favourites_success(self, parser, monkeypatch):
         """测试获取收藏夹成功"""
@@ -596,7 +595,7 @@ class TestHComicRandom:
         assert comics[0].pages == 15
 
     def test_random_network_error(self, parser, monkeypatch):
-        """测试随机漫画网络错误返回空列表。"""
+        """测试随机漫画网络错误抛出异常。"""
 
         monkeypatch.setattr(
             parser.session,
@@ -604,10 +603,8 @@ class TestHComicRandom:
             lambda *a, **kw: (_ for _ in ()).throw(requests.Timeout("t")),
         )
 
-        comics, pagination = parser.random()
-
-        assert comics == []
-        assert pagination is None
+        with pytest.raises(ParserResponseError, match="请求超时"):
+            parser.random()
 
 
 class TestHComicAuthenticatedRequest:

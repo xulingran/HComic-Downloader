@@ -209,9 +209,8 @@ class CopyMangaParser(ParserContextMixin):
         url = SEARCH_URL_TEMPLATE.format(offset=offset, keyword=keyword)
         try:
             data = self._request_json(url, headers=API_HEADERS)
-        except ParserResponseError as e:
-            logger.error("CopyManga search failed: %s", e, exc_info=True)
-            return [], None
+        except ParserResponseError:
+            raise
 
         results = data.get("results") or {}
         items = results.get("list") or []

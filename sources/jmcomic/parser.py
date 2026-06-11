@@ -11,7 +11,7 @@ import requests
 from lxml import etree
 
 from models import ChapterInfo, ComicInfo, PaginationInfo
-from sources.base import ParserContextMixin
+from sources.base import ParserContextMixin, ParserResponseError
 from utils import apply_system_proxy_to_session, configure_session_auth
 
 from .constants import (
@@ -343,6 +343,8 @@ class JmParser(ParserContextMixin):
         try:
             html = self._request_text(url)
             return self._parse_search_results(html, domain=domain)
+        except ParserResponseError:
+            raise
         except Exception as e:
             logger.error("jmcomic search failed: %s", e, exc_info=True)
             return [], None
@@ -354,6 +356,8 @@ class JmParser(ParserContextMixin):
         try:
             html = self._request_text(url)
             return self._parse_search_results(html, domain=domain)
+        except ParserResponseError:
+            raise
         except Exception as e:
             logger.error("jmcomic random failed: %s", e, exc_info=True)
             return [], None

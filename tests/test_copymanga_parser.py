@@ -5,6 +5,7 @@ import json as _json
 import pytest
 import requests as _requests
 
+from sources.base import ParserResponseError
 from sources.copymanga.crypto import AesKeyCache, decrypt_aes_cbc, extract_aes_key
 
 # ---------------------------------------------------------------------------
@@ -221,9 +222,8 @@ class TestCopyMangaSearch:
             "get",
             lambda *a, **kw: (_ for _ in ()).throw(_requests.Timeout("t")),
         )
-        comics, pagination = copymanga_parser.search("test")
-        assert comics == []
-        assert pagination is None
+        with pytest.raises(ParserResponseError, match="请求超时"):
+            copymanga_parser.search("test")
 
 
 # ---------------------------------------------------------------------------
