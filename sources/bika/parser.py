@@ -37,6 +37,7 @@ class BikaParser(ParserContextMixin):
         self._token: str = ""
         self._stored_username: str = ""
         self._stored_password: str = ""
+        self._favourites_total_pages: int = 0
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置认证信息。Bika 使用 bearer_token。"""
@@ -444,7 +445,9 @@ class BikaParser(ParserContextMixin):
     def favourites(
         self, page: int = 1, raise_errors: bool = False
     ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
-        """获取收藏夹漫画。
+        """获取收藏夹漫画（按新→旧排序）。
+
+        Bika API 默认返回老→新排序，此方法通过镜像页码实现全局反转。
 
         Args:
             page: 页码
@@ -459,8 +462,28 @@ class BikaParser(ParserContextMixin):
             return [], None, True
 
         try:
-            result = self._request(Method.GET, f"users/favourite?page={page}")
+            if self._favourites_total_pages == 0:
+                probe = self._request(Method.GET, "users/favourite?page=1")
+                _, probe_pagination = self._parse_comics_response(probe)
+                if probe_pagination and probe_pagination.total_pages > 0:
+                    self._favourites_total_pages = probe_pagination.total_pages
+                else:
+                    comics, pagination = self._parse_comics_response(probe)
+                    comics.reverse()
+                    if pagination:
+                        pagination.current_page = page
+                    return comics, pagination, False
+
+            total = self._favourites_total_pages
+            api_page = max(1, min(total - page + 1, total))
+
+            result = self._request(Method.GET, f"users/favourite?page={api_page}")
             comics, pagination = self._parse_comics_response(result)
+            comics.reverse()
+
+            if pagination:
+                pagination.current_page = page
+
             return comics, pagination, False
         except ParserResponseError as e:
             logger.error("Bika favourites failed: %s", e, exc_info=True)
@@ -479,6 +502,7 @@ class BikaParser(ParserContextMixin):
         """
         try:
             self._request(Method.POST, f"comics/{comic_id}/favourite")
+            self._favourites_total_pages = 0
             return True
         except ParserResponseError as e:
             logger.error("Bika add_to_favourites failed: %s", e, exc_info=True)
@@ -511,6 +535,7 @@ class BikaParser(ParserContextMixin):
         """
         try:
             self._request(Method.POST, f"comics/{comic_id}/favourite")
+            self._favourites_total_pages = 0
             return True
         except ParserResponseError as e:
             logger.error("Bika remove_from_favourites failed: %s", e, exc_info=True)
