@@ -12,13 +12,14 @@ describe('useSourceOptions hooks', () => {
     expect(result.current[4]).toEqual({ value: 'copymanga', label: '拷贝漫画' })
   })
 
-  it('useSearchModes returns all 4 modes', () => {
+  it('useSearchModes returns all 5 modes', () => {
     const { result } = renderHook(() => useSearchModes())
-    expect(result.current).toHaveLength(4)
+    expect(result.current).toHaveLength(5)
     expect(result.current[0]).toEqual({ value: 'keyword', label: '关键词' })
     expect(result.current[1]).toEqual({ value: 'author', label: '作者' })
     expect(result.current[2]).toEqual({ value: 'tag', label: 'Tag' })
     expect(result.current[3]).toEqual({ value: 'ranking', label: '排行' })
+    expect(result.current[4]).toEqual({ value: 'category', label: '分类' })
   })
 
   it('useRankingOptions returns all 16 options', () => {

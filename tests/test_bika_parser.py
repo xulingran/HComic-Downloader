@@ -377,9 +377,8 @@ class TestBikaSearch:
             lambda *a, **kw: (_ for _ in ()).throw(requests.Timeout("t")),
         )
 
-        comics, pagination = bika_parser.search("test")
-        assert comics == []
-        assert pagination is None
+        with pytest.raises(ParserResponseError, match="请求超时"):
+            bika_parser.search("test")
 
 
 # ---------------------------------------------------------------------------
@@ -750,6 +749,243 @@ class TestBikaVerifyLoginStatus:
 # ---------------------------------------------------------------------------
 # 收藏操作 (toggle)
 # ---------------------------------------------------------------------------
+
+
+class TestBikaListComics:
+    """测试 list_comics 漫画列表浏览。"""
+
+    def test_list_comics_default(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_comics_list_response.json")
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _make_json_response(payload)
+
+        monkeypatch.setattr(bika_parser.session, "request", fake_request)
+
+        comics, pagination = bika_parser.list_comics(page=1)
+
+        assert len(comics) == 2
+        assert comics[0].title == "Latest Comic One"
+        assert comics[1].title == "Latest Comic Two"
+        assert pagination.total_items == 200
+        assert "comics?" in captured["url"]
+        assert "s=dd" in captured["url"]
+        assert "page=1" in captured["url"]
+
+    def test_list_comics_with_category(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_comics_list_response.json")
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _make_json_response(payload)
+
+        monkeypatch.setattr(bika_parser.session, "request", fake_request)
+
+        comics, pagination = bika_parser.list_comics(category="大家都在看")
+
+        assert len(comics) == 2
+        assert "c=" in captured["url"]
+
+    def test_list_comics_with_tag(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_comics_list_response.json")
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _make_json_response(payload)
+
+        monkeypatch.setattr(bika_parser.session, "request", fake_request)
+
+        bika_parser.list_comics(tag="恋爱")
+
+        assert "t=" in captured["url"]
+
+    def test_list_comics_with_sort(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_comics_list_response.json")
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _make_json_response(payload)
+
+        monkeypatch.setattr(bika_parser.session, "request", fake_request)
+
+        bika_parser.list_comics(sort="vd")
+
+        assert "s=vd" in captured["url"]
+
+    def test_list_comics_network_error(self, bika_parser, monkeypatch):
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.Timeout("t")),
+        )
+
+        with pytest.raises(ParserResponseError, match="请求超时"):
+            bika_parser.list_comics()
+
+
+class TestBikaCategories:
+    """测试 get_categories 分类列表。"""
+
+    def test_get_categories_filters_web_only(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_categories_response.json")
+
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: _make_json_response(payload),
+        )
+
+        categories = bika_parser.get_categories()
+
+        assert len(categories) == 3
+        titles = [c["title"] for c in categories]
+        assert "大家都在看" in titles
+        assert "都市" in titles
+        assert "恋爱" in titles
+        assert "Web Only Cat" not in titles
+
+    def test_get_categories_has_id_and_title(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_categories_response.json")
+
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: _make_json_response(payload),
+        )
+
+        categories = bika_parser.get_categories()
+
+        assert categories[0]["id"] == "cat001"
+        assert categories[0]["title"] == "大家都在看"
+        assert categories[0]["thumb"] == "https://storage1.picacomic.com/static/tobe/cat1.jpg"
+
+    def test_get_categories_network_error(self, bika_parser, monkeypatch):
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.ConnectionError("c")),
+        )
+
+        with pytest.raises(ParserResponseError, match="连接失败"):
+            bika_parser.get_categories()
+
+
+class TestBikaLeaderboard:
+    """测试 get_leaderboard 排行榜。"""
+
+    def test_get_leaderboard_daily(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_leaderboard_response.json")
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _make_json_response(payload)
+
+        monkeypatch.setattr(bika_parser.session, "request", fake_request)
+
+        comics = bika_parser.get_leaderboard("H24")
+
+        assert len(comics) == 2
+        assert comics[0].title == "Top Comic"
+        assert comics[1].title == "Second Comic"
+        assert "leaderboard" in captured["url"]
+        assert "tt=H24" in captured["url"]
+
+    def test_get_leaderboard_weekly(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_leaderboard_response.json")
+        captured = {}
+
+        def fake_request(method, url, **kwargs):
+            captured["url"] = url
+            return _make_json_response(payload)
+
+        monkeypatch.setattr(bika_parser.session, "request", fake_request)
+
+        bika_parser.get_leaderboard("D7")
+
+        assert "tt=D7" in captured["url"]
+
+    def test_get_leaderboard_network_error(self, bika_parser, monkeypatch):
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.Timeout("t")),
+        )
+
+        with pytest.raises(ParserResponseError, match="请求超时"):
+            bika_parser.get_leaderboard()
+
+
+class TestBikaRandomComics:
+    """测试 get_random_comics 随机推荐。"""
+
+    def test_get_random_comics(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_random_response.json")
+
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: _make_json_response(payload),
+        )
+
+        comics = bika_parser.get_random_comics()
+
+        assert len(comics) == 1
+        assert comics[0].title == "Random Comic A"
+        assert comics[0].id == "random001"
+
+    def test_get_random_comics_network_error(self, bika_parser, monkeypatch):
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.ConnectionError("c")),
+        )
+
+        with pytest.raises(ParserResponseError, match="连接失败"):
+            bika_parser.get_random_comics()
+
+
+class TestBikaKeywords:
+    """测试 get_keywords 热搜关键词。"""
+
+    def test_get_keywords(self, bika_parser, monkeypatch, json_fixture):
+        payload = json_fixture("bika_keywords_response.json")
+
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: _make_json_response(payload),
+        )
+
+        keywords = bika_parser.get_keywords()
+
+        assert keywords == ["热门关键词", "新番", "推荐"]
+
+    def test_get_keywords_empty(self, bika_parser, monkeypatch):
+        payload = {"code": 200, "data": {"keywords": []}}
+
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: _make_json_response(payload),
+        )
+
+        assert bika_parser.get_keywords() == []
+
+    def test_get_keywords_network_error(self, bika_parser, monkeypatch):
+        monkeypatch.setattr(
+            bika_parser.session,
+            "request",
+            lambda *a, **kw: (_ for _ in ()).throw(requests.Timeout("t")),
+        )
+
+        with pytest.raises(ParserResponseError, match="请求超时"):
+            bika_parser.get_keywords()
 
 
 class TestBikaFavouriteToggle:

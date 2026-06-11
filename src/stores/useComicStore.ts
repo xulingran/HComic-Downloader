@@ -7,7 +7,7 @@ interface ComicState {
   isLoading: boolean
   error: string | null
   setComics: (comics: ComicInfo[]) => void
-  setPagination: (pagination: PaginationInfo) => void
+  setPagination: (pagination: PaginationInfo | null) => void
   setLoading: (loading: boolean) => void
   setError: (error: string | null) => void
 }

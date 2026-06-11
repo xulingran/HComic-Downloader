@@ -1,0 +1,41 @@
+{
+  "code": 200,
+  "data": {
+    "comics": {
+      "docs": [
+        {
+          "_id": "comic_list_001",
+          "title": "Latest Comic One",
+          "author": "AuthorA",
+          "pagesCount": 30,
+          "epsCount": 5,
+          "categories": ["Manga"],
+          "tags": ["action", "adventure"],
+          "thumb": {
+            "fileServer": "https://storage1.picacomic.com",
+            "path": "tobe/001/thumb.jpg"
+          },
+          "updated_at": "2026-06-10T12:00:00.000Z"
+        },
+        {
+          "_id": "comic_list_002",
+          "title": "Latest Comic Two",
+          "author": "AuthorB",
+          "pagesCount": 15,
+          "epsCount": 2,
+          "categories": ["Doujinshi"],
+          "tags": ["comedy"],
+          "thumb": {
+            "fileServer": "https://storage1.picacomic.com/",
+            "path": "tobe/002/thumb.jpg"
+          },
+          "updated_at": "2026-06-09T08:00:00.000Z"
+        }
+      ],
+      "page": 1,
+      "pages": 10,
+      "total": 200,
+      "limit": 20
+    }
+  }
+}

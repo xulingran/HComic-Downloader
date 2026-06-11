@@ -302,7 +302,7 @@ def test_random_delegates_to_supported_source(monkeypatch):
 
 
 def test_random_raises_for_unsupported_source():
-    """random() 对 moeimg/bika 应抛 ValueError。"""
+    """random() 对 moeimg 应抛 ValueError。"""
     import pytest
 
     parser = MultiSourceParser(timeout=5, default_source="moeimg")
@@ -310,8 +310,27 @@ def test_random_raises_for_unsupported_source():
     with pytest.raises(ValueError, match="not supported"):
         parser.random(source="moeimg")
 
-    with pytest.raises(ValueError, match="not supported"):
-        parser.random(source="bika")
+
+def test_random_routes_to_bika(monkeypatch):
+    """random(source='bika') 应路由到 bika parser 的 get_random_comics。"""
+    from sources.bika.parser import BikaParser
+
+    parser = MultiSourceParser(timeout=5, default_source="bika")
+    bika = parser.parsers["bika"]
+    assert isinstance(bika, BikaParser)
+
+    called = {}
+    def fake_get_random_comics():
+        called["ok"] = True
+        from models import ComicInfo
+        return [ComicInfo(id="r1", title="Random", source_site="bika", comic_source="BIKA")]
+
+    monkeypatch.setattr(bika, "get_random_comics", fake_get_random_comics)
+    comics, pagination = parser.random(source="bika")
+    assert called.get("ok")
+    assert len(comics) == 1
+    assert comics[0].id == "r1"
+    assert pagination is None
 
 
 def test_favourites_routes_to_bika(monkeypatch):

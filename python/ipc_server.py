@@ -176,6 +176,7 @@ class IPCServer(
         "verify_auth": "handle_verify_auth",
         "moeimg_login": "handle_moeimg_login",
         "bika_login": "handle_bika_login",
+        "bika_categories": "handle_bika_categories",
         "hcomic_login": "handle_hcomic_login",
         "get_config": "handle_get_config",
         "set_config": "handle_set_config",

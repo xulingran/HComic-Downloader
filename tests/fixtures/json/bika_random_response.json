@@ -1,0 +1,21 @@
+{
+  "code": 200,
+  "data": {
+    "comics": [
+      {
+        "_id": "random001",
+        "title": "Random Comic A",
+        "author": "RandAuthor",
+        "pagesCount": 20,
+        "epsCount": 3,
+        "categories": ["Manga"],
+        "tags": ["random"],
+        "thumb": {
+          "fileServer": "https://storage1.picacomic.com",
+          "path": "tobe/rand/thumb.jpg"
+        },
+        "updated_at": "2026-06-08T00:00:00.000Z"
+      }
+    ]
+  }
+}

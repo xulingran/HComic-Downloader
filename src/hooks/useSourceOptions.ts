@@ -11,6 +11,7 @@ const SEARCH_MODE_LABELS: Record<string, string> = {
   author: '作者',
   tag: 'Tag',
   ranking: '排行',
+  category: '分类',
 }
 
 const RANKING_OPTIONS_LIST = [
@@ -25,6 +26,12 @@ const COPYMANGA_CATEGORY_OPTIONS = [
   { value: 'popular', label: '人气排行' },
   { value: 'recommend', label: '漫画推荐' },
   { value: 'newest', label: '全新上架' },
+]
+
+const BIKA_LEADERBOARD_OPTIONS = [
+  { value: 'H24', label: '日榜' },
+  { value: 'D7', label: '周榜' },
+  { value: 'D30', label: '月榜' },
 ]
 
 /** 返回带标签的来源列表 */
@@ -51,4 +58,9 @@ export function useRankingOptions(): Option[] {
 /** 返回拷贝漫画分类选项列表 */
 export function useCopymangaCategories(): Option[] {
   return useMemo(() => COPYMANGA_CATEGORY_OPTIONS, [])
+}
+
+/** 返回哔咔排行榜选项列表 */
+export function useBikaLeaderboardOptions(): Option[] {
+  return useMemo(() => BIKA_LEADERBOARD_OPTIONS, [])
 }

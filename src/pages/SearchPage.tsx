@@ -9,6 +9,7 @@ import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { SearchBar } from '../components/SearchBar'
+import { BikaCategoryGrid } from '../components/BikaCategoryGrid'
 import { TagDialog } from '../components/TagDialog'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
@@ -40,6 +41,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [needsLogin, setNeedsLogin] = useState(false)
+  const [viewingCategory, setViewingCategory] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { random } = useRandom()
@@ -361,8 +363,35 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setSearchTags('')
     tagPanel.clearAll()
     setShowHistory(false)
+    setViewingCategory(false)
     await withLoading(() => random(source))
   }
+
+  const handleBikaCategory = useCallback(async (categoryTitle: string) => {
+    clearSelection()
+    clearPendingSearch()
+    setSearchTags('')
+    tagPanel.clearAll()
+    setShowHistory(false)
+    setMode('category')
+    setQuery(categoryTitle)
+    queryRef.current = categoryTitle
+    modeRef.current = 'category'
+    setViewingCategory(true)
+    await withLoading(() => search(categoryTitle, 'category', 1, 'bika'))
+  }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
+
+  const handleBackToCategories = useCallback(() => {
+    clearSelection()
+    setQuery('')
+    queryRef.current = ''
+    setMode('keyword')
+    modeRef.current = 'keyword'
+    setViewingCategory(false)
+    setComics([])
+    setPagination(null)
+    setError(null)
+  }, [clearSelection, setComics, setPagination, setError])
 
   const handleSourceChange = async (newSource: string) => {
     setSource(newSource)
@@ -373,9 +402,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     clearSelection()
     setShowHistory(false)
     setNeedsLogin(false)
+    setViewingCategory(false)
     if (newSource === 'copymanga' && mode === 'ranking') {
       setQuery('hot')
       queryRef.current = 'hot'
+    } else if (newSource === 'bika' && mode === 'ranking') {
+      setQuery('H24')
+      queryRef.current = 'H24'
     } else {
       setQuery('')
       queryRef.current = ''
@@ -390,6 +423,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         return
       }
       withLoading(() => random(newSource))
+    } else if (newSource === 'bika') {
+      setComics([])
+      setPagination(null)
     } else {
       withLoading(() => search('', mode, 1, newSource))
     }
@@ -491,6 +527,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
             setQuery('hot')
             queryRef.current = 'hot'
           }
+          if (newMode === 'ranking' && source === 'bika' && !query) {
+            setQuery('H24')
+            queryRef.current = 'H24'
+          }
         }}
         query={query}
         onQueryChange={setQuery}
@@ -544,7 +584,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         onRefreshTags={tagPanel.refresh}
       />
 
-      <ErrorDisplay message={error} />
+      <ErrorDisplay message={error} onRetry={error ? () => handleSearch() : undefined} />
 
       {!isLoading && needsLogin && requiresAuth(source) && (
         <div className="text-center py-12">
@@ -558,6 +598,18 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
             </button>
           )}
         </div>
+      )}
+
+      {viewingCategory && source === 'bika' && !isLoading && (
+        <button
+          onClick={handleBackToCategories}
+          className="flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          返回分类
+        </button>
       )}
 
       {!needsLogin && filteredComics.length > 0 && (
@@ -609,7 +661,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         />
       )}
 
-      {!isLoading && !needsLogin && comics.length === 0 && <EmptyState message="暂无搜索结果" />}
+      {!isLoading && !needsLogin && source === 'bika' && comics.length === 0 && !viewingCategory && !error && (
+        <BikaCategoryGrid onSelectCategory={handleBikaCategory} />
+      )}
+
+      {!isLoading && !needsLogin && comics.length === 0 && !(source === 'bika' && !viewingCategory && !error) && <EmptyState message="暂无搜索结果" />}
 
       {!isLoading && !needsLogin && comics.length > 0 && blockedCount === comics.length && <EmptyState message="所有结果均已被标签过滤" />}
     </div>

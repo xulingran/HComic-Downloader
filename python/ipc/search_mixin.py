@@ -167,6 +167,46 @@ class SearchMixin:
         elif effective_source == "copymanga" and mode == "ranking":
             effective_tag = query
             effective_query = ""
+        elif (
+            effective_source == "bika"
+            and mode in ("ranking", "tag", "category")
+            and (mode in ("ranking", "category") or query)
+        ):
+            effective_tag = ""
+            effective_query = ""
+        if effective_source == "bika" and mode == "ranking":
+            rank_type = query if query in ("H24", "D7", "D30") else "H24"
+            bika_parser = self.parser.parsers.get("bika")
+            if bika_parser is None:
+                raise ValueError("bika source unavailable")
+            with self._auth_error_guard(effective_source):
+                comics = bika_parser.get_leaderboard(rank_type)
+            return {
+                "comics": [self._comic_to_dict(c) for c in comics],
+                "pagination": self._pagination_to_dict(None, fallback_page=1),
+            }
+        if effective_source == "bika" and mode == "tag" and query:
+            bika_parser = self.parser.parsers.get("bika")
+            if bika_parser is None:
+                raise ValueError("bika source unavailable")
+            with self._auth_error_guard(effective_source):
+                comics, pagination = bika_parser.list_comics(page=page, tag=query)
+            self._collect_tags_from_comics(comics, effective_source)
+            return {
+                "comics": [self._comic_to_dict(c) for c in comics],
+                "pagination": self._pagination_to_dict(pagination, fallback_page=page),
+            }
+        if effective_source == "bika" and mode == "category" and query:
+            bika_parser = self.parser.parsers.get("bika")
+            if bika_parser is None:
+                raise ValueError("bika source unavailable")
+            with self._auth_error_guard(effective_source):
+                comics, pagination = bika_parser.list_comics(page=page, category=query)
+            self._collect_tags_from_comics(comics, effective_source)
+            return {
+                "comics": [self._comic_to_dict(c) for c in comics],
+                "pagination": self._pagination_to_dict(pagination, fallback_page=page),
+            }
         try:
             comics, pagination = self.parser.search(
                 effective_query, page=page, source=effective_source, tag=effective_tag
@@ -186,7 +226,7 @@ class SearchMixin:
         }
 
     def handle_random(self, source: str | None = None) -> dict:
-        effective_source = source if source in ("hcomic", "jmcomic") else _DEFAULT_SOURCE
+        effective_source = source if source in ("hcomic", "jmcomic", "bika") else _DEFAULT_SOURCE
         self._check_source_auth(effective_source)
         try:
             comics, pagination = self.parser.random(source=effective_source)
@@ -373,6 +413,13 @@ class SearchMixin:
         if comic is None:
             return {"comic": None}
         return {"comic": self._comic_to_dict(comic)}
+
+    def handle_bika_categories(self) -> dict:
+        bika_parser = self.parser.parsers.get("bika")
+        if not bika_parser:
+            raise ValueError("bika 来源不可用")
+        categories = bika_parser.get_categories()
+        return {"categories": categories}
 
     def handle_fetch_preview_image(self, image_url: str, scramble_id: str = "", comic_id: str = "") -> dict:
         self._validate_preview_image_url(image_url)

@@ -181,6 +181,9 @@ class MultiSourceParser:
 
     def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = self._resolve_source(source)
+        if src == "bika":
+            comics = self.parsers["bika"].get_random_comics()
+            return comics, None
         if src not in ("hcomic", "jmcomic"):
             raise ValueError(f"Random is not supported for source: {src}")
         return self.parsers[src].random()  # type: ignore[union-attr]

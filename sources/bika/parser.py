@@ -210,9 +210,128 @@ class BikaParser(ParserContextMixin):
             data = {"keyword": keyword, "sort": "dd"}
             result = self._request(Method.POST, f"comics/advanced-search?page={page}", json=data)
             return self._parse_comics_response(result)
-        except ParserResponseError as e:
-            logger.error("Bika search failed: %s", e, exc_info=True)
-            return [], None
+        except ParserResponseError:
+            raise
+
+    def list_comics(
+        self,
+        page: int = 1,
+        *,
+        category: str = "",
+        tag: str = "",
+        author: str = "",
+        sort: str = "dd",
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+        """浏览漫画列表（最新/分类/标签/作者）。
+
+        Args:
+            page: 页码 (1-based)
+            category: 分类名称
+            tag: 标签名称
+            author: 作者名称
+            sort: 排序方式 (dd=新→旧, da=旧→新, ld=最多喜欢, vd=最多观看)
+
+        Returns:
+            (漫画信息列表, 分页信息)
+        """
+        from urllib.parse import urlencode
+
+        params: dict[str, str | int] = {"page": page, "s": sort}
+        if category:
+            params["c"] = category
+        if tag:
+            params["t"] = tag
+        if author:
+            params["a"] = author
+        try:
+            result = self._request(Method.GET, f"comics?{urlencode(params)}")
+            return self._parse_comics_response(result)
+        except ParserResponseError:
+            raise
+
+    def get_categories(self) -> list[dict[str, str]]:
+        """获取漫画分类列表。
+
+        Returns:
+            分类列表，每项含 "id"、"title"、"thumb" 字段
+        """
+        try:
+            result = self._request(Method.GET, "categories")
+            categories = result.get("data", {}).get("categories", [])
+            items = []
+            for c in categories:
+                if c.get("isWeb") or not c.get("title"):
+                    continue
+                thumb = c.get("thumb", {})
+                file_server = thumb.get("fileServer", "")
+                path = thumb.get("path", "")
+                thumb_url = self._build_file_url(file_server, path) if file_server and path else ""
+                items.append(
+                    {
+                        "id": c.get("_id", ""),
+                        "title": c.get("title", ""),
+                        "thumb": thumb_url,
+                    }
+                )
+            return items
+        except ParserResponseError:
+            raise
+
+    def get_leaderboard(self, rank_type: str = "H24") -> list[ComicInfo]:
+        """获取漫画排行榜。
+
+        Args:
+            rank_type: 排行类型 (H24=日榜, D7=周榜, D30=月榜)
+
+        Returns:
+            漫画信息列表
+        """
+        try:
+            result = self._request(Method.GET, f"comics/leaderboard?tt={rank_type}&ct=VC")
+            docs = result.get("data", {}).get("comics", [])
+            comics = []
+            for doc in docs:
+                try:
+                    comics.append(self._parse_comic_item(doc))
+                except Exception as e:
+                    logger.debug("Parse leaderboard comic item skipped: %s", e)
+            return comics
+        except ParserResponseError:
+            raise
+
+    def get_random_comics(self) -> list[ComicInfo]:
+        """获取随机推荐漫画。
+
+        Returns:
+            漫画信息列表
+        """
+        try:
+            result = self._request(Method.GET, "comics/random")
+            docs = result.get("data", {}).get("comics", [])
+            comics = []
+            for doc in docs:
+                try:
+                    comics.append(self._parse_comic_item(doc))
+                except Exception as e:
+                    logger.debug("Parse random comic item skipped: %s", e)
+            return comics
+        except ParserResponseError:
+            raise
+
+    def get_keywords(self) -> list[str]:
+        """获取热搜关键词列表。
+
+        Returns:
+            关键词字符串列表
+        """
+        try:
+            result = self._request(Method.GET, "keywords")
+            keywords = result.get("data", {}).get("keywords", [])
+            if isinstance(keywords, list):
+                return [k for k in keywords if isinstance(k, str)]
+            return []
+        except ParserResponseError:
+            raise
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
         """获取漫画详情。

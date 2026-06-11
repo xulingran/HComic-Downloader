@@ -313,6 +313,10 @@ export interface IPCMethods {
     params: { username: string; password: string }
     result: { success: boolean; message: string }
   }
+  bika_categories: {
+    params: Record<string, never>
+    result: { categories: Array<{ id: string; title: string; thumb: string }> }
+  }
   hcomic_login: {
     params: { username: string; password: string }
     result: { success: boolean; message: string }
@@ -487,6 +491,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:verify-auth': 'verify_auth',
   'python:moeimg-login': 'moeimg_login',
   'python:bika-login': 'bika_login',
+  'python:bika-categories': 'bika_categories',
   'python:hcomic-login': 'hcomic_login',
   'python:shutdown': 'shutdown',
   'python:fetch-cover': 'fetch_cover',
@@ -556,6 +561,7 @@ export interface HcomicAPI {
   verifyAuth(source?: string): Promise<{ valid: boolean; message: string }>
   moeimgLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   bikaLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
+  bikaCategories(): Promise<{ categories: Array<{ id: string; title: string; thumb: string }> }>
   hcomicLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   fetchCover(url: string): Promise<{ dataUri: string }>
@@ -612,7 +618,7 @@ export interface HcomicAPI {
 }
 
 /** Valid search modes — shared between preload and main */
-export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking'] as const
+export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking', 'category'] as const
 export type SearchMode = typeof SEARCH_MODES[number]
 
 /** Valid comic sources — shared between preload and main */
@@ -653,10 +659,10 @@ export const SOURCE_META = {
   },
   bika: {
     label: '哔咔',
-    supportsRandom: false,
+    supportsRandom: true,
     supportsFavourites: true,
     requiresAuth: false,
-    supportsRanking: false,
+    supportsRanking: true,
     needsDetailEnrich: false,
     supportsTagRecommendation: true,
     supportsTagList: true,
@@ -727,6 +733,7 @@ export const IPC_CHANNELS = {
   VERIFY_AUTH: 'python:verify-auth',
   MOEIMG_LOGIN: 'python:moeimg-login',
   BIKA_LOGIN: 'python:bika-login',
+  BIKA_CATEGORIES: 'python:bika-categories',
   HCOMIC_LOGIN: 'python:hcomic-login',
   SHUTDOWN: 'python:shutdown',
   FETCH_COVER: 'python:fetch-cover',

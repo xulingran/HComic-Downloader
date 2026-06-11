@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.BIKA_LOGIN, username, password)
   },
 
+  bikaCategories: () => ipcRenderer.invoke(IPC_CHANNELS.BIKA_CATEGORIES),
+
   hcomicLogin: (username: unknown, password: unknown) => {
     if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
     if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')

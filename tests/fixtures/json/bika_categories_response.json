@@ -1,0 +1,11 @@
+{
+  "code": 200,
+  "data": {
+    "categories": [
+      {"_id": "cat001", "title": "大家都在看", "isWeb": false, "thumb": {"fileServer": "https://storage1.picacomic.com", "path": "tobe/cat1.jpg"}},
+      {"_id": "cat002", "title": "都市", "isWeb": false, "thumb": {"fileServer": "https://storage1.picacomic.com", "path": "tobe/cat2.jpg"}},
+      {"_id": "cat003", "title": "Web Only Cat", "isWeb": true},
+      {"_id": "cat004", "title": "恋爱", "isWeb": false, "thumb": {"fileServer": "https://storage1.picacomic.com", "path": "tobe/cat4.jpg"}}
+    ]
+  }
+}

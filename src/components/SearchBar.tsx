@@ -1,7 +1,7 @@
 import { PaginationInfo } from '@shared/types'
 import { PaginationControls } from './common/PaginationControls'
 import { BatchControls } from './common/BatchControls'
-import { useSources, useSearchModes, useRankingOptions, useCopymangaCategories } from '../hooks/useSourceOptions'
+import { useSources, useSearchModes, useRankingOptions, useCopymangaCategories, useBikaLeaderboardOptions } from '../hooks/useSourceOptions'
 import { sourceSupportsRanking } from '../utils/source'
 
 
@@ -63,7 +63,9 @@ export function SearchBar({
   const searchModes = useSearchModes()
   const rankingOptions = useRankingOptions()
   const copymangaCategories = useCopymangaCategories()
+  const bikaLeaderboardOptions = useBikaLeaderboardOptions()
   const isCopymangaCategory = mode === 'ranking' && source === 'copymanga'
+  const isBikaLeaderboard = mode === 'ranking' && source === 'bika'
   return (
     <div className="bg-[var(--bg-primary)] rounded-xl p-3 shadow-sm">
       <div className="flex gap-3">
@@ -115,7 +117,7 @@ export function SearchBar({
               <path d="M2 4l4 4 4-4" />
             </svg>
           </div>
-          {mode === 'ranking' && sourceSupportsRanking(source) && !isCopymangaCategory ? (
+          {mode === 'ranking' && sourceSupportsRanking(source) && !isCopymangaCategory && !isBikaLeaderboard ? (
             <select
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
@@ -135,6 +137,17 @@ export function SearchBar({
                          text-sm outline-none cursor-pointer"
             >
               {copymangaCategories.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          ) : isBikaLeaderboard ? (
+            <select
+              value={query}
+              onChange={(e) => onQueryChange(e.target.value)}
+              className="flex-1 bg-transparent border-none py-2 pl-3 pr-4 text-[var(--text-primary)]
+                         text-sm outline-none cursor-pointer"
+            >
+              {bikaLeaderboardOptions.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>

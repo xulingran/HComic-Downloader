@@ -271,3 +271,13 @@ export function useTagList() {
 
   return { getTagList, refreshTagList }
 }
+
+export function useBikaCategories() {
+  const { invoke } = useIpc()
+
+  const getBikaCategories = useCallback(async () => {
+    return invoke(() => window.hcomic!.bikaCategories())
+  }, [invoke])
+
+  return { getBikaCategories }
+}

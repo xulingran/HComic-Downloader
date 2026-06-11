@@ -696,6 +696,10 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('bika_login', { username: username.trim(), password: password.trim() })
   })
 
+  ipcMain.handle(IPC_CHANNELS.BIKA_CATEGORIES, async () => {
+    return bridge.call('bika_categories', {})
+  })
+
   ipcMain.handle(IPC_CHANNELS.HCOMIC_LOGIN, async (_, username, password) => {
     if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) {
       throw new Error('Invalid hcomic username')
