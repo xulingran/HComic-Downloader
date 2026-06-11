@@ -56,6 +56,8 @@ class SearchMixin:
             "sourceSite": comic.source_site or "hcomic",
             "mediaId": comic.media_id or "",
             "tags": comic.tags if hasattr(comic, "tags") else [],
+            "parodies": comic.parodies if hasattr(comic, "parodies") else [],
+            "characters": comic.characters if hasattr(comic, "characters") else [],
             "author": comic.author if hasattr(comic, "author") else None,
             "pages": comic.pages if hasattr(comic, "pages") else None,
             "chapters": [
@@ -86,6 +88,8 @@ class SearchMixin:
             pages=data.get("pages") or 0,
             image_urls=data.get("imageUrls") or data.get("image_urls") or [],
             tags=data.get("tags") or [],
+            parodies=data.get("parodies") or [],
+            characters=data.get("characters") or [],
             author=data.get("author"),
         )
         download_manager = getattr(self, "_download_manager", None)

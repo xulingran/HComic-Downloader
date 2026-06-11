@@ -285,6 +285,42 @@ export function ComicInfoDrawer() {
             </div>
           )}
 
+          {displayComic?.parodies && displayComic.parodies.length > 0 && (
+            <div>
+              <span className="text-xs text-[var(--text-secondary)]">原著</span>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {displayComic.parodies.map((parody, i) => (
+                  <span key={i} className="relative group">
+                    <button
+                      onClick={() => handleSearch(parody, 'tag')}
+                      className="text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
+                    >
+                      {parody}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {displayComic?.characters && displayComic.characters.length > 0 && (
+            <div>
+              <span className="text-xs text-[var(--text-secondary)]">角色</span>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {displayComic.characters.map((char, i) => (
+                  <span key={i} className="relative group">
+                    <button
+                      onClick={() => handleSearch(char, 'tag')}
+                      className="text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20"
+                    >
+                      {char}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {displayComic?.tags && displayComic.tags.length > 0 && (
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>

@@ -58,6 +58,8 @@ class ComicInfo:
     pages: int = 0
     category: str | None = None
     tags: list[str] = field(default_factory=list)
+    parodies: list[str] = field(default_factory=list)
+    characters: list[str] = field(default_factory=list)
     publish_date: str | None = None
     cover_url: str | None = None
     preview_url: str = ""

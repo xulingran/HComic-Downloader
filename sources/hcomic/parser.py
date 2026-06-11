@@ -506,7 +506,9 @@ class HComicParser(ParserContextMixin):
         url = self._build_search_url(keyword, page, tag=tag)
         try:
             return self.parse_search_page(self._request_text(url), requested_page=page)
-        except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
+        except ParserResponseError:
+            raise
+        except (ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error("Search failed: %s", e, exc_info=True)
             return [], None
 
@@ -514,7 +516,9 @@ class HComicParser(ParserContextMixin):
         url = self._build_random_url()
         try:
             return self.parse_search_page(self._request_text(url))
-        except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
+        except ParserResponseError:
+            raise
+        except (ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error("Random failed: %s", e, exc_info=True)
             return [], None
 
@@ -904,6 +908,12 @@ class HComicParser(ParserContextMixin):
         # 提取标签
         tag_names = [t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "tag"]
 
+        # 提取原著
+        parody_names = [t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "parody"]
+
+        # 提取角色
+        character_names = [t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "character"]
+
         # 构建 URL
         preview_url, _ = self._build_book_urls(data)
 
@@ -920,6 +930,8 @@ class HComicParser(ParserContextMixin):
             pages=pages,
             category=category,
             tags=[tag for tag in tag_names if tag],
+            parodies=[p for p in parody_names if p],
+            characters=[c for c in character_names if c],
             publish_date=self._format_public_date(data.get("upload_date")),
             cover_url=cover_url,
             preview_url=preview_url,

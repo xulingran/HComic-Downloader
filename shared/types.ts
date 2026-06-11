@@ -14,6 +14,8 @@ export interface ComicInfo {
   sourceSite?: string
   mediaId?: string
   tags?: string[]
+  parodies?: string[]
+  characters?: string[]
   author?: string
   pages?: number
   chapters?: ChapterInfo[]
