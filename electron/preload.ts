@@ -193,10 +193,11 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_PREVIEW_URLS, comicData)
   },
 
-  getChapterPreviewUrls: (chapterId: unknown, albumId?: unknown) => {
+  getChapterPreviewUrls: (chapterId: unknown, albumId?: unknown, sourceSite?: unknown) => {
     if (typeof chapterId !== 'string' || chapterId.length === 0 || chapterId.length > 256) throw new Error('Invalid chapterId')
     if (albumId !== undefined && albumId !== null && typeof albumId !== 'string') throw new Error('Invalid albumId')
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_CHAPTER_PREVIEW_URLS, chapterId, albumId ?? undefined)
+    if (sourceSite !== undefined && sourceSite !== null && typeof sourceSite !== 'string') throw new Error('Invalid sourceSite')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_CHAPTER_PREVIEW_URLS, chapterId, albumId ?? undefined, sourceSite ?? undefined)
   },
 
   fetchPreviewImage: (imageUrl: unknown, scrambleId?: unknown, comicId?: unknown) => {
@@ -213,10 +214,11 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.CHECK_DOWNLOADED_STATUS, comics)
   },
 
-  getComicDetail: (comicId: unknown, source?: unknown) => {
+  getComicDetail: (comicId: unknown, source?: unknown, sourceUrl?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_COMIC_DETAIL, comicId, source ?? undefined)
+    if (sourceUrl !== undefined && sourceUrl !== null && typeof sourceUrl !== 'string') throw new Error('Invalid sourceUrl')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_COMIC_DETAIL, comicId, source ?? undefined, sourceUrl ?? undefined)
   },
 
   startMigration: (targetDir: unknown, mode: unknown) => {

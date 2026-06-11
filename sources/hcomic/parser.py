@@ -480,9 +480,15 @@ class HComicParser(ParserContextMixin):
             raise ParserResponseError(f"响应文本解码失败: {e}") from e
 
     def _request_text(self, url: str) -> str:
-        """发起请求并返回响应文本，附带结构化错误信息。"""
+        """发起请求并返回响应文本，附带结构化错误信息。
+
+        Note: `_request_text` 用于请求 h-comic.com 的网页页面，
+        不应携带 `Authorization` 头部（仅 API 请求需要 Bearer token）。
+        使用临时 headers 字典避免修改 session 全局 headers，保证线程安全。
+        """
+        headers = {k: v for k, v in self.session.headers.items() if k.lower() != "authorization"}
         try:
-            response = self.session.get(url, timeout=self.timeout)
+            response = self.session.get(url, headers=headers, timeout=self.timeout)
             response.raise_for_status()
             return self._get_response_text(response)
         except requests.Timeout as e:
@@ -656,19 +662,16 @@ class HComicParser(ParserContextMixin):
         kwargs.setdefault("headers", self._API_HEADERS)
         try:
             response = self.session.request(method, url, **kwargs)
-            if response.status_code in (401, 403):
-                if self._stored_username and self._stored_password:
-                    logger.info("Token expired, auto re-login for %s", self._stored_username)
-                    self._bearer_token = ""
-                    try:
-                        self.login(self._stored_username, self._stored_password)
-                    except Exception as e:
-                        logger.warning("Auto re-login failed: %s", e)
-                        raise ParserResponseError(f"认证已失效，自动重新登录失败: {e}") from e
-                    response = self.session.request(method, url, **kwargs)
-                    if response.status_code in (401, 403):
-                        raise ParserResponseError("认证已失效，请重新登录")
-                else:
+            if response.status_code in (401, 403) and self._stored_username and self._stored_password:
+                logger.info("Token expired, auto re-login for %s", self._stored_username)
+                self._bearer_token = ""
+                try:
+                    self.login(self._stored_username, self._stored_password)
+                except Exception as e:
+                    logger.warning("Auto re-login failed: %s", e)
+                    raise ParserResponseError(f"认证已失效，自动重新登录失败: {e}") from e
+                response = self.session.request(method, url, **kwargs)
+                if response.status_code in (401, 403):
                     raise ParserResponseError("认证已失效，请重新登录")
             return response
         except requests.Timeout as e:
@@ -758,22 +761,55 @@ class HComicParser(ParserContextMixin):
         response.raise_for_status()
         return True
 
-    def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
+    def get_comic_detail(self, comic_id: str, slug: str = "", source_url: str = "") -> ComicInfo | None:
         """获取漫画详情
 
         Args:
             comic_id: 漫画 ID
             slug: URL slug（可选）
+            source_url: 来源页面 URL（可选，用于提取 slug）
 
         Returns:
             漫画信息，失败返回 None
         """
-        url = f"{self.INDEX}/comics/{slug or '1'}?id={comic_id}"
+        if not slug and source_url:
+            slug = self._extract_slug_from_url(source_url, comic_id)
+        url = f"{self.INDEX}/comics/{slug or '1'}/1?id={comic_id}"
         try:
-            return self.parse_comic_detail(self._request_text(url))
+            self._ensure_token()
+            raw_html = self._request_text(url)
+            try:
+                return self.parse_comic_detail(raw_html)
+            except (ValueError, json.JSONDecodeError, TypeError):
+                # payload 解析失败说明 token 过期导致拿到的是登录页，
+                # 清除 token 重登录后再试一次
+                if not self._stored_username:
+                    raise
+                self._bearer_token = ""
+                self._ensure_token()
+                raw_html = self._request_text(url)
+                return self.parse_comic_detail(raw_html)
         except (ParserResponseError, ValueError, json.JSONDecodeError, TypeError) as e:
             logger.error("Get comic detail failed: %s", e, exc_info=True)
             return None
+
+    @staticmethod
+    def _extract_slug_from_url(source_url: str, comic_id: str) -> str:
+        """从来源 URL 中提取 slug。
+
+        URL 格式: https://h-comic.com/comics/{slug}?id={comic_id}
+        """
+        try:
+            parsed = urlparse(source_url)
+            parts = parsed.path.rstrip("/").split("/")
+            # 路径格式: /comics/{slug} 或 /comics/{slug}/{page}
+            if len(parts) >= 3 and parts[1] == "comics":
+                slug = unquote(parts[2])
+                if slug and slug != "1":
+                    return slug
+        except Exception:
+            pass
+        return ""
 
     def parse_search_page(self, html: str, requested_page: int = 1) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """解析搜索页面

@@ -723,7 +723,7 @@ class TestBikaVerifyLoginStatus:
         valid, message = bika_parser.verify_login_status()
 
         assert valid is False
-        assert "自动重新登录失败" in message
+        assert "自动重登录失败" in message
 
     def test_verify_no_token_no_credentials(self, bika_parser):
         valid, message = bika_parser.verify_login_status()

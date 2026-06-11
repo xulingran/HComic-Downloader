@@ -13,7 +13,7 @@ interface UseComicReaderReturn {
   comicId: string
   chapters: ChapterInfo[]
   fetchUrls: (comic: ComicInfo) => Promise<void>
-  fetchChapterUrls: (chapterId: string, albumId?: string) => Promise<void>
+  fetchChapterUrls: (chapterId: string, albumId?: string, sourceSite?: string) => Promise<void>
   setCurrentPage: (page: number) => void
   reset: () => void
 }
@@ -47,11 +47,11 @@ export function useComicReader(): UseComicReaderReturn {
     }
   }, [])
 
-  const fetchChapterUrls = useCallback(async (chapterId: string, albumId?: string) => {
+  const fetchChapterUrls = useCallback(async (chapterId: string, albumId?: string, sourceSite?: string) => {
     setLoadingState('loading')
     setErrorMessage('')
     try {
-      const result = await window.hcomic!.getChapterPreviewUrls(chapterId, albumId)
+      const result = await window.hcomic!.getChapterPreviewUrls(chapterId, albumId, sourceSite)
       setImageUrls(result.imageUrls)
       setTotalPages(result.totalPages)
       setScrambleId(result.scrambleId ?? '')

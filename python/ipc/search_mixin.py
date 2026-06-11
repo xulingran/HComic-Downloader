@@ -404,12 +404,12 @@ class SearchMixin:
             result["scrambleId"] = scramble_id
         return result
 
-    def handle_get_comic_detail(self, comic_id: str, source: str = "moeimg") -> dict:
+    def handle_get_comic_detail(self, comic_id: str, source: str = "moeimg", source_url: str = "") -> dict:
         valid_sources = _VALID_SOURCES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         if source not in valid_sources:
             logger.warning("get_comic_detail: invalid source %r, falling back to moeimg", source)
-        comic = self.parser.get_comic_detail(comic_id, source=effective_source)
+        comic = self.parser.get_comic_detail(comic_id, source=effective_source, source_url=source_url)
         if comic is None:
             return {"comic": None}
         return {"comic": self._comic_to_dict(comic)}

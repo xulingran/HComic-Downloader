@@ -790,12 +790,16 @@ function registerPreviewHandlers(bridge: Bridge) {
     return bridge.call('get_preview_urls', { comic_data: comicData })
   })
 
-  ipcMain.handle(IPC_CHANNELS.GET_CHAPTER_PREVIEW_URLS, async (_, chapterId: unknown, albumId?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.GET_CHAPTER_PREVIEW_URLS, async (_, chapterId: unknown, albumId?: unknown, sourceSite?: unknown) => {
     assert(and(string(), length(1, 256)), chapterId, 'chapterId')
     const params: Record<string, unknown> = { chapter_id: chapterId }
     if (albumId !== undefined && albumId !== null) {
       assert(and(string(), length(1, 256)), albumId, 'albumId')
       params.album_id = albumId
+    }
+    if (sourceSite !== undefined && sourceSite !== null) {
+      assert(and(string(), length(1, 64)), sourceSite, 'sourceSite')
+      params.source_site = sourceSite
     }
     return bridge.call('get_chapter_preview_urls', params)
   })
@@ -826,12 +830,16 @@ function registerPreviewHandlers(bridge: Bridge) {
     return bridge.call('check_downloaded_status', { comics })
   })
 
-  ipcMain.handle(IPC_CHANNELS.GET_COMIC_DETAIL, async (_, comicId: unknown, source?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.GET_COMIC_DETAIL, async (_, comicId: unknown, source?: unknown, sourceUrl?: unknown) => {
     assert(comicIdValidator, comicId, 'get_comic_detail comicId')
     const params: Record<string, unknown> = { comic_id: comicId }
     if (source !== undefined && source !== null) {
       assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'get_comic_detail source')
       params.source = source
+    }
+    if (sourceUrl !== undefined && sourceUrl !== null) {
+      assert(and(string(), length(1, 2048)), sourceUrl, 'get_comic_detail sourceUrl')
+      params.source_url = sourceUrl
     }
     return bridge.call('get_comic_detail', params)
   })

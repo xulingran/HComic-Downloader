@@ -175,7 +175,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     setCurrentChapterIndex(idx)
     setChapterFlipHint(null)
     setSelectedChapterId(chapters[idx].id)
-    fetchChapterUrls(chapters[idx].id, comic?.albumId ?? comic?.id)
+    fetchChapterUrls(chapters[idx].id, comic?.albumId ?? comic?.id, comic?.sourceSite)
   }, [chapters, fetchChapterUrls, comic])
 
   const handleSelectChapter = useCallback((chapterId: string) => {
@@ -184,7 +184,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       goToChapter(idx)
     } else {
       setSelectedChapterId(chapterId)
-      fetchChapterUrls(chapterId, comic?.albumId ?? comic?.id)
+      fetchChapterUrls(chapterId, comic?.albumId ?? comic?.id, comic?.sourceSite)
     }
   }, [chapters, goToChapter, fetchChapterUrls, comic])
 
@@ -198,7 +198,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         // Jump straight into a specific chapter (e.g. resumed from history)
         // eslint-disable-next-line react-hooks/set-state-in-effect
         setSelectedChapterId(initialChapterId)
-        fetchChapterUrls(initialChapterId, comic.albumId ?? comic.id)
+        fetchChapterUrls(initialChapterId, comic.albumId ?? comic.id, comic.sourceSite)
       } else {
         fetchUrls(comic)
       }

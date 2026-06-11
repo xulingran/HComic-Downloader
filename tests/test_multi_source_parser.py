@@ -320,9 +320,11 @@ def test_random_routes_to_bika(monkeypatch):
     assert isinstance(bika, BikaParser)
 
     called = {}
+
     def fake_get_random_comics():
         called["ok"] = True
         from models import ComicInfo
+
         return [ComicInfo(id="r1", title="Random", source_site="bika", comic_source="BIKA")]
 
     monkeypatch.setattr(bika, "get_random_comics", fake_get_random_comics)

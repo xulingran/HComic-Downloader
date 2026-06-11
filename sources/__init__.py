@@ -214,9 +214,14 @@ class MultiSourceParser:
             return False
         return self.parsers[src].remove_from_favourites(comic_id)
 
-    def get_comic_detail(self, comic_id: str, slug: str = "", source: str | None = None) -> ComicInfo | None:
+    def get_comic_detail(
+        self, comic_id: str, slug: str = "", source: str | None = None, source_url: str = ""
+    ) -> ComicInfo | None:
         src = self._resolve_source(source)
-        return self.parsers[src].get_comic_detail(comic_id, slug=slug)
+        parser = self.parsers[src]
+        if src == "hcomic":
+            return parser.get_comic_detail(comic_id, slug=slug, source_url=source_url)
+        return parser.get_comic_detail(comic_id, slug=slug)
 
     def prepare_for_download(self, comic: ComicInfo) -> ComicInfo:
         source = (comic.source_site or self.current_source or "hcomic").lower()

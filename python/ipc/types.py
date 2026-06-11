@@ -34,6 +34,7 @@ CONFIG_KEY_MAP = {
     "jmcomicDomain": "jmcomic_domain",
     "favouriteTagHighlight": "favourite_tag_highlight",
     "favouriteTagMinMatches": "favourite_tag_min_matches",
+    "checkUpdateOnStart": "check_update_on_start",
 }
 
 _COVER_POOL_MAX_WORKERS = 4

@@ -67,6 +67,8 @@ class Config:
     favourite_tag_highlight: bool = False
     # 推荐标签最少命中数
     favourite_tag_min_matches: int = 1
+    # 启动时检查更新
+    check_update_on_start: bool = True
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)

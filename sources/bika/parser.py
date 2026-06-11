@@ -38,6 +38,7 @@ class BikaParser(ParserContextMixin):
         self._stored_username: str = ""
         self._stored_password: str = ""
         self._favourites_total_pages: int = 0
+        self._relogin_in_progress: bool = False
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置认证信息。Bika 使用 bearer_token。"""
@@ -133,6 +134,26 @@ class BikaParser(ParserContextMixin):
         except requests.HTTPError as e:
             status = e.response.status_code if e.response is not None else None
             if status in (401, 403):
+                if not self._relogin_in_progress and self._stored_username and self._stored_password:
+                    logger.info("Bika token expired, auto re-login for %s", self._stored_username)
+                    self._token = ""
+                    self._relogin_in_progress = True
+                    try:
+                        self.login(self._stored_username, self._stored_password)
+                    except Exception as login_err:
+                        raise ParserResponseError(f"自动重登录失败: {login_err}") from login_err
+                    finally:
+                        self._relogin_in_progress = False
+                    headers = self._get_headers(url, method)
+                    response = self.session.request(
+                        method,
+                        full_url,
+                        headers=headers,
+                        timeout=self.timeout,
+                        **kwargs,
+                    )
+                    response.raise_for_status()
+                    return response.json()
                 raise ParserResponseError("认证已失效，请重新登录") from e
             raise ParserResponseError(f"请求失败: {path} (HTTP {status})") from e
         except requests.RequestException as e:

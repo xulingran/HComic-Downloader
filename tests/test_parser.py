@@ -234,6 +234,7 @@ class TestHComicParserNetworkMethods:
         def mock_get(*args, **kwargs):
             return mock_response
 
+        monkeypatch.setattr(parser, "_ensure_token", lambda: None)
         monkeypatch.setattr(parser.session, "get", mock_get)
 
         comic = parser.get_comic_detail("123")
@@ -248,6 +249,7 @@ class TestHComicParserNetworkMethods:
         def mock_get(*args, **kwargs):
             raise requests.RequestException("404")
 
+        monkeypatch.setattr(parser, "_ensure_token", lambda: None)
         monkeypatch.setattr(parser.session, "get", mock_get)
 
         comic = parser.get_comic_detail("999")

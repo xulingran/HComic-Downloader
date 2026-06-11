@@ -581,10 +581,10 @@ export interface HcomicAPI {
   selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
-  getChapterPreviewUrls(chapterId: string, albumId?: string): Promise<PreviewUrlsResult>
+  getChapterPreviewUrls(chapterId: string, albumId?: string, sourceSite?: string): Promise<PreviewUrlsResult>
   fetchPreviewImage(imageUrl: string, scrambleId?: string, comicId?: string): Promise<PreviewImageResult>
   checkDownloadedStatus(comics: ComicInfo[]): Promise<{ statusMap: Record<string, 'downloaded' | 'unknown'> }>
-  getComicDetail(comicId: string, source?: string): Promise<{ comic: ComicInfo | null }>
+  getComicDetail(comicId: string, source?: string, sourceUrl?: string): Promise<{ comic: ComicInfo | null }>
   startMigration(targetDir: string, mode: 'full' | 'repair'): Promise<MigrationPlanPreview>
   confirmMigration(migrationId: string): Promise<{ started: boolean }>
   pauseMigration(): Promise<{ paused: boolean }>

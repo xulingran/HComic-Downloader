@@ -229,8 +229,8 @@ export function useHistory() {
 export function useComicDetail() {
   const { invoke } = useIpc()
 
-  const getComicDetail = useCallback(async (comicId: string, source?: string) => {
-    return invoke(() => window.hcomic!.getComicDetail(comicId, source))
+  const getComicDetail = useCallback(async (comicId: string, source?: string, sourceUrl?: string) => {
+    return invoke(() => window.hcomic!.getComicDetail(comicId, source, sourceUrl))
   }, [invoke])
 
   return { getComicDetail }
