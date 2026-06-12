@@ -101,6 +101,21 @@ class TestChapterInfo:
         assert a == b
 
 
+def test_is_album_chapter_property():
+    single = ComicInfo(id="1", album_total_chapters=1)
+    assert single.is_album_chapter is False
+
+    chapter = ComicInfo(id="2", album_total_chapters=3, album_title="Test Album")
+    assert chapter.is_album_chapter is True
+    assert chapter.album_title == "Test Album"
+
+
+def test_is_album_chapter_default():
+    comic = ComicInfo(id="3")
+    assert comic.is_album_chapter is False
+    assert comic.album_title == ""
+
+
 class TestPaginationInfo:
     def test_default_values(self):
         pagination = PaginationInfo()

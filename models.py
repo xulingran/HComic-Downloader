@@ -71,6 +71,7 @@ class ComicInfo:
     chapters: list[ChapterInfo] = field(default_factory=list)
     album_id: str = ""  # 多章节时为专辑 id；单本时等于 id
     album_total_chapters: int = 1  # 专辑总章数；单本/其他来源为 1
+    album_title: str = ""  # 专辑标题（不含 " - 第N話" 后缀）
 
     @property
     def safe_title(self) -> str:
@@ -86,6 +87,11 @@ class ComicInfo:
     def safe_id(self) -> str:
         """获取安全的 ID（用于文件名）"""
         return sanitize_filename(str(self.id))
+
+    @property
+    def is_album_chapter(self) -> bool:
+        """是否为多章节专辑中的一章。"""
+        return self.album_total_chapters > 1
 
     def get_image_url(self, page: int) -> str:
         """获取指定页面的图片 URL
