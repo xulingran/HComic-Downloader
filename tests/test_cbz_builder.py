@@ -260,3 +260,116 @@ class TestGetOutputPath:
         assert ":" not in os.path.basename(path)
         assert "<" not in os.path.basename(path)
         assert ">" not in os.path.basename(path)
+
+
+class TestAlbumCBZ:
+    @pytest.fixture
+    def album_comic(self):
+        return ComicInfo(
+            id="100",
+            title="Test Album - 第1話",
+            author="Author",
+            album_id="100",
+            album_title="Test Album",
+            album_total_chapters=3,
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+        )
+
+    def test_get_album_folder_name(self, album_comic):
+        builder = CBZBuilder()
+        name = builder.get_album_folder_name(album_comic)
+        assert name == "Author-Test Album"
+
+    def test_get_album_folder_name_sanitizes(self):
+        comic = ComicInfo(
+            id="1",
+            album_title="Bad<>Name",
+            author="A/B",
+            album_total_chapters=2,
+        )
+        builder = CBZBuilder()
+        name = builder.get_album_folder_name(comic)
+        assert "<" not in name
+        assert ">" not in name
+        assert "/" not in name
+
+    def test_get_album_output_path_folder(self, album_comic, tmp_path):
+        builder = CBZBuilder()
+        work_dir, final_path = builder.get_album_output_path(
+            album_comic, "folder", str(tmp_path)
+        )
+        assert work_dir == final_path
+        assert work_dir.endswith("Author-Test Album")
+
+    def test_get_album_output_path_cbz(self, album_comic, tmp_path):
+        builder = CBZBuilder()
+        work_dir, final_path = builder.get_album_output_path(
+            album_comic, "cbz", str(tmp_path)
+        )
+        assert work_dir.endswith("Author-Test Album")
+        assert final_path.endswith("Author-Test Album.cbz")
+        assert final_path == work_dir + ".cbz"
+
+    def test_build_album_cbz_arcnames(self, tmp_path):
+        comic = ComicInfo(
+            id="100",
+            title="Album - 第1話",
+            author="Auth",
+            album_id="100",
+            album_title="Album",
+            album_total_chapters=2,
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            pages=2,
+        )
+        album_dir = tmp_path / "Auth-Album"
+        album_dir.mkdir()
+        ch1 = album_dir / "第1話"
+        ch1.mkdir()
+        (ch1 / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+        (ch1 / "002.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+        ch2 = album_dir / "第2話"
+        ch2.mkdir()
+        (ch2 / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+
+        builder = CBZBuilder()
+        output = tmp_path / "album.cbz"
+        result = builder.build_album_cbz(str(album_dir), comic, str(output), download_dir=str(tmp_path))
+
+        assert Path(result).exists()
+        with zipfile.ZipFile(result) as zf:
+            names = zf.namelist()
+            assert "ComicInfo.xml" in names
+            assert "第1話/001.jpg" in names
+            assert "第1話/002.jpg" in names
+            assert "第2話/003.jpg" in names
+
+    def test_build_album_cbz_comic_info_xml(self, tmp_path):
+        comic = ComicInfo(
+            id="100",
+            title="Album - 第1話",
+            author="Auth",
+            album_id="100",
+            album_title="My Album",
+            album_total_chapters=2,
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            tags=["tag1"],
+            category="cat",
+        )
+        album_dir = tmp_path / "Auth-Album"
+        album_dir.mkdir()
+        ch1 = album_dir / "Ch1"
+        ch1.mkdir()
+        (ch1 / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+
+        builder = CBZBuilder()
+        output = tmp_path / "album.cbz"
+        builder.build_album_cbz(str(album_dir), comic, str(output), download_dir=str(tmp_path))
+
+        with zipfile.ZipFile(str(output)) as zf:
+            xml = zf.read("ComicInfo.xml").decode()
+            assert "<Title>My Album</Title>" in xml
+            assert "<Series>My Album</Series>" in xml
+            assert "<Writer>Auth</Writer>" in xml

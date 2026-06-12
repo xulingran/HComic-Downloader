@@ -12,7 +12,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 
 from image_formats import PAGE_FILENAME_FORMAT, SUPPORTED_IMAGE_EXTENSIONS
 from models import ArchiveBuildOptions, ComicInfo
-from utils import sanitize_path_chars
+from utils import sanitize_filename, sanitize_path_chars
 
 if TYPE_CHECKING:
     from config import Config
@@ -498,6 +498,117 @@ class CBZBuilder:
         if not folder_name:
             folder_name = f"comic_{comic.safe_id}"
         return folder_name
+
+    def get_album_folder_name(self, comic: ComicInfo) -> str:
+        """返回 {author}-{album_title}（已清理非法字符）。"""
+        author = comic.safe_author
+        album_title = sanitize_filename(comic.album_title) if comic.album_title else comic.safe_title
+        folder_name = f"{author}-{album_title}"
+        folder_name = sanitize_path_chars(folder_name)
+        folder_name = folder_name.strip(". ")
+        if not folder_name:
+            folder_name = f"album_{comic.safe_id}"
+        return folder_name
+
+    def get_album_output_path(
+        self,
+        comic: ComicInfo,
+        output_format: str,
+        download_dir: str | None = None,
+    ) -> tuple[str, str]:
+        """返回 (专辑工作目录路径, 专辑最终路径)。
+
+        - folder: 两者相同
+        - cbz: (download_dir/{folder}, download_dir/{folder}.cbz)
+        """
+        download_dir = self._get_download_dir(download_dir)
+        folder_name = self.get_album_folder_name(comic)
+        work_dir = os.path.join(download_dir, folder_name)
+        if output_format == "cbz":
+            final_path = work_dir + ".cbz"
+        else:
+            final_path = work_dir
+        return work_dir, final_path
+
+    def build_album_cbz(
+        self,
+        album_dir: str,
+        comic: ComicInfo,
+        output_path: str,
+        overwrite: bool = False,
+        download_dir: str | None = None,
+    ) -> str:
+        """将整个专辑文件夹（含若干章节子文件夹）打包为单个 cbz。
+
+        - 写入根目录 ComicInfo.xml（合并的专辑级元数据）
+        - arcname 形如 `第1話/00001.jpg`，按章节子文件夹名 + 文件名排序
+        - 临时文件 + os.replace 原子提交
+        """
+        if download_dir is not None:
+            self._validate_path_in_dir(output_path, download_dir)
+
+        if not overwrite and os.path.exists(output_path):
+            raise FileExistsError(f"Output already exists: {output_path}")
+
+        output_dir_path = os.path.dirname(output_path)
+        if output_dir_path:
+            os.makedirs(output_dir_path, exist_ok=True)
+
+        # 收集章节子文件夹（排除 temp_* 和 .stage* 隐藏目录）
+        chapter_dirs = sorted(
+            d for d in os.listdir(album_dir)
+            if os.path.isdir(os.path.join(album_dir, d))
+            and not d.startswith("temp_")
+            and not d.startswith(".")
+        )
+        if not chapter_dirs:
+            raise ValueError(f"No chapter folders found in {album_dir}")
+
+        logger.info("Building album CBZ: %s (%d chapters)", output_path, len(chapter_dirs))
+
+        basename = os.path.basename(output_path)
+        fd, tmp_path = tempfile.mkstemp(
+            dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp"
+        )
+        os.close(fd)
+        page_counter = 0
+        try:
+            with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                # 写入专辑级 ComicInfo.xml
+                album_comic = ComicInfo(
+                    id=comic.album_id or comic.id,
+                    title=comic.album_title or comic.title,
+                    author=comic.author,
+                    pages=0,
+                    category=comic.category,
+                    tags=comic.tags,
+                    parodies=comic.parodies,
+                    characters=comic.characters,
+                    publish_date=comic.publish_date,
+                    source_site=comic.source_site,
+                    comic_source=comic.comic_source,
+                )
+                xml_content = self.generate_comic_info_xml(album_comic)
+                zf.writestr("ComicInfo.xml", xml_content)
+
+                # 写入各章节图片
+                for chap_name in chapter_dirs:
+                    chap_path = os.path.join(album_dir, chap_name)
+                    image_files = self._collect_image_files(chap_path)
+                    for img_path in image_files:
+                        page_counter += 1
+                        ext = os.path.splitext(img_path)[1]
+                        arcname = f"{chap_name}/{PAGE_FILENAME_FORMAT.format(page=page_counter, ext=ext)}"
+                        zf.write(img_path, arcname)
+
+            os.replace(tmp_path, output_path)
+        except Exception:
+            if os.path.exists(tmp_path):
+                os.unlink(tmp_path)
+            raise
+
+        logger.info("Album CBZ created: %s (%d pages)", output_path, page_counter)
+        return output_path
 
     def get_output_path_for_format(
         self,
