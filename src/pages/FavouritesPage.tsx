@@ -30,7 +30,9 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [needsLogin, setNeedsLogin] = useState(false)
-  const [source, setSource] = useState('hcomic')
+  const { cardStyle } = useSettingsStore()
+  const cache = useFavouritesStore()
+  const [source, setSource] = useState(() => cache.currentSource)
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const { getFavourites, checkDownloadedStatus } = useFavourites()
   const { probeChaptersBeforeDownload } = useChapterProbe()
@@ -45,8 +47,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     clearSelection,
     handleBatchDownload,
   } = useBatchDownload(comics)
-  const { cardStyle } = useSettingsStore()
-  const cache = useFavouritesStore()
   const { openReader } = useReaderStore()
   const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
   const [showJumpDialog, setShowJumpDialog] = useState(false)
@@ -139,7 +139,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
 
   useEffect(() => {
     mountedRef.current = true
-    const currentCache = cache.getPage(source, cache.currentPage)
+    // Use store's currentSource directly — local `source` state is initialized from it,
+    // but we read the store value here to make the intent explicit for the mount-only effect.
+    const activeSource = cache.currentSource
+    const currentCache = cache.getPage(activeSource, cache.currentPage)
     if (currentCache && currentCache.comics.length > 0) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setComics(currentCache.comics)
@@ -151,13 +154,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       checkDownloadedStatus(currentCache.comics).then((statusResult) => {
         if (!mountedRef.current) return
         setDownloadedStatus(statusResult.statusMap)
-        cacheFavouritesPage(source, currentCache.currentPage, {
+        cacheFavouritesPage(activeSource, currentCache.currentPage, {
           comics: currentCache.comics,
           pagination: currentCache.pagination,
         }, statusResult.statusMap)
       }).catch((err) => { console.debug('Background downloaded status refresh failed:', err) })
     } else {
-      loadFavourites(1)
+      loadFavourites(1, activeSource)
     }
     return () => { mountedRef.current = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
