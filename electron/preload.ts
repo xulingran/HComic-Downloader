@@ -340,4 +340,20 @@ contextBridge.exposeInMainWorld('hcomic', {
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
     return ipcRenderer.invoke(IPC_CHANNELS.REFRESH_TAG_LIST, source ?? undefined)
   },
+
+  forcePackAlbum: (sourceSite: unknown, albumId: unknown, overwrite?: unknown) => {
+    if (typeof sourceSite !== 'string' || sourceSite.length === 0 || sourceSite.length > 256) throw new Error('Invalid sourceSite')
+    if (typeof albumId !== 'string' || albumId.length === 0 || albumId.length > 256) throw new Error('Invalid albumId')
+    return ipcRenderer.invoke(IPC_CHANNELS.FORCE_PACK_ALBUM, sourceSite, albumId, overwrite ?? false)
+  },
+
+  getAlbumProgress: (sourceSite: unknown, albumId: unknown) => {
+    if (typeof sourceSite !== 'string' || sourceSite.length === 0 || sourceSite.length > 256) throw new Error('Invalid sourceSite')
+    if (typeof albumId !== 'string' || albumId.length === 0 || albumId.length > 256) throw new Error('Invalid albumId')
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_ALBUM_PROGRESS, sourceSite, albumId)
+  },
+
+  onAlbumProgress: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.ALBUM_PROGRESS, callback)
+  },
 })

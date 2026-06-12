@@ -478,6 +478,10 @@ function registerNotificationHandlers(bridge: Bridge) {
   bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.MIGRATION_ERROR, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MIGRATION_ERROR, params)
   })
+
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.ALBUM_PROGRESS, (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.ALBUM_PROGRESS, params)
+  })
 }
 
 function registerSearchHandlers(bridge: Bridge) {
@@ -1024,6 +1028,27 @@ function registerTagListHandlers(bridge: Bridge) {
   })
 }
 
+function registerAlbumHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.FORCE_PACK_ALBUM, async (_, sourceSite: unknown, albumId: unknown, overwrite?: unknown) => {
+    assert(and(string(), length(1, 256)), sourceSite, 'forcePackAlbum sourceSite')
+    assert(and(string(), length(1, 256)), albumId, 'getAlbumProgress albumId')
+    return bridge.call('force_pack_album', {
+      source_site: sourceSite,
+      album_id: albumId,
+      overwrite: overwrite ?? false,
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_ALBUM_PROGRESS, async (_, sourceSite: unknown, albumId: unknown) => {
+    assert(and(string(), length(1, 256)), sourceSite, 'getAlbumProgress sourceSite')
+    assert(and(string(), length(1, 256)), albumId, 'getAlbumProgress albumId')
+    return bridge.call('get_album_progress', {
+      source_site: sourceSite,
+      album_id: albumId,
+    })
+  })
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
@@ -1040,6 +1065,7 @@ function registerIPCHandlers() {
   registerHistoryHandlers(bridge)
   registerFavouriteTagHandlers(bridge)
   registerTagListHandlers(bridge)
+  registerAlbumHandlers(bridge)
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     return checkForUpdates()

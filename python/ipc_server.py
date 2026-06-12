@@ -103,6 +103,17 @@ class IPCServer(
         )
         self._download_manager.on_download_success = self._on_download_success_record
 
+        # Album staging coordinator for multi-chapter comics
+        from album_coordinator import AlbumStagingCoordinator
+
+        self._album_coordinator = AlbumStagingCoordinator(
+            download_dir_provider=lambda: self.config.download_dir,
+            output_format_provider=lambda: self.config.output_format,
+            history_db=self._history_db,
+            on_album_event=self._on_album_event,
+        )
+        self._download_manager.set_album_coordinator(self._album_coordinator)
+
         # Thread pool for async cover fetches — keeps main loop responsive
         self._cover_executor = ThreadPoolExecutor(max_workers=_COVER_POOL_MAX_WORKERS, thread_name_prefix="cover")
         try:
@@ -153,6 +164,22 @@ class IPCServer(
     @staticmethod
     def _referer_for_image_url(url: str) -> str:
         return referer_for_image_url(url)
+
+    # ── album event notification ─────────────────────────────────────────
+
+    def _on_album_event(self, album_key, event, **kwargs):
+        """推送 album_progress JSON-RPC 通知到 stdout。"""
+        notification = {
+            "jsonrpc": "2.0",
+            "method": "album_progress",
+            "params": {
+                "sourceSite": album_key[0],
+                "albumId": album_key[1],
+                "event": event,
+                **kwargs,
+            },
+        }
+        self._write_response(notification)
 
     # ── thread-safe stdout ────────────────────────────────────────────────
 
@@ -217,6 +244,8 @@ class IPCServer(
         "sync_favourite_tags": "handle_sync_favourite_tags",
         "get_tag_list": "handle_get_tag_list",
         "refresh_tag_list": "handle_refresh_tag_list",
+        "force_pack_album": "handle_force_pack_album",
+        "get_album_progress": "handle_get_album_progress",
     }
 
     def handle_request(self, request: dict) -> dict:

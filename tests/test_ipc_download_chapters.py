@@ -25,6 +25,7 @@ def _create_test_server():
         patch("download_history.DownloadHistoryDB", return_value=MagicMock()),
         patch("concurrent.futures.ThreadPoolExecutor", MagicMock()),
         patch("python.ipc_server.CoverCacheDB", return_value=MagicMock()),
+        patch("album_coordinator.AlbumStagingCoordinator", return_value=MagicMock()),
     ):
         return IPCServer()
 
@@ -173,6 +174,7 @@ def test_download_chapters_sets_album_title(monkeypatch):
 def test_handle_force_pack_album_no_coordinator():
     """没有 coordinator 时应返回 error。"""
     server = _create_test_server()
-    # 不注入 coordinator
+    # 删除 coordinator 模拟不可用场景
+    del server._album_coordinator
     result = server.handle_force_pack_album("jmcomic", "999001")
     assert result["status"] == "error"

@@ -21,6 +21,7 @@ export interface ComicInfo {
   chapters?: ChapterInfo[]
   albumId?: string
   albumTotalChapters?: number
+  albumTitle?: string
 }
 
 export interface PaginationInfo {
@@ -230,7 +231,7 @@ interface DownloadStartResult {
 
 type DownloadResult =
   | DownloadStartResult
-  | { taskIds: string[]; status: string; failedChapters?: Array<{ id: string; name: string; error: string }> }
+  | { taskIds: string[]; status: string; failedChapters?: Array<{ id: string; name: string; error: string }>; albumKey?: { sourceSite: string; albumId: string } }
   | { taskId: null; status: 'conflict'; conflictPath: string }
 
 interface DownloadConflictResult {
@@ -471,6 +472,30 @@ export interface IPCMethods {
     params: { source?: string }
     result: { totalTags: number; totalComics: number; totalPages: number }
   }
+  force_pack_album: {
+    params: { source_site: string; album_id: string; overwrite?: boolean }
+    result: {
+      status: string
+      outputPath?: string
+      packedChapters?: number
+      missingChapters?: number
+      existingPath?: string
+      errorMessage?: string
+    }
+  }
+  get_album_progress: {
+    params: { source_site: string; album_id: string }
+    result: {
+      albumId: string
+      albumTitle: string
+      albumFolderPath: string
+      packedPath: string | null
+      totalChapters: number
+      chaptersOnDisk: number
+      chaptersInQueue: number
+      isComplete: boolean
+    }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -529,6 +554,8 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-jmcomic-domains': 'get_jmcomic_domains',
   'python:get-tag-list': 'get_tag_list',
   'python:refresh-tag-list': 'refresh_tag_list',
+  'python:force-pack-album': 'force_pack_album',
+  'python:get-album-progress': 'get_album_progress',
 } as const
 
 export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
@@ -614,6 +641,16 @@ export interface HcomicAPI {
   onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
   onLoginCookieSuccess(callback: () => void): () => void
   checkForUpdates(): Promise<UpdateCheckResult>
+  forcePackAlbum(sourceSite: string, albumId: string, overwrite?: boolean): Promise<{
+    status: string; outputPath?: string; packedChapters?: number;
+    missingChapters?: number; existingPath?: string; errorMessage?: string;
+  }>
+  getAlbumProgress(sourceSite: string, albumId: string): Promise<{
+    albumId: string; albumTitle: string; albumFolderPath: string;
+    packedPath: string | null; totalChapters: number; chaptersOnDisk: number;
+    chaptersInQueue: number; isComplete: boolean;
+  }>
+  onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
 }
 
@@ -748,6 +785,8 @@ export const IPC_CHANNELS = {
   GET_JMCOMIC_DOMAINS: 'python:get-jmcomic-domains',
   GET_TAG_LIST: 'python:get-tag-list',
   REFRESH_TAG_LIST: 'python:refresh-tag-list',
+  FORCE_PACK_ALBUM: 'python:force-pack-album',
+  GET_ALBUM_PROGRESS: 'python:get-album-progress',
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
   GET_PREVIEW_URLS: 'python:get-preview-urls',
@@ -784,6 +823,7 @@ export const NOTIFICATION_CHANNELS = {
   MIGRATION_ERROR: 'migration:error',
   LOGIN_COOKIE_SUCCESS: 'login:cookie-success',
   UPDATE_CHECK_RESULT: 'update:check-result',
+  ALBUM_PROGRESS: 'album:progress',
 } as const
 
 export const PYTHON_NOTIFICATION_METHODS = {
@@ -791,6 +831,7 @@ export const PYTHON_NOTIFICATION_METHODS = {
   MIGRATION_PROGRESS: 'migration_progress',
   MIGRATION_COMPLETE: 'migration_complete',
   MIGRATION_ERROR: 'migration_error',
+  ALBUM_PROGRESS: 'album_progress',
 } as const
 
 export const CONFIG_KEYS = [
