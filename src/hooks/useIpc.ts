@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect, useMemo } from 'react'
+import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
 import type { HcomicAPI, ConfigKey, ConfigValueMap } from '@shared/types'
 import { ComicInfo } from '@shared/types'
 
@@ -291,11 +291,22 @@ export function useAlbumProgress() {
     chaptersOnDisk?: number
     totalChapters?: number
   }>>({})
+  const packedKeys = useRef<Set<string>>(new Set())
 
   useEffect(() => {
     if (!window.hcomic?.onAlbumProgress) return
     const unsubscribe = window.hcomic.onAlbumProgress((data) => {
-      setProgress(prev => ({ ...prev, [`${data.sourceSite}_${data.albumId}`]: data }))
+      const key = `${data.sourceSite}_${data.albumId}`
+      if (data.event === 'packed') {
+        packedKeys.current.add(key)
+      }
+      setProgress(prev => {
+        const next = { ...prev, [key]: data }
+        if (packedKeys.current.has(key)) {
+          next[key] = { ...next[key], event: 'packed' }
+        }
+        return next
+      })
     })
     return unsubscribe
   }, [])

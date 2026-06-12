@@ -116,6 +116,22 @@ def test_is_album_chapter_default():
     assert comic.album_title == ""
 
 
+def test_chapter_display_name():
+    comic = ComicInfo(id="1", title="Album - Ch1", album_title="Album", album_total_chapters=3)
+    assert comic.chapter_display_name == "Ch1"
+
+    comic2 = ComicInfo(id="2", title="Album - Ch2", album_title="Album", album_total_chapters=3)
+    assert comic2.chapter_display_name == "Ch2"
+
+    # 无 album_title 时回退到 safe_title
+    comic3 = ComicInfo(id="3", title="Standalone Comic")
+    assert comic3.chapter_display_name == comic3.safe_title
+
+    # title 不以 album_title 开头时回退到 safe_title
+    comic4 = ComicInfo(id="4", title="Different Title", album_title="Album", album_total_chapters=2)
+    assert comic4.chapter_display_name == comic4.safe_title
+
+
 class TestPaginationInfo:
     def test_default_values(self):
         pagination = PaginationInfo()

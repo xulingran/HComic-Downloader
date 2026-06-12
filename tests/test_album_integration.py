@@ -32,6 +32,7 @@ class TestAlbumFolderIntegration:
         coordinator = AlbumStagingCoordinator(
             download_dir_provider=lambda: output_dir,
             output_format_provider=lambda: "folder",
+            cbz_builder=cbz_builder,
         )
         manager.set_album_coordinator(coordinator)
 
@@ -80,6 +81,7 @@ class TestAlbumCbzIntegration:
         coordinator = AlbumStagingCoordinator(
             download_dir_provider=lambda: output_dir,
             output_format_provider=lambda: "cbz",
+            cbz_builder=cbz_builder,
         )
         manager.set_album_coordinator(coordinator)
 

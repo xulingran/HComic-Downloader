@@ -566,20 +566,31 @@ class CBZBuilder:
 
         logger.info("Building album CBZ: %s (%d chapters)", output_path, len(chapter_dirs))
 
+        # 先收集所有图片路径，以便统计总页数
+        chapter_images: list[tuple[str, str, str]] = []  # (chap_name, img_path, arcname)
+        page_counter = 0
+        for chap_name in chapter_dirs:
+            chap_path = os.path.join(album_dir, chap_name)
+            image_files = self._collect_image_files(chap_path)
+            for img_path in image_files:
+                page_counter += 1
+                ext = os.path.splitext(img_path)[1]
+                arcname = f"{chap_name}/{PAGE_FILENAME_FORMAT.format(page=page_counter, ext=ext)}"
+                chapter_images.append((chap_name, img_path, arcname))
+
         basename = os.path.basename(output_path)
         fd, tmp_path = tempfile.mkstemp(
             dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp"
         )
         os.close(fd)
-        page_counter = 0
         try:
             with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                # 写入专辑级 ComicInfo.xml
+                # 写入专辑级 ComicInfo.xml（带正确的总页数）
                 album_comic = ComicInfo(
                     id=comic.album_id or comic.id,
                     title=comic.album_title or comic.title,
                     author=comic.author,
-                    pages=0,
+                    pages=page_counter,
                     category=comic.category,
                     tags=comic.tags,
                     parodies=comic.parodies,
@@ -592,14 +603,8 @@ class CBZBuilder:
                 zf.writestr("ComicInfo.xml", xml_content)
 
                 # 写入各章节图片
-                for chap_name in chapter_dirs:
-                    chap_path = os.path.join(album_dir, chap_name)
-                    image_files = self._collect_image_files(chap_path)
-                    for img_path in image_files:
-                        page_counter += 1
-                        ext = os.path.splitext(img_path)[1]
-                        arcname = f"{chap_name}/{PAGE_FILENAME_FORMAT.format(page=page_counter, ext=ext)}"
-                        zf.write(img_path, arcname)
+                for _, img_path, arcname in chapter_images:
+                    zf.write(img_path, arcname)
 
             os.replace(tmp_path, output_path)
         except Exception:

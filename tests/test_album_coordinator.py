@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from album_coordinator import AlbumKey, AlbumProgress, AlbumStagingCoordinator, PackResult
+from cbz_builder import CBZBuilder
 from models import ComicInfo, DownloadStatus, DownloadTask
 
 
@@ -36,6 +37,7 @@ class TestAlbumStagingCoordinator:
         coord = AlbumStagingCoordinator(
             download_dir_provider=lambda: download_dir,
             output_format_provider=lambda: output_format,
+            cbz_builder=CBZBuilder(),
             history_db=None,
             on_album_event=on_event,
         )

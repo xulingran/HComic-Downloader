@@ -91,6 +91,9 @@ class SearchMixin:
             parodies=data.get("parodies") or [],
             characters=data.get("characters") or [],
             author=data.get("author"),
+            album_id=data.get("albumId", ""),
+            album_total_chapters=data.get("albumTotalChapters") or 1,
+            album_title=data.get("albumTitle", ""),
         )
         download_manager = getattr(self, "_download_manager", None)
         prepare_comic = getattr(download_manager, "prepare_comic", None)
@@ -98,6 +101,13 @@ class SearchMixin:
             prepared = prepare_comic(comic)
             if prepared is not None:
                 comic = prepared
+                # prepare_comic 可能返回新对象，补充前端传入的专辑字段
+                if not comic.album_title and data.get("albumTitle"):
+                    comic.album_title = data["albumTitle"]
+                if not comic.album_id and data.get("albumId"):
+                    comic.album_id = data["albumId"]
+                if comic.album_total_chapters <= 1 and (data.get("albumTotalChapters") or 0) > 1:
+                    comic.album_total_chapters = data["albumTotalChapters"]
         return comic
 
     def _check_source_auth(self, source: str) -> None:

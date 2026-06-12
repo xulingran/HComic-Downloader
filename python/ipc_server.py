@@ -109,6 +109,7 @@ class IPCServer(
         self._album_coordinator = AlbumStagingCoordinator(
             download_dir_provider=lambda: self.config.download_dir,
             output_format_provider=lambda: self.config.output_format,
+            cbz_builder=self.cbz_builder,
             history_db=self._history_db,
             on_album_event=self._on_album_event,
         )

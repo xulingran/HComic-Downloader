@@ -692,23 +692,12 @@ class ComicDownloadManager(DownloadManager):
         """注入专辑 staging 协调器。"""
         self._album_coordinator = coordinator
 
-    def _get_chapter_display_name(self, comic) -> str:
-        """从 ComicInfo.title 提取章节显示名（去掉专辑名前缀）。"""
-        album_title = getattr(comic, "album_title", "")
-        if album_title and comic.title.startswith(album_title):
-            suffix = comic.title[len(album_title):]
-            if suffix.startswith(" - "):
-                return suffix[3:].strip()
-            if suffix.startswith("-"):
-                return suffix[1:].strip()
-        return comic.safe_title
-
     def _handle_album_chapter_success(self, task: DownloadTask, result: DownloadResult) -> None:
         """处理专辑章下载成功：移动 temp 到 专辑文件夹/章节名/。"""
         comic = task.comic
         album_dir_name = self.cbz_builder.get_album_folder_name(comic)
         album_work_dir = os.path.join(self.output_dir, album_dir_name)
-        chapter_name = self._get_chapter_display_name(comic)
+        chapter_name = comic.chapter_display_name
         chapter_final_path = os.path.join(album_work_dir, chapter_name)
 
         # 如果已有同名章节目录（重试场景），先清理
@@ -727,7 +716,7 @@ class ComicDownloadManager(DownloadManager):
         output_path_for_history = chapter_final_path
         if self.on_download_success:
             try:
-                self.on_download_success(comic, output_path_for_history, "folder")
+                self.on_download_success(comic, output_path_for_history, self.output_format)
             except Exception:
                 logger.warning("on_download_success callback failed", exc_info=True)
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import threading
 from dataclasses import dataclass, field
 
 from models import ComicInfo, DownloadTask
@@ -50,14 +51,17 @@ class AlbumStagingCoordinator:
         self,
         download_dir_provider,
         output_format_provider,
+        cbz_builder,
         history_db=None,
         on_album_event=None,
     ):
         self._get_download_dir = download_dir_provider
         self._get_output_format = output_format_provider
+        self._cbz_builder = cbz_builder
         self._history_db = history_db
         self._on_album_event = on_album_event
         self._tracked: dict[AlbumKey, AlbumState] = {}
+        self._pack_lock = threading.Lock()
 
     def register_album_tasks(
         self,
@@ -109,9 +113,7 @@ class AlbumStagingCoordinator:
             return PackResult(status="no_chapters")
 
         download_dir = self._get_download_dir()
-        from cbz_builder import CBZBuilder
-        builder = CBZBuilder()
-        work_dir, final_path = builder.get_album_output_path(
+        work_dir, final_path = self._cbz_builder.get_album_output_path(
             effective_comic, self._get_output_format(), download_dir
         )
 
@@ -121,40 +123,43 @@ class AlbumStagingCoordinator:
         output_format = self._get_output_format()
 
         if output_format == "cbz":
-            if os.path.exists(final_path) and not overwrite:
-                return PackResult(
-                    status="conflict",
-                    existing_path=final_path,
-                )
+            with self._pack_lock:
+                if os.path.exists(final_path) and not overwrite:
+                    return PackResult(
+                        status="conflict",
+                        existing_path=final_path,
+                    )
 
-            chapter_dirs = self._scan_chapter_dirs(work_dir)
-            if not chapter_dirs:
-                return PackResult(status="no_chapters")
+                chapter_dirs = self._scan_chapter_dirs(work_dir)
+                if not chapter_dirs:
+                    return PackResult(status="no_chapters")
 
-            self._emit_event(album_key, "force_pack_started")
-            try:
-                builder.build_album_cbz(
-                    work_dir, effective_comic, final_path,
-                    overwrite=overwrite, download_dir=download_dir,
-                )
-                shutil.rmtree(work_dir)
-                self._update_history(album_key, final_path)
-                self._emit_event(
-                    album_key, "packed",
-                    output_path=final_path,
-                    chapters_on_disk=len(chapter_dirs),
-                )
-                return PackResult(
-                    status="packed",
-                    output_path=final_path,
-                    packed_chapters=len(chapter_dirs),
-                )
-            except Exception as e:
-                logger.error("Force pack failed for %s: %s", album_key, e)
-                self._emit_event(album_key, "force_pack_done", error_message=str(e))
-                return PackResult(status="error", error_message=str(e))
+                self._emit_event(album_key, "force_pack_started")
+                try:
+                    self._cbz_builder.build_album_cbz(
+                        work_dir, effective_comic, final_path,
+                        overwrite=overwrite, download_dir=download_dir,
+                    )
+                    shutil.rmtree(work_dir)
+                except Exception as e:
+                    logger.error("Force pack failed for %s: %s", album_key, e)
+                    self._emit_event(album_key, "force_pack_done", error_message=str(e))
+                    return PackResult(status="error", error_message=str(e))
+
+            self._update_history(album_key, final_path)
+            self._emit_event(
+                album_key, "packed",
+                output_path=final_path,
+                chapters_on_disk=len(chapter_dirs),
+            )
+            self._tracked.pop(album_key, None)
+            return PackResult(
+                status="packed",
+                output_path=final_path,
+                packed_chapters=len(chapter_dirs),
+            )
         else:
-            # folder 模式：不打包，直接返回当前状态
+            # folder 模式：不打包，直接返回当前状态（不清理 _tracked）
             chapter_dirs = self._scan_chapter_dirs(work_dir)
             self._emit_event(
                 album_key, "packed",
@@ -182,9 +187,7 @@ class AlbumStagingCoordinator:
                 chapters_in_queue=len(state.task_ids),
             )
 
-        from cbz_builder import CBZBuilder
-        builder = CBZBuilder()
-        work_dir, final_path = builder.get_album_output_path(
+        work_dir, final_path = self._cbz_builder.get_album_output_path(
             comic, self._get_output_format(), download_dir
         )
 

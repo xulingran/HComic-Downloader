@@ -165,7 +165,12 @@ export function DownloadPage() {
         <div className="space-y-3">
           {statusFilter !== 'all' && (
             <div className="text-xs text-[var(--text-secondary)]">
-              显示 {tasks.filter(t => matchStatusFilter(t.status, statusFilter) || albumTaskIds.has(t.id)).length} / {tasks.length} 个任务
+              显示 {(() => {
+                const filteredStandalone = tasks.filter(t => !albumTaskIds.has(t.id) && matchStatusFilter(t.status, statusFilter)).length
+                const filteredAlbums = [...albumGroups.values()].filter(g => g.tasks.some(t => matchStatusFilter(t.status, statusFilter))).length
+                const total = filteredAlbums + filteredStandalone
+                return `${total} / ${tasks.length} 个任务`
+              })()}
             </div>
           )}
 

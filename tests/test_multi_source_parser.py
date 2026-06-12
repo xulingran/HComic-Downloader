@@ -251,7 +251,8 @@ def test_prepare_for_download_bika_multi_chapter(monkeypatch):
     output = parser.prepare_for_download(source_comic)
 
     assert output is detail_comic
-    assert output.pages == 30
+    assert output.pages == 0  # 多章节 bika 清空 pages，走章节下载流程
+    assert output.image_urls == []
     assert images_called == []  # 不应调用 get_chapter_images
 
 

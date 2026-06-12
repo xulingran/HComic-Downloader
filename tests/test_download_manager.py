@@ -699,9 +699,11 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
 
     # 注入 coordinator
     from album_coordinator import AlbumStagingCoordinator
+    from cbz_builder import CBZBuilder
     coordinator = AlbumStagingCoordinator(
         download_dir_provider=lambda: str(tmp_path / "output"),
         output_format_provider=lambda: "folder",
+        cbz_builder=CBZBuilder(),
     )
     manager.set_album_coordinator(coordinator)
 

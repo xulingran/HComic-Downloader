@@ -170,15 +170,11 @@ class DownloadMixin:
     def handle_check_download_conflict(self, comic_data: dict) -> dict:
         comic = self._build_and_prepare_comic(comic_data or {})
 
-        # 多章专辑：从 comic_data 补充 album_title（_build_and_prepare_comic 不一定有）
-        if comic_data.get("albumTotalChapters", 1) > 1 and not comic.album_title:
-            comic.album_title = comic_data.get("title", "")
-
         # 多章专辑：检查专辑文件夹内是否有该章子文件夹
         if comic.is_album_chapter:
             album_dir_name = self.cbz_builder.get_album_folder_name(comic)
             album_work_dir = os.path.join(self.config.download_dir, album_dir_name)
-            chapter_name = self._get_chapter_display_name(comic)
+            chapter_name = comic.chapter_display_name
             chapter_path = os.path.join(album_work_dir, chapter_name)
             has_conflict = os.path.exists(chapter_path)
             return {
@@ -326,18 +322,6 @@ class DownloadMixin:
             "chaptersInQueue": prog.chapters_in_queue,
             "isComplete": prog.is_complete,
         }
-
-    @staticmethod
-    def _get_chapter_display_name(comic) -> str:
-        """从 ComicInfo.title 提取章节显示名（去掉专辑名前缀）。"""
-        album_title = getattr(comic, "album_title", "")
-        if album_title and comic.title.startswith(album_title):
-            suffix = comic.title[len(album_title):]
-            if suffix.startswith(" - "):
-                return suffix[3:].strip()
-            if suffix.startswith("-"):
-                return suffix[1:].strip()
-        return comic.safe_title
 
     def handle_check_downloaded_status(self, comics: list) -> dict:
         """Check which comics from the list have been downloaded."""

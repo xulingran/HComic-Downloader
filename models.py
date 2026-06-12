@@ -93,6 +93,17 @@ class ComicInfo:
         """是否为多章节专辑中的一章。"""
         return self.album_total_chapters > 1
 
+    @property
+    def chapter_display_name(self) -> str:
+        """从 title 提取章节显示名（去掉专辑名前缀）。"""
+        if self.album_title and self.title.startswith(self.album_title):
+            suffix = self.title[len(self.album_title):]
+            if suffix.startswith(" - "):
+                return suffix[3:].strip()
+            if suffix.startswith("-"):
+                return suffix[1:].strip()
+        return self.safe_title
+
     def get_image_url(self, page: int) -> str:
         """获取指定页面的图片 URL
 
