@@ -204,6 +204,27 @@ class DownloadHistoryDB:
             )
             self._conn.commit()
 
+    def update_output_path_by_album(
+        self,
+        source_site: str,
+        comic_source: str,
+        album_id: str,
+        new_path: str,
+    ) -> int:
+        """将指定专辑下所有章节记录的 output_path 批量更新为 new_path。
+
+        Returns:
+            受影响的行数。
+        """
+        with self._lock:
+            cursor = self._conn.execute(
+                "UPDATE download_history SET output_path = ? "
+                "WHERE source_site = ? AND comic_source = ? AND album_id = ?",
+                (new_path, source_site, comic_source, album_id),
+            )
+            self._conn.commit()
+            return cursor.rowcount
+
     def close(self):
         if self._conn:
             self._conn.close()

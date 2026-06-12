@@ -294,3 +294,52 @@ def test_legacy_single_record_still_downloaded(db, sample_comic, tmp_path):
     key = ("hcomic", "12345", "MMCG_SHORT")
     result = db.check_downloaded_batch([key], str(tmp_path), "cbz", "{author}-{title}.cbz")
     assert result[key] == "downloaded"
+
+
+def test_update_output_path_by_album(tmp_path):
+    from download_history import DownloadHistoryDB
+    from models import ComicInfo
+
+    db = DownloadHistoryDB(str(tmp_path / "test.db"))
+
+    # 录入 3 条同专辑记录
+    for i in range(1, 4):
+        comic = ComicInfo(
+            id=f"chap{i}",
+            title=f"Album - Ch{i}",
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            album_id="album1",
+            album_total_chapters=3,
+        )
+        db.record_download(comic, f"/tmp/ch{i}/", "folder")
+
+    # 批量更新为 cbz 路径
+    count = db.update_output_path_by_album(
+        source_site="jmcomic",
+        comic_source="JMCOMIC",
+        album_id="album1",
+        new_path="/downloads/Album.cbz",
+    )
+    assert count == 3
+
+    # 验证每条记录都已更新
+    records = db.get_all_records()
+    for rec in records:
+        assert rec["output_path"] == "/downloads/Album.cbz"
+
+    db.close()
+
+
+def test_update_output_path_by_album_no_match(tmp_path):
+    from download_history import DownloadHistoryDB
+
+    db = DownloadHistoryDB(str(tmp_path / "test.db"))
+    count = db.update_output_path_by_album(
+        source_site="jmcomic",
+        comic_source="JMCOMIC",
+        album_id="nonexistent",
+        new_path="/x.cbz",
+    )
+    assert count == 0
+    db.close()
