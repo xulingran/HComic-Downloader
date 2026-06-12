@@ -1,4 +1,4 @@
-import { useDownloadCommands } from './useIpc'
+import { useDownloadCommands, useComicDetail } from './useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import type { ComicInfo, DownloadStatus } from '@shared/types'
 
@@ -114,4 +114,37 @@ export function useDownloadHelper() {
   }
 
   return { downloadWithConflictCheck, downloadChapters, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause }
+}
+
+/**
+ * 下载前探测漫画是否有多个章节。
+ * - 返回带 chapters 的 ComicInfo → 调用方应弹出章节选择对话框
+ * - 返回 null → 无需选择章节，直接下载
+ */
+export function useChapterProbe() {
+  const { getComicDetail } = useComicDetail()
+
+  const probeChaptersBeforeDownload = async (comic: ComicInfo): Promise<ComicInfo | null> => {
+    // 已知多章节，直接返回
+    if (comic.chapters && comic.chapters.length > 1) {
+      return comic
+    }
+    // bika 始终有章节列表；其他来源仅当 albumTotalChapters > 1 时探测
+    const needsProbe =
+      (!comic.chapters || comic.chapters.length === 0) &&
+      (comic.sourceSite === 'bika' || (comic.albumTotalChapters ?? 1) > 1)
+    if (needsProbe) {
+      try {
+        const result = await getComicDetail(comic.id, comic.sourceSite, comic.url || '')
+        if (result.comic?.chapters && result.comic.chapters.length > 1) {
+          return { ...comic, chapters: result.comic.chapters }
+        }
+      } catch (err) {
+        console.error('Failed to fetch chapters before download:', err)
+      }
+    }
+    return null
+  }
+
+  return { probeChaptersBeforeDownload }
 }

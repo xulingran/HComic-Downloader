@@ -634,6 +634,15 @@ class ComicDownloadManager(DownloadManager):
         with self._lock:
             task.temp_dir = result.temp_dir
 
+        logger.info(
+            "Task %s success: is_album_chapter=%s, album_total_chapters=%s, album_title=%r, title=%r",
+            task.task_id,
+            task.comic.is_album_chapter,
+            task.comic.album_total_chapters,
+            task.comic.album_title,
+            task.comic.title,
+        )
+
         if task.comic.is_album_chapter:
             if self._check_cancel_before_packaging(task, result):
                 return
@@ -709,7 +718,8 @@ class ComicDownloadManager(DownloadManager):
 
         logger.info(
             "Album chapter saved: %s -> %s",
-            result.temp_dir, chapter_final_path,
+            result.temp_dir,
+            chapter_final_path,
         )
 
         # 写入历史（章级，output_path 暂为章节子文件夹路径）

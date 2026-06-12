@@ -43,6 +43,11 @@ vi.mock('@/hooks/useIpc', () => ({
   useComicDetail: vi.fn().mockReturnValue({
     getComicDetail: vi.fn().mockResolvedValue({ comic: null })
   }),
+  useAlbumCommands: vi.fn().mockReturnValue({
+    forcePackAlbum: vi.fn().mockResolvedValue({ status: 'error', errorMessage: 'No coordinator' }),
+    getAlbumProgress: vi.fn().mockResolvedValue({ albumId: '', albumTitle: '', albumFolderPath: '', packedPath: null, totalChapters: 0, chaptersOnDisk: 0, chaptersInQueue: 0, isComplete: false }),
+  }),
+  useAlbumProgress: vi.fn().mockReturnValue({ albumProgress: {} }),
 }))
 
 vi.mock('@/hooks/useDownloadHelper', () => ({
@@ -51,6 +56,9 @@ vi.mock('@/hooks/useDownloadHelper', () => ({
     handleResumeTask: vi.fn(),
     handleRetryTask: vi.fn(),
     handleToggleGlobalPause: vi.fn(),
+  }),
+  useChapterProbe: vi.fn().mockReturnValue({
+    probeChaptersBeforeDownload: vi.fn().mockResolvedValue(null),
   }),
 }))
 

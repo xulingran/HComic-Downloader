@@ -65,6 +65,7 @@ class SearchMixin:
                 for c in (getattr(comic, "chapters", None) or [])
             ],
             "albumId": getattr(comic, "album_id", "") or comic.id,
+            "albumTitle": getattr(comic, "album_title", "") or "",
             "albumTotalChapters": getattr(comic, "album_total_chapters", 1) or 1,
         }
 

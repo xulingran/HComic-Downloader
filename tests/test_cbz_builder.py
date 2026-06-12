@@ -296,17 +296,13 @@ class TestAlbumCBZ:
 
     def test_get_album_output_path_folder(self, album_comic, tmp_path):
         builder = CBZBuilder()
-        work_dir, final_path = builder.get_album_output_path(
-            album_comic, "folder", str(tmp_path)
-        )
+        work_dir, final_path = builder.get_album_output_path(album_comic, "folder", str(tmp_path))
         assert work_dir == final_path
         assert work_dir.endswith("Author-Test Album")
 
     def test_get_album_output_path_cbz(self, album_comic, tmp_path):
         builder = CBZBuilder()
-        work_dir, final_path = builder.get_album_output_path(
-            album_comic, "cbz", str(tmp_path)
-        )
+        work_dir, final_path = builder.get_album_output_path(album_comic, "cbz", str(tmp_path))
         assert work_dir.endswith("Author-Test Album")
         assert final_path.endswith("Author-Test Album.cbz")
         assert final_path == work_dir + ".cbz"

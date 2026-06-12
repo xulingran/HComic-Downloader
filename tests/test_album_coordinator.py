@@ -1,11 +1,9 @@
 """tests/test_album_coordinator.py"""
+
 import os
-import zipfile
 from pathlib import Path
 
-import pytest
-
-from album_coordinator import AlbumKey, AlbumProgress, AlbumStagingCoordinator, PackResult
+from album_coordinator import AlbumKey, AlbumStagingCoordinator
 from cbz_builder import CBZBuilder
 from models import ComicInfo, DownloadStatus, DownloadTask
 
@@ -89,9 +87,15 @@ class TestAlbumStagingCoordinator:
         Path(ch1, "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
 
         comic = ComicInfo(
-            id="100", title="Album - Ch1", source_site="jmcomic",
-            comic_source="JMCOMIC", album_id="100", album_title="Album",
-            album_total_chapters=1, author="Author", pages=1,
+            id="100",
+            title="Album - Ch1",
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            album_id="100",
+            album_title="Album",
+            album_total_chapters=1,
+            author="Author",
+            pages=1,
         )
 
         key: AlbumKey = ("jmcomic", "100")
@@ -107,9 +111,15 @@ class TestAlbumStagingCoordinator:
         Path(ch1, "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
 
         comic = ComicInfo(
-            id="100", title="Album - Ch1", source_site="jmcomic",
-            comic_source="JMCOMIC", album_id="100", album_title="Album",
-            album_total_chapters=1, author="Auth", pages=1,
+            id="100",
+            title="Album - Ch1",
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            album_id="100",
+            album_title="Album",
+            album_total_chapters=1,
+            author="Auth",
+            pages=1,
         )
 
         key: AlbumKey = ("jmcomic", "100")
@@ -129,9 +139,15 @@ class TestAlbumStagingCoordinator:
         Path(ch1, "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
 
         comic = ComicInfo(
-            id="100", title="Album - Ch1", source_site="jmcomic",
-            comic_source="JMCOMIC", album_id="100", album_title="Album",
-            album_total_chapters=1, author="Auth", pages=1,
+            id="100",
+            title="Album - Ch1",
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            album_id="100",
+            album_title="Album",
+            album_total_chapters=1,
+            author="Auth",
+            pages=1,
         )
 
         key: AlbumKey = ("jmcomic", "100")

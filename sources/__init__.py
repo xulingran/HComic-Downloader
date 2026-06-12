@@ -247,6 +247,18 @@ class MultiSourceParser:
             if detail is None:
                 return comic
             if detail.chapters and len(detail.chapters) > 1:
+                # 多章节 = 专辑，不需要单章图片 URL；
+                # 清空后直接返回，跳过下方 get_chapter_images 单章逻辑。
+                detail.image_urls = []
+                detail.pages = 0
+                # epsCount 可能不准确，以实际章节数为准
+                if detail.album_total_chapters != len(detail.chapters):
+                    detail.album_total_chapters = len(detail.chapters)
+                # 保留原始专辑元数据（prepare_comic 可能被章节任务调用）
+                if not detail.album_title and comic.album_title:
+                    detail.album_title = comic.album_title
+                if not detail.album_id and comic.album_id:
+                    detail.album_id = comic.album_id
                 return detail
             order = detail.chapters[0].index if detail.chapters else 1
             detail.image_urls = parser.get_chapter_images(comic.id, order)  # type: ignore[union-attr]

@@ -524,10 +524,7 @@ class CBZBuilder:
         download_dir = self._get_download_dir(download_dir)
         folder_name = self.get_album_folder_name(comic)
         work_dir = os.path.join(download_dir, folder_name)
-        if output_format == "cbz":
-            final_path = work_dir + ".cbz"
-        else:
-            final_path = work_dir
+        final_path = work_dir + ".cbz" if output_format == "cbz" else work_dir
         return work_dir, final_path
 
     def build_album_cbz(
@@ -556,10 +553,9 @@ class CBZBuilder:
 
         # 收集章节子文件夹（排除 temp_* 和 .stage* 隐藏目录）
         chapter_dirs = sorted(
-            d for d in os.listdir(album_dir)
-            if os.path.isdir(os.path.join(album_dir, d))
-            and not d.startswith("temp_")
-            and not d.startswith(".")
+            d
+            for d in os.listdir(album_dir)
+            if os.path.isdir(os.path.join(album_dir, d)) and not d.startswith("temp_") and not d.startswith(".")
         )
         if not chapter_dirs:
             raise ValueError(f"No chapter folders found in {album_dir}")
@@ -579,9 +575,7 @@ class CBZBuilder:
                 chapter_images.append((chap_name, img_path, arcname))
 
         basename = os.path.basename(output_path)
-        fd, tmp_path = tempfile.mkstemp(
-            dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp"
-        )
+        fd, tmp_path = tempfile.mkstemp(dir=output_dir_path, prefix=f".{basename}.", suffix=".tmp")
         os.close(fd)
         try:
             with zipfile.ZipFile(tmp_path, "w", zipfile.ZIP_DEFLATED) as zf:

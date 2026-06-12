@@ -1,11 +1,8 @@
 """tests/test_album_integration.py — 专辑下载端到端集成测试。"""
 
 import os
-import shutil
 from pathlib import Path
 from unittest.mock import MagicMock
-
-import pytest
 
 from album_coordinator import AlbumStagingCoordinator
 from cbz_builder import CBZBuilder
@@ -37,9 +34,15 @@ class TestAlbumFolderIntegration:
         manager.set_album_coordinator(coordinator)
 
         comic = ComicInfo(
-            id="ch1", title="Album - Ch1", source_site="jmcomic",
-            comic_source="JMCOMIC", album_id="album1", album_title="Album",
-            album_total_chapters=3, author="Auth", pages=2,
+            id="ch1",
+            title="Album - Ch1",
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            album_id="album1",
+            album_title="Album",
+            album_total_chapters=3,
+            author="Auth",
+            pages=2,
         )
         task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
         manager.tasks[task.task_id] = task
@@ -50,7 +53,9 @@ class TestAlbumFolderIntegration:
         (temp_dir / "002.jpg").write_bytes(b"\xff\xd8\xff\xd9")
 
         result = DownloadResult(
-            success=True, completed_pages=[1, 2], failed_pages=[],
+            success=True,
+            completed_pages=[1, 2],
+            failed_pages=[],
             temp_dir=str(temp_dir),
         )
         manager._handle_album_chapter_success(task, result)
@@ -86,9 +91,13 @@ class TestAlbumCbzIntegration:
         manager.set_album_coordinator(coordinator)
 
         base_comic_kwargs = dict(
-            source_site="jmcomic", comic_source="JMCOMIC",
-            album_id="album1", album_title="Album",
-            album_total_chapters=2, author="Auth", pages=1,
+            source_site="jmcomic",
+            comic_source="JMCOMIC",
+            album_id="album1",
+            album_title="Album",
+            album_total_chapters=2,
+            author="Auth",
+            pages=1,
         )
 
         # 注册专辑任务，使 coordinator 能追踪齐套状态
@@ -97,7 +106,8 @@ class TestAlbumCbzIntegration:
 
         for chap_num, chap_name in [(1, "Ch1"), (2, "Ch2")]:
             comic = ComicInfo(
-                id=f"ch{chap_num}", title=f"Album - {chap_name}",
+                id=f"ch{chap_num}",
+                title=f"Album - {chap_name}",
                 **base_comic_kwargs,
             )
             task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
@@ -108,7 +118,9 @@ class TestAlbumCbzIntegration:
             (temp_dir / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
 
             result = DownloadResult(
-                success=True, completed_pages=[1], failed_pages=[],
+                success=True,
+                completed_pages=[1],
+                failed_pages=[],
                 temp_dir=str(temp_dir),
             )
             manager._handle_album_chapter_success(task, result)

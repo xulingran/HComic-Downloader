@@ -104,9 +104,23 @@ class DownloadMixin:
 
         source_site = comic_data.get("sourceSite", "hcomic") or "hcomic"
         album_title = comic_data.get("title", "Unknown")
-        raw_album_title = album_title  # 保留原始专辑名用于 album_title 字段
-        total = int(comic_data.get("albumTotalChapters") or len(chapter_ids))
+        raw_album_title = comic_data.get("albumTitle") or album_title  # 优先使用专辑标题
+        comic_author = comic_data.get("author")
+        api_total = comic_data.get("albumTotalChapters") or 0
+        # 取较大值：API 可能少报（陈旧数据），用户也可能只选部分章节。
+        # 部分下载时 coordinator 不会自动打包，用户需手动 force-pack。
+        total = max(api_total, len(chapter_ids))
         chapter_meta = {c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c}
+
+        logger.info(
+            "_download_chapters: source=%s, api_total=%s, len(chapter_ids)=%s, total=%s, albumTitle=%r, title=%r",
+            source_site,
+            api_total,
+            len(chapter_ids),
+            total,
+            comic_data.get("albumTitle"),
+            comic_data.get("title"),
+        )
 
         task_ids = []
         failed = []
@@ -122,6 +136,7 @@ class DownloadMixin:
                     comic = ComicInfo(
                         id=chap_id,
                         title=f"{album_title} - {chap_name}",
+                        author=comic_author,
                         source_site="bika",
                         comic_source="BIKA",
                         media_id=chap_id,
@@ -139,6 +154,7 @@ class DownloadMixin:
                     comic = ComicInfo(
                         id=chap_id,
                         title=f"{album_title} - {chap_name}",
+                        author=comic_author,
                         source_site="jmcomic",
                         comic_source="JMCOMIC",
                         media_id=chap_id,
@@ -281,9 +297,7 @@ class DownloadMixin:
             "outputPath": output_path,
         }
 
-    def handle_force_pack_album(
-        self, source_site: str, album_id: str, overwrite: bool = False
-    ) -> dict:
+    def handle_force_pack_album(self, source_site: str, album_id: str, overwrite: bool = False) -> dict:
         """强制打包专辑。"""
         coordinator = getattr(self, "_album_coordinator", None)
         if coordinator is None:
@@ -299,16 +313,19 @@ class DownloadMixin:
             "errorMessage": result.error_message,
         }
 
-    def handle_get_album_progress(
-        self, source_site: str, album_id: str
-    ) -> dict:
+    def handle_get_album_progress(self, source_site: str, album_id: str) -> dict:
         """查询专辑下载进度。"""
         coordinator = getattr(self, "_album_coordinator", None)
         if coordinator is None:
             return {
-                "albumId": album_id, "albumTitle": "", "albumFolderPath": "",
-                "packedPath": None, "totalChapters": 0, "chaptersOnDisk": 0,
-                "chaptersInQueue": 0, "isComplete": False,
+                "albumId": album_id,
+                "albumTitle": "",
+                "albumFolderPath": "",
+                "packedPath": None,
+                "totalChapters": 0,
+                "chaptersOnDisk": 0,
+                "chaptersInQueue": 0,
+                "isComplete": False,
             }
         album_key = (source_site, album_id)
         prog = coordinator.get_progress(album_key)

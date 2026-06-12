@@ -97,7 +97,7 @@ class ComicInfo:
     def chapter_display_name(self) -> str:
         """从 title 提取章节显示名（去掉专辑名前缀）。"""
         if self.album_title and self.title.startswith(self.album_title):
-            suffix = self.title[len(self.album_title):]
+            suffix = self.title[len(self.album_title) :]
             if suffix.startswith(" - "):
                 return suffix[3:].strip()
             if suffix.startswith("-"):

@@ -83,9 +83,7 @@ class AlbumStagingCoordinator:
         if state:
             state.comic = comic
 
-    def on_chapter_complete(
-        self, task: DownloadTask, album_work_dir: str
-    ) -> None:
+    def on_chapter_complete(self, task: DownloadTask, album_work_dir: str) -> None:
         """ComicDownloadManager 在章节成功落盘后调用。"""
         album_key: AlbumKey = (
             task.comic.source_site,
@@ -137,8 +135,11 @@ class AlbumStagingCoordinator:
                 self._emit_event(album_key, "force_pack_started")
                 try:
                     self._cbz_builder.build_album_cbz(
-                        work_dir, effective_comic, final_path,
-                        overwrite=overwrite, download_dir=download_dir,
+                        work_dir,
+                        effective_comic,
+                        final_path,
+                        overwrite=overwrite,
+                        download_dir=download_dir,
                     )
                     shutil.rmtree(work_dir)
                 except Exception as e:
@@ -148,7 +149,8 @@ class AlbumStagingCoordinator:
 
             self._update_history(album_key, final_path)
             self._emit_event(
-                album_key, "packed",
+                album_key,
+                "packed",
                 output_path=final_path,
                 chapters_on_disk=len(chapter_dirs),
             )
@@ -162,7 +164,8 @@ class AlbumStagingCoordinator:
             # folder 模式：不打包，直接返回当前状态（不清理 _tracked）
             chapter_dirs = self._scan_chapter_dirs(work_dir)
             self._emit_event(
-                album_key, "packed",
+                album_key,
+                "packed",
                 output_path=work_dir,
                 chapters_on_disk=len(chapter_dirs),
             )
@@ -187,9 +190,7 @@ class AlbumStagingCoordinator:
                 chapters_in_queue=len(state.task_ids),
             )
 
-        work_dir, final_path = self._cbz_builder.get_album_output_path(
-            comic, self._get_output_format(), download_dir
-        )
+        work_dir, final_path = self._cbz_builder.get_album_output_path(comic, self._get_output_format(), download_dir)
 
         chapters_on_disk = 0
         if os.path.isdir(work_dir):
@@ -230,10 +231,9 @@ class AlbumStagingCoordinator:
         if not os.path.isdir(album_dir):
             return []
         return sorted(
-            d for d in os.listdir(album_dir)
-            if os.path.isdir(os.path.join(album_dir, d))
-            and not d.startswith("temp_")
-            and not d.startswith(".")
+            d
+            for d in os.listdir(album_dir)
+            if os.path.isdir(os.path.join(album_dir, d)) and not d.startswith("temp_") and not d.startswith(".")
         )
 
     def _update_history(self, album_key: AlbumKey, new_path: str) -> None:

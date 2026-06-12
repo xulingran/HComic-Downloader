@@ -683,7 +683,9 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
 
     downloader = MagicMock()
     downloader.download_comic_resume.return_value = DownloadResult(
-        success=True, completed_pages=[1], failed_pages=[],
+        success=True,
+        completed_pages=[1],
+        failed_pages=[],
         temp_dir=str(tmp_path / "temp_jmcomic_100"),
     )
     downloader.cleanup_temp_dir = MagicMock()
@@ -700,6 +702,7 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
     # 注入 coordinator
     from album_coordinator import AlbumStagingCoordinator
     from cbz_builder import CBZBuilder
+
     coordinator = AlbumStagingCoordinator(
         download_dir_provider=lambda: str(tmp_path / "output"),
         output_format_provider=lambda: "folder",
@@ -708,9 +711,15 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
     manager.set_album_coordinator(coordinator)
 
     comic = ComicInfo(
-        id="100", title="Album - Ch1", source_site="jmcomic",
-        comic_source="JMCOMIC", album_id="100", album_title="Album",
-        album_total_chapters=3, author="Auth", pages=2,
+        id="100",
+        title="Album - Ch1",
+        source_site="jmcomic",
+        comic_source="JMCOMIC",
+        album_id="100",
+        album_title="Album",
+        album_total_chapters=3,
+        author="Auth",
+        pages=2,
     )
     task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
     manager.tasks[task.task_id] = task
@@ -722,7 +731,9 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
     (temp_dir / "002.jpg").write_bytes(b"\xff\xd8\xff\xd9")
 
     result = DownloadResult(
-        success=True, completed_pages=[1, 2], failed_pages=[],
+        success=True,
+        completed_pages=[1, 2],
+        failed_pages=[],
         temp_dir=str(temp_dir),
     )
 

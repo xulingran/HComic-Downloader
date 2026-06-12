@@ -50,6 +50,7 @@ describe('IPC Channel Consistency', () => {
       'get_comic_detail',       'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
       'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
       'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'get_jmcomic_domains',
+      'force_pack_album', 'get_album_progress',
     ]
 
     for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {

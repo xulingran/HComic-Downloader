@@ -73,6 +73,16 @@ vi.mock('@/hooks/useIpc', () => ({
   }),
 }))
 
+vi.mock('@/hooks/useDownloadHelper', () => ({
+  useDownloadHelper: vi.fn().mockReturnValue({
+    downloadWithConflictCheck: vi.fn().mockResolvedValue(true),
+    downloadChapters: vi.fn().mockResolvedValue(true),
+  }),
+  useChapterProbe: vi.fn().mockReturnValue({
+    probeChaptersBeforeDownload: vi.fn().mockResolvedValue(null),
+  }),
+}))
+
 vi.mock('@/stores/useComicStore', () => ({
   useComicStore: vi.fn(() => mockStoreState)
 }))
@@ -237,9 +247,10 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
 
-    expect(screen.getByText('2 / 3')).toBeInTheDocument()
-    expect(screen.getByText('上一页')).toBeInTheDocument()
-    expect(screen.getByText('下一页')).toBeInTheDocument()
+    // SearchBar 和底栏各渲染一个 PaginationControls
+    expect(screen.getAllByText('2 / 3').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('上一页').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('下一页').length).toBeGreaterThanOrEqual(1)
   })
 
   it('does not show empty state when comics are available', () => {
@@ -272,7 +283,7 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
 
-    await userEvent.click(screen.getByText('下一页'))
+    await userEvent.click(screen.getAllByText('下一页')[0])
 
     expect(mockStoreState.setComics).toHaveBeenCalledWith([
       { id: '2', title: 'Cached Page 2 Comic', url: 'https://example.com/2', coverUrl: '', source: 'test' },

@@ -432,7 +432,7 @@ describe('ComicReaderModal', () => {
         <ComicReaderModal comic={multiChapterComic} open={true} onClose={vi.fn()} />
       )
       await userEvent.click(screen.getByText('第 2 話'))
-      expect(fetchChapterUrls).toHaveBeenCalledWith('999002', '999001')
+      expect(fetchChapterUrls).toHaveBeenCalledWith('999002', '999001', 'jmcomic')
     })
 
     it('footer 下一章 button loads the next chapter and is disabled on the last chapter', async () => {
@@ -459,7 +459,7 @@ describe('ComicReaderModal', () => {
 
       // 点击「下一章」加载第 2 章
       await userEvent.click(nextBtn)
-      expect(fetchChapterUrls).toHaveBeenLastCalledWith('999002', '999001')
+      expect(fetchChapterUrls).toHaveBeenLastCalledWith('999002', '999001', 'jmcomic')
 
       // 已到末章 → 「下一章」禁用
       expect(screen.getByLabelText('下一章')).toBeDisabled()

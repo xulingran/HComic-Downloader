@@ -227,13 +227,13 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
             e.stopPropagation()
             handleTitleClick()
           }}
-          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text line-clamp-2"
+          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-none line-clamp-2"
           title={comic.title}
         >
           {comic.title}
         </h3>
         {comic.author && (
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate select-text">
+          <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate select-none">
             {comic.author}
           </p>
         )}
@@ -283,7 +283,7 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
             e.stopPropagation()
             handleTitleClick()
           }}
-          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-text truncate"
+          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-none truncate"
           title={comic.title}
         >
           {comic.title}

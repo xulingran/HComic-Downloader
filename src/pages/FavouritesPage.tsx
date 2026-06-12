@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useFavourites, useDownloadProgress } from '../hooks/useIpc'
-import { useDownloadHelper } from '../hooks/useDownloadHelper'
+import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
@@ -33,6 +33,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [source, setSource] = useState('hcomic')
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const { getFavourites, checkDownloadedStatus } = useFavourites()
+  const { probeChaptersBeforeDownload } = useChapterProbe()
   const sources = useSources()
   const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const {
@@ -188,8 +189,9 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   }, [comics, downloadedStatus, selectAll])
 
   const handleDownload = async (comic: ComicInfo) => {
-    if (comic.chapters && comic.chapters.length > 1) {
-      setChapterDialogComic(comic)
+    const enriched = await probeChaptersBeforeDownload(comic)
+    if (enriched) {
+      setChapterDialogComic(enriched)
       return
     }
     await downloadWithConflictCheck(comic)

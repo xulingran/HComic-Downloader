@@ -1,11 +1,12 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useRandom, useConfig, useDownloadProgress, useAuth } from '../hooks/useIpc'
-import { useDownloadHelper } from '../hooks/useDownloadHelper'
+import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
+import { PaginationControls } from '../components/common/PaginationControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { SearchBar } from '../components/SearchBar'
@@ -45,6 +46,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { random } = useRandom()
+  const { probeChaptersBeforeDownload } = useChapterProbe()
   const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const { getConfig } = useConfig()
   const { verifyAuth } = useAuth()
@@ -436,8 +438,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }
 
   const handleDownload = async (comic: ComicInfo) => {
-    if (comic.chapters && comic.chapters.length > 1) {
-      setChapterDialogComic(comic)
+    const enriched = await probeChaptersBeforeDownload(comic)
+    if (enriched) {
+      setChapterDialogComic(enriched)
       return
     }
     await downloadWithConflictCheck(comic)
@@ -635,6 +638,17 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
               />
             )
           ))}
+        </div>
+      )}
+
+      {!isLoading && !needsLogin && pagination && pagination.totalPages > 1 && (
+        <div className="flex justify-center">
+          <PaginationControls
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            onNavigate={handleSearch}
+            onJumpClick={() => setShowJumpDialog(true)}
+          />
         </div>
       )}
 

@@ -135,8 +135,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 58 total
-      expect(handleCalls.length).toBe(58)
+      // 60 total
+      const count = handleCalls.length
+      expect(count).toBe(60)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -189,6 +190,19 @@ describe('main.ts', () => {
       'python:refresh-tag-list',
       'select-directory',
       'open-login-window',
+      'python:force-pack-album',
+      'python:get-album-progress',
+      'python:get-chapter-preview-urls',
+      'python:check-favourite',
+      'python:get-history',
+      'python:add-history',
+      'python:delete-history',
+      'python:clear-history',
+      'python:bika-categories',
+      'python:moeimg-login',
+      'python:bika-login',
+      'python:hcomic-login',
+      'update:check',
     ]
 
     expectedChannels.forEach(channel => {
@@ -232,6 +246,7 @@ describe('main.ts', () => {
         'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
         'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
         'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'get_jmcomic_domains',
+        'force_pack_album', 'get_album_progress',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),
