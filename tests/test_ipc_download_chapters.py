@@ -131,3 +131,48 @@ def test_download_chapters_all_failed_reports_error(monkeypatch):
     assert result["taskIds"] == []
     assert result["status"] == "error"
     assert result["failedChapters"] == [{"id": "999001", "name": "第 1 話", "error": "boom"}]
+
+
+def test_download_chapters_sets_album_title(monkeypatch):
+    """章节 ComicInfo.album_title 应被正确填入。"""
+    server = _create_test_server()
+    fake_jm = SimpleNamespace(
+        get_chapter_images=lambda cid: (
+            [f"https://cdn/media/photos/{cid}/00001.webp"],
+            "220980",
+        )
+    )
+    server.parser.parsers = {"jmcomic": fake_jm}
+
+    created = []
+
+    def fake_add_task(comic, overwrite=False):
+        created.append(comic)
+        return comic.id
+
+    server._download_manager = SimpleNamespace(add_task=fake_add_task, tasks={})
+
+    comic_data = {
+        "id": "999001",
+        "title": "多章漫画",
+        "sourceSite": "jmcomic",
+        "source": "JMCOMIC",
+        "albumTotalChapters": 2,
+        "chapters": [
+            {"id": "999001", "name": "第 1 話", "index": 1},
+            {"id": "999002", "name": "第 2 話", "index": 2},
+        ],
+    }
+    result = server.handle_download("999001", comic_data, chapter_ids=["999001", "999002"])
+
+    assert created[0].album_title == "多章漫画"
+    assert created[1].album_title == "多章漫画"
+    assert result.get("albumKey") == {"sourceSite": "jmcomic", "albumId": "999001"}
+
+
+def test_handle_force_pack_album_no_coordinator():
+    """没有 coordinator 时应返回 error。"""
+    server = _create_test_server()
+    # 不注入 coordinator
+    result = server.handle_force_pack_album("jmcomic", "999001")
+    assert result["status"] == "error"

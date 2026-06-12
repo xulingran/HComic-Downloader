@@ -104,6 +104,7 @@ class DownloadMixin:
 
         source_site = comic_data.get("sourceSite", "hcomic") or "hcomic"
         album_title = comic_data.get("title", "Unknown")
+        raw_album_title = album_title  # 保留原始专辑名用于 album_title 字段
         total = int(comic_data.get("albumTotalChapters") or len(chapter_ids))
         chapter_meta = {c["id"]: c for c in (comic_data.get("chapters") or []) if "id" in c}
 
@@ -128,6 +129,7 @@ class DownloadMixin:
                         pages=len(image_urls),
                         album_id=album_id,
                         album_total_chapters=total,
+                        album_title=raw_album_title,
                     )
                 else:
                     jm = self.parser.parsers.get("jmcomic")
@@ -145,6 +147,7 @@ class DownloadMixin:
                         scramble_id=scramble_id,
                         album_id=album_id,
                         album_total_chapters=total,
+                        album_title=raw_album_title,
                     )
                 task_ids.append(self._download_manager.add_task(comic, overwrite=overwrite))
             except Exception as e:
@@ -152,11 +155,33 @@ class DownloadMixin:
                 logger.warning("Failed to queue chapter %s (%s): %s", chap_id, chap_name, e)
                 failed.append({"id": chap_id, "name": chap_name, "error": str(e)})
 
+        # 注册到专辑 coordinator
+        album_key = (source_site, album_id)
+        coordinator = getattr(self, "_album_coordinator", None)
+        if coordinator and task_ids:
+            coordinator.register_album_tasks(album_key, task_ids, total)
+
         status = "queued" if task_ids else "error"
-        return {"taskIds": task_ids, "failedChapters": failed, "status": status}
+        result = {"taskIds": task_ids, "failedChapters": failed, "status": status}
+        if task_ids:
+            result["albumKey"] = {"sourceSite": source_site, "albumId": album_id}
+        return result
 
     def handle_check_download_conflict(self, comic_data: dict) -> dict:
         comic = self._build_and_prepare_comic(comic_data or {})
+
+        # 多章专辑：检查专辑文件夹内是否有该章子文件夹
+        if comic.is_album_chapter:
+            album_dir_name = self.cbz_builder.get_album_folder_name(comic)
+            album_work_dir = os.path.join(self.config.download_dir, album_dir_name)
+            chapter_name = self._get_chapter_display_name(comic)
+            chapter_path = os.path.join(album_work_dir, chapter_name)
+            has_conflict = os.path.exists(chapter_path)
+            return {
+                "hasConflict": has_conflict,
+                "path": chapter_path,
+            }
+
         output_path = self.cbz_builder.get_output_path_for_format(
             comic, self.config.output_format, self.config.download_dir
         )
@@ -255,6 +280,60 @@ class DownloadMixin:
             "errorMessage": getattr(task, "error_message", ""),
             "outputPath": output_path,
         }
+
+    def handle_force_pack_album(
+        self, source_site: str, album_id: str, overwrite: bool = False
+    ) -> dict:
+        """强制打包专辑。"""
+        coordinator = getattr(self, "_album_coordinator", None)
+        if coordinator is None:
+            return {"status": "error", "errorMessage": "Album coordinator not available"}
+        album_key = (source_site, album_id)
+        result = coordinator.force_pack_album(album_key, overwrite=overwrite)
+        return {
+            "status": result.status,
+            "outputPath": result.output_path,
+            "packedChapters": result.packed_chapters,
+            "missingChapters": result.missing_chapters,
+            "existingPath": result.existing_path,
+            "errorMessage": result.error_message,
+        }
+
+    def handle_get_album_progress(
+        self, source_site: str, album_id: str
+    ) -> dict:
+        """查询专辑下载进度。"""
+        coordinator = getattr(self, "_album_coordinator", None)
+        if coordinator is None:
+            return {
+                "albumId": album_id, "albumTitle": "", "albumFolderPath": "",
+                "packedPath": None, "totalChapters": 0, "chaptersOnDisk": 0,
+                "chaptersInQueue": 0, "isComplete": False,
+            }
+        album_key = (source_site, album_id)
+        prog = coordinator.get_progress(album_key)
+        return {
+            "albumId": prog.album_id,
+            "albumTitle": prog.album_title,
+            "albumFolderPath": prog.album_folder_path,
+            "packedPath": prog.packed_path,
+            "totalChapters": prog.total_chapters,
+            "chaptersOnDisk": prog.chapters_on_disk,
+            "chaptersInQueue": prog.chapters_in_queue,
+            "isComplete": prog.is_complete,
+        }
+
+    @staticmethod
+    def _get_chapter_display_name(comic) -> str:
+        """从 ComicInfo.title 提取章节显示名（去掉专辑名前缀）。"""
+        album_title = getattr(comic, "album_title", "")
+        if album_title and comic.title.startswith(album_title):
+            suffix = comic.title[len(album_title):]
+            if suffix.startswith(" - "):
+                return suffix[3:].strip()
+            if suffix.startswith("-"):
+                return suffix[1:].strip()
+        return comic.safe_title
 
     def handle_check_downloaded_status(self, comics: list) -> dict:
         """Check which comics from the list have been downloaded."""
