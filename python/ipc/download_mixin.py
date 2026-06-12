@@ -170,6 +170,10 @@ class DownloadMixin:
     def handle_check_download_conflict(self, comic_data: dict) -> dict:
         comic = self._build_and_prepare_comic(comic_data or {})
 
+        # 多章专辑：从 comic_data 补充 album_title（_build_and_prepare_comic 不一定有）
+        if comic_data.get("albumTotalChapters", 1) > 1 and not comic.album_title:
+            comic.album_title = comic_data.get("title", "")
+
         # 多章专辑：检查专辑文件夹内是否有该章子文件夹
         if comic.is_album_chapter:
             album_dir_name = self.cbz_builder.get_album_folder_name(comic)
