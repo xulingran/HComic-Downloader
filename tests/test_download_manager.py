@@ -675,3 +675,60 @@ def test_on_download_success_callback(tmp_path):
     )
     assert hasattr(dm, "on_download_success")
     assert dm.on_download_success is None
+
+
+def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
+    """专辑章下载成功后，temp 目录被移动到 专辑文件夹/章节名/。"""
+    from unittest.mock import MagicMock
+
+    downloader = MagicMock()
+    downloader.download_comic_resume.return_value = DownloadResult(
+        success=True, completed_pages=[1], failed_pages=[],
+        temp_dir=str(tmp_path / "temp_jmcomic_100"),
+    )
+    downloader.cleanup_temp_dir = MagicMock()
+
+    cbz_builder = MagicMock()
+    cbz_builder.get_album_folder_name.return_value = "Auth-Album"
+    manager = ComicDownloadManager(
+        downloader=downloader,
+        cbz_builder=cbz_builder,
+        output_dir=str(tmp_path / "output"),
+        output_format="folder",
+    )
+
+    # 注入 coordinator
+    from album_coordinator import AlbumStagingCoordinator
+    coordinator = AlbumStagingCoordinator(
+        download_dir_provider=lambda: str(tmp_path / "output"),
+        output_format_provider=lambda: "folder",
+    )
+    manager.set_album_coordinator(coordinator)
+
+    comic = ComicInfo(
+        id="100", title="Album - Ch1", source_site="jmcomic",
+        comic_source="JMCOMIC", album_id="100", album_title="Album",
+        album_total_chapters=3, author="Auth", pages=2,
+    )
+    task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
+    manager.tasks[task.task_id] = task
+
+    # 创建 temp 目录
+    temp_dir = tmp_path / "temp_jmcomic_100"
+    temp_dir.mkdir()
+    (temp_dir / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+    (temp_dir / "002.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+
+    result = DownloadResult(
+        success=True, completed_pages=[1, 2], failed_pages=[],
+        temp_dir=str(temp_dir),
+    )
+
+    manager._handle_album_chapter_success(task, result)
+
+    # 章节目录应该在专辑文件夹下
+    album_dir = tmp_path / "output" / "Auth-Album"
+    chapter_dir = album_dir / "Ch1"
+    assert chapter_dir.exists()
+    assert (chapter_dir / "001.jpg").exists()
+    assert not temp_dir.exists()

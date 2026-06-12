@@ -3,6 +3,7 @@
 import copy
 import logging
 import os
+import shutil
 import threading
 import time
 from collections import Counter
@@ -570,9 +571,16 @@ class ComicDownloadManager(DownloadManager):
                 task.current_downloading_page = min(total, current + 1) if total > 0 else 0
             self._notify_task_update(task)
 
+        # 多章专辑：temp 目录放在专辑工作目录内
+        effective_output_dir = self.output_dir
+        if task.comic.is_album_chapter:
+            album_dir_name = self.cbz_builder.get_album_folder_name(task.comic)
+            effective_output_dir = os.path.join(self.output_dir, album_dir_name)
+            os.makedirs(effective_output_dir, exist_ok=True)
+
         result: DownloadResult = self.downloader.download_comic_resume(
             task.comic,
-            self.output_dir,
+            effective_output_dir,
             options=DownloadOptions(
                 completed_pages=task.completed_pages,
                 failed_pages=task.failed_pages,
@@ -626,6 +634,12 @@ class ComicDownloadManager(DownloadManager):
         with self._lock:
             task.temp_dir = result.temp_dir
 
+        if task.comic.is_album_chapter:
+            if self._check_cancel_before_packaging(task, result):
+                return
+            self._handle_album_chapter_success(task, result)
+            return
+
         if self._check_cancel_before_packaging(task, result):
             return
 
@@ -673,6 +687,60 @@ class ComicDownloadManager(DownloadManager):
                 self.on_download_success(task.comic, output_path, self.output_format)
             except Exception:
                 logger.warning("on_download_success callback failed", exc_info=True)
+
+    def set_album_coordinator(self, coordinator):
+        """注入专辑 staging 协调器。"""
+        self._album_coordinator = coordinator
+
+    def _get_chapter_display_name(self, comic) -> str:
+        """从 ComicInfo.title 提取章节显示名（去掉专辑名前缀）。"""
+        album_title = getattr(comic, "album_title", "")
+        if album_title and comic.title.startswith(album_title):
+            suffix = comic.title[len(album_title):]
+            if suffix.startswith(" - "):
+                return suffix[3:].strip()
+            if suffix.startswith("-"):
+                return suffix[1:].strip()
+        return comic.safe_title
+
+    def _handle_album_chapter_success(self, task: DownloadTask, result: DownloadResult) -> None:
+        """处理专辑章下载成功：移动 temp 到 专辑文件夹/章节名/。"""
+        comic = task.comic
+        album_dir_name = self.cbz_builder.get_album_folder_name(comic)
+        album_work_dir = os.path.join(self.output_dir, album_dir_name)
+        chapter_name = self._get_chapter_display_name(comic)
+        chapter_final_path = os.path.join(album_work_dir, chapter_name)
+
+        # 如果已有同名章节目录（重试场景），先清理
+        if os.path.exists(chapter_final_path):
+            shutil.rmtree(chapter_final_path)
+
+        os.makedirs(album_work_dir, exist_ok=True)
+        shutil.move(result.temp_dir, chapter_final_path)
+
+        logger.info(
+            "Album chapter saved: %s -> %s",
+            result.temp_dir, chapter_final_path,
+        )
+
+        # 写入历史（章级，output_path 暂为章节子文件夹路径）
+        output_path_for_history = chapter_final_path
+        if self.on_download_success:
+            try:
+                self.on_download_success(comic, output_path_for_history, "folder")
+            except Exception:
+                logger.warning("on_download_success callback failed", exc_info=True)
+
+        with self._lock:
+            task.temp_dir = None
+            task.status = DownloadStatus.COMPLETED
+            task.current_downloading_page = 0
+        self._notify_task_update(task)
+
+        # 通知 coordinator
+        coordinator = getattr(self, "_album_coordinator", None)
+        if coordinator:
+            coordinator.on_chapter_complete(task, album_work_dir)
 
     def _handle_download_failure(self, task: DownloadTask, result: DownloadResult) -> None:
         """处理下载失败：记录失败信息并尝试自动重试。"""
