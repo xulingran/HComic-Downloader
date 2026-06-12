@@ -281,3 +281,34 @@ export function useBikaCategories() {
 
   return { getBikaCategories }
 }
+
+export function useAlbumProgress() {
+  const [progress, setProgress] = useState<Record<string, {
+    sourceSite: string
+    albumId: string
+    event: string
+    outputPath?: string
+    chaptersOnDisk?: number
+    totalChapters?: number
+  }>>({})
+
+  useEffect(() => {
+    if (!window.hcomic?.onAlbumProgress) return
+    const unsubscribe = window.hcomic.onAlbumProgress((data) => {
+      setProgress(prev => ({ ...prev, [`${data.sourceSite}_${data.albumId}`]: data }))
+    })
+    return unsubscribe
+  }, [])
+
+  return { albumProgress: progress }
+}
+
+export function useAlbumCommands() {
+  const { invoke } = useIpc()
+  return useMemo(() => ({
+    forcePackAlbum: (sourceSite: string, albumId: string, overwrite?: boolean) =>
+      invoke(() => window.hcomic!.forcePackAlbum(sourceSite, albumId, overwrite)),
+    getAlbumProgress: (sourceSite: string, albumId: string) =>
+      invoke(() => window.hcomic!.getAlbumProgress(sourceSite, albumId)),
+  }), [invoke])
+}

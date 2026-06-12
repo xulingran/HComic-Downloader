@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useDownloadStore } from '../stores/useDownloadStore'
-import { useDownload } from '../hooks/useIpc'
+import { useDownload, useAlbumProgress, useAlbumCommands } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
 import type { DownloadStatus, DownloadDetail } from '@shared/types'
@@ -27,6 +27,45 @@ export function DownloadPage() {
   const { handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause } = useDownloadHelper()
   const [failedDialog, setFailedDialog] = useState<DownloadDetail | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
+  const { forcePackAlbum } = useAlbumCommands()
+  const { albumProgress } = useAlbumProgress()
+
+  // 专辑分组：按 (sourceSite, albumId) 分组多章专辑任务
+  const albumGroups = useMemo(() => {
+    const groups = new Map<string, {
+      albumId: string
+      sourceSite: string
+      albumTitle: string
+      tasks: typeof tasks
+      totalChapters: number
+    }>()
+    for (const task of tasks) {
+      const albumId = task.comic.albumId
+      const total = task.comic.albumTotalChapters ?? 1
+      if (!albumId || total <= 1) continue
+      const key = `${task.comic.sourceSite ?? 'hcomic'}_${albumId}`
+      if (!groups.has(key)) {
+        groups.set(key, {
+          albumId,
+          sourceSite: task.comic.sourceSite ?? 'hcomic',
+          albumTitle: task.comic.albumTitle ?? task.comic.title,
+          tasks: [],
+          totalChapters: total,
+        })
+      }
+      groups.get(key)!.tasks.push(task)
+    }
+    return groups
+  }, [tasks])
+
+  // 分离：哪些 task 属于专辑，哪些是独立任务
+  const albumTaskIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const g of albumGroups.values()) {
+      for (const t of g.tasks) ids.add(t.id)
+    }
+    return ids
+  }, [albumGroups])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability
@@ -126,10 +165,59 @@ export function DownloadPage() {
         <div className="space-y-3">
           {statusFilter !== 'all' && (
             <div className="text-xs text-[var(--text-secondary)]">
-              显示 {tasks.filter(t => matchStatusFilter(t.status, statusFilter)).length} / {tasks.length} 个任务
+              显示 {tasks.filter(t => matchStatusFilter(t.status, statusFilter) || albumTaskIds.has(t.id)).length} / {tasks.length} 个任务
             </div>
           )}
-          {tasks.filter(t => matchStatusFilter(t.status, statusFilter)).map((task) => (
+
+          {/* 专辑卡 */}
+          {[...albumGroups.entries()].map(([key, group]) => {
+            const completed = group.tasks.filter(t => t.status === 'completed').length
+            const hasFailures = group.tasks.some(t => t.status === 'failed')
+            const ap = albumProgress[key]
+            const isPacked = ap?.event === 'packed'
+
+            return (
+              <div key={key} className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm border-l-4 border-[var(--accent)]">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-medium text-[var(--text-primary)] truncate">
+                    {group.albumTitle}
+                  </h3>
+                  <div className="flex gap-1.5 flex-shrink-0 ml-2">
+                    {!isPacked && completed > 0 && (
+                      <button
+                        onClick={() => forcePackAlbum(group.sourceSite, group.albumId)}
+                        className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                      >
+                        强制打包
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="text-xs text-[var(--text-secondary)] mb-2">
+                  {isPacked ? '已打包' : `${completed}/${group.totalChapters} 章完成`}
+                  {hasFailures && ' (有失败)'}
+                </div>
+                <ProgressBar
+                  progress={Math.round((completed / group.totalChapters) * 100)}
+                  status={isPacked ? 'completed' : 'downloading'}
+                  totalPages={group.totalChapters}
+                  downloadedPages={completed}
+                />
+                {/* 章节子行 */}
+                <div className="mt-2 space-y-1">
+                  {group.tasks.map(task => (
+                    <div key={task.id} className="flex items-center justify-between text-xs px-2 py-1 rounded bg-[var(--bg-secondary)]">
+                      <span className="truncate">{task.comic.title}</span>
+                      <span className="text-[var(--text-secondary)]">{task.status}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })}
+
+          {/* 独立任务卡（不属于专辑或单章） */}
+          {tasks.filter(t => !albumTaskIds.has(t.id)).filter(t => matchStatusFilter(t.status, statusFilter)).map((task) => (
             <div
               key={task.id}
               className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm"
