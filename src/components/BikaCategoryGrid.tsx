@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useBikaCategories } from '../hooks/useIpc'
+import { useSettingsStore } from '../stores/useSettingsStore'
 
 interface BikaCategory {
   id: string
@@ -17,6 +18,7 @@ export function BikaCategoryGrid({ onSelectCategory }: BikaCategoryGridProps) {
   const [error, setError] = useState<string | null>(null)
   const [retryKey, setRetryKey] = useState(0)
   const { getBikaCategories } = useBikaCategories()
+  const sfwMode = useSettingsStore((s) => s.sfwMode)
 
   useEffect(() => {
     let cancelled = false
@@ -66,35 +68,38 @@ export function BikaCategoryGrid({ onSelectCategory }: BikaCategoryGridProps) {
 
   return (
     <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2">
-      {categories.map((cat) => (
-        <button
-          key={cat.id || cat.title}
-          onClick={() => onSelectCategory(cat.title)}
-          className="group relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-secondary)]
-                     hover:ring-2 hover:ring-[var(--accent)] transition-all duration-200"
-        >
-          {cat.thumb ? (
-            <>
-              <img
-                src={cat.thumb}
-                alt={cat.title}
-                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200"
-                loading="lazy"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-              <span className="absolute bottom-0 left-0 right-0 px-1.5 py-2 text-white text-xs font-medium truncate text-center">
-                {cat.title}
-              </span>
-            </>
-          ) : (
-            <div className="flex items-center justify-center w-full h-full">
-              <span className="text-[var(--text-primary)] text-xs font-medium px-2 text-center">
-                {cat.title}
-              </span>
-            </div>
-          )}
-        </button>
-      ))}
+      {categories.map((cat) => {
+        const showImage = cat.thumb && !sfwMode
+        return (
+          <button
+            key={cat.id || cat.title}
+            onClick={() => onSelectCategory(cat.title)}
+            className="group relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-secondary)]
+                       hover:ring-2 hover:ring-[var(--accent)] transition-all duration-200"
+          >
+            {showImage ? (
+              <>
+                <img
+                  src={cat.thumb}
+                  alt={cat.title}
+                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-200"
+                  loading="lazy"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+                <span className="absolute bottom-0 left-0 right-0 px-1.5 py-2 text-white text-xs font-medium truncate text-center">
+                  {cat.title}
+                </span>
+              </>
+            ) : (
+              <div className="flex items-center justify-center w-full h-full">
+                <span className="text-[var(--text-primary)] text-xs font-medium px-2 text-center">
+                  {cat.title}
+                </span>
+              </div>
+            )}
+          </button>
+        )
+      })}
     </div>
   )
 }
