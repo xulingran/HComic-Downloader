@@ -245,7 +245,9 @@ class PreviewMixin:
     ) -> None:
         """Thread-pool target: fetch a reader page image and write response."""
         try:
-            data_uri = self._do_fetch_preview_image(url, scramble_id=scramble_id, comic_id=comic_id, image_quality=image_quality)
+            data_uri = self._do_fetch_preview_image(
+                url, scramble_id=scramble_id, comic_id=comic_id, image_quality=image_quality
+            )
             self._write_response(
                 {
                     "jsonrpc": "2.0",

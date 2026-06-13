@@ -432,7 +432,9 @@ class SearchMixin:
         categories = bika_parser.get_categories()
         return {"categories": categories}
 
-    def handle_fetch_preview_image(self, image_url: str, scramble_id: str = "", comic_id: str = "", image_quality: str = "") -> dict:
+    def handle_fetch_preview_image(
+        self, image_url: str, scramble_id: str = "", comic_id: str = "", image_quality: str = ""
+    ) -> dict:
         self._validate_preview_image_url(image_url)
         logger.info(
             "fetch_preview_image: url=%s scramble_id=%s comic_id=%s",
@@ -440,7 +442,9 @@ class SearchMixin:
             scramble_id,
             comic_id,
         )
-        data_uri = self._do_fetch_preview_image(image_url, scramble_id=scramble_id, comic_id=comic_id, image_quality=image_quality)
+        data_uri = self._do_fetch_preview_image(
+            image_url, scramble_id=scramble_id, comic_id=comic_id, image_quality=image_quality
+        )
         return {"dataUri": data_uri}
 
     def _update_tags_on_favourite_add(self, comic_id: str, source: str) -> None:
