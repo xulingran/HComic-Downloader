@@ -1,15 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useHistory } from '../hooks/useIpc'
-import { ComicCard } from '../components/common/ComicCard'
+import { ComicCard, CoverImage } from '../components/common/ComicCard'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
-import { HistoryItem, PaginationInfo } from '@shared/types'
+import { HistoryItem, PaginationInfo, type ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useHistoryStore, type HistoryPageCache } from '../stores/useHistoryStore'
 import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
+import { useCoverImage } from '../hooks/useCoverImage'
 
 function formatRelativeTime(isoString: string): string {
   const now = Date.now()
@@ -311,6 +312,29 @@ export function HistoryPage() {
   )
 }
 
+function HistoryCoverThumb({ comic, onOpen }: { comic: ComicInfo; onOpen: () => void }) {
+  const { sfwMode } = useSettingsStore()
+  const containerRef = useRef<HTMLDivElement>(null)
+  const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
+  return (
+    <div
+      ref={containerRef}
+      className="flex-shrink-0 rounded-md cursor-pointer"
+      onClick={(e) => { e.stopPropagation(); onOpen() }}
+    >
+      <CoverImage
+        coverUrl={comic.coverUrl}
+        coverSrc={coverSrc}
+        sfwMode={sfwMode}
+        title={comic.title}
+        retry={retry}
+        variant="detailed"
+        onClick={(e) => { e.stopPropagation(); onOpen() }}
+      />
+    </div>
+  )
+}
+
 function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
   item: HistoryItem
   cardStyle: 'cover' | 'detailed'
@@ -330,7 +354,8 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        <div className="flex-1 min-w-0">
+        <HistoryCoverThumb comic={comic} onOpen={onOpen} />
+        <div className="flex-1 min-w-0 ml-3">
           <h3 className="text-sm font-medium text-[var(--text-primary)] truncate" title={item.title}>
             {item.title}
           </h3>

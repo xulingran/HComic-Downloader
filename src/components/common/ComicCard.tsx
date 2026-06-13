@@ -105,7 +105,7 @@ const COVER_STYLES = {
   },
 } as const
 
-function CoverImage({ coverUrl, coverSrc, sfwMode, title, retry, downloadStatus, variant, onClick }: CoverImageProps) {
+export function CoverImage({ coverUrl, coverSrc, sfwMode, title, retry, downloadStatus, variant, onClick }: CoverImageProps) {
   const s = COVER_STYLES[variant]
   return (
     <div

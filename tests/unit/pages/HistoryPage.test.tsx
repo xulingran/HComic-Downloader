@@ -19,7 +19,11 @@ vi.mock('@/hooks/useIpc', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover' }),
+  useSettingsStore: vi.fn(),
+}))
+
+vi.mock('@/hooks/useCoverImage', () => ({
+  useCoverImage: vi.fn().mockReturnValue({ coverSrc: null, retry: vi.fn() }),
 }))
 
 const { mockHistoryStore } = vi.hoisted(() => ({
@@ -48,9 +52,15 @@ vi.mock('@/components/common/ComicCard', () => ({
   ComicCard: ({ comic }: { comic: ComicInfo }) => (
     <div data-testid="comic-card">{comic.title}</div>
   ),
+  CoverImage: ({ coverUrl }: { coverUrl: string }) => (
+    <div data-testid="cover-image" data-cover-url={coverUrl || ''} />
+  ),
 }))
 
 import { HistoryPage } from '@/pages/HistoryPage'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+
+const mockUseSettingsStore = vi.mocked(useSettingsStore)
 
 function makeHistoryItem(overrides: Partial<HistoryItem>): HistoryItem {
   return {
@@ -73,6 +83,7 @@ function makeHistoryItem(overrides: Partial<HistoryItem>): HistoryItem {
 describe('HistoryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockUseSettingsStore.mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     mockGetHistory.mockResolvedValue({
       items: [],
       pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
@@ -139,5 +150,18 @@ describe('HistoryPage', () => {
 
     await screen.findByText('Current History')
     await waitFor(() => expect(mockGetHistory).toHaveBeenCalledWith(6))
+  })
+
+  it('renders cover thumbnail in detailed card style', async () => {
+    mockUseSettingsStore.mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+    mockGetHistory.mockResolvedValue({
+      items: [makeHistoryItem({ id: 1, comicId: 'h-1', title: 'Detailed Comic', coverUrl: 'https://example.com/cover.jpg' })],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+    })
+
+    render(<HistoryPage />)
+
+    await screen.findByText('Detailed Comic')
+    expect(screen.getByTestId('cover-image')).toBeInTheDocument()
   })
 })
