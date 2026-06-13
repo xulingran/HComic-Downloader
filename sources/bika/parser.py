@@ -39,6 +39,7 @@ class BikaParser(ParserContextMixin):
         self._stored_password: str = ""
         self._favourites_total_pages: int = 0
         self._relogin_in_progress: bool = False
+        self._image_quality: str = "original"
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置认证信息。Bika 使用 bearer_token。"""
@@ -50,6 +51,11 @@ class BikaParser(ParserContextMixin):
         """保存用户名密码到内存，用于 token 过期后自动重登录。"""
         self._stored_username = username or ""
         self._stored_password = password or ""
+
+    def set_image_quality(self, quality: str) -> None:
+        """设置预览图片清晰度。下载始终使用 original。"""
+        if quality in ("low", "medium", "high", "original"):
+            self._image_quality = quality
 
     def _ensure_token(self):
         """确保 token 有效，若过期或不存在则使用存储的凭据自动重登录。
@@ -94,6 +100,7 @@ class BikaParser(ParserContextMixin):
             **DEFAULT_HEADERS,
             "time": timestamp,
             "signature": signature,
+            "image-quality": self._image_quality,
         }
         if self._token:
             headers["authorization"] = self._token
