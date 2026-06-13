@@ -1,9 +1,11 @@
+import asyncio
 import inspect
 import json
 import logging
 import os
 import sys
 import threading
+from concurrent.futures import Future as _ConcurrentFuture
 from concurrent.futures import ThreadPoolExecutor
 
 # Add project root to sys.path so we can import existing modules
@@ -34,6 +36,7 @@ from ipc.types import (  # noqa: E402,F401
     _COVER_POOL_MAX_WORKERS,
     _PREVIEW_IMAGE_MAX_SIZE,
     _PREVIEW_POOL_MAX_WORKERS,
+    _REQUEST_POOL_MAX_WORKERS,
     CONFIG_KEY_MAP,
     AuthRequiredError,
     _get_config_path,
@@ -124,6 +127,16 @@ class IPCServer(
             )
         except Exception:
             self._cover_executor.shutdown(cancel_futures=True, wait=False)
+            raise
+        try:
+            # General-purpose request pool for all non-cover/non-preview handlers.
+            # See docs/superpowers/specs/2026-06-13-ipc-async-main-loop-design.md
+            self._request_executor = ThreadPoolExecutor(
+                max_workers=_REQUEST_POOL_MAX_WORKERS, thread_name_prefix="request"
+            )
+        except Exception:
+            self._cover_executor.shutdown(cancel_futures=True, wait=False)
+            self._preview_executor.shutdown(cancel_futures=True, wait=False)
             raise
         self._stdout_lock = threading.Lock()
         self._cover_cache = CoverCacheDB(
@@ -249,91 +262,227 @@ class IPCServer(
         "get_album_progress": "handle_get_album_progress",
     }
 
-    def handle_request(self, request: dict) -> dict:
+    async def _dispatch_request(self, request: dict) -> None:
+        """Asyncio dispatch path: route a request to its handler.
+
+        - For ``async def`` handlers, await directly on the running loop
+          (Stage B back-door).
+        - For sync handlers, submit to ``_request_executor`` via
+          ``loop.run_in_executor`` so the main loop stays responsive.
+        """
         method = request.get("method")
-        params = request.get("params", {})
         req_id = request.get("id")
+        params = request.get("params", {})
 
         if not method or not isinstance(method, str):
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32600, "message": "Missing or invalid method"},
-            }
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32600, "message": "Missing or invalid method"},
+                }
+            )
+            return
 
         attr_name = self._HANDLER_NAMES.get(method)
-        if attr_name:
-            handler = getattr(self, attr_name)
-            try:
-                # 过滤 params 到 handler 实际接受的参数，防止客户端注入未预期参数
-                param_keys = self._handler_param_keys.get(attr_name)
-                if param_keys is not None:
-                    valid_params = {k: v for k, v in params.items() if k in param_keys}
-                else:
-                    valid_params = params
-                result = handler(**valid_params)
-                return {"jsonrpc": "2.0", "id": req_id, "result": result}
-            except AuthRequiredError as e:
-                return {
+        if not attr_name:
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                }
+            )
+            return
+
+        handler = getattr(self, attr_name)
+        param_keys = self._handler_param_keys.get(attr_name)
+        valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
+
+        loop = asyncio.get_running_loop()
+        try:
+            if inspect.iscoroutinefunction(handler):
+                # Stage B back-door: async handlers run directly on the loop.
+                result = await handler(**valid_params)
+            else:
+                # NOTE: lambda must capture `handler` and `valid_params` from
+                # this call's local scope. Do not refactor to reuse variables
+                # across iterations without re-checking closure semantics.
+                result = await loop.run_in_executor(
+                    self._request_executor,
+                    lambda: handler(**valid_params),
+                )
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
+        except AuthRequiredError as e:
+            self._write_response(
+                {
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "error": {"code": -32001, "message": str(e)},
                 }
-            except TypeError as e:
-                logger.warning("Handler %s received invalid params: %s", method, e)
-                return {
+            )
+        except TypeError as e:
+            logger.warning("Handler %s received invalid params: %s", method, e)
+            self._write_response(
+                {
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "error": {"code": -32602, "message": f"Invalid params: {e}"},
                 }
-            except Exception as e:
-                logger.error("Handler error for %s: %s", method, e, exc_info=True)
-                return {
+            )
+        except Exception as e:
+            logger.error("Handler error for %s: %s", method, e, exc_info=True)
+            self._write_response(
+                {
                     "jsonrpc": "2.0",
                     "id": req_id,
                     "error": {"code": -32000, "message": str(e)},
                 }
-        else:
-            return {
-                "jsonrpc": "2.0",
-                "id": req_id,
-                "error": {"code": -32601, "message": f"Method not found: {method}"},
-            }
+            )
 
-    def _async_search(self, params: dict, req_id: str | None) -> None:
-        """Thread-pool target: run search without blocking the main loop."""
-        try:
-            param_keys = self._handler_param_keys.get("handle_search")
-            valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
-            result = self.handle_search(**valid_params)
-            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
-        except AuthRequiredError as e:
-            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32001, "message": str(e)}})
-        except Exception as e:
-            logger.error("async search failed: %s", e, exc_info=True)
-            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}})
+    async def _handle_line(self, line: str) -> None:
+        """Async entry point for a single stdin line.
 
-    def _async_sync_favourite_tags(self, params: dict, req_id: str | None) -> None:
-        """Thread-pool target: run sync_favourite_tags without blocking the main loop."""
+        Reproduces the special-case routing previously done by run() for
+        cover/preview fetches, then delegates everything else to
+        _dispatch_request.
+        """
+        req_id = None
         try:
-            param_keys = self._handler_param_keys.get("handle_sync_favourite_tags")
-            valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
-            result = self.handle_sync_favourite_tags(**valid_params)
-            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
-        except Exception as e:
-            logger.error("async sync_favourite_tags failed: %s", e, exc_info=True)
-            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}})
+            request = json.loads(line)
+            method = request.get("method")
+            req_id = request.get("id")
+            params = request.get("params", {})
 
-    def _async_refresh_tag_list(self, params: dict, req_id: str | None) -> None:
-        """Thread-pool target: run refresh_tag_list without blocking the main loop."""
-        try:
-            param_keys = self._handler_param_keys.get("handle_refresh_tag_list")
-            valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
-            result = self.handle_refresh_tag_list(**valid_params)
-            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
+            if not isinstance(params, dict):
+                self._write_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Invalid params: must be an object",
+                        },
+                    }
+                )
+                return
+
+            if method == "fetch_cover":
+                url = params.get("url", "")
+                try:
+                    self._validate_cover_url(url)
+                except ValueError as e:
+                    self._write_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {"code": -32602, "message": str(e)},
+                        }
+                    )
+                    return
+                self._cover_executor.submit(self._async_fetch_cover, url, req_id)
+                return
+
+            if method == "fetch_preview_image":
+                image_url = params.get("image_url", "")
+                scramble_id = params.get("scramble_id", "")
+                comic_id = params.get("comic_id", "")
+                try:
+                    self._validate_preview_image_url(image_url)
+                except ValueError as e:
+                    self._write_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {"code": -32602, "message": str(e)},
+                        }
+                    )
+                    return
+                self._preview_executor.submit(
+                    self._async_fetch_preview_image,
+                    image_url,
+                    req_id,
+                    scramble_id=scramble_id,
+                    comic_id=comic_id,
+                )
+                return
+
+            await self._dispatch_request(request)
+        except json.JSONDecodeError as e:
+            logger.error("JSON parse error: %s", e, exc_info=True)
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": f"Parse error: {e}"},
+                }
+            )
         except Exception as e:
-            logger.error("async refresh_tag_list failed: %s", e, exc_info=True)
-            self._write_response({"jsonrpc": "2.0", "id": req_id, "error": {"code": -32000, "message": str(e)}})
+            logger.error("Unexpected error: %s", e, exc_info=True)
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32603, "message": f"Internal error: {e}"},
+                }
+            )
+
+    @staticmethod
+    def _on_dispatch_done(future: _ConcurrentFuture) -> None:
+        """Log scheduling-layer failures (e.g. event loop already closed).
+
+        _handle_line owns its own try/except for normal handler errors;
+        this callback only catches exceptions raised before _handle_line ran.
+        """
+        exc = future.exception()
+        if exc is not None:
+            logger.error("dispatch failed: %s", exc, exc_info=exc)
+
+    def _stdin_reader_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+        """Daemon reader thread: pump stdin lines into the event loop.
+
+        Uses a blocking ``for raw_line in sys.stdin`` exactly like the old
+        synchronous run(); this keeps Windows pipe behaviour identical.
+        On EOF the function signals _stop_event so _async_main returns.
+        """
+        try:
+            for raw_line in sys.stdin:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                future = asyncio.run_coroutine_threadsafe(self._handle_line(line), loop)
+                future.add_done_callback(self._on_dispatch_done)
+        except Exception:
+            logger.exception("stdin reader crashed")
+        finally:
+            logger.info("stdin closed, shutting down executors...")
+            loop.call_soon_threadsafe(self._stop_event.set)
+
+    async def _async_main(self) -> None:
+        self._stop_event = asyncio.Event()
+        loop = asyncio.get_running_loop()
+        reader_thread = threading.Thread(
+            target=self._stdin_reader_loop,
+            args=(loop,),
+            name="stdin-reader",
+            daemon=True,
+        )
+        reader_thread.start()
+        logger.info(
+            "IPC Server started (asyncio main loop, request pool %d, "
+            "cover pool %d, preview pool %d, cache max %d MB)",
+            _REQUEST_POOL_MAX_WORKERS,
+            _COVER_POOL_MAX_WORKERS,
+            _PREVIEW_POOL_MAX_WORKERS,
+            getattr(self.config, "preview_cache_size_limit_mb", 500),
+        )
+        await self._stop_event.wait()
+        self._shutdown_executors()
+
+    def _shutdown_executors(self) -> None:
+        self._cover_executor.shutdown(wait=False, cancel_futures=True)
+        self._preview_executor.shutdown(wait=False, cancel_futures=True)
+        self._request_executor.shutdown(wait=False, cancel_futures=True)
 
     def handle_get_cache_stats(self) -> dict:
         """Return combined cache statistics for cover and preview caches."""
@@ -362,112 +511,7 @@ class IPCServer(
         return {"success": True}
 
     def run(self):
-        logger.info(
-            "IPC Server started (cover fetches: thread pool, %d workers, cache max %d MB)",
-            _COVER_POOL_MAX_WORKERS,
-            getattr(self.config, "preview_cache_size_limit_mb", 500),
-        )
-        for line in sys.stdin:
-            line = line.strip()
-            if not line:
-                continue
-            req_id = None
-            try:
-                request = json.loads(line)
-                method = request.get("method")
-                req_id = request.get("id")
-                params = request.get("params", {})
-
-                if not isinstance(params, dict):
-                    self._write_response(
-                        {
-                            "jsonrpc": "2.0",
-                            "id": req_id,
-                            "error": {
-                                "code": -32602,
-                                "message": "Invalid params: must be an object",
-                            },
-                        }
-                    )
-                    continue
-
-                # ── fetch_cover: dispatch to thread pool, don't block main loop ──
-                if method == "fetch_cover":
-                    url = params.get("url", "")
-                    try:
-                        self._validate_cover_url(url)
-                    except ValueError as e:
-                        self._write_response(
-                            {
-                                "jsonrpc": "2.0",
-                                "id": req_id,
-                                "error": {"code": -32602, "message": str(e)},
-                            }
-                        )
-                        continue
-                    self._cover_executor.submit(self._async_fetch_cover, url, req_id)
-                    continue
-
-                # ── fetch_preview_image: authenticated image proxy for reader pages ──
-                if method == "fetch_preview_image":
-                    image_url = params.get("image_url", "")
-                    scramble_id = params.get("scramble_id", "")
-                    comic_id = params.get("comic_id", "")
-                    try:
-                        self._validate_preview_image_url(image_url)
-                    except ValueError as e:
-                        self._write_response(
-                            {
-                                "jsonrpc": "2.0",
-                                "id": req_id,
-                                "error": {"code": -32602, "message": str(e)},
-                            }
-                        )
-                        continue
-                    self._preview_executor.submit(
-                        self._async_fetch_preview_image,
-                        image_url,
-                        req_id,
-                        scramble_id=scramble_id,
-                        comic_id=comic_id,
-                    )
-                    continue
-
-                # ── search: dispatch to thread pool so other requests aren't blocked ──
-                if method == "search":
-                    self._cover_executor.submit(self._async_search, params, req_id)
-                    continue
-
-                # ── sync_favourite_tags: long-running sync dispatched to thread pool ──
-                if method == "sync_favourite_tags":
-                    self._cover_executor.submit(self._async_sync_favourite_tags, params, req_id)
-                    continue
-
-                # ── refresh_tag_list: long-running sync dispatched to thread pool ──
-                if method == "refresh_tag_list":
-                    self._cover_executor.submit(self._async_refresh_tag_list, params, req_id)
-                    continue
-
-                response = self.handle_request(request)
-                self._write_response(response)
-            except json.JSONDecodeError as e:
-                logger.error(f"JSON parse error: {e}", exc_info=True)
-                self._write_response(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": None,
-                        "error": {"code": -32700, "message": f"Parse error: {e}"},
-                    }
-                )
-            except Exception as e:
-                logger.error(f"Unexpected error: {e}", exc_info=True)
-                self._write_response(
-                    {
-                        "jsonrpc": "2.0",
-                        "id": req_id,
-                        "error": {"code": -32603, "message": f"Internal error: {e}"},
-                    }
-                )
+        asyncio.run(self._async_main())
 
 
 if __name__ == "__main__":

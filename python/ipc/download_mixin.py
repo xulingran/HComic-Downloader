@@ -243,6 +243,7 @@ class DownloadMixin:
             self._download_manager.wait_active_downloads(timeout=10.0)
         self._cover_executor.shutdown(cancel_futures=True, wait=False)
         self._preview_executor.shutdown(cancel_futures=True, wait=False)
+        self._request_executor.shutdown(cancel_futures=True, wait=False)
         logger.info("Shutdown: cancelled %d active tasks", cancelled_count)
         return {"success": True, "cancelledTasks": cancelled_count}
 
