@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, shell, crashReporter } from 'electron'
+import fs from 'fs'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
 import { checkForUpdates } from './update-checker'
@@ -760,8 +761,18 @@ function registerSystemHandlers(bridge: Bridge) {
     return bridge.call('get_jmcomic_domains')
   })
 
-  ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async () => {
-    return bridge.call('open_download_dir')
+  ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async (_, dirPath: string) => {
+    if (typeof dirPath !== 'string' || dirPath.length === 0) {
+      throw new Error('Invalid directory path')
+    }
+    if (!fs.existsSync(dirPath)) {
+      throw new Error(`Download directory does not exist: ${dirPath}`)
+    }
+    const errorMsg = await shell.openPath(dirPath)
+    if (errorMsg) {
+      throw new Error(`Failed to open directory: ${errorMsg}`)
+    }
+    return { success: true }
   })
 
   ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (_, title: string, defaultPath?: string) => {

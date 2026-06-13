@@ -119,8 +119,8 @@ export function useConfig() {
     return invoke(() => window.hcomic!.setConfig(key, value as ConfigValueMap[K]))
   }, [invoke])
 
-  const openDownloadDir = useCallback(async () => {
-    return invoke(() => window.hcomic!.openDownloadDir())
+  const openDownloadDir = useCallback(async (dirPath: string) => {
+    return invoke(() => window.hcomic!.openDownloadDir(dirPath))
   }, [invoke])
 
   const selectDirectory = useCallback(async (title: string, defaultPath?: string) => {

@@ -604,7 +604,7 @@ export interface HcomicAPI {
   getJmcomicDomains(): Promise<{ domains: string[] }>
   getTagList(source?: string, keyword?: string, page?: number, limit?: number): Promise<{ tags: Array<{ tag: string; count: number }>; total: number }>
   refreshTagList(source?: string): Promise<{ totalTags: number; totalComics: number; totalPages: number }>
-  openDownloadDir(): Promise<{ success: boolean }>
+  openDownloadDir(dirPath: string): Promise<{ success: boolean }>
   selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>

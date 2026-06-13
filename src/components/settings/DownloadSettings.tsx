@@ -16,7 +16,7 @@ interface DownloadSettingsProps {
   onConfigChange: (key: ConfigKey, value: unknown) => void
   onTextConfigChange: (key: ConfigKey, value: string) => void
   onTextConfigBlur: (key: ConfigKey) => void
-  openDownloadDir: () => Promise<{ success: boolean }>
+  openDownloadDir: (dirPath: string) => Promise<{ success: boolean }>
   onSelectDirectory: () => Promise<void>
   setSaveError: (err: string | null) => void
   onOpenMigration: () => void
@@ -81,7 +81,7 @@ export function DownloadSettings({
             </button>
             <button
               onClick={async () => {
-                try { await openDownloadDir() } catch (err: unknown) {
+                try { await openDownloadDir(config.downloadDir) } catch (err: unknown) {
                   setSaveError((err instanceof Error ? err.message : '') || '打开目录失败')
                 }
               }}

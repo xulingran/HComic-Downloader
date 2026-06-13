@@ -175,7 +175,10 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   getJmcomicDomains: () => ipcRenderer.invoke(IPC_CHANNELS.GET_JMCOMIC_DOMAINS),
 
-  openDownloadDir: () => ipcRenderer.invoke(IPC_CHANNELS.OPEN_DOWNLOAD_DIR),
+  openDownloadDir: (dirPath: unknown) => {
+    if (typeof dirPath !== 'string' || dirPath.length === 0) throw new Error('Invalid directory path')
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, dirPath)
+  },
 
   selectDirectory: (title: unknown, defaultPath?: unknown) => {
     if (typeof title !== 'string' || title.length === 0 || title.length > 256) throw new Error('Invalid title')
