@@ -203,9 +203,12 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_CHAPTER_PREVIEW_URLS, chapterId, albumId ?? undefined, sourceSite ?? undefined)
   },
 
-  fetchPreviewImage: (imageUrl: unknown, scrambleId?: unknown, comicId?: unknown) => {
+  fetchPreviewImage: (imageUrl: unknown, scrambleId?: unknown, comicId?: unknown, imageQuality?: unknown) => {
     if (typeof imageUrl !== 'string' || imageUrl.length === 0 || imageUrl.length > 2048) throw new Error('Invalid preview image URL')
-    return ipcRenderer.invoke(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, imageUrl, scrambleId, comicId)
+    if (imageQuality !== undefined && imageQuality !== null) {
+      if (typeof imageQuality !== 'string' || !['low', 'medium', 'high', 'original'].includes(imageQuality)) throw new Error('Invalid imageQuality')
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, imageUrl, scrambleId, comicId, imageQuality ?? undefined)
   },
 
   checkDownloadedStatus: (comics: unknown) => {

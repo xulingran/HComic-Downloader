@@ -92,7 +92,7 @@ class PreviewMixin:
         if not any(hostname == d or hostname.endswith("." + d) for d in allowed):
             raise ValueError(f"Domain not allowed: {hostname}")
 
-    def _fetch_image_as_data_uri(self, url: str, max_size: int) -> str:
+    def _fetch_image_as_data_uri(self, url: str, max_size: int, *, image_quality: str = "") -> str:
         self._validate_preview_image_url(url)
         session = self.downloader.create_isolated_session()
         try:
@@ -114,6 +114,8 @@ class PreviewMixin:
                 "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
                 "Referer": referer_for_image_url(url),
             }
+            if image_quality:
+                headers["image-quality"] = image_quality
             with session.get(
                 final_url,
                 timeout=self.downloader.timeout,
@@ -207,6 +209,7 @@ class PreviewMixin:
         *,
         scramble_id: str = "",
         comic_id: str = "",
+        image_quality: str = "",
     ) -> str:
         """Fetch a preview page image, using cache when available.
 
@@ -222,7 +225,7 @@ class PreviewMixin:
             if cached:
                 return cached
 
-        data_uri = self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE)
+        data_uri = self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE, image_quality=image_quality)
 
         if needs_descramble:
             data_uri = self._apply_descramble(data_uri, url, comic_id)
@@ -238,10 +241,11 @@ class PreviewMixin:
         *,
         scramble_id: str = "",
         comic_id: str = "",
+        image_quality: str = "",
     ) -> None:
         """Thread-pool target: fetch a reader page image and write response."""
         try:
-            data_uri = self._do_fetch_preview_image(url, scramble_id=scramble_id, comic_id=comic_id)
+            data_uri = self._do_fetch_preview_image(url, scramble_id=scramble_id, comic_id=comic_id, image_quality=image_quality)
             self._write_response(
                 {
                     "jsonrpc": "2.0",
