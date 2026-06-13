@@ -100,3 +100,61 @@ def test_dispatch_request_runs_sync_handler_in_request_executor():
         f"handler ran on {captured_thread['name']!r}, "
         "expected a thread from _request_executor (prefix 'request')"
     )
+
+
+def test_dispatch_request_handles_concurrent_handlers():
+    """N concurrently-dispatched sync handlers must be able to overlap in time.
+
+    Uses a Barrier: every handler blocks until all N participants arrive.
+    If dispatch were serialized, the Barrier would dead-lock and time out.
+    """
+    server = _create_test_server()
+    _capture_stdout(server)
+
+    n = 4
+    barrier = threading.Barrier(n, timeout=5.0)
+    arrived = []
+    arrived_lock = threading.Lock()
+
+    def make_blocking_handler(idx):
+        def _h():
+            with arrived_lock:
+                arrived.append(idx)
+            barrier.wait()
+            return {"idx": idx}
+
+        return _h
+
+    # Register fake handlers under existing method names so _HANDLER_NAMES routes.
+    fake_method_to_handler = {
+        "get_proxy_status": make_blocking_handler(0),
+        "get_available_fonts": make_blocking_handler(1),
+        "get_cache_stats": make_blocking_handler(2),
+        "get_history": make_blocking_handler(3),
+    }
+    for method, fn in fake_method_to_handler.items():
+        attr = server._HANDLER_NAMES[method]
+        setattr(server, attr, fn)
+        # 重新计算 handler_param_keys（fake handler 是无参 def _h()）
+        server._handler_param_keys[attr] = set()
+
+    async def _drive():
+        await asyncio.gather(
+            *[
+                server._dispatch_request(
+                    {"jsonrpc": "2.0", "id": i, "method": method, "params": {}}
+                )
+                for i, method in enumerate(fake_method_to_handler.keys())
+            ]
+        )
+
+    asyncio.run(_drive())
+    server._request_executor.shutdown(wait=True)
+
+    assert sorted(arrived) == [0, 1, 2, 3], (
+        f"not all handlers reached the barrier: {arrived!r}; "
+        "this means dispatch was serialized rather than concurrent"
+    )
+    responses = _drain_responses(server, n)
+    response_ids = sorted(r["id"] for r in responses)
+    assert response_ids == [0, 1, 2, 3]
