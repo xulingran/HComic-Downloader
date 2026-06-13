@@ -71,4 +71,27 @@ describe('useFavouritesStore', () => {
     expect(useFavouritesStore.getState().getPage('hcomic', 1)).toBeUndefined()
     expect(useFavouritesStore.getState().getPage('jmcomic', 1)).toBeDefined()
   })
+
+  it('does not clobber currentPage/currentSource when preloading (setCurrent=false)', () => {
+    // 用户主动加载第 3 页
+    useFavouritesStore.getState().setPage('hcomic', 3, {
+      comics: [comic],
+      pagination: { ...pagination, currentPage: 3 },
+      currentPage: 3,
+      downloadedStatus: {},
+    })
+    expect(useFavouritesStore.getState().currentPage).toBe(3)
+
+    // 预加载第 4 页 —— 不应改变 currentSource/currentPage，但应写入缓存
+    useFavouritesStore.getState().setPage('hcomic', 4, {
+      comics: [comic],
+      pagination: { ...pagination, currentPage: 4 },
+      currentPage: 4,
+      downloadedStatus: {},
+    }, false)
+
+    expect(useFavouritesStore.getState().currentPage).toBe(3)
+    expect(useFavouritesStore.getState().currentSource).toBe('hcomic')
+    expect(useFavouritesStore.getState().getPage('hcomic', 4)).toBeDefined()
+  })
 })

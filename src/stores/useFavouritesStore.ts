@@ -17,7 +17,7 @@ interface FavouritesStoreState {
   currentSource: string
   currentPage: number
   hasCache: boolean
-  setPage: (source: string, page: number, data: FavouritesPageCache) => void
+  setPage: (source: string, page: number, data: FavouritesPageCache, setCurrent?: boolean) => void
   getPage: (source: string, page: number) => FavouritesPageCache | undefined
   hasPage: (source: string, page: number) => boolean
   clearCache: (source?: string) => void
@@ -29,7 +29,7 @@ export const useFavouritesStore = create<FavouritesStoreState>((set, get) => ({
   currentSource: 'hcomic',
   currentPage: 1,
   hasCache: false,
-  setPage: (source, page, data) => {
+  setPage: (source, page, data, setCurrent = true) => {
     const caches = get().caches
     const sourceCache = caches[source] ?? { pages: {} }
     set({
@@ -42,8 +42,7 @@ export const useFavouritesStore = create<FavouritesStoreState>((set, get) => ({
           },
         },
       },
-      currentSource: source,
-      currentPage: page,
+      ...(setCurrent ? { currentSource: source, currentPage: page } : {}),
       hasCache: true,
     })
   },

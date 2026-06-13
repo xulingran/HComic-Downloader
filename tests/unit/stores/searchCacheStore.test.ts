@@ -113,4 +113,35 @@ describe('useSearchCacheStore', () => {
     expect(state.currentContextKey).toBeNull()
     expect(state.hasCache).toBe(false)
   })
+
+  it('does not clobber currentPage/currentContextKey when preloading (setCurrent=false)', () => {
+    const key = createSearchContextKey({ query: 'test', mode: 'keyword', source: 'hcomic', searchTags: '' })
+
+    // 用户主动加载第 3 页 —— 应设置 currentContextKey/currentPage
+    useSearchCacheStore.getState().setPage(key, 3, {
+      query: 'test',
+      mode: 'keyword',
+      source: 'hcomic',
+      searchTags: '',
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 3 },
+    })
+    expect(useSearchCacheStore.getState().currentPage).toBe(3)
+    expect(useSearchCacheStore.getState().currentContextKey).toBe(key)
+
+    // 预加载第 4 页 —— 不应改变 currentContextKey/currentPage，但应写入缓存
+    useSearchCacheStore.getState().setPage(key, 4, {
+      query: 'test',
+      mode: 'keyword',
+      source: 'hcomic',
+      searchTags: '',
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 4 },
+    }, false)
+
+    expect(useSearchCacheStore.getState().currentPage).toBe(3)
+    expect(useSearchCacheStore.getState().currentContextKey).toBe(key)
+    expect(useSearchCacheStore.getState().getPage(key, 4)).toBeDefined()
+    expect(useSearchCacheStore.getState().hasCache).toBe(true)
+  })
 })

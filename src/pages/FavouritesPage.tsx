@@ -70,13 +70,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const getTaskId = (comic: ComicInfo) =>
     `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
 
-  const cacheFavouritesPage = useCallback((effectiveSource: string, page: number, result: { comics: ComicInfo[]; pagination?: PaginationInfo | null }, statusMap: Record<string, 'downloaded' | 'unknown'> = {}) => {
+  const cacheFavouritesPage = useCallback((effectiveSource: string, page: number, result: { comics: ComicInfo[]; pagination?: PaginationInfo | null }, statusMap: Record<string, 'downloaded' | 'unknown'> = {}, setCurrent: boolean = true) => {
     cache.setPage(effectiveSource, page, {
       comics: result.comics,
       pagination: result.pagination ?? null,
       currentPage: page,
       downloadedStatus: statusMap,
-    })
+    }, setCurrent)
   }, [cache])
 
   const loadFavourites = useCallback(async (page: number = 1, selectedSource?: string, reason: 'user' | 'preload' = 'user') => {
@@ -216,7 +216,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     const cached = preloadedPagesRef.current.get(requestKey)
     if (!cached) return
     preloadedPagesRef.current.delete(requestKey)
-    cache.setPage(source, page, cached)
+    cache.setPage(source, page, cached, false)
   }, [cache, source])
 
   useEffect(() => {

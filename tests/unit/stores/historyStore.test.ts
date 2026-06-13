@@ -57,4 +57,24 @@ describe('useHistoryStore', () => {
     expect(useHistoryStore.getState().hasCache).toBe(false)
     expect(useHistoryStore.getState().currentPage).toBe(1)
   })
+
+  it('does not clobber currentPage when preloading (setCurrent=false)', () => {
+    // 用户主动加载第 2 页
+    useHistoryStore.getState().setPage(2, {
+      items: [item],
+      pagination: { ...pagination, currentPage: 2 },
+      currentPage: 2,
+    })
+    expect(useHistoryStore.getState().currentPage).toBe(2)
+
+    // 预加载第 3 页 —— 不应改变 currentPage，但应写入缓存
+    useHistoryStore.getState().setPage(3, {
+      items: [item],
+      pagination: { ...pagination, currentPage: 3 },
+      currentPage: 3,
+    }, false)
+
+    expect(useHistoryStore.getState().currentPage).toBe(2)
+    expect(useHistoryStore.getState().getPage(3)).toBeDefined()
+  })
 })

@@ -26,7 +26,7 @@ interface SearchCacheStoreState {
   currentContextKey: string | null
   currentPage: number
   hasCache: boolean
-  setPage: (contextKey: string, page: number, data: SearchPageCache) => void
+  setPage: (contextKey: string, page: number, data: SearchPageCache, setCurrent?: boolean) => void
   getPage: (contextKey: string, page: number) => SearchPageCache | undefined
   hasPage: (contextKey: string, page: number) => boolean
   clearContext: (contextKey: string) => void
@@ -42,7 +42,7 @@ export const useSearchCacheStore = create<SearchCacheStoreState>((set, get) => (
   currentContextKey: null,
   currentPage: 1,
   hasCache: false,
-  setPage: (contextKey, page, data) => {
+  setPage: (contextKey, page, data, setCurrent = true) => {
     const contexts = get().contexts
     const context = contexts[contextKey] ?? { pages: {} }
     set({
@@ -55,8 +55,7 @@ export const useSearchCacheStore = create<SearchCacheStoreState>((set, get) => (
           },
         },
       },
-      currentContextKey: contextKey,
-      currentPage: page,
+      ...(setCurrent ? { currentContextKey: contextKey, currentPage: page } : {}),
       hasCache: true,
     })
   },

@@ -184,7 +184,7 @@ export function HistoryPage() {
     const cached = preloadedPagesRef.current.get(requestKey)
     if (!cached) return
     preloadedPagesRef.current.delete(requestKey)
-    cache.setPage(page, cached)
+    cache.setPage(page, cached, false)
   }, [cache])
 
   useEffect(() => {

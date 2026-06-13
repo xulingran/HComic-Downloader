@@ -116,8 +116,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     searchTags,
   }), [query, mode, source, searchTags])
 
-  const cacheSearchPage = useCallback((contextKey: string, page: number, data: SearchPageCache) => {
-    searchCacheRef.current.setPage(contextKey, page, data)
+  const cacheSearchPage = useCallback((contextKey: string, page: number, data: SearchPageCache, setCurrent: boolean = true) => {
+    searchCacheRef.current.setPage(contextKey, page, data, setCurrent)
   }, [])
 
   useEffect(() => {
@@ -469,7 +469,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const cached = preloadedPagesRef.current.get(requestKey)
     if (!cached) return
     preloadedPagesRef.current.delete(requestKey)
-    cacheSearchPage(contextKey, page, cached)
+    cacheSearchPage(contextKey, page, cached, false)
   }, [cacheSearchPage])
 
   useEffect(() => {

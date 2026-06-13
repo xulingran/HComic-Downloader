@@ -11,7 +11,7 @@ interface HistoryStoreState {
   pages: Record<number, HistoryPageCache>
   currentPage: number
   hasCache: boolean
-  setPage: (page: number, data: HistoryPageCache) => void
+  setPage: (page: number, data: HistoryPageCache, setCurrent?: boolean) => void
   getPage: (page: number) => HistoryPageCache | undefined
   hasPage: (page: number) => boolean
   clearCache: () => void
@@ -21,12 +21,12 @@ export const useHistoryStore = create<HistoryStoreState>((set, get) => ({
   pages: {},
   currentPage: 1,
   hasCache: false,
-  setPage: (page, data) => set({
+  setPage: (page, data, setCurrent = true) => set({
     pages: {
       ...get().pages,
       [page]: data,
     },
-    currentPage: page,
+    ...(setCurrent ? { currentPage: page } : {}),
     hasCache: true,
   }),
   getPage: (page) => get().pages[page],
