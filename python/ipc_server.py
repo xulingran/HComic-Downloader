@@ -34,6 +34,7 @@ from ipc.types import (  # noqa: E402,F401
     _COVER_POOL_MAX_WORKERS,
     _PREVIEW_IMAGE_MAX_SIZE,
     _PREVIEW_POOL_MAX_WORKERS,
+    _REQUEST_POOL_MAX_WORKERS,
     CONFIG_KEY_MAP,
     AuthRequiredError,
     _get_config_path,
@@ -124,6 +125,16 @@ class IPCServer(
             )
         except Exception:
             self._cover_executor.shutdown(cancel_futures=True, wait=False)
+            raise
+        try:
+            # General-purpose request pool for all non-cover/non-preview handlers.
+            # See docs/superpowers/specs/2026-06-13-ipc-async-main-loop-design.md
+            self._request_executor = ThreadPoolExecutor(
+                max_workers=_REQUEST_POOL_MAX_WORKERS, thread_name_prefix="request"
+            )
+        except Exception:
+            self._cover_executor.shutdown(cancel_futures=True, wait=False)
+            self._preview_executor.shutdown(cancel_futures=True, wait=False)
             raise
         self._stdout_lock = threading.Lock()
         self._cover_cache = CoverCacheDB(
