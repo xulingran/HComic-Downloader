@@ -158,3 +158,34 @@ def test_dispatch_request_handles_concurrent_handlers():
     responses = _drain_responses(server, n)
     response_ids = sorted(r["id"] for r in responses)
     assert response_ids == [0, 1, 2, 3]
+
+
+def test_dispatch_request_runs_async_handler_directly_on_loop():
+    """If a handler is `async def`, _dispatch_request must await it on the
+    loop directly (not submit to executor). This is the Stage B back-door."""
+    server = _create_test_server()
+    _capture_stdout(server)
+
+    main_thread_name = threading.current_thread().name
+    captured = {}
+
+    async def fake_async_handler():
+        captured["thread"] = threading.current_thread().name
+        return {"async": True}
+
+    server.handle_get_proxy_status = fake_async_handler  # type: ignore[attr-defined]
+    server._handler_param_keys[server._HANDLER_NAMES["get_proxy_status"]] = set()
+
+    async def _drive():
+        await server._dispatch_request(
+            {"jsonrpc": "2.0", "id": 42, "method": "get_proxy_status", "params": {}}
+        )
+
+    asyncio.run(_drive())
+
+    [resp] = _drain_responses(server, 1)
+    assert resp == {"jsonrpc": "2.0", "id": 42, "result": {"async": True}}
+    assert captured["thread"] == main_thread_name, (
+        f"async handler ran on {captured['thread']!r}, "
+        "expected the test's main thread (the loop runs on the calling thread)"
+    )
