@@ -36,6 +36,7 @@ CONFIG_KEY_MAP = {
     "favouriteTagHighlight": "favourite_tag_highlight",
     "favouriteTagMinMatches": "favourite_tag_min_matches",
     "checkUpdateOnStart": "check_update_on_start",
+    "bikaImageQuality": "bika_image_quality",
 }
 
 _COVER_POOL_MAX_WORKERS = 4

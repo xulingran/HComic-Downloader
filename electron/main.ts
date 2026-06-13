@@ -215,6 +215,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   favouriteTagHighlight: boolean(),
   favouriteTagMinMatches: and(number(), integer(), range(1, 10)),
   checkUpdateOnStart: boolean(),
+  bikaImageQuality: and(string(), oneOf(['low', 'medium', 'high', 'original'] as const)),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────

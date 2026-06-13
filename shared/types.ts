@@ -842,4 +842,5 @@ export const CONFIG_KEYS = [
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
   'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'previewCacheSizeLimitMB',
   'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
+  'bikaImageQuality',
 ] as const

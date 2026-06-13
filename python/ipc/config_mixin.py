@@ -80,6 +80,11 @@ class ConfigMixin:
             "cbzFilenameTemplate": lambda v: setattr(self.cbz_builder, "filename_template", v),
             "defaultSource": lambda v: self.parser.set_source(v),
             "jmcomicDomain": self._apply_jmcomic_domain,
+            "bikaImageQuality": lambda v: (
+                self.parser.parsers["bika"].set_image_quality(v)
+                if hasattr(self.parser.parsers.get("bika"), "set_image_quality")
+                else None
+            ),
             "previewCacheSizeLimitMB": lambda v: (
                 (self._preview_cache.update_max_size(v) if hasattr(self, "_preview_cache") else None),
                 (self._cover_cache.update_max_size(v) if hasattr(self, "_cover_cache") else None),
@@ -114,6 +119,7 @@ class ConfigMixin:
             "favourite_tag_highlight": getattr(self.config, "favourite_tag_highlight", False),
             "favourite_tag_min_matches": getattr(self.config, "favourite_tag_min_matches", 1),
             "check_update_on_start": getattr(self.config, "check_update_on_start", True),
+            "bika_image_quality": getattr(self.config, "bika_image_quality", "original"),
         }
         config = {}
         for snake_key, value in raw.items():
