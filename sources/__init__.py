@@ -263,7 +263,8 @@ class MultiSourceParser:
                     detail.album_id = comic.album_id
                 return detail
             order = detail.chapters[0].index if detail.chapters else 1
-            detail.image_urls = parser.get_chapter_images(comic.id, order)  # type: ignore[union-attr]
+            with parser._with_quality("original"):
+                detail.image_urls = parser.get_chapter_images(comic.id, order)  # type: ignore[union-attr]
             detail.pages = len(detail.image_urls)
             return detail
         if source == "copymanga":

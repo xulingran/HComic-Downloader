@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import logging
 import time
+from contextlib import contextmanager
 from typing import Any
 
 import requests
@@ -56,6 +57,16 @@ class BikaParser(ParserContextMixin):
         """设置预览图片清晰度。下载始终使用 original。"""
         if quality in ("low", "medium", "high", "original"):
             self._image_quality = quality
+
+    @contextmanager
+    def _with_quality(self, quality: str):
+        """Temporarily override image quality (e.g. for downloads)."""
+        prev = self._image_quality
+        self._image_quality = quality
+        try:
+            yield
+        finally:
+            self._image_quality = prev
 
     def _ensure_token(self):
         """确保 token 有效，若过期或不存在则使用存储的凭据自动重登录。

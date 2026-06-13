@@ -132,7 +132,8 @@ class DownloadMixin:
                     parser = self.parser.parsers.get("bika")
                     if parser is None:
                         raise ValueError("bika source unavailable")
-                    image_urls = parser.get_chapter_images(album_id, chap_order)
+                    with parser._with_quality("original"):
+                        image_urls = parser.get_chapter_images(album_id, chap_order)
                     comic = ComicInfo(
                         id=chap_id,
                         title=f"{album_title} - {chap_name}",
