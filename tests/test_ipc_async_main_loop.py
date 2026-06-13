@@ -275,3 +275,28 @@ def test_handle_line_handles_invalid_json():
     [resp] = _drain_responses(server, 1)
     assert resp["error"]["code"] == -32700
     assert resp["id"] is None
+
+
+def test_handle_shutdown_shuts_down_request_executor():
+    """handle_shutdown must shut down all three executors so no work
+    survives between the response being sent and stdin EOF arriving."""
+    server = _create_test_server()
+    server._download_manager.tasks = {}
+    server._download_manager.stop = MagicMock()
+    server._download_manager._worker_thread = None
+
+    server._cover_executor = MagicMock()
+    server._preview_executor = MagicMock()
+    server._request_executor = MagicMock()
+
+    server.handle_shutdown()
+
+    server._cover_executor.shutdown.assert_called_once_with(
+        cancel_futures=True, wait=False
+    )
+    server._preview_executor.shutdown.assert_called_once_with(
+        cancel_futures=True, wait=False
+    )
+    server._request_executor.shutdown.assert_called_once_with(
+        cancel_futures=True, wait=False
+    )
