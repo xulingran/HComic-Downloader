@@ -136,6 +136,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       }
       setComics(cached.comics)
       if (cached.pagination) setPagination(cached.pagination)
+      // viewingCategory 是本组件局部 state，挂载时会丢失；
+      // 这里依据已恢复的 mode/source 同步推导，避免用户从分类搜索切走再切回后无法返回分类页。
+      setViewingCategory(cached.mode === 'category' && cached.source === 'bika')
       return
     }
 

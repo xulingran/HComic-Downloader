@@ -291,6 +291,30 @@ describe('SearchPage', () => {
     expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined)
   })
 
+  it('restores viewingCategory from cached bika category context on remount', async () => {
+    // 复现：用户在 bika 分类搜索结果页切到其他页面再切回时，
+    // SearchPage 重新挂载，但 viewingCategory 是局部 state 会丢失。
+    // 修复后应从缓存的 mode='category' source='bika' 推导恢复，返回分类按钮重新出现。
+    mockStoreState.comics = [
+      { id: '1', title: 'Purity Comic', url: 'https://example.com/1', coverUrl: '', source: 'bika' },
+    ]
+    mockStoreState.pagination = { currentPage: 1, totalPages: 2, totalItems: 20 }
+    mockSearchCacheStore.currentContextKey = 'bika\u001fcategory\u001f纯爱\u001f'
+    mockSearchCacheStore.currentPage = 1
+    mockSearchCacheStore.getPage.mockReturnValue({
+      query: '纯爱',
+      mode: 'category',
+      source: 'bika',
+      searchTags: '',
+      comics: [{ id: '1', title: 'Purity Comic', url: 'https://example.com/1', coverUrl: '', source: 'bika' }],
+      pagination: { currentPage: 1, totalPages: 2, totalItems: 20 },
+    })
+
+    render(<SearchPage />)
+
+    expect(await screen.findByText('返回分类')).toBeInTheDocument()
+  })
+
   it('preloads nearby search pages after current page is available', async () => {
     mockStoreState.comics = [
       { id: '5', title: 'Page 5 Comic', url: 'https://example.com/5', coverUrl: '', source: 'test' },
