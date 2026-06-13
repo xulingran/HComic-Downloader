@@ -369,6 +369,18 @@ function setupWindowCloseHandler(win: BrowserWindow) {
   })
 }
 
+function getAppIconPath(): string {
+  const assetsDir = path.join(__dirname, '../../assets')
+  const platform = process.platform
+  if (platform === 'win32') {
+    return path.join(assetsDir, 'icon.ico')
+  }
+  if (platform === 'darwin') {
+    return path.join(assetsDir, 'icon_512.png')
+  }
+  return path.join(assetsDir, 'icon.png')
+}
+
 function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/preload.js')
 
@@ -384,7 +396,7 @@ function createWindow() {
       sandbox: true,
       webviewTag: false,
     },
-    icon: path.join(__dirname, '../../assets/icon.svg'),
+    icon: getAppIconPath(),
     show: false
   })
 
@@ -1131,6 +1143,16 @@ app.on('gpu-process-crashed', (_event, killed) => {
 
 app.whenReady().then(() => {
   try {
+    // ── Platform-specific icon setup ──
+    if (process.platform === 'win32') {
+      app.setAppUserModelId('com.hcomic.downloader')
+    } else if (process.platform === 'darwin' && app.dock) {
+      const iconPath = getAppIconPath()
+      if (fs.existsSync(iconPath)) {
+        app.dock.setIcon(iconPath)
+      }
+    }
+
     // ── URI protocol registration (hcomic://) ──
     if (process.platform !== 'linux') {
       app.setAsDefaultProtocolClient('hcomic')

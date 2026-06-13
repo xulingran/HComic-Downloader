@@ -9,6 +9,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 
+from config import DEFAULT_OUTPUT_FORMAT
 from downloader import DownloadOptions, DownloadResult
 from image_formats import SUPPORTED_IMAGE_EXTENSIONS
 from models import ComicInfo, DownloadCancelledError, DownloadStatus, DownloadTask
@@ -452,7 +453,7 @@ class ComicDownloadManager(DownloadManager):
         cbz_builder,
         output_dir: str,
         prepare_comic: Callable[[ComicInfo], ComicInfo] | None = None,
-        output_format: str = "cbz",
+        output_format: str = DEFAULT_OUTPUT_FORMAT,
     ):
         super().__init__()
         self.downloader = downloader

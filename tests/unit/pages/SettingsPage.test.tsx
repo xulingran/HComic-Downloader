@@ -74,7 +74,7 @@ const defaultConfig = {
   notifyOnComplete: true,
   notifyWhenForeground: 'inactive' as const,
   defaultSource: 'hcomic',
-  outputFormat: 'cbz' as const
+  outputFormat: 'folder' as const
 }
 
 describe('SettingsPage', () => {

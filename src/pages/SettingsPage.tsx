@@ -53,7 +53,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
   const { getJmcomicDomains } = useJmcomicDomains()
-  const [outputFormat, setOutputFormat] = useState<OutputFormat>('cbz')
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>('folder')
   const [config, setConfigState] = useState<ConfigState>({
     downloadDir: '',
     concurrentDownloads: 4,

@@ -77,7 +77,7 @@ describe('PythonBridge', () => {
       new PythonBridge()
 
       expect(mockSpawn).toHaveBeenCalledTimes(1)
-      expect(mockSpawn).toHaveBeenCalledWith('python', [expect.stringContaining('ipc_server.py')], expect.objectContaining({
+      expect(mockSpawn).toHaveBeenCalledWith(process.platform === 'win32' ? 'python' : 'python3', [expect.stringContaining('ipc_server.py')], expect.objectContaining({
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true,
         env: expect.objectContaining({ PYTHONIOENCODING: 'utf-8' }),

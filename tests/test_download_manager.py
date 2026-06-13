@@ -312,6 +312,7 @@ def test_cancel_during_packaging_preserves_existing_overwrite_target(tmp_path):
         downloader=_InstantDownloader(),
         cbz_builder=builder,
         output_dir=str(tmp_path),
+        output_format="cbz",
     )
     dm.set_auto_retry_max_attempts(0)
 

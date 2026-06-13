@@ -211,9 +211,11 @@ export function DownloadPage() {
                 {/* 章节子行 */}
                 <div className="mt-2 space-y-1">
                   {group.tasks.map(task => (
-                    <div key={task.id} className="flex items-center justify-between text-xs px-2 py-1 rounded bg-[var(--bg-secondary)]">
-                      <span className="truncate">{task.comic.title}</span>
-                      <span className="text-[var(--text-secondary)]">{task.status}</span>
+                    <div key={task.id} className="px-2 py-1.5 rounded bg-[var(--bg-secondary)]">
+                      <div className="flex items-center justify-between text-xs mb-1">
+                        <span className="truncate text-[var(--text-primary)]">{task.comic.title}</span>
+                      </div>
+                      <ProgressBar progress={task.progress} status={task.status} totalPages={task.totalPages} downloadedPages={task.downloadedPages} />
                     </div>
                   ))}
                 </div>

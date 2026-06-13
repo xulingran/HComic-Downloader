@@ -1,4 +1,5 @@
 import { spawn, ChildProcess } from 'child_process'
+import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { app } from 'electron'
@@ -31,6 +32,10 @@ export class PythonBridge {
     const isDev = !app.isPackaged
     const isWin = process.platform === 'win32'
     if (isDev) {
+      const venvPath = path.join(app.getAppPath(), 'venv', isWin ? 'Scripts' : 'bin', isWin ? 'python.exe' : 'python3')
+      if (fs.existsSync(venvPath)) {
+        return venvPath
+      }
       return isWin ? 'python' : 'python3'
     }
     const exeName = isWin ? 'python.exe' : 'python'

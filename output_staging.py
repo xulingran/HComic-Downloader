@@ -9,6 +9,7 @@ import shutil
 import tempfile
 
 from cbz_builder import CBZBuilder
+from config import DEFAULT_OUTPUT_FORMAT
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ logger = logging.getLogger(__name__)
 class OutputStagingManager:
     """管理下载输出的 staging/commit/cleanup 文件系统操作。"""
 
-    def __init__(self, output_dir: str, cbz_builder: CBZBuilder, output_format: str = "cbz"):
+    def __init__(self, output_dir: str, cbz_builder: CBZBuilder, output_format: str = DEFAULT_OUTPUT_FORMAT):
         self.output_dir = output_dir
         self.cbz_builder = cbz_builder
         self.output_format = output_format

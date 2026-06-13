@@ -11,6 +11,8 @@ from utils import normalize_source_auth
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_OUTPUT_FORMAT = "folder"
+
 
 @dataclass
 class AuthSourceData:
@@ -37,7 +39,7 @@ class Config:
     retry_times: int = 3
     cbz_filename_template: str = "{author}-{title}.cbz"
     # 输出格式: folder | zip | cbz
-    output_format: str = "cbz"
+    output_format: str = DEFAULT_OUTPUT_FORMAT
     # 字体配置（空字符串表示自动检测）
     font_name: str = ""  # 留空则自动选择最佳中文字体
     font_size: int = 12  # 基础字体大小
@@ -76,7 +78,7 @@ class Config:
             self.default_source = "hcomic"
         # 验证输出格式
         if self.output_format not in ("folder", "zip", "cbz"):
-            self.output_format = "cbz"
+            self.output_format = DEFAULT_OUTPUT_FORMAT
         # 归一化主题模式
         if self.theme_mode not in ("auto", "light", "dark"):
             self.theme_mode = "auto"

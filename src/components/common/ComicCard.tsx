@@ -292,6 +292,12 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
           {comic.author && <span>{comic.author}</span>}
           {comic.author && comic.pages != null && comic.pages > 0 && <span className="mx-1.5">·</span>}
           {comic.pages != null && comic.pages > 0 && <span>{comic.pages} 页</span>}
+          {comic.albumTotalChapters != null && comic.albumTotalChapters > 1 && (
+            <>
+              {(comic.author || (comic.pages != null && comic.pages > 0)) && <span className="mx-1.5">·</span>}
+              <span>{comic.albumTotalChapters} 章</span>
+            </>
+          )}
         </div>
         {comic.tags && comic.tags.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1.5">

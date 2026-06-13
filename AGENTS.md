@@ -143,4 +143,5 @@ npm run lint             # 6. JS/TS lint (ESLint)
 - **图片 URL** 由 `ComicInfo.get_image_url(page)` 动态生成，`suffix` 由 `comic_source` 决定：`mms`(MMCG_SHORT) / `mml`(MMCG_LONG) / `nh`(默认)
 - **配置原子写入**：使用 temp file + rename 防止 JSON 损坏，权限 0o600
 - **安全**：Context Isolation + Sandbox、CSP 按环境分发、IPC 参数严格校验（类型/长度/范围/路径遍历/控制字符）、域名白名单 + Referer 防盗链
+- **版本号管理**：`npm run version:from-git` 执行 `scripts/set-version-from-tag.mjs`，从最近的 git tag（如 `v1.2.3`）提取版本号写入 `package.json` 的 `version` 字段。Electron 运行时通过 `app.getVersion()` 读取该值。此脚本为手动触发，未集成到 `dev` 或 `build` 流程中
 - **jmcomic 图片反混淆**：`sources/jmcomic/descrambler.py` 在下载后对图片进行解混淆处理
