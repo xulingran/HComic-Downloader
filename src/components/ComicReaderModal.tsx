@@ -39,6 +39,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
   const [blankPosition, setBlankPosition] = useState<BlankPosition>('none')
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [bikaImageQuality, setBikaImageQuality] = useState<string>('original')
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
   const { mounted, visible, handleTransitionEnd } = useModalAnimation(open)
 
@@ -49,7 +50,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     preloadTarget,
     setPreloadTarget,
     clearCache,
-  } = usePreloadManager(imageUrls, loadingState, scrambleId, comicId)
+  } = usePreloadManager(imageUrls, loadingState, scrambleId, comicId, comic?.sourceSite === 'bika' ? bikaImageQuality : undefined)
 
   const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
   const {
@@ -77,6 +78,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       comicRef.current = comic
     }
   }, [comic])
+
+  useEffect(() => {
+    window.hcomic?.getConfig().then((result) => {
+      const q = result.config?.bikaImageQuality
+      if (typeof q === 'string') setBikaImageQuality(q)
+    }).catch(() => {})
+  }, [])
 
   const recordHistory = useCallback((page: number) => {
     if (!comic || page === lastRecordedPageRef.current) return
@@ -429,6 +437,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                     cachedDataUri={cachedDataUri}
                     scrambleId={scrambleId}
                     comicId={comicId}
+                    imageQuality={comic?.sourceSite === 'bika' ? bikaImageQuality : undefined}
                   />
                 </div>
                 )
@@ -462,6 +471,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               blankPosition={blankPosition}
               scrambleId={scrambleId}
               comicId={comicId}
+              imageQuality={comic?.sourceSite === 'bika' ? bikaImageQuality : undefined}
             />
           )}
         </>
@@ -685,6 +695,34 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                   重置
                 </button>
               </div>
+              {comic?.sourceSite === 'bika' && (
+                <>
+                  <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
+                    <span>图片清晰度</span>
+                    <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>
+                      {bikaImageQuality === 'low' ? '低' : bikaImageQuality === 'medium' ? '中' : bikaImageQuality === 'high' ? '高' : '原画'}
+                    </span>
+                  </label>
+                  <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+                    {(['low', 'medium', 'high', 'original'] as const).map((q) => (
+                      <button
+                        key={q}
+                        onClick={() => {
+                          setBikaImageQuality(q)
+                          window.hcomic?.setConfig('bikaImageQuality', q).catch(() => {})
+                        }}
+                        className="flex-1 py-1 text-xs transition-colors"
+                        style={{
+                          background: bikaImageQuality === q ? 'rgba(108,140,255,0.2)' : 'transparent',
+                          color: bikaImageQuality === q ? '#6c8cff' : 'rgba(255,255,255,0.4)',
+                        }}
+                      >
+                        {q === 'low' ? '低' : q === 'medium' ? '中' : q === 'high' ? '高' : '原画'}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

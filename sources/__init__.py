@@ -38,6 +38,7 @@ class MultiSourceParser:
         default_source: str = "hcomic",
         source_auth: dict[str, dict[str, str]] | None = None,
         auth: AuthConfig | None = None,
+        bika_image_quality: str = "original",
     ):
         self.timeout = timeout
         self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
@@ -89,6 +90,7 @@ class MultiSourceParser:
                 bika_auth.get("username", ""),
                 bika_auth.get("password", ""),
             )
+            bika_parser.set_image_quality(bika_image_quality)
         # 为 hcomic 恢复存储的用户名密码（用于懒登录）
         hcomic_auth = self.source_auth.get("hcomic", {})
         hcomic_parser = self.parsers["hcomic"]

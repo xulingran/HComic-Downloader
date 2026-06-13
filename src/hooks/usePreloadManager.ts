@@ -56,6 +56,7 @@ export function usePreloadManager(
   loadingState: string,
   scrambleId?: string,
   comicId?: string,
+  imageQuality?: string,
 ) {
   const imageCacheRef = useRef(new Map<number, string>())
   const [cacheVersion, setCacheVersion] = useState(0)
@@ -114,6 +115,7 @@ export function usePreloadManager(
                   imageUrls[pg - 1],
                   scrambleId,
                   comicId,
+                  imageQuality,
                 )
               if (cancelled) return
               if (result?.dataUri) {
@@ -141,7 +143,7 @@ export function usePreloadManager(
     return () => {
       cancelled = true
     }
-  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId])
+  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId, imageQuality])
 
   return {
     imageCacheRef,

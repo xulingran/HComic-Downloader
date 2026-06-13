@@ -70,6 +70,7 @@ class IPCServer(
         self.parser = MultiSourceParser(
             default_source=self.config.default_source,
             source_auth=self.config.source_auth,
+            bika_image_quality=self.config.bika_image_quality,
         )
         self.downloader = ComicDownloader(
             concurrent_downloads=self.config.concurrent_downloads,

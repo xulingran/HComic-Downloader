@@ -98,6 +98,7 @@ export interface AppConfig {
   favouriteTagHighlight?: boolean
   favouriteTagMinMatches?: number
   checkUpdateOnStart?: boolean
+  bikaImageQuality?: string
 }
 
 export type TagBlacklist = Record<ComicSource, string[]>
@@ -195,6 +196,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
   | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
   | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
+  | 'bikaImageQuality'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -219,6 +221,7 @@ export type ConfigValueMap = {
   favouriteTagHighlight: boolean
   favouriteTagMinMatches: number
   checkUpdateOnStart: boolean
+  bikaImageQuality: string
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]

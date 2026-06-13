@@ -47,14 +47,14 @@ const defaultProps = {
 describe('PageFlipView', () => {
   it('renders the current page image in single mode', async () => {
     render(<PageFlipView {...defaultProps} />)
-    await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalledWith('url1', undefined, undefined))
+    await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalledWith('url1', undefined, undefined, undefined))
   })
 
   it('renders two pages side by side in double mode', async () => {
     render(<PageFlipView {...defaultProps} displayMode="double" />)
     await waitFor(() => {
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('url1', undefined, undefined)
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('url2', undefined, undefined)
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('url1', undefined, undefined, undefined)
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('url2', undefined, undefined, undefined)
     })
   })
 
@@ -68,8 +68,8 @@ describe('PageFlipView', () => {
         displayMode="double"
       />
     )
-    await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalledWith('url3', undefined, undefined))
-    expect(mockFetchPreviewImage).not.toHaveBeenCalledWith('url4', undefined, undefined)
+    await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalledWith('url3', undefined, undefined, undefined))
+    expect(mockFetchPreviewImage).not.toHaveBeenCalledWith('url4', undefined, undefined, undefined)
   })
 
   it('shows click-to-flip navigation areas', () => {

@@ -164,7 +164,7 @@ describe('preload.ts', () => {
   describe('fetchPreviewImage', () => {
     it('should invoke python:fetch-preview-image with URL', async () => {
       await exposedApi.fetchPreviewImage('https://h-comic.link/api/nh/media123/pages/1')
-      expect(mockInvoke).toHaveBeenCalledWith('python:fetch-preview-image', 'https://h-comic.link/api/nh/media123/pages/1', undefined, undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:fetch-preview-image', 'https://h-comic.link/api/nh/media123/pages/1', undefined, undefined, undefined)
     })
 
     it('should reject invalid preview image URL', () => {

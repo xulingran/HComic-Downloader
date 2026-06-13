@@ -82,7 +82,7 @@ describe('ComicReaderModal', () => {
     vi.mocked(useComicReader).mockReturnValue(createReaderState())
     mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,page' })
     Object.defineProperty(window, 'hcomic', {
-      value: { fetchPreviewImage: mockFetchPreviewImage },
+      value: { fetchPreviewImage: mockFetchPreviewImage, getConfig: vi.fn().mockResolvedValue({ config: {} }), setConfig: vi.fn().mockResolvedValue({ success: true }) },
       writable: true,
       configurable: true,
     })
@@ -125,8 +125,8 @@ describe('ComicReaderModal', () => {
     )
 
     await waitFor(() => {
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/1.jpg', '', '')
-      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/2.jpg', '', '')
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/1.jpg', '', '', undefined)
+      expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/2.jpg', '', '', undefined)
     })
   })
 
@@ -222,7 +222,7 @@ describe('ComicReaderModal', () => {
     await userEvent.click(screen.getByText('重试'))
 
     await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalledTimes(2))
-    expect(mockFetchPreviewImage).toHaveBeenLastCalledWith('https://img.example.com/1.jpg', '', '')
+    expect(mockFetchPreviewImage).toHaveBeenLastCalledWith('https://img.example.com/1.jpg', '', '', undefined)
 
     consoleErrorSpy.mockRestore()
   })
@@ -324,7 +324,7 @@ describe('ComicReaderModal', () => {
 
       // Verify concurrent preloading was triggered starting from page 11 (skips current page 10)
       await waitFor(() => {
-        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/11.jpg', '', '')
+        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/11.jpg', '', '', undefined)
       })
     })
   })
