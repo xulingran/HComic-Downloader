@@ -177,7 +177,7 @@ describe('FavouritesPage', () => {
 
     render(<FavouritesPage />)
 
-    await userEvent.click(await screen.findByText('下一页'))
+    await userEvent.click((await screen.findAllByText('下一页'))[0])
 
     expect(await screen.findByText('Cached Favourite')).toBeInTheDocument()
     expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic')

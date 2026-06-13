@@ -134,7 +134,7 @@ describe('HistoryPage', () => {
 
     render(<HistoryPage />)
 
-    await userEvent.click(await screen.findByText('下一页'))
+    await userEvent.click((await screen.findAllByText('下一页'))[0])
 
     expect(await screen.findByText('Cached History')).toBeInTheDocument()
     expect(mockGetHistory).toHaveBeenCalledWith(2)

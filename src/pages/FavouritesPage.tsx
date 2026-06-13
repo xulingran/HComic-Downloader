@@ -349,6 +349,17 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         </>
       ))}
 
+      {!isLoading && !needsLogin && pagination && pagination.totalPages > 1 && (
+        <div className="flex justify-center">
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            onNavigate={loadFavourites}
+            onJumpClick={() => setShowJumpDialog(true)}
+          />
+        </div>
+      )}
+
       {/* ── Page jump dialog ── */}
       {showJumpDialog && (
         <PageJumpDialog

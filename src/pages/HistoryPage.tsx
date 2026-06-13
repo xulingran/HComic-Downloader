@@ -277,6 +277,17 @@ export function HistoryPage() {
         </>
       )}
 
+      {!isLoading && pagination && pagination.totalPages > 1 && (
+        <div className="flex justify-center">
+          <PaginationControls
+            currentPage={currentPage}
+            totalPages={pagination.totalPages}
+            onNavigate={loadHistory}
+            onJumpClick={() => setShowJumpDialog(true)}
+          />
+        </div>
+      )}
+
       {showJumpDialog && pagination && (
         <PageJumpDialog
           totalPages={pagination.totalPages || 1}
