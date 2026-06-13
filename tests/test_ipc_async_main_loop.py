@@ -189,3 +189,49 @@ def test_dispatch_request_runs_async_handler_directly_on_loop():
         f"async handler ran on {captured['thread']!r}, "
         "expected the test's main thread (the loop runs on the calling thread)"
     )
+
+
+def test_concurrent_responses_are_written_atomically():
+    """Even if multiple handlers complete simultaneously and each emits a
+    multi-line-ish JSON payload, _stdout_lock must serialize writes so the
+    captured output parses as N independent JSON objects (one per line)."""
+    server = _create_test_server()
+    _capture_stdout(server)
+
+    n = 6
+    payload_chars = 200  # large enough to expose partial-write interleaving
+
+    def big_payload_handler():
+        return {"blob": "X" * payload_chars}
+
+    methods = [
+        "get_proxy_status",
+        "get_available_fonts",
+        "get_cache_stats",
+        "get_history",
+        "get_jmcomic_domains",
+        "get_favourite_tags",
+    ]
+    for m in methods:
+        attr = server._HANDLER_NAMES[m]
+        setattr(server, attr, big_payload_handler)
+        server._handler_param_keys[attr] = set()
+
+    async def _drive():
+        await asyncio.gather(
+            *[
+                server._dispatch_request(
+                    {"jsonrpc": "2.0", "id": i, "method": methods[i], "params": {}}
+                )
+                for i in range(n)
+            ]
+        )
+
+    asyncio.run(_drive())
+    server._request_executor.shutdown(wait=True)
+
+    raw = server._captured_stdout.getvalue()
+    lines = [ln for ln in raw.splitlines() if ln.strip()]
+    assert len(lines) == n, f"expected {n} lines, got {len(lines)}: {raw!r}"
+    parsed_ids = sorted(json.loads(ln)["id"] for ln in lines)
+    assert parsed_ids == list(range(n))
