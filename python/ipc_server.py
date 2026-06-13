@@ -1,3 +1,4 @@
+import asyncio
 import inspect
 import json
 import logging
@@ -310,6 +311,88 @@ class IPCServer(
                 "id": req_id,
                 "error": {"code": -32601, "message": f"Method not found: {method}"},
             }
+
+    async def _dispatch_request(self, request: dict) -> None:
+        """Asyncio dispatch path: route a request to its handler.
+
+        - For ``async def`` handlers, await directly on the running loop
+          (Stage B back-door).
+        - For sync handlers, submit to ``_request_executor`` via
+          ``loop.run_in_executor`` so the main loop stays responsive.
+        """
+        method = request.get("method")
+        req_id = request.get("id")
+        params = request.get("params", {})
+
+        if not method or not isinstance(method, str):
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32600, "message": "Missing or invalid method"},
+                }
+            )
+            return
+
+        attr_name = self._HANDLER_NAMES.get(method)
+        if not attr_name:
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32601, "message": f"Method not found: {method}"},
+                }
+            )
+            return
+
+        handler = getattr(self, attr_name)
+        param_keys = self._handler_param_keys.get(attr_name)
+        valid_params = (
+            {k: v for k, v in params.items() if k in param_keys}
+            if param_keys is not None
+            else params
+        )
+
+        loop = asyncio.get_running_loop()
+        try:
+            if inspect.iscoroutinefunction(handler):
+                # Stage B back-door: async handlers run directly on the loop.
+                result = await handler(**valid_params)
+            else:
+                # NOTE: lambda must capture `handler` and `valid_params` from
+                # this call's local scope. Do not refactor to reuse variables
+                # across iterations without re-checking closure semantics.
+                result = await loop.run_in_executor(
+                    self._request_executor,
+                    lambda: handler(**valid_params),
+                )
+            self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
+        except AuthRequiredError as e:
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32001, "message": str(e)},
+                }
+            )
+        except TypeError as e:
+            logger.warning("Handler %s received invalid params: %s", method, e)
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32602, "message": f"Invalid params: {e}"},
+                }
+            )
+        except Exception as e:
+            logger.error("Handler error for %s: %s", method, e, exc_info=True)
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32000, "message": str(e)},
+                }
+            )
 
     def _async_search(self, params: dict, req_id: str | None) -> None:
         """Thread-pool target: run search without blocking the main loop."""
