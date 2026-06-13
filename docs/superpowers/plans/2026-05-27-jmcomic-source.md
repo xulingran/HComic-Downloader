@@ -1,0 +1,1700 @@
+# jmcomic 来源集成实施计划
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 为 hcomic_downloader 添加 jmcomic 作为第三个漫画来源，支持搜索、排行、标签、随机、登录和图片反混淆。
+
+**Architecture:** 独立 `jmcomic/` 模块包含 parser、domain resolver、image descrambler，通过 `MultiSourceParser` 统一调度。前端扩展来源选择器和搜索模式。认证支持弹窗登录和手动 Cookie 粘贴。
+
+**Tech Stack:** Python (requests, Pillow, lxml), Electron (BrowserWindow, IPC), React (TypeScript)
+
+---
+
+## File Structure
+
+### New Files
+
+| File | Responsibility |
+|------|---------------|
+| `jmcomic/__init__.py` | 模块入口，导出 JmParser |
+| `jmcomic/constants.py` | 域名、URL 模板、headers、排行映射常量 |
+| `jmcomic/domain.py` | 域名发布页发现 + 本地缓存 |
+| `jmcomic/parser.py` | JmParser — 搜索、详情、排行、标签解析 |
+| `jmcomic/descrambler.py` | 图片反混淆算法 |
+| `tests/test_jmcomic_parser.py` | JmParser 单元测试 |
+| `tests/test_jmcomic_domain.py` | 域名发现单元测试 |
+| `tests/test_jmcomic_descrambler.py` | 图片反混淆单元测试 |
+
+### Modified Files
+
+| File | Changes |
+|------|---------|
+| `models.py:41` | ComicInfo 新增 `scramble_id` 字段 |
+| `parser.py:1168-1309` | MultiSourceParser 注册 jmcomic，排行关键词预处理 |
+| `downloader.py:155-159` | 下载后根据 source_site 调用反混淆 |
+| `python/ipc/search_mixin.py:77-96` | handle_search 支持 jmcomic 排行模式 |
+| `python/ipc/auth_mixin.py:25-43` | handle_apply_auth/handle_verify_auth 支持 source 参数 |
+| `config.py:50` | tag_blacklist 默认值扩展 jmcomic |
+| `shared/types.ts:487` | COMIC_SOURCES 加入 'jmcomic' |
+| `shared/types.ts:68` | tagBlacklist 类型扩展 jmcomic |
+| `shared/types.ts:206-209` | IPCMethods.search.params 扩展 mode |
+| `electron/main.ts:42-58` | 域名白名单扩展 jmcomic |
+| `electron/main.ts:415-435` | extractAndApplyCookies 支持 source 参数 |
+| `electron/main.ts:445-548` | openLoginWindow 支持 jmcomic 登录 |
+| `electron/main.ts:714-728` | registerAuthHandlers 扩展 source 参数 |
+| `electron/preload.ts:8` | VALID_SOURCES 加入 'jmcomic' |
+| `electron/preload.ts:31-39` | search 方法验证扩展 ranking 模式 |
+| `electron/preload.ts:91-94` | applyAuth 扩展 source 参数 |
+| `electron/preload.ts:105` | openLoginWindow 扩展 source 参数 |
+| `src/pages/SearchPage.tsx:18-31` | 来源和搜索模式 UI 扩展 |
+| `src/components/settings/AuthSettings.tsx` | 新增 jmcomic 认证区域 |
+
+---
+
+## Task 1: 数据模型扩展 — ComicInfo 新增 scramble_id
+
+**Files:**
+- Modify: `models.py:41`
+- Test: `tests/test_models.py`
+
+- [ ] **Step 1: 在 ComicInfo 中新增 scramble_id 字段**
+
+在 `models.py` 的 `ComicInfo` dataclass 中，`image_urls` 字段之前新增：
+
+```python
+    scramble_id: str = ""
+```
+
+完整字段区域应为：
+```python
+    comic_source: str = ""
+    source_site: str = "hcomic"
+    scramble_id: str = ""
+    image_urls: list[str] = field(default_factory=list)
+```
+
+- [ ] **Step 2: 运行现有测试确认无回归**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_models.py -v`
+Expected: PASS
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add models.py tests/test_models.py
+git commit -m "feat: add scramble_id field to ComicInfo for jmcomic image descrambling"
+```
+
+---
+
+## Task 2: jmcomic 常量模块
+
+**Files:**
+- Create: `jmcomic/__init__.py`
+- Create: `jmcomic/constants.py`
+
+- [ ] **Step 1: 创建 jmcomic 包入口**
+
+Create `jmcomic/__init__.py`:
+
+```python
+"""jmcomic 来源模块。"""
+```
+
+- [ ] **Step 2: 创建常量模块**
+
+Create `jmcomic/constants.py`:
+
+```python
+"""jmcomic 常量定义。"""
+
+DEFAULT_DOMAIN = "18comic.vip"
+
+PUBLISH_URL = "https://jm365.work/mJ8rWd"
+
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "zh-CN,zh;q=0.8,zh-TW;q=0.7,zh-HK;q=0.5,en-US;q=0.3,en;q=0.2",
+    "Connection": "keep-alive",
+    "Upgrade-Insecure-Requests": "1",
+    "Sec-Fetch-Dest": "document",
+    "Sec-Fetch-Mode": "navigate",
+    "Sec-Fetch-Site": "same-origin",
+    "Sec-Fetch-User": "?1",
+    "Priority": "u=0, i",
+    "Pragma": "no-cache",
+    "Cache-Control": "no-cache",
+}
+
+# 排行榜时间周期映射
+TIME_MAP = {
+    "日": "t",
+    "周": "w",
+    "月": "m",
+    "总": "a",
+}
+
+# 排行榜排序方式映射
+ORDER_MAP = {
+    "更新": "mr",
+    "点击": "mv",
+    "评分": "tr",
+    "评论": "md",
+    "收藏": "tf",
+}
+
+# 排行榜关键词 → URL 参数映射（16 种组合）
+RANKING_MAPPINGS: dict[str, dict[str, str]] = {}
+for time_label, time_val in TIME_MAP.items():
+    for order_label, order_val in ORDER_MAP.items():
+        RANKING_MAPPINGS[f"{time_label}{order_label}"] = {"t": time_val, "o": order_val}
+
+# 搜索 URL 模板
+SEARCH_URL_TEMPLATE = "https://{domain}/search/photos?main_tag=0&search_query={query}"
+RANKING_URL_TEMPLATE = "https://{domain}/albums?t={t}&o={o}"
+RANDOM_URL_TEMPLATE = "https://{domain}/random"
+DETAIL_URL_TEMPLATE = "https://{domain}/album/{comic_id}"
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add jmcomic/
+git commit -m "feat: add jmcomic package with constants module"
+```
+
+---
+
+## Task 3: 域名发现模块
+
+**Files:**
+- Create: `jmcomic/domain.py`
+- Test: `tests/test_jmcomic_domain.py`
+
+- [ ] **Step 1: 编写域名发现测试**
+
+Create `tests/test_jmcomic_domain.py`:
+
+```python
+"""jmcomic 域名发现模块测试。"""
+import os
+import tempfile
+import time
+from pathlib import Path
+from unittest.mock import MagicMock, patch
+
+from jmcomic.domain import JmDomainResolver
+
+
+def test_resolve_from_cache(tmp_path):
+    """缓存有效时直接返回缓存域名。"""
+    cache_file = tmp_path / "jm_domain.txt"
+    cache_file.write_text(f"18comic.vip\n{time.time()}\n")
+    resolver = JmDomainResolver(cache_dir=str(tmp_path))
+    domain = resolver.resolve()
+    assert domain == "18comic.vip"
+
+
+def test_resolve_cache_expired_falls_back(tmp_path):
+    """缓存过期时尝试发布页，失败则用 fallback。"""
+    cache_file = tmp_path / "jm_domain.txt"
+    cache_file.write_text(f"old-domain.com\n{time.time() - 100000}\n")
+    resolver = JmDomainResolver(cache_dir=str(tmp_path))
+    with patch.object(resolver, '_fetch_publish_domains', return_value=[]):
+        domain = resolver.resolve()
+    assert domain == JmDomainResolver.FALLBACK_DOMAIN
+
+
+def test_resolve_no_cache_fallback(tmp_path):
+    """无缓存且发布页失败时使用 fallback。"""
+    resolver = JmDomainResolver(cache_dir=str(tmp_path))
+    with patch.object(resolver, '_fetch_publish_domains', return_value=[]):
+        domain = resolver.resolve()
+    assert domain == JmDomainResolver.FALLBACK_DOMAIN
+
+
+def test_resolve_publish_success(tmp_path):
+    """发布页返回可用域名时写入缓存。"""
+    resolver = JmDomainResolver(cache_dir=str(tmp_path))
+    with patch.object(resolver, '_fetch_publish_domains', return_value=["new-domain.com"]), \
+         patch.object(resolver, '_test_domain', return_value=True):
+        domain = resolver.resolve()
+    assert domain == "new-domain.com"
+    cache_file = tmp_path / "jm_domain.txt"
+    assert cache_file.exists()
+    assert "new-domain.com" in cache_file.read_text()
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_jmcomic_domain.py -v`
+Expected: FAIL (module not found)
+
+- [ ] **Step 3: 实现域名发现模块**
+
+Create `jmcomic/domain.py`:
+
+```python
+"""jmcomic 域名发现模块。"""
+import logging
+import os
+import time
+from pathlib import Path
+
+import requests
+from lxml import etree
+
+from jmcomic.constants import DEFAULT_DOMAIN, HEADERS, PUBLISH_URL
+
+logger = logging.getLogger(__name__)
+
+CACHE_TTL_SECONDS = 86400  # 24h
+
+
+class JmDomainResolver:
+    """从发布页获取可用域名，带本地缓存。"""
+
+    FALLBACK_DOMAIN = DEFAULT_DOMAIN
+    PUBLISH_URL = PUBLISH_URL
+    CACHE_FILENAME = "jm_domain.txt"
+    TEST_TIMEOUT = 5
+
+    def __init__(self, cache_dir: str | None = None):
+        self._cache_dir = cache_dir or os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
+        self._cache_path = os.path.join(self._cache_dir, self.CACHE_FILENAME)
+
+    def resolve(self) -> str:
+        """返回当前可用域名。优先缓存，其次发布页，最后 fallback。"""
+        cached = self._read_cache()
+        if cached:
+            return cached
+
+        try:
+            domains = self._fetch_publish_domains()
+        except Exception as e:
+            logger.warning("Failed to fetch publish domains: %s", e)
+            domains = []
+
+        for domain in domains:
+            if self._test_domain(domain):
+                self._write_cache(domain)
+                return domain
+
+        logger.warning("No available domain found, using fallback: %s", self.FALLBACK_DOMAIN)
+        return self.FALLBACK_DOMAIN
+
+    def _read_cache(self) -> str | None:
+        """读取缓存，未过期则返回域名。"""
+        try:
+            if not os.path.exists(self._cache_path):
+                return None
+            with open(self._cache_path, encoding="utf-8") as f:
+                lines = f.read().strip().split("\n")
+            if len(lines) < 2:
+                return None
+            domain = lines[0].strip()
+            timestamp = float(lines[1].strip())
+            if time.time() - timestamp > CACHE_TTL_SECONDS:
+                return None
+            if domain:
+                return domain
+        except (OSError, ValueError):
+            pass
+        return None
+
+    def _write_cache(self, domain: str) -> None:
+        """写入域名缓存。"""
+        try:
+            os.makedirs(self._cache_dir, exist_ok=True)
+            with open(self._cache_path, "w", encoding="utf-8") as f:
+                f.write(f"{domain}\n{time.time()}\n")
+        except OSError as e:
+            logger.warning("Failed to write domain cache: %s", e)
+
+    def _fetch_publish_domains(self) -> list[str]:
+        """从发布页解析域名列表。"""
+        resp = requests.get(self.PUBLISH_URL, headers={
+            "User-Agent": HEADERS["User-Agent"],
+            "Accept": HEADERS["Accept"],
+        }, timeout=10, allow_redirects=True)
+        resp.raise_for_status()
+        html_doc = etree.HTML(resp.text)
+        ps = html_doc.xpath('//div[@class="wrap"]//p')
+        domains = []
+
+        def get_text(p):
+            return "".join(p.xpath(".//text()"))
+
+        idx_start = next((i for i, p in enumerate(ps) if "內地" in get_text(p)), None)
+        idx_end = next((i for i, p in enumerate(ps) if get_text(p).strip().lower().startswith("app")), len(ps))
+        if idx_start is not None:
+            if idx_end <= idx_start:
+                idx_end = len(ps)
+            for p in ps[idx_start:idx_end]:
+                for raw_domain in p.xpath("./following-sibling::div//text()"):
+                    import re
+                    domain = raw_domain.strip()
+                    if "." in domain and not bool(re.search(r"discord|\.work|@|＠|<", domain)):
+                        domain = re.sub(r"^https?://", "", domain).split("/", 1)[0]
+                        if domain:
+                            domains.append(domain)
+        return domains
+
+    def _test_domain(self, domain: str) -> bool:
+        """测试域名是否可用。"""
+        try:
+            resp = requests.head(
+                f"https://{domain}",
+                headers={"User-Agent": HEADERS["User-Agent"]},
+                timeout=self.TEST_TIMEOUT,
+                allow_redirects=True,
+            )
+            return resp.status_code < 500
+        except requests.RequestException:
+            return False
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_jmcomic_domain.py -v`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add jmcomic/domain.py tests/test_jmcomic_domain.py
+git commit -m "feat: add jmcomic domain resolver with publish page discovery and cache"
+```
+
+---
+
+## Task 4: 图片反混淆模块
+
+**Files:**
+- Create: `jmcomic/descrambler.py`
+- Test: `tests/test_jmcomic_descrambler.py`
+
+- [ ] **Step 1: 编写反混淆测试**
+
+Create `tests/test_jmcomic_descrambler.py`:
+
+```python
+"""jmcomic 图片反混淆模块测试。"""
+import hashlib
+from io import BytesIO
+
+from PIL import Image
+
+from jmcomic.descrambler import descramble_image, _compute_num
+
+
+def _make_test_image(width=100, height=200) -> bytes:
+    """创建测试用 PNG 图片。"""
+    img = Image.new("RGB", (width, height), color="red")
+    buf = BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_no_scramble_for_old_ids():
+    """epsId < 220980 时不打乱。"""
+    img_bytes = _make_test_image()
+    result = descramble_image(img_bytes, eps_id=100000, scramble_id="0")
+    assert result == img_bytes
+
+
+def test_num_fixed_10_for_range():
+    """220980 <= epsId < 268850 时 num=10。"""
+    assert _compute_num(220980, "0") == 10
+    assert _compute_num(268849, "0") == 10
+
+
+def test_num_computed_for_new_ids():
+    """epsId > 421926 时 num 由 md5 计算。"""
+    eps_id = 500000
+    scramble_id = "12345"
+    string = f"{eps_id}{scramble_id}".encode()
+    expected_hash = hashlib.md5(string).hexdigest()
+    expected_num = (ord(expected_hash[-1]) % 8) * 2 + 2
+    assert _compute_num(eps_id, scramble_id) == expected_num
+
+
+def test_descramble_preserves_size():
+    """反混淆后图片尺寸不变。"""
+    img_bytes = _make_test_image(100, 200)
+    result = descramble_image(img_bytes, eps_id=500000, scramble_id="12345")
+    img = Image.open(BytesIO(result))
+    assert img.size == (100, 200)
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_jmcomic_descrambler.py -v`
+Expected: FAIL (module not found)
+
+- [ ] **Step 3: 实现反混淆模块**
+
+Create `jmcomic/descrambler.py`:
+
+```python
+"""jmcomic 图片反混淆模块。
+
+jmcomic 的图片会根据漫画 ID 和 scramble_id 进行分块打乱。
+本模块实现逆变换算法，将打乱的图片还原为正确排列。
+"""
+import hashlib
+import math
+from io import BytesIO
+
+from PIL import Image
+
+
+def _compute_num(eps_id: int, scramble_id: str) -> int:
+    """计算图片分块数量。返回 0 表示无需反混淆。"""
+    if eps_id < 220980:
+        return 0
+    if eps_id < 268850:
+        return 10
+    string = f"{eps_id}{scramble_id}".encode()
+    digest = hashlib.md5(string).hexdigest()
+    ret = ord(digest[-1])
+    if eps_id > 421926:
+        return (ret % 8) * 2 + 2
+    return (ret % 10) * 2 + 2
+
+
+def descramble_image(image_bytes: bytes, eps_id: int, scramble_id: str) -> bytes:
+    """对 jmcomic 图片进行反混淆。
+
+    Args:
+        image_bytes: 原始图片数据
+        eps_id: 漫画 ID
+        scramble_id: scramble 标识（从图片 URL 中提取）
+
+    Returns:
+        处理后的图片 bytes。如果无需反混淆，返回原始 bytes。
+    """
+    num = _compute_num(eps_id, scramble_id)
+    if num == 0:
+        return image_bytes
+
+    src_img = Image.open(BytesIO(image_bytes))
+    width, height = src_img.size
+    des_img = Image.new(src_img.mode, (width, height))
+
+    rem = height % num
+    copy_height = math.floor(height / num)
+
+    blocks = []
+    total_h = 0
+    for i in range(num):
+        h = copy_height * (i + 1)
+        if i == num - 1:
+            h += rem
+        blocks.append((total_h, h))
+        total_h = h
+
+    h = 0
+    for start, end in reversed(blocks):
+        co_h = end - start
+        temp_img = src_img.crop((0, start, width, end))
+        des_img.paste(temp_img, (0, h, width, h + co_h))
+        h += co_h
+
+    src_img.close()
+
+    buf = BytesIO()
+    des_img.save(buf, format="PNG")
+    return buf.getvalue()
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_jmcomic_descrambler.py -v`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add jmcomic/descrambler.py tests/test_jmcomic_descrambler.py
+git commit -m "feat: add jmcomic image descrambler for anti-scramble decoding"
+```
+
+---
+
+## Task 5: JmParser 核心实现
+
+**Files:**
+- Create: `jmcomic/parser.py`
+- Test: `tests/test_jmcomic_parser.py`
+
+- [ ] **Step 1: 编写 JmParser 测试**
+
+Create `tests/test_jmcomic_parser.py`:
+
+```python
+"""jmcomic parser 单元测试。"""
+from unittest.mock import MagicMock, patch
+
+from jmcomic.parser import JmParser
+from jmcomic.constants import RANKING_MAPPINGS
+
+
+def test_build_search_url_keyword():
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "18comic.vip"
+    url = parser._build_search_url("test", page=1)
+    assert "18comic.vip" in url
+    assert "search_query=test" in url
+
+
+def test_build_search_url_page():
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "18comic.vip"
+    url = parser._build_search_url("test", page=3)
+    assert "page=3" in url
+
+
+def test_build_ranking_url():
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "18comic.vip"
+    url = parser._build_ranking_url(t="w", o="mv")
+    assert "albums" in url
+    assert "t=w" in url
+    assert "o=mv" in url
+
+
+def test_ranking_mappings_complete():
+    assert len(RANKING_MAPPINGS) == 16
+    assert "周更新" in RANKING_MAPPINGS
+    assert "月点击" in RANKING_MAPPINGS
+    assert RANKING_MAPPINGS["周更新"] == {"t": "w", "o": "mr"}
+
+
+def test_is_ranking_keyword():
+    parser = JmParser.__new__(JmParser)
+    assert parser._is_ranking_keyword("周更新") is True
+    assert parser._is_ranking_keyword("月点击") is True
+    assert parser._is_ranking_keyword("普通搜索") is False
+
+
+def test_configure_auth():
+    parser = JmParser(timeout=5)
+    parser.configure_auth(cookie="test=1", user_agent="UA", bearer_token="")
+    assert parser._cookie == "test=1"
+```
+
+- [ ] **Step 2: 运行测试确认失败**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_jmcomic_parser.py -v`
+Expected: FAIL (module not found)
+
+- [ ] **Step 3: 实现 JmParser**
+
+Create `jmcomic/parser.py`:
+
+```python
+"""jmcomic 页面解析模块。"""
+from __future__ import annotations
+
+import logging
+import re
+from datetime import UTC, datetime
+from urllib.parse import quote
+
+import requests
+from lxml import etree
+
+from jmcomic.constants import (
+    DEFAULT_DOMAIN,
+    DETAIL_URL_TEMPLATE,
+    HEADERS,
+    RANDOM_URL_TEMPLATE,
+    RANKING_MAPPINGS,
+    RANKING_URL_TEMPLATE,
+    SEARCH_URL_TEMPLATE,
+)
+from jmcomic.domain import JmDomainResolver
+from models import ComicInfo, PaginationInfo
+from utils import apply_system_proxy_to_session, configure_session_auth
+
+logger = logging.getLogger(__name__)
+
+# 排行关键词正则：匹配"日/周/月/总" + "更新/点击/评分/评论/收藏"
+_RANKING_RE = re.compile(r"^[日周月总][更新点击评分评论收藏]$")
+
+
+class JmParser:
+    """jmcomic 解析器，实现与 HComicParser 相同的接口。"""
+
+    def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = ""):
+        self.timeout = timeout
+        self._cookie = cookie
+        self._user_agent = user_agent
+        self._domain: str | None = None
+        self.session = requests.Session()
+        self.session.headers.update(HEADERS)
+        apply_system_proxy_to_session(self.session)
+        self.configure_auth(cookie=cookie, user_agent=user_agent)
+
+    def _ensure_domain(self) -> str:
+        if not self._domain:
+            resolver = JmDomainResolver()
+            self._domain = resolver.resolve()
+        return self._domain
+
+    def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
+        configure_session_auth(self.session, HEADERS, cookie, user_agent, bearer_token)
+        self._cookie = cookie
+        self._user_agent = user_agent
+
+    def close(self):
+        self.session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()
+
+    def verify_login_status(self) -> tuple[bool, str]:
+        """通过访问需要登录的页面验证 Cookie 有效性。"""
+        domain = self._ensure_domain()
+        try:
+            url = f"https://{domain}/user/favorites"
+            resp = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+            if resp.url and "/login" in str(resp.url):
+                return False, "登录已失效，请重新登录"
+            if resp.status_code == 200:
+                return True, "登录校验通过"
+            return False, "登录已失效，请重新登录"
+        except requests.RequestException as e:
+            return False, f"登录校验失败: {e}"
+
+    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
+        """搜索漫画。支持关键词、标签和排行模式。"""
+        domain = self._ensure_domain()
+        if self._is_ranking_keyword(keyword):
+            return self._search_ranking(keyword, page=page)
+
+        url = self._build_search_url(keyword, page=page)
+        try:
+            html = self._request_text(url)
+            return self._parse_search_results(html, domain=domain)
+        except Exception as e:
+            logger.error("jmcomic search failed: %s", e)
+            return [], None
+
+    def random(self) -> tuple[list[ComicInfo], PaginationInfo | None]:
+        """随机漫画。"""
+        domain = self._ensure_domain()
+        url = self._build_random_url()
+        try:
+            html = self._request_text(url)
+            return self._parse_search_results(html, domain=domain)
+        except Exception as e:
+            logger.error("jmcomic random failed: %s", e)
+            return [], None
+
+    def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
+        """获取漫画详情，补齐图片 URL 列表。"""
+        domain = self._ensure_domain()
+        url = f"https://{domain}/album/{comic_id}"
+        try:
+            html = self._request_text(url)
+            return self._parse_detail(html, comic_id=comic_id, domain=domain)
+        except Exception as e:
+            logger.error("jmcomic get_comic_detail failed: %s", e)
+            return None
+
+    def _search_ranking(self, keyword: str, page: int = 1) -> tuple[list[ComicInfo], PaginationInfo | None]:
+        """排行搜索。"""
+        domain = self._ensure_domain()
+        params = RANKING_MAPPINGS.get(keyword, {})
+        url = f"https://{domain}/albums?t={params.get('t', 'w')}&o={params.get('o', 'mr')}"
+        if page > 1:
+            url += f"&page={page}"
+        try:
+            html = self._request_text(url)
+            return self._parse_search_results(html, domain=domain)
+        except Exception as e:
+            logger.error("jmcomic ranking search failed: %s", e)
+            return [], None
+
+    @staticmethod
+    def _is_ranking_keyword(keyword: str) -> bool:
+        return bool(_RANKING_RE.match(keyword or ""))
+
+    def _build_search_url(self, keyword: str, page: int = 1) -> str:
+        domain = self._ensure_domain()
+        url = SEARCH_URL_TEMPLATE.format(domain=domain, query=quote(keyword))
+        if page > 1:
+            url += f"&page={page}"
+        return url
+
+    def _build_ranking_url(self, t: str = "w", o: str = "mr") -> str:
+        domain = self._ensure_domain()
+        return RANKING_URL_TEMPLATE.format(domain=domain, t=t, o=o)
+
+    def _build_random_url(self) -> str:
+        domain = self._ensure_domain()
+        return RANDOM_URL_TEMPLATE.format(domain=domain)
+
+    def _request_text(self, url: str) -> str:
+        resp = self.session.get(url, timeout=self.timeout, allow_redirects=True)
+        resp.raise_for_status()
+        if not resp.encoding or resp.encoding.lower() in ("iso-8859-1", "latin-1"):
+            resp.encoding = "utf-8"
+        return resp.text
+
+    def _parse_search_results(self, html: str, domain: str) -> tuple[list[ComicInfo], PaginationInfo | None]:
+        """解析搜索结果页面。"""
+        doc = etree.HTML(html)
+        items = doc.xpath('//div[contains(@class,"thumb-overlay")]')
+        comics = []
+        for item in items:
+            try:
+                comic = self._parse_search_item(item, domain=domain)
+                if comic:
+                    comics.append(comic)
+            except Exception as e:
+                logger.debug("Parse search item skipped: %s", e)
+        pagination = self._parse_pagination(doc)
+        return comics, pagination
+
+    def _parse_search_item(self, item, domain: str) -> ComicInfo | None:
+        """解析单个搜索结果项。"""
+        link = item.xpath('.//a/@href')
+        if not link:
+            return None
+        href = link[0]
+        # 提取漫画 ID：/album/12345 → 12345
+        id_match = re.search(r"/album/(\d+)", href)
+        if not id_match:
+            return None
+        comic_id = id_match.group(1)
+
+        title = (item.xpath('.//img/@title') or item.xpath('.//img/@alt') or [""])[0].strip()
+        if not title:
+            title = (item.xpath('.//span[@class="video-title"]/text()') or ["未知标题"])[0].strip()
+
+        img_el = item.xpath('.//img/@data-original') or item.xpath('.//img/@src')
+        cover_url = img_el[0] if img_el else ""
+        if cover_url and not cover_url.startswith("http"):
+            cover_url = f"https://{domain}{cover_url}"
+
+        return ComicInfo(
+            id=comic_id,
+            title=title,
+            cover_url=cover_url,
+            preview_url=f"https://{domain}/album/{comic_id}",
+            source_site="jmcomic",
+        )
+
+    def _parse_pagination(self, doc) -> PaginationInfo | None:
+        """解析分页信息。"""
+        page_links = doc.xpath('//ul[@class="pagination"]/li/a/text()')
+        if not page_links:
+            return None
+        pages = []
+        for text in page_links:
+            try:
+                pages.append(int(text.strip()))
+            except ValueError:
+                continue
+        if not pages:
+            return None
+        total_pages = max(pages)
+        return PaginationInfo(
+            current_page=pages[0] if pages else 1,
+            total_pages=total_pages,
+            total_items=0,
+        )
+
+    def _parse_detail(self, html: str, comic_id: str, domain: str) -> ComicInfo:
+        """解析漫画详情页面。"""
+        doc = etree.HTML(html)
+        title = (doc.xpath("//h1/text()") or ["未知标题"])[0].strip()
+
+        # 提取图片列表和 scramble_id
+        image_urls = []
+        scramble_id = ""
+        img_elements = doc.xpath('.//img[contains(@id,"album_photo_")]')
+        for img in img_elements:
+            img_url = img.xpath("./@data-original") or img.xpath("./@src")
+            if img_url:
+                url = img_url[0]
+                if not url.startswith("http"):
+                    url = f"https://{domain}{url}"
+                image_urls.append(url)
+                # 从 URL 中提取 scramble_id：/{epsId}/{scramble_id}/xxx.jpg
+                if not scramble_id:
+                    m = re.search(r"/\d+/(\d+)/", url)
+                    if m:
+                        scramble_id = m.group(1)
+
+        # 提取作者
+        author = None
+        artist_el = doc.xpath('.//span[@data-type="author"]/a/text()')
+        if artist_el:
+            author = artist_el[0].strip()
+
+        # 提取标签
+        tags = doc.xpath('.//span[@data-type="tags"]/a/text()')
+
+        # 提取页数
+        pages = 0
+        pages_text = doc.xpath('.//div[contains(text(),"頁數") or contains(text(),"页数")]/text()')
+        if pages_text:
+            m = re.search(r"\d+", pages_text[0])
+            if m:
+                pages = int(m.group())
+
+        cover_url = ""
+        cover_el = doc.xpath('.//div[@id="album_photo_cover"]//img/@src')
+        if cover_el:
+            cover_url = cover_el[0]
+            if not cover_url.startswith("http"):
+                cover_url = f"https://{domain}{cover_url}"
+
+        return ComicInfo(
+            id=comic_id,
+            title=title,
+            author=author,
+            pages=max(pages, len(image_urls)),
+            tags=tags,
+            cover_url=cover_url,
+            preview_url=f"https://{domain}/album/{comic_id}",
+            media_id=comic_id,
+            comic_source="JMCOMIC",
+            source_site="jmcomic",
+            scramble_id=scramble_id,
+            image_urls=image_urls,
+        )
+```
+
+- [ ] **Step 4: 运行测试确认通过**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_jmcomic_parser.py -v`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add jmcomic/parser.py tests/test_jmcomic_parser.py
+git commit -m "feat: add JmParser with search, ranking, random, and detail parsing"
+```
+
+---
+
+## Task 6: MultiSourceParser 集成 jmcomic
+
+**Files:**
+- Modify: `parser.py:1168-1309`
+- Test: `tests/test_multi_source_parser.py`
+
+- [ ] **Step 1: 在 MultiSourceParser 中注册 jmcomic**
+
+在 `parser.py` 顶部添加导入：
+
+```python
+from jmcomic.parser import JmParser
+```
+
+修改 `MultiSourceParser.SOURCE_OPTIONS`（第 1171-1173 行）：
+
+```python
+    SOURCE_OPTIONS = (
+        ("hcomic", "h-comic"),
+        ("moeimg", "moeimg.fan"),
+        ("jmcomic", "jmcomic"),
+    )
+```
+
+修改 `__init__` 中的 `self.parsers` 字典（第 1195-1207 行），新增 jmcomic：
+
+```python
+        self.parsers: dict[str, HComicParser | MoeImgParser | JmParser] = {
+            "hcomic": HComicParser(
+                timeout=timeout,
+                cookie=self.source_auth["hcomic"]["cookie"],
+                user_agent=self.source_auth["hcomic"]["user_agent"],
+                bearer_token=self.source_auth["hcomic"]["bearer_token"],
+            ),
+            "moeimg": MoeImgParser(
+                timeout=timeout,
+                cookie=self.source_auth["moeimg"]["cookie"],
+                user_agent=self.source_auth["moeimg"]["user_agent"],
+            ),
+            "jmcomic": JmParser(
+                timeout=timeout,
+                cookie=self.source_auth.get("jmcomic", {}).get("cookie", ""),
+                user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
+            ),
+        }
+```
+
+修改 `random()` 方法（第 1255-1259 行）支持 jmcomic：
+
+```python
+    def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
+        src = source or self.current_source
+        if src not in ("hcomic", "jmcomic"):
+            raise ValueError(f"Random is not supported for source: {src}")
+        return self.parsers[src].random()
+```
+
+修改 `prepare_for_download()` 方法（第 1289-1308 行）支持 jmcomic：
+
+```python
+    def prepare_for_download(self, comic: ComicInfo) -> ComicInfo:
+        source = (comic.source_site or self.current_source or "hcomic").lower()
+        parser = self.parsers.get(source)
+        if not parser:
+            return comic
+
+        if comic.image_urls and comic.pages > 0:
+            return comic
+
+        if source == "hcomic":
+            if comic.media_id and comic.pages > 0:
+                return comic
+            detail = parser.get_comic_detail(comic.id)
+            return detail or comic
+
+        # moeimg 和 jmcomic 需要通过详情接口补齐图片地址。
+        detail = parser.get_comic_detail(comic.id)
+        return detail or comic
+```
+
+修改 `get_sessions()` 方法（第 1218-1219 行）：
+
+```python
+    def get_sessions(self) -> list[requests.Session]:
+        return [self.parsers["hcomic"].session, self.parsers["moeimg"].session, self.parsers["jmcomic"].session]
+```
+
+- [ ] **Step 2: 在 search_mixin.py 中支持 jmcomic 排行模式**
+
+修改 `python/ipc/search_mixin.py` 的 `handle_search` 方法（第 77-96 行）：
+
+```python
+    def handle_search(self, query: str, mode: str = "keyword", page: int = 1, source: str | None = None, tag: str = "") -> dict:
+        effective_source = source if source in ("hcomic", "moeimg", "jmcomic") else self.config.default_source
+        effective_query = query
+        effective_tag = tag
+        if effective_source == "hcomic" and mode == "tag":
+            all_tags = [t for t in [query, tag] if t]
+            effective_tag = ",".join(all_tags)
+            effective_query = ""
+        elif effective_source == "moeimg" and mode in ("author", "tag"):
+            effective_query = f"{mode}:{query}"
+            effective_tag = ""
+        elif effective_source == "jmcomic" and mode == "ranking":
+            # 排行模式：query 就是排行关键词（如"周更新"），直接传递
+            effective_tag = ""
+        comics, pagination = self.parser.search(effective_query, page=page, source=effective_source, tag=effective_tag)
+        return {
+            "comics": [self._comic_to_dict(c) for c in comics],
+            "pagination": {
+                "currentPage": pagination.current_page if pagination else page,
+                "totalPages": pagination.total_pages if pagination else 1,
+                "totalItems": pagination.total_items if pagination else 0,
+            },
+        }
+```
+
+修改 `handle_random` 方法（第 98-107 行）支持动态 source：
+
+```python
+    def handle_random(self, source: str | None = None) -> dict:
+        effective_source = source if source in ("hcomic", "jmcomic") else "hcomic"
+        comics, pagination = self.parser.random(source=effective_source)
+        return {
+            "comics": [self._comic_to_dict(c) for c in comics],
+            "pagination": {
+                "currentPage": pagination.current_page if pagination else 1,
+                "totalPages": pagination.total_pages if pagination else 1,
+                "totalItems": pagination.total_items if pagination else 0,
+            },
+        }
+```
+
+- [ ] **Step 3: 在 config.py 中扩展 tag_blacklist 默认值**
+
+修改 `config.py` 第 50 行：
+
+```python
+    tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []})
+```
+
+- [ ] **Step 4: 运行现有测试确认无回归**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_multi_source_parser.py tests/test_parser.py -v`
+Expected: PASS
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add parser.py python/ipc/search_mixin.py config.py
+git commit -m "feat: integrate JmParser into MultiSourceParser with ranking mode support"
+```
+
+---
+
+## Task 7: 下载器集成反混淆
+
+**Files:**
+- Modify: `downloader.py`
+
+- [ ] **Step 1: 在 downloader.py 中添加反混淆调用**
+
+在 `downloader.py` 中找到图片下载完成后的处理逻辑。在 `_submit_download_batch` 方法中，图片数据写入文件之前，添加反混淆逻辑。
+
+在 `downloader.py` 顶部新增导入（在现有导入之后）：
+
+```python
+def _maybe_descramble(data: bytes, comic: ComicInfo) -> bytes:
+    """如果来源是 jmcomic 且有 scramble_id，对图片进行反混淆。"""
+    if comic.source_site == "jmcomic" and comic.scramble_id:
+        try:
+            from jmcomic.descrambler import descramble_image
+            return descramble_image(data, int(comic.id), comic.scramble_id)
+        except Exception as e:
+            logger.warning("jmcomic descramble failed for %s: %s", comic.id, e)
+    return data
+```
+
+然后在图片下载成功的处理路径中，写入文件之前调用此函数。具体位置需要查看 `_submit_download_batch` 中 `image_data` 写入文件的代码，在写入前添加：
+
+```python
+image_data = _maybe_descramble(image_data, comic)
+```
+
+- [ ] **Step 2: 运行现有测试确认无回归**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/test_downloader_source.py -v`
+Expected: PASS
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add downloader.py
+git commit -m "feat: integrate jmcomic image descrambler into download pipeline"
+```
+
+---
+
+## Task 8: 认证层扩展 — IPC 支持 source 参数
+
+**Files:**
+- Modify: `python/ipc/auth_mixin.py:25-43`
+- Modify: `electron/main.ts:415-435, 714-728`
+- Modify: `electron/preload.ts:91-94, 105`
+
+- [ ] **Step 1: 修改 Python auth_mixin 支持 source 参数**
+
+修改 `python/ipc/auth_mixin.py` 的 `handle_apply_auth` 方法（第 25-39 行）：
+
+```python
+    def handle_apply_auth(self, curl_text: str, source: str = "hcomic") -> dict:
+        if not curl_text or not curl_text.strip():
+            raise ValueError("请粘贴 curl 命令")
+
+        from auth_parser import extract_auth_from_curl
+
+        cookie, user_agent, bearer_token = extract_auth_from_curl(curl_text.strip())
+        self.config.set_source_auth(source, cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+        self.config.save(_get_config_path())
+
+        self.parser.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token, source=source)
+
+        if source == "hcomic":
+            self.downloader.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+
+        logger.info("Auth applied for %s: cookie length=%d, ua length=%d, bearer length=%d", source, len(cookie), len(user_agent), len(bearer_token))
+        return {"success": True}
+```
+
+修改 `handle_verify_auth` 方法（第 41-43 行）：
+
+```python
+    def handle_verify_auth(self, source: str = "hcomic") -> dict:
+        is_valid, message = self.parser.verify_login_status(source=source)
+        return {"valid": is_valid, "message": message}
+```
+
+- [ ] **Step 2: 修改 Electron main.ts 中的 IPC 处理**
+
+修改 `extractAndApplyCookies` 函数（第 415-435 行），增加 `source` 参数：
+
+```typescript
+async function extractAndApplyCookies(
+  userAgent: string,
+  source: string = 'hcomic',
+  domain: string = 'h-comic.com',
+): Promise<{ success: boolean; message: string }> {
+  try {
+    const cookies = await session.defaultSession.cookies.get({ url: `https://${domain}` })
+    if (cookies.length === 0) {
+      return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口' }
+    }
+    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+
+    const bridge = getPythonBridge()
+    await bridge.call('apply_auth', {
+      curl_text: `curl 'https://${domain}' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
+      source,
+    })
+    const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
+    return { success: verifyResult.valid, message: verifyResult.message }
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : '登录处理失败'
+    return { success: false, message }
+  }
+}
+```
+
+修改 `openLoginWindow` 函数（第 507-548 行），增加 `source` 参数：
+
+```typescript
+function openLoginWindow(source: string = 'hcomic'): Promise<{ success: boolean; message?: string }> {
+  const parent = mainWindow
+  if (!parent) {
+    return Promise.resolve({ success: false, message: '主窗口不存在' })
+  }
+
+  const loginUrl = source === 'jmcomic' ? 'https://18comic.vip' : 'https://h-comic.com'
+  const loginTitle = source === 'jmcomic' ? '登录 jmcomic' : '登录 H-Comic'
+
+  return new Promise((resolve) => {
+    const loginWin = createLoginBrowserWindow(parent, loginTitle)
+
+    const ctx: LoginWindowContext = {
+      settled: false,
+      hasVisitedAuth0: false,
+      savedUserAgent: '',
+      clearTimeout: () => {},
+      done: (result) => {
+        if (ctx.settled) return
+        ctx.settled = true
+        if (!loginWin.isDestroyed()) {
+          loginWin.close()
+        }
+        resolve(result)
+      },
+    }
+
+    const timeout = setTimeout(() => {
+      ctx.done({ success: false, message: '登录超时，请重试' })
+    }, LOGIN_WINDOW_TIMEOUT_MS)
+    ctx.clearTimeout = () => clearTimeout(timeout)
+
+    loginWin.webContents.on('did-finish-load', () => {
+      if (!ctx.savedUserAgent && !loginWin.isDestroyed()) {
+        ctx.savedUserAgent = loginWin.webContents.userAgent
+      }
+    })
+
+    if (source === 'jmcomic') {
+      bindJmcomicLoginTracking(loginWin, ctx, source)
+    } else {
+      bindLoginNavigationTracking(loginWin, ctx)
+    }
+    bindLoginWindowClosed(loginWin, ctx)
+
+    loginWin.loadURL(loginUrl).catch(() => {
+      ctx.done({ success: false, message: '无法打开登录页面' })
+    })
+  })
+}
+```
+
+新增 jmcomic 登录追踪函数：
+
+```typescript
+function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, source: string) {
+  loginWin.webContents.on('did-navigate', (_event, url) => {
+    // jmcomic 登录成功：从登录页跳转到首页
+    if (!url.includes('/login') && !url.includes('/user/login')) {
+      setTimeout(async () => {
+        ctx.clearTimeout()
+        const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
+        if (!userAgent) {
+          ctx.done({ success: false, message: '已取消' })
+          return
+        }
+        const result = await extractAndApplyCookies(userAgent, source, '18comic.vip')
+        if (result.success && mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
+          setTimeout(() => {
+            ctx.done(result)
+          }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
+        } else {
+          ctx.done(result)
+        }
+      }, LOGIN_COOKIE_SETTLE_MS)
+    }
+  })
+}
+```
+
+修改 `createLoginBrowserWindow` 接受 title 参数：
+
+```typescript
+function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
+  return new BrowserWindow({
+    width: 500,
+    height: 700,
+    title,
+    parent,
+    modal: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  })
+}
+```
+
+修改 `registerAuthHandlers` 中的 IPC 处理（第 714-728 行）：
+
+```typescript
+function registerAuthHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.APPLY_AUTH, async (_, curlText, source) => {
+    if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) {
+      throw new Error('Invalid apply_auth curlText')
+    }
+    const params: Record<string, unknown> = { curl_text: curlText.trim() }
+    if (source !== undefined && source !== null) {
+      params.source = source
+    }
+    return bridge.call('apply_auth', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.VERIFY_AUTH, async (_, source) => {
+    const params: Record<string, unknown> = {}
+    if (source !== undefined && source !== null) {
+      params.source = source
+    }
+    return bridge.call('verify_auth', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
+    return openLoginWindow(source || 'hcomic')
+  })
+  // ... rest unchanged
+}
+```
+
+- [ ] **Step 3: 修改 preload.ts 扩展接口**
+
+在 `electron/preload.ts` 中修改 `applyAuth` 和 `openLoginWindow`：
+
+```typescript
+  applyAuth: (curlText: unknown, source?: unknown) => {
+    if (typeof curlText !== 'string' || curlText.trim().length === 0 || curlText.length > 65536) throw new Error('Invalid curlText')
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.APPLY_AUTH, curlText, source ?? undefined)
+  },
+
+  verifyAuth: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.VERIFY_AUTH, source ?? undefined)
+  },
+
+  openLoginWindow: (source?: unknown) => {
+    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_LOGIN_WINDOW, source ?? undefined)
+  },
+```
+
+- [ ] **Step 4: 扩展 ALLOWED_EXTERNAL_DOMAINS**
+
+在 `electron/main.ts` 第 42-46 行添加 jmcomic 域名：
+
+```typescript
+const ALLOWED_EXTERNAL_DOMAINS = [
+  'h-comic.com',
+  'moeimg.net',
+  'moeimg.fan',
+  '18comic.vip',
+  '18comic.org',
+  'jmcomic.me',
+]
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add python/ipc/auth_mixin.py electron/main.ts electron/preload.ts
+git commit -m "feat: extend auth IPC with source parameter for jmcomic login support"
+```
+
+---
+
+## Task 9: shared/types.ts 类型扩展
+
+**Files:**
+- Modify: `shared/types.ts`
+
+- [ ] **Step 1: 扩展 COMIC_SOURCES**
+
+修改 `shared/types.ts` 第 487 行：
+
+```typescript
+export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic'] as const
+```
+
+- [ ] **Step 2: 扩展 SEARCH_MODES**
+
+修改第 483 行，增加 ranking 模式：
+
+```typescript
+export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking'] as const
+```
+
+- [ ] **Step 3: 扩展 tagBlacklist 类型**
+
+修改 `AppConfig` 接口中的 `tagBlacklist`（第 68 行）：
+
+```typescript
+  tagBlacklist: { hcomic: string[]; moeimg: string[]; jmcomic: string[] }
+```
+
+- [ ] **Step 4: 扩展 IPCMethods**
+
+修改 `IPCMethods.search.params`（第 207 行）的 mode 类型注释，确认包含 ranking。
+
+修改 `IPCMethods.apply_auth.params`（第 255 行）增加 source：
+
+```typescript
+  apply_auth: {
+    params: { curl_text: string; source?: string }
+    result: { success: boolean }
+  }
+```
+
+修改 `IPCMethods.verify_auth.params`（第 258 行）增加 source：
+
+```typescript
+  verify_auth: {
+    params: { source?: string }
+    result: { valid: boolean; message: string }
+  }
+```
+
+- [ ] **Step 5: 扩展 HcomicAPI 接口**
+
+修改 `HcomicAPI` 中的 `applyAuth`、`verifyAuth`、`openLoginWindow`（第 443-448 行）：
+
+```typescript
+  applyAuth(curlText: string, source?: string): Promise<{ success: boolean }>
+  verifyAuth(source?: string): Promise<{ valid: boolean; message: string }>
+  openLoginWindow(source?: string): Promise<{ success: boolean; message?: string }>
+```
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shared/types.ts
+git commit -m "feat: extend TypeScript types for jmcomic source and ranking mode"
+```
+
+---
+
+## Task 10: 前端 UI — 来源选择器和搜索模式
+
+**Files:**
+- Modify: `src/pages/SearchPage.tsx`
+
+- [ ] **Step 1: 扩展来源列表**
+
+修改 `src/pages/SearchPage.tsx` 第 24-27 行：
+
+```typescript
+const sources = [
+  { value: 'hcomic', label: 'HComic' },
+  { value: 'moeimg', label: 'Moeimg' },
+  { value: 'jmcomic', label: 'jmcomic' }
+]
+```
+
+- [ ] **Step 2: 扩展搜索模式列表**
+
+修改第 18-22 行：
+
+```typescript
+const searchModes = [
+  { value: 'keyword', label: '关键词' },
+  { value: 'author', label: '作者' },
+  { value: 'tag', label: 'Tag' },
+  { value: 'ranking', label: '排行' }
+]
+```
+
+- [ ] **Step 3: 添加排行关键词选项**
+
+在搜索模式列表之后添加排行选项常量：
+
+```typescript
+const rankingOptions = [
+  { value: '日更新', label: '日更新' },
+  { value: '周更新', label: '周更新' },
+  { value: '月更新', label: '月更新' },
+  { value: '总更新', label: '总更新' },
+  { value: '日点击', label: '日点击' },
+  { value: '周点击', label: '周点击' },
+  { value: '月点击', label: '月点击' },
+  { value: '总点击', label: '总点击' },
+  { value: '日评分', label: '日评分' },
+  { value: '周评分', label: '周评分' },
+  { value: '月评分', label: '月评分' },
+  { value: '总评分', label: '总评分' },
+  { value: '日收藏', label: '日收藏' },
+  { value: '周收藏', label: '周收藏' },
+  { value: '月收藏', label: '月收藏' },
+  { value: '总收藏', label: '总收藏' },
+]
+```
+
+- [ ] **Step 4: 修改 effectiveSourceKey 支持 jmcomic**
+
+修改第 29-31 行：
+
+```typescript
+function effectiveSourceKey(source: string): 'hcomic' | 'moeimg' | 'jmcomic' {
+  if (source === 'moeimg') return 'moeimg'
+  if (source === 'jmcomic') return 'jmcomic'
+  return 'hcomic'
+}
+```
+
+- [ ] **Step 5: 修改搜索栏 UI，排行模式下显示下拉选择器**
+
+在搜索栏的输入区域，当 `mode === 'ranking' && source === 'jmcomic'` 时，将搜索输入框替换为排行下拉选择器。找到搜索输入框的 JSX，添加条件渲染：
+
+```tsx
+{mode === 'ranking' && source === 'jmcomic' ? (
+  <select
+    value={query}
+    onChange={(e) => setQuery(e.target.value)}
+    className="flex-1 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+               text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+  >
+    <option value="">选择排行</option>
+    {rankingOptions.map(opt => (
+      <option key={opt.value} value={opt.value}>{opt.label}</option>
+    ))}
+  </select>
+) : (
+  <input
+    ref={inputRef}
+    type="text"
+    value={query}
+    onChange={(e) => setQuery(e.target.value)}
+    placeholder="搜索..."
+    className="flex-1 px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+               text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
+  />
+)}
+```
+
+- [ ] **Step 6: 修改随机按钮，jmcomic 时可用**
+
+找到随机按钮的 JSX，修改 disabled 条件，使其在 jmcomic 来源时也可用。
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/pages/SearchPage.tsx
+git commit -m "feat: add jmcomic source selector and ranking mode UI in SearchPage"
+```
+
+---
+
+## Task 11: 前端 UI — 设置页 jmcomic 认证
+
+**Files:**
+- Modify: `src/components/settings/AuthSettings.tsx`
+
+- [ ] **Step 1: 扩展 AuthSettings 支持多来源**
+
+修改 `AuthSettingsProps` 接口，增加来源相关属性：
+
+```typescript
+interface AuthSettingsProps {
+  loginSectionRef: RefObject<HTMLDivElement>
+  loginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
+  loginMessage: string
+  jmcomicLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
+  jmcomicLoginMessage: string
+  onApplyAuth: (curlText: string, source?: string) => Promise<void>
+  onTestAuth: (source?: string) => Promise<void>
+  onOpenLoginWindow: (source?: string) => Promise<void>
+}
+```
+
+- [ ] **Step 2: 在组件中新增 jmcomic 认证区域**
+
+在现有 HComic 认证区域之后，新增 jmcomic 认证区域：
+
+```tsx
+<div className="space-y-4 pt-4 border-t border-[var(--border)]">
+  <div className="flex items-center gap-2">
+    <span className="text-sm font-medium text-[var(--text-primary)]">jmcomic</span>
+    <span className={`text-xs px-2 py-0.5 rounded-full ${
+      jmcomicLoginStatus === 'valid' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+      jmcomicLoginStatus === 'invalid' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' :
+      jmcomicLoginStatus === 'verifying' ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300' :
+      'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+    }`}>
+      {jmcomicLoginStatus === 'valid' ? '有效' :
+       jmcomicLoginStatus === 'invalid' ? '失效' :
+       jmcomicLoginStatus === 'verifying' ? '验证中...' : '未配置'}
+    </span>
+  </div>
+
+  <div className="flex items-center gap-3">
+    <button
+      onClick={() => onOpenLoginWindow('jmcomic')}
+      disabled={jmcomicLoginStatus === 'verifying'}
+      className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                 bg-[var(--accent)] text-white hover:opacity-90
+                 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {jmcomicLoginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
+    </button>
+    <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 jmcomic 账号</span>
+  </div>
+
+  <div>
+    <textarea
+      value={jmcomicCurlText}
+      onChange={(e) => setJmcomicCurlText(e.target.value)}
+      placeholder="粘贴 jmcomic 的 Cookie 字符串或 curl 命令"
+      rows={3}
+      className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
+                 text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]
+                 resize-none font-mono"
+    />
+  </div>
+
+  <div className="flex gap-3">
+    <button
+      onClick={() => onApplyAuth(jmcomicCurlText, 'jmcomic')}
+      disabled={!jmcomicCurlText.trim() || jmcomicLoginStatus === 'verifying'}
+      className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                 bg-[var(--accent)] text-white hover:opacity-90
+                 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      应用登录信息
+    </button>
+    <button
+      onClick={() => onTestAuth('jmcomic')}
+      disabled={jmcomicLoginStatus === 'verifying'}
+      className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                 bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]
+                 disabled:opacity-50 disabled:cursor-not-allowed"
+    >
+      {jmcomicLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
+    </button>
+  </div>
+
+  {jmcomicLoginMessage && (
+    <p className={`text-xs ${
+      jmcomicLoginStatus === 'valid' ? 'text-green-600 dark:text-green-400' :
+      'text-[var(--text-secondary)]'
+    }`}>
+      {jmcomicLoginMessage}
+    </p>
+  )}
+</div>
+```
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add src/components/settings/AuthSettings.tsx
+git commit -m "feat: add jmcomic authentication section in settings page"
+```
+
+---
+
+## Task 12: 设置页调用方适配
+
+**Files:**
+- Modify: `src/pages/SettingsPage.tsx`（需确认 AuthSettings 的调用位置）
+
+- [ ] **Step 1: 在 SettingsPage 中传递 jmcomic 相关状态**
+
+找到 `AuthSettings` 组件的调用位置，新增 jmcomic 的状态和回调：
+
+```typescript
+const [jmcomicLoginStatus, setJmcomicLoginStatus] = useState<'idle' | 'verifying' | 'valid' | 'invalid' | 'error'>('idle')
+const [jmcomicLoginMessage, setJmcomicLoginMessage] = useState('')
+const [jmcomicCurlText, setJmcomicCurlText] = useState('')
+```
+
+修改回调函数支持 source 参数：
+
+```typescript
+const handleApplyAuth = async (curlText: string, source: string = 'hcomic') => {
+  // ... 调用 applyAuth(curlText, source)
+}
+
+const handleTestAuth = async (source: string = 'hcomic') => {
+  // ... 调用 verifyAuth(source)
+}
+
+const handleOpenLoginWindow = async (source: string = 'hcomic') => {
+  // ... 调用 openLoginWindow(source)
+}
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add src/pages/SettingsPage.tsx
+git commit -m "feat: wire up jmcomic auth handlers in SettingsPage"
+```
+
+---
+
+## Task 13: 端到端验证
+
+- [ ] **Step 1: 运行全部 Python 测试**
+
+Run: `cd E:/Developing/hcomic_downloader && python -m pytest tests/ -v`
+Expected: ALL PASS
+
+- [ ] **Step 2: 运行 TypeScript 类型检查**
+
+Run: `cd E:/Developing/hcomic_downloader && npx tsc --noEmit`
+Expected: No errors
+
+- [ ] **Step 3: 运行 ESLint**
+
+Run: `cd E:/Developing/hcomic_downloader && npx eslint src/ electron/ shared/ --max-warnings 0`
+Expected: No errors
+
+- [ ] **Step 4: 启动应用验证**
+
+Run: `cd E:/Developing/hcomic_downloader && npm run dev`
+
+验证项：
+1. 来源选择器显示"jmcomic"选项
+2. 切换到 jmcomic 后搜索模式出现"排行"选项
+3. 排行模式下搜索框变为下拉选择器
+4. 随机按钮在 jmcomic 来源下可用
+5. 设置页显示 jmcomic 认证区域
+6. 弹窗登录按钮打开 jmcomic 网站
+
+- [ ] **Step 5: Final Commit**
+
+```bash
+git add -A
+git commit -m "feat: complete jmcomic source integration — search, ranking, random, login, descramble"
+```
