@@ -107,6 +107,7 @@ class ConfigMixin:
             "font_name": getattr(self.config, "font_name", ""),
             "font_size": getattr(self.config, "font_size", 14),
             "sfw_mode": getattr(self.config, "sfw_mode", True),
+            "card_style": getattr(self.config, "card_style", "cover"),
             "tag_blacklist": getattr(self.config, "tag_blacklist", {"hcomic": [], "moeimg": []}),
             "preview_cache_size_limit_mb": getattr(self.config, "preview_cache_size_limit_mb", 500),
             "jmcomic_domain": getattr(self.config, "jmcomic_domain", ""),

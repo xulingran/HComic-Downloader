@@ -60,6 +60,7 @@ class Config:
     notify_on_complete: bool = True  # 是否发送系统通知
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
+    card_style: str = "cover"  # 卡片样式："cover"（封面+标题）| "detailed"（详细列表）
     tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []})
     # jmcomic 自定义域名（空字符串表示自动选择）
     jmcomic_domain: str = ""
@@ -249,7 +250,16 @@ class Config:
         try:
             with os.fdopen(tmp_fd, "w", encoding="utf-8") as f:
                 json.dump(asdict(self), f, ensure_ascii=False, indent=2)
-            os.replace(tmp_path, config_path)
+            try:
+                os.replace(tmp_path, config_path)
+            except PermissionError:
+                # Windows: 之前 _restrict_file_permissions_win32 可能限制了 DELETE 权限，
+                # 尝试重置权限后重试
+                if sys.platform == "win32" and os.path.exists(config_path):
+                    _fix_win32_file_permissions(config_path)
+                    os.replace(tmp_path, config_path)
+                else:
+                    raise
         except Exception:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
@@ -261,11 +271,32 @@ class Config:
             _restrict_file_permissions_win32(config_path)
 
 
+def _fix_win32_file_permissions(filepath: str) -> None:
+    """Re-grant Modify permission on a Windows file so os.replace can succeed.
+
+    Called as a fallback when os.replace fails with PermissionError, typically
+    because a previous save used overly restrictive ACLs.
+    """
+    import subprocess
+
+    try:
+        username = os.environ.get("USERNAME", os.environ.get("USER", "CURRENT"))
+        subprocess.run(
+            ["icacls", filepath, "/grant", f"{username}:(M)"],
+            capture_output=True,
+            check=False,
+            timeout=5,
+        )
+    except Exception:
+        pass  # best-effort; caller will retry os.replace
+
+
 def _restrict_file_permissions_win32(filepath: str) -> None:
     """Restrict file access to the current user on Windows.
 
     Uses icacls to remove inherited permissions and grant only
-    the current user read+write access. Errors are non-fatal.
+    the current user Modify access (includes Delete for os.replace).
+    Errors are non-fatal.
     """
     import subprocess
 
@@ -277,7 +308,7 @@ def _restrict_file_permissions_win32(filepath: str) -> None:
                 filepath,
                 "/inheritance:r",
                 "/grant",
-                f"{username}:(R,W)",
+                f"{username}:(M)",
             ],
             capture_output=True,
             check=False,

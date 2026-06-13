@@ -13,7 +13,6 @@ import { CacheSettings } from '../components/settings/CacheSettings'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
 import { useMigration } from '../hooks/useMigration'
 
-type CardStyle = 'cover' | 'detailed'
 type OutputFormat = 'folder' | 'zip' | 'cbz'
 type NotifyWhenForeground = 'inactive' | 'always'
 
@@ -188,9 +187,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   const handleThemeChange = createHandler('themeMode', () => themeMode, setThemeMode, (prev) => setThemeMode(prev))
 
-  const handleCardStyleChange = (style: CardStyle) => {
-    setCardStyle(style)
-  }
+  const handleCardStyleChange = createHandler('cardStyle', () => cardStyle, setCardStyle, (prev) => setCardStyle(prev))
 
   const handleSfwModeChange = createHandler('sfwMode', () => sfwMode, setSfwMode, (prev) => setSfwMode(prev))
 

@@ -208,6 +208,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   fontName: and(string(), maxLength(128)),
   fontSize: and(number(), integer(), range(12, 20)),
   sfwMode: boolean(),
+  cardStyle: and(string(), oneOf(['cover', 'detailed'] as const)),
   tagBlacklist: tagBlacklistValidator(),
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
   jmcomicDomain: and(string(), maxLength(256)),

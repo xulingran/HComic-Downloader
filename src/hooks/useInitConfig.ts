@@ -5,7 +5,7 @@ import { useConfig } from './useIpc'
 
 export function useInitConfig() {
   const {
-    setThemeMode, setSfwMode, setTagBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches,
+    setThemeMode, setCardStyle, setSfwMode, setTagBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches,
   } = useSettingsStore()
   const { getConfig, setConfig } = useConfig()
   const subscribedRef = useRef(false)
@@ -16,6 +16,11 @@ export function useInitConfig() {
       const mode = result?.config?.themeMode
       if (mode === 'light' || mode === 'dark' || mode === 'auto') {
         setThemeMode(mode)
+      }
+
+      const style = result?.config?.cardStyle
+      if (style === 'cover' || style === 'detailed') {
+        setCardStyle(style)
       }
 
       setSfwMode(true)
@@ -58,7 +63,7 @@ export function useInitConfig() {
       unsubRef.current = null
       subscribedRef.current = false
     }
-  }, [setThemeMode, setSfwMode, setConfig, getConfig, setTagBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches])
+  }, [setThemeMode, setCardStyle, setSfwMode, setConfig, getConfig, setTagBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches])
 
   return { setSfwMode, setConfig }
 }

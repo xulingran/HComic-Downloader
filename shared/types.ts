@@ -80,6 +80,7 @@ export interface AppConfig {
   fontName: string
   fontSize: number
   sfwMode: boolean
+  cardStyle: CardStyle
   tagBlacklist: TagBlacklist
   previewCacheSizeLimitMB: number
   proxy?: string
@@ -192,7 +193,7 @@ export type UpdateCheckResult =
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
-  | 'fontName' | 'fontSize' | 'sfwMode' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
+  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
   | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
 
 export type ConfigValueMap = {
@@ -211,6 +212,7 @@ export type ConfigValueMap = {
   fontName: string
   fontSize: number
   sfwMode: boolean
+  cardStyle: CardStyle
   tagBlacklist: TagBlacklist
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
@@ -838,6 +840,6 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
-  'fontName', 'fontSize', 'sfwMode', 'tagBlacklist', 'previewCacheSizeLimitMB',
+  'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'previewCacheSizeLimitMB',
   'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
 ] as const

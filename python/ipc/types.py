@@ -29,6 +29,7 @@ CONFIG_KEY_MAP = {
     "fontName": "font_name",
     "fontSize": "font_size",
     "sfwMode": "sfw_mode",
+    "cardStyle": "card_style",
     "tagBlacklist": "tag_blacklist",
     "previewCacheSizeLimitMB": "preview_cache_size_limit_mb",
     "jmcomicDomain": "jmcomic_domain",
