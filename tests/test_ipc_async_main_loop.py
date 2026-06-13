@@ -12,8 +12,6 @@ import threading
 import time
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(
     0,
@@ -53,10 +51,7 @@ def _drain_responses(server, count, timeout=5.0):
         if len(lines) >= count:
             return [json.loads(ln) for ln in lines[:count]]
         time.sleep(0.01)
-    raise AssertionError(
-        f"timed out waiting for {count} responses; got: "
-        f"{server._captured_stdout.getvalue()!r}"
-    )
+    raise AssertionError(f"timed out waiting for {count} responses; got: " f"{server._captured_stdout.getvalue()!r}")
 
 
 def _capture_stdout(server):
@@ -87,9 +82,7 @@ def test_dispatch_request_runs_sync_handler_in_request_executor():
     server.handle_get_proxy_status = fake_handler  # type: ignore[attr-defined]
 
     async def _drive():
-        await server._dispatch_request(
-            {"jsonrpc": "2.0", "id": 1, "method": "get_proxy_status", "params": {}}
-        )
+        await server._dispatch_request({"jsonrpc": "2.0", "id": 1, "method": "get_proxy_status", "params": {}})
 
     asyncio.run(_drive())
     server._request_executor.shutdown(wait=True)
@@ -97,8 +90,7 @@ def test_dispatch_request_runs_sync_handler_in_request_executor():
     [resp] = _drain_responses(server, 1)
     assert resp == {"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
     assert captured_thread["name"].startswith("request"), (
-        f"handler ran on {captured_thread['name']!r}, "
-        "expected a thread from _request_executor (prefix 'request')"
+        f"handler ran on {captured_thread['name']!r}, " "expected a thread from _request_executor (prefix 'request')"
     )
 
 
@@ -141,9 +133,7 @@ def test_dispatch_request_handles_concurrent_handlers():
     async def _drive():
         await asyncio.gather(
             *[
-                server._dispatch_request(
-                    {"jsonrpc": "2.0", "id": i, "method": method, "params": {}}
-                )
+                server._dispatch_request({"jsonrpc": "2.0", "id": i, "method": method, "params": {}})
                 for i, method in enumerate(fake_method_to_handler.keys())
             ]
         )
@@ -177,9 +167,7 @@ def test_dispatch_request_runs_async_handler_directly_on_loop():
     server._handler_param_keys[server._HANDLER_NAMES["get_proxy_status"]] = set()
 
     async def _drive():
-        await server._dispatch_request(
-            {"jsonrpc": "2.0", "id": 42, "method": "get_proxy_status", "params": {}}
-        )
+        await server._dispatch_request({"jsonrpc": "2.0", "id": 42, "method": "get_proxy_status", "params": {}})
 
     asyncio.run(_drive())
 
@@ -220,9 +208,7 @@ def test_concurrent_responses_are_written_atomically():
     async def _drive():
         await asyncio.gather(
             *[
-                server._dispatch_request(
-                    {"jsonrpc": "2.0", "id": i, "method": methods[i], "params": {}}
-                )
+                server._dispatch_request({"jsonrpc": "2.0", "id": i, "method": methods[i], "params": {}})
                 for i in range(n)
             ]
         )
@@ -241,11 +227,7 @@ def test_handle_line_routes_unknown_method_to_minus32601():
     server = _create_test_server()
     _capture_stdout(server)
 
-    asyncio.run(
-        server._handle_line(
-            json.dumps({"jsonrpc": "2.0", "id": 9, "method": "no_such_method"})
-        )
-    )
+    asyncio.run(server._handle_line(json.dumps({"jsonrpc": "2.0", "id": 9, "method": "no_such_method"})))
 
     [resp] = _drain_responses(server, 1)
     assert resp["error"]["code"] == -32601
@@ -255,11 +237,7 @@ def test_handle_line_rejects_non_object_params():
     server = _create_test_server()
     _capture_stdout(server)
 
-    asyncio.run(
-        server._handle_line(
-            json.dumps({"jsonrpc": "2.0", "id": 11, "method": "x", "params": [1, 2]})
-        )
-    )
+    asyncio.run(server._handle_line(json.dumps({"jsonrpc": "2.0", "id": 11, "method": "x", "params": [1, 2]})))
 
     [resp] = _drain_responses(server, 1)
     assert resp["error"]["code"] == -32602
@@ -291,12 +269,6 @@ def test_handle_shutdown_shuts_down_request_executor():
 
     server.handle_shutdown()
 
-    server._cover_executor.shutdown.assert_called_once_with(
-        cancel_futures=True, wait=False
-    )
-    server._preview_executor.shutdown.assert_called_once_with(
-        cancel_futures=True, wait=False
-    )
-    server._request_executor.shutdown.assert_called_once_with(
-        cancel_futures=True, wait=False
-    )
+    server._cover_executor.shutdown.assert_called_once_with(cancel_futures=True, wait=False)
+    server._preview_executor.shutdown.assert_called_once_with(cancel_futures=True, wait=False)
+    server._request_executor.shutdown.assert_called_once_with(cancel_futures=True, wait=False)

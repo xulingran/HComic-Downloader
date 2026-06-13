@@ -297,11 +297,7 @@ class IPCServer(
 
         handler = getattr(self, attr_name)
         param_keys = self._handler_param_keys.get(attr_name)
-        valid_params = (
-            {k: v for k, v in params.items() if k in param_keys}
-            if param_keys is not None
-            else params
-        )
+        valid_params = {k: v for k, v in params.items() if k in param_keys} if param_keys is not None else params
 
         loop = asyncio.get_running_loop()
         try:
