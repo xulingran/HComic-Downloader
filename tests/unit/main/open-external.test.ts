@@ -35,6 +35,7 @@ vi.mock('electron', () => {
       on: vi.fn(),
       quit: vi.fn(),
       setAsDefaultProtocolClient: vi.fn(),
+      setAppUserModelId: vi.fn(),
       requestSingleInstanceLock: vi.fn().mockReturnValue(true),
       commandLine: {
         appendSwitch: vi.fn(),

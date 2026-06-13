@@ -60,6 +60,7 @@ vi.mock('electron', () => {
       quit: vi.fn(),
       getName: vi.fn().mockReturnValue('HComicDownloader'),
       setAsDefaultProtocolClient: vi.fn(),
+      setAppUserModelId: vi.fn(),
       requestSingleInstanceLock: vi.fn().mockReturnValue(true),
       commandLine: {
         appendSwitch: vi.fn(),

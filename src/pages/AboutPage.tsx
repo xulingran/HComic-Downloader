@@ -27,6 +27,7 @@ export function AboutPage() {
   }
 
   const handleCheckUpdate = useCallback(async () => {
+    if (!window.hcomic) return
     setCheckState('checking')
     setErrorMessage('')
     try {
