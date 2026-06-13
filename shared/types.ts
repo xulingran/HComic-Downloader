@@ -644,7 +644,6 @@ export interface HcomicAPI {
   onMigrationProgress(callback: (data: MigrationProgressEvent) => void): () => void
   onMigrationComplete(callback: (data: MigrationCompleteEvent) => void): () => void
   onMigrationError(callback: (data: MigrationErrorEvent) => void): () => void
-  onLoginCookieSuccess(callback: () => void): () => void
   checkForUpdates(): Promise<UpdateCheckResult>
   forcePackAlbum(sourceSite: string, albumId: string, overwrite?: boolean): Promise<{
     status: string; outputPath?: string; packedChapters?: number;
@@ -826,7 +825,6 @@ export const NOTIFICATION_CHANNELS = {
   MIGRATION_PROGRESS: 'migration:progress',
   MIGRATION_COMPLETE: 'migration:complete',
   MIGRATION_ERROR: 'migration:error',
-  LOGIN_COOKIE_SUCCESS: 'login:cookie-success',
   UPDATE_CHECK_RESULT: 'update:check-result',
   ALBUM_PROGRESS: 'album:progress',
 } as const

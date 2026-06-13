@@ -3,11 +3,8 @@ import { writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getPythonBridge } from './python-bridge'
-import { NOTIFICATION_CHANNELS } from '../shared/types'
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
-const LOGIN_COOKIE_SETTLE_MS = 2_000
-const LOGIN_COOKIE_SUCCESS_DELAY_MS = 5_000
 const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
 const JMCOMIC_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
 
@@ -22,26 +19,15 @@ function diag(msg: string) {
   console.log(`[LoginWindow] ${msg}`)
 }
 
-let cancelAutoCloseFn: (() => void) | null = null
-
-export function cancelLoginAutoClose(): boolean {
-  if (cancelAutoCloseFn) {
-    cancelAutoCloseFn()
-    return true
-  }
-  return false
-}
+type ExtractionResult = { success: boolean; message: string; notLoggedIn?: boolean }
 
 interface LoginWindowContext {
   settled: boolean
-  hasVisitedAuth0: boolean
   savedUserAgent: string
+  /** 防止用户连点 ✕ 或 close/done 重入导致重复提取 */
   extractInProgress: boolean
-  /** jmcomic 用户名，从登录窗口 DOM 提取后缓存，供 closed 事件使用 */
-  jmcomicUsername: string
   done: (result: { success: boolean; message?: string }) => void
   clearTimeout: () => void
-  clearSuccessTimeout: () => void
   removeCspHandler: (() => void) | null
 }
 
@@ -51,7 +37,7 @@ async function extractAndApplyCookies(
   domain: string = 'h-comic.com',
   cookieSession: Session = session.defaultSession,
   jmcomicUsername: string = '',
-): Promise<{ success: boolean; message: string }> {
+): Promise<ExtractionResult> {
   try {
     let cookies: Electron.Cookie[] = []
     let cookieDomain = domain
@@ -82,14 +68,14 @@ async function extractAndApplyCookies(
     }
 
     if (cookies.length === 0) {
-      return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口' }
+      return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口', notLoggedIn: true }
     }
 
     if (source === 'jmcomic') {
       const cookieNames = cookies.map(c => c.name.toLowerCase())
       const hasLoginCookie = JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
       if (!hasLoginCookie) {
-        return { success: false, message: '未检测到登录状态，请确认已成功登录后重试' }
+        return { success: false, message: '未检测到登录状态，请确认已成功登录后重试', notLoggedIn: true }
       }
     }
 
@@ -97,7 +83,7 @@ async function extractAndApplyCookies(
       const cookieNames = cookies.map(c => c.name.toLowerCase())
       const hasLoginCookie = COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
       if (!hasLoginCookie) {
-        return { success: false, message: '未检测到登录状态，请在拷贝漫画网站上登录后再关闭窗口' }
+        return { success: false, message: '未检测到登录状态，请在拷贝漫画网站上登录后再关闭窗口', notLoggedIn: true }
       }
     }
 
@@ -225,223 +211,78 @@ function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录
   return win
 }
 
-function completeLoginFlow(
+/**
+ * 绑定手动关窗提取逻辑。
+ *
+ * 设计要点（参见 docs/superpowers/specs/2026-06-13-login-manual-close-design.md）：
+ * - 用 `close` 事件而非 `closed`：close 触发时窗口尚未销毁，DOM（jmcomic 用户名）
+ *   与 session（cookie）均存活，可确定性提取。
+ * - `event.preventDefault()` 挡住关闭，保证异步提取期间窗口存活；提取完成后由
+ *   `ctx.done()` 调用 `loginWin.destroy()` 真正关闭（destroy 不再触发 close，无重入）。
+ * - `settled` 标志防 done 重入；`extractInProgress` 防用户连点 ✕ 导致重复提取。
+ * - 未登录即关窗（notLoggedIn）→ 静默取消（选项 A），映射为现有 `已取消` 信号，
+ *   渲染进程据此回退认证状态。
+ */
+function bindManualCloseExtraction(
   loginWin: BrowserWindow,
   ctx: LoginWindowContext,
-  mainWindow: BrowserWindow | null,
   source: string,
   domain: string,
 ) {
-  ctx.clearTimeout()
-  const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
-  if (!userAgent) {
-    ctx.done({ success: false, message: '已取消' })
-    return
-  }
-  if (ctx.extractInProgress) return
-  ctx.extractInProgress = true
-  const cookieSession = loginWin.webContents.session
-  // jmcomic: 先从 DOM 提取用户名，再提取 Cookie。
-  // Python 后端因 Cloudflare 403 无法从首页发现用户名，
-  // 必须在登录窗口关闭前从浏览器 DOM 获取。
-  const extractUsername = source === 'jmcomic'
-    ? extractJmcomicUsername(loginWin)
-    : Promise.resolve('')
-  extractUsername.then((jmcomicUsername) => {
-    if (jmcomicUsername) {
-      ctx.jmcomicUsername = jmcomicUsername
-      diag(`extracted jmcomic username: ${jmcomicUsername}`)
-    }
-    return extractAndApplyCookies(userAgent, source, domain, cookieSession, jmcomicUsername)
-  }).then((result) => {
+  loginWin.on('close', (event) => {
+    // 已 settle（超时/崩溃/提取完成后的二次进入）→ 放行关闭
     if (ctx.settled) return
-    if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-      const successTimeout = setTimeout(() => {
-        cancelAutoCloseFn = null
+    // 挡住关闭，确保异步提取期间窗口存活
+    event.preventDefault()
+    // 提取进行中（用户连点 ✕）→ 仅保持窗口存活，不重复触发提取
+    if (ctx.extractInProgress) return
+    ctx.extractInProgress = true
+    ctx.clearTimeout()
+
+    const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
+    // 页面未加载完即关窗 → 静默取消
+    if (!userAgent) {
+      ctx.done({ success: false, message: '已取消' })
+      return
+    }
+
+    const cookieSession = loginWin.webContents.session
+    diag(`manual close extraction: source=${source} domain=${domain}`)
+
+    // jmcomic: 关窗前从 DOM 提取用户名（窗口仍存活）。
+    // Python 后端因 Cloudflare 403 无法从首页发现用户名，
+    // 必须在窗口销毁前从浏览器 DOM 获取。
+    const usernamePromise = source === 'jmcomic'
+      ? extractJmcomicUsername(loginWin)
+      : Promise.resolve('')
+
+    usernamePromise
+      .then((username) => {
+        if (username) diag(`extracted jmcomic username: ${username}`)
+        return extractAndApplyCookies(userAgent, source, domain, cookieSession, username)
+      })
+      .then((result) => {
+        // 未登录即关窗 → 静默取消（选项 A）
+        if (!result.success && result.notLoggedIn) {
+          ctx.done({ success: false, message: '已取消' })
+          return
+        }
         ctx.done(result)
-      }, LOGIN_COOKIE_SUCCESS_DELAY_MS)
-      ctx.clearSuccessTimeout = () => clearTimeout(successTimeout)
-      cancelAutoCloseFn = () => {
-        clearTimeout(successTimeout)
-        cancelAutoCloseFn = null
-      }
-    } else {
-      ctx.done(result)
-    }
-  }).catch(() => {
-    ctx.done({ success: false, message: '已取消' })
+      })
+      .catch(() => {
+        // 提取链异常（如窗口中途销毁导致 executeJavaScript reject）→ 静默取消
+        ctx.done({ success: false, message: '已取消' })
+      })
   })
-}
 
-function bindLoginNavigationTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
-  loginWin.webContents.on('did-navigate', (_event, url) => {
-    diag(`did-navigate: ${url}`)
-    if (url.includes('auth0.com')) {
-      ctx.hasVisitedAuth0 = true
-    }
-    if (ctx.hasVisitedAuth0 && (url.startsWith('https://h-comic.com') || url.startsWith('https://www.h-comic.com'))) {
-      ctx.hasVisitedAuth0 = false
-      setTimeout(() => completeLoginFlow(loginWin, ctx, mainWindow, source, domain), LOGIN_COOKIE_SETTLE_MS)
-    }
-  })
-}
-
-function bindLoginWindowClosed(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string = 'hcomic', domain: string = 'h-comic.com') {
-  // Capture session before window is destroyed — 'closed' fires after the
-  // native BrowserWindow is gone, so accessing webContents inside the
-  // callback throws "Object has been destroyed".
-  const cookieSession = loginWin.webContents.session
+  // 安全兜底：窗口未经手动提取即被销毁（如应用退出、父窗口关闭）→ 静默取消，
+  // 避免悬挂的 Promise。正常流程下 done() 先把 settled 置真，此处跳过。
   loginWin.on('closed', () => {
     diag('login window closed event')
     ctx.clearTimeout()
-    ctx.clearSuccessTimeout()
-    if (ctx.removeCspHandler) {
-      ctx.removeCspHandler()
-      ctx.removeCspHandler = null
-    }
-    if (ctx.settled) return
-    if (!ctx.savedUserAgent) {
+    if (!ctx.settled) {
       ctx.done({ success: false, message: '已取消' })
-      return
     }
-    if (ctx.extractInProgress) return
-    extractAndApplyCookies(ctx.savedUserAgent, source, domain, cookieSession, ctx.jmcomicUsername).then((result) => {
-      if (result.success && mainWindow && !mainWindow.isDestroyed()) {
-        mainWindow.webContents.send(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS)
-      }
-      ctx.done(result)
-    }).catch(() => {
-      ctx.done({ success: false, message: '已取消' })
-    })
-  })
-}
-
-async function hasJmcomicLoginCookie(domain: string, cookieSession: Session = session.defaultSession): Promise<boolean> {
-  try {
-    const domains = [domain, 'jmcomic-zzz.one', '18comic.vip', '18comic.org']
-    for (const d of domains) {
-      const cookies = await cookieSession.cookies.get({ url: `https://${d}` })
-      const cookieNames = cookies.map(c => c.name.toLowerCase())
-      if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
-        return true
-      }
-    }
-    return false
-  } catch {
-    return false
-  }
-}
-
-function bindCopymangaLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
-  let pollingTimer: ReturnType<typeof setInterval> | null = null
-  const cookieSession = loginWin.webContents.session
-
-  const checkCopymangaCookies = async (): Promise<boolean> => {
-    try {
-      const cookies = await cookieSession.cookies.get({ url: `https://${domain}` })
-      const cookieNames = cookies.map(c => c.name.toLowerCase())
-      return COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
-    } catch {
-      return false
-    }
-  }
-
-  // Start polling for login cookies after the page loads
-  const startPolling = () => {
-    if (pollingTimer) return
-    pollingTimer = setInterval(async () => {
-      if (ctx.settled || ctx.extractInProgress) {
-        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
-        return
-      }
-      const hasLogin = await checkCopymangaCookies()
-      if (hasLogin) {
-        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
-        diag('copymanga: login cookies detected')
-        completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
-      }
-    }, 3000)
-  }
-
-  // Start polling once the page has loaded
-  loginWin.webContents.on('did-finish-load', () => {
-    startPolling()
-  })
-
-  loginWin.webContents.on('did-navigate', (_event, url) => {
-    diag(`copymanga did-navigate: ${url}`)
-    // If user navigates away from login page, check for cookies after a settle delay
-    if (!url.includes('/login') && !url.includes('/register')) {
-      setTimeout(async () => {
-        if (ctx.settled || ctx.extractInProgress) return
-        const hasLogin = await checkCopymangaCookies()
-        if (hasLogin) {
-          if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
-          completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
-        }
-      }, LOGIN_COOKIE_SETTLE_MS)
-    }
-  })
-
-  loginWin.on('closed', () => {
-    if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
-  })
-}
-
-function bindJmcomicLoginTracking(loginWin: BrowserWindow, ctx: LoginWindowContext, mainWindow: BrowserWindow | null, source: string, domain: string) {
-  let hasVisitedLogin = false
-  let timeoutPending = false
-  let pollingTimer: ReturnType<typeof setInterval> | null = null
-  const skipPatterns = ['/login', '/register', '/forgot', '/reset', '/captcha', '/verify']
-  const cookieSession = loginWin.webContents.session
-
-  const startCookiePolling = () => {
-    if (pollingTimer) return
-    pollingTimer = setInterval(async () => {
-      if (ctx.settled || ctx.extractInProgress) {
-        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
-        return
-      }
-      const hasLogin = await hasJmcomicLoginCookie(domain, cookieSession)
-      if (hasLogin) {
-        if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
-        completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
-      }
-    }, 3000)
-  }
-
-  loginWin.webContents.on('did-navigate', (_event, url) => {
-    diag(`jmcomic did-navigate: ${url}`)
-    const urlLower = url.toLowerCase()
-    if (urlLower.includes('/login') || urlLower.includes('/user/login')) {
-      hasVisitedLogin = true
-      startCookiePolling()
-      return
-    }
-    if (hasVisitedLogin && !timeoutPending) {
-      const isSkipPage = skipPatterns.some(pattern => urlLower.includes(pattern))
-      if (isSkipPage) {
-        hasVisitedLogin = false
-        return
-      }
-      hasVisitedLogin = false
-      timeoutPending = true
-      setTimeout(async () => {
-        const hasLogin = await hasJmcomicLoginCookie(domain, cookieSession)
-        if (hasLogin) {
-          if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
-          completeLoginFlow(loginWin, ctx, mainWindow, source, domain)
-        } else {
-          console.log('[LoginWindow] jmcomic: 离开登录页但未检测到登录态 cookie，继续等待')
-        }
-        timeoutPending = false
-      }, LOGIN_COOKIE_SETTLE_MS)
-    }
-  })
-
-  loginWin.on('closed', () => {
-    if (pollingTimer) { clearInterval(pollingTimer); pollingTimer = null }
   })
 }
 
@@ -479,25 +320,23 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
 
     const ctx: LoginWindowContext = {
       settled: false,
-      hasVisitedAuth0: false,
       savedUserAgent: '',
       extractInProgress: false,
-      jmcomicUsername: '',
       clearTimeout: () => {},
-      clearSuccessTimeout: () => {},
       removeCspHandler,
       done: (result) => {
         diag(`done called: settled=${ctx.settled} success=${result.success}`)
         if (ctx.settled) return
         ctx.settled = true
-        cancelAutoCloseFn = null
-        ctx.clearSuccessTimeout()
+        ctx.clearTimeout()
         if (ctx.removeCspHandler) {
           ctx.removeCspHandler()
           ctx.removeCspHandler = null
         }
+        // 用 destroy() 而非 close()：close 已被 preventDefault，且 destroy 不再
+        // 触发 close 事件，避免重入。destroy 后由 'closed' 兜底清理。
         if (!loginWin.isDestroyed()) {
-          loginWin.close()
+          loginWin.destroy()
         }
         resolve(result)
       },
@@ -564,14 +403,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
       }
     })
 
-    if (source === 'jmcomic') {
-      bindJmcomicLoginTracking(loginWin, ctx, mainWindow, source, loginDomain)
-    } else if (source === 'copymanga') {
-      bindCopymangaLoginTracking(loginWin, ctx, mainWindow, source, loginDomain)
-    } else {
-      bindLoginNavigationTracking(loginWin, ctx, mainWindow, source, loginDomain)
-    }
-    bindLoginWindowClosed(loginWin, ctx, mainWindow, source, loginDomain)
+    bindManualCloseExtraction(loginWin, ctx, source, loginDomain)
 
     diag(`openLoginWindow: loading URL ${loginUrl}`)
     loginWin.loadURL(loginUrl).catch((err) => {

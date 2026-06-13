@@ -52,12 +52,9 @@ vi.mock('@/stores/useSettingsStore', () => ({
 
 import { SettingsPage } from '@/pages/SettingsPage'
 
-const mockOnLoginCookieSuccess = vi.fn()
-
 Object.defineProperty(window, 'hcomic', {
   value: {
     openLoginWindow: vi.fn().mockResolvedValue({ success: true, message: '登录成功' }),
-    onLoginCookieSuccess: mockOnLoginCookieSuccess.mockReturnValue(vi.fn()),
     openUrl: vi.fn(),
   },
   writable: true,

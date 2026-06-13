@@ -318,10 +318,6 @@ contextBridge.exposeInMainWorld('hcomic', {
     return onChannel(NOTIFICATION_CHANNELS.MIGRATION_ERROR, callback)
   },
 
-  onLoginCookieSuccess: (callback: unknown) => {
-    return onChannel(NOTIFICATION_CHANNELS.LOGIN_COOKIE_SUCCESS, callback, false)
-  },
-
   checkForUpdates: () => {
     return ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK)
   },
