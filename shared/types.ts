@@ -190,6 +190,19 @@ export type UpdateCheckResult =
   | { hasUpdate: true; latestVersion: string; changelog: string; releaseUrl: string }
   | { hasUpdate: false; error?: string }
 
+/** 主进程 → 渲染进程的致命错误通知（后端进程启动失败、重启超限等） */
+export interface FatalErrorEvent {
+  /** 用户可见的简短错误摘要 */
+  message: string
+  /** 可选的错误详情（堆栈、原始错误信息），用于日志而非直接展示 */
+  detail?: string
+  /** 错误分类，便于 UI 区分文案，如 'backend-spawn' | 'backend-restart-exceeded' */
+  kind?: string
+}
+
+/** 诊断信息报告（一键复制到剪贴板的结构化字符串） */
+export type DiagnosticsReport = string
+
 /** Keys that can be persisted via set-config */
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
@@ -656,6 +669,8 @@ export interface HcomicAPI {
   }>
   onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
+  onFatalError(callback: (data: FatalErrorEvent) => void): () => void
+  getDiagnostics(): Promise<DiagnosticsReport>
 }
 
 /** Valid search modes — shared between preload and main */
@@ -818,6 +833,7 @@ export const IPC_CHANNELS = {
   SYNC_FAVOURITE_TAGS: 'python:sync-favourite-tags',
   SELECT_DIRECTORY: 'select-directory',
   UPDATE_CHECK: 'update:check',
+  GET_DIAGNOSTICS: 'log:get-diagnostics',
 } as const
 
 export const NOTIFICATION_CHANNELS = {
@@ -827,6 +843,7 @@ export const NOTIFICATION_CHANNELS = {
   MIGRATION_ERROR: 'migration:error',
   UPDATE_CHECK_RESULT: 'update:check-result',
   ALBUM_PROGRESS: 'album:progress',
+  FATAL_ERROR: 'fatal:error',
 } as const
 
 export const PYTHON_NOTIFICATION_METHODS = {

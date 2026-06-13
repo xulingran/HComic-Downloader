@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
+import { useToastStore } from '../stores/useToastStore'
 import { useConfig, useProxyStatus, useAvailableFonts, useJmcomicDomains } from '../hooks/useIpc'
 import { useOptimisticConfig } from '../hooks/useOptimisticConfig'
 import { useAuthState } from '../hooks/useAuthState'
@@ -11,6 +12,7 @@ import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
 import { CacheSettings } from '../components/settings/CacheSettings'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
+import { copyDiagnosticsWithConfirm } from '../utils/diagnostics'
 import { useMigration } from '../hooks/useMigration'
 
 type OutputFormat = 'folder' | 'zip' | 'cbz'
@@ -162,6 +164,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
       }
     } catch (err) {
       console.error('Failed to load config:', err)
+      useToastStore.getState().error('加载配置失败')
     }
   }
 
@@ -549,6 +552,23 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           sizeLimitMB={config.previewCacheSizeLimitMB}
           onSizeLimitChange={(mb) => handleConfigChange('previewCacheSizeLimitMB', mb)}
         />
+      </div>
+
+      <div id="section-diagnostics">
+        <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-3">
+          <h3 className="text-sm font-semibold text-[var(--text-primary)]">诊断信息</h3>
+          <p className="text-xs text-[var(--text-secondary)] leading-relaxed">
+            遇到问题时，可复制诊断日志提供给开发者以便排查。日志可能包含 cookie、搜索词等敏感信息，复制前会有确认提示。
+          </p>
+          <button
+            onClick={copyDiagnosticsWithConfirm}
+            className="px-4 py-2 rounded-lg text-sm font-medium
+                       bg-[var(--accent)] text-white hover:opacity-90
+                       transition-opacity"
+          >
+            复制诊断日志
+          </button>
+        </div>
       </div>
 
         <MigrationDialog

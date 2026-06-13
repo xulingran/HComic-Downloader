@@ -17,6 +17,7 @@ mockBrowserWindow.getAllWindows = vi.fn().mockReturnValue([])
 
 export const mockApp = {
   getPath: vi.fn().mockReturnValue('/mock/path'),
+  getVersion: vi.fn().mockReturnValue('1.2.0'),
   isPackaged: false,
   on: vi.fn(),
   whenReady: vi.fn().mockResolvedValue(undefined),

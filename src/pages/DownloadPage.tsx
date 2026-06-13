@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDownloadStore } from '../stores/useDownloadStore'
+import { useToastStore } from '../stores/useToastStore'
 import { useDownload, useAlbumProgress, useAlbumCommands } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
@@ -101,6 +102,7 @@ export function DownloadPage() {
       setTasks(result.tasks)
     } catch (err) {
       console.error('Failed to load downloads:', err)
+      useToastStore.getState().error('加载下载列表失败')
     }
   }
 
@@ -114,6 +116,7 @@ export function DownloadPage() {
       updateTask(taskId, { status: 'cancelled' })
     } catch (err) {
       console.error('Failed to cancel download:', err)
+      useToastStore.getState().error('取消下载失败')
     }
   }
 

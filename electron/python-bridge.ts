@@ -24,6 +24,12 @@ export class PythonBridge {
   private restartCount = 0
   private notificationHandlers = new Map<string, (params: unknown) => void>()
 
+  /**
+   * 致命错误回调：后端进程启动失败或重启超限时触发。
+   * 由主进程注册，转发到渲染进程的致命错误横幅。
+   */
+  onFatal: ((payload: { message: string; detail?: string; kind?: string }) => void) | null = null
+
   constructor() {
     this.start()
   }
@@ -128,7 +134,16 @@ export class PythonBridge {
 
     proc.stderr?.on('data', (data: Buffer) => {
       if (this.process !== proc) return
-      console.error('Python stderr:', data.toString())
+      // Python stderr 含 INFO/WARNING/ERROR 各级别，本身已带级别字样。
+      // 用 console.log 转发（落盘为 info 级），避免把 INFO 误标成 error。
+      // 真正的级别由 Python 日志里的 " - ERROR - " 等字样体现。
+      // 逐行转发：确保 main.log 里每一行都带 [Python] 前缀，
+      // 便于诊断报告按前缀过滤掉与 python.log 重复的转发副本。
+      const text = data.toString()
+      for (const line of text.split('\n')) {
+        const trimmed = line.trimEnd()
+        if (trimmed) console.log('[Python]', trimmed)
+      }
     })
 
     proc.on('exit', (code) => {
@@ -140,6 +155,14 @@ export class PythonBridge {
       if (this.process !== proc) return
       console.error('Failed to start Python process:', err)
       this.handleProcessFailure(`Python process error: ${err.message}`)
+      // 致命：进程无法启动（如 python.exe 缺失/路径错误）
+      if (!this.isShuttingDown) {
+        this.onFatal?.({
+          message: '后端服务启动失败',
+          detail: err.message,
+          kind: 'backend-spawn',
+        })
+      }
     })
   }
 
@@ -166,6 +189,12 @@ export class PythonBridge {
       }, 2000)
     } else if (this.restartCount >= MAX_RESTARTS) {
       console.error(`Python bridge exceeded max restart attempts (${MAX_RESTARTS})`)
+      // 致命：重启已超限，后端无法恢复
+      this.onFatal?.({
+        message: `后端服务异常（已重试 ${MAX_RESTARTS} 次仍失败）`,
+        detail: `Python backend exceeded max restart attempts (${MAX_RESTARTS})`,
+        kind: 'backend-restart-exceeded',
+      })
     }
   }
 

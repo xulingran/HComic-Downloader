@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -28,6 +29,7 @@ class ConfigMixin:
     cbz_builder: CBZBuilder
     parser: MultiSourceParser
     _write_response: Callable[[dict], None]
+    _config_write_lock: threading.Lock
 
     def _apply_timeout(self, v: int) -> None:
         self.downloader.timeout = v
@@ -164,8 +166,10 @@ class ConfigMixin:
             raise
 
         try:
-            setattr(self.config, python_key, value)
-            self.config.save(_get_config_path())
+            # 序列化 config 写入：并发 set_config 同时 os.replace 会触发 WinError 5
+            with self._config_write_lock:
+                setattr(self.config, python_key, value)
+                self.config.save(_get_config_path())
         except Exception as e:
             try:
                 self._apply_runtime(key, old_value)

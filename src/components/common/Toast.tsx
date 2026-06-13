@@ -1,14 +1,24 @@
 import { useState, useEffect, useRef } from 'react'
 
+export type ToastType = 'info' | 'error' | 'success'
+
 interface ToastProps {
   message: string
+  type?: ToastType
   actionLabel?: string
   onAction?: () => void
   onDismiss?: () => void
   visible: boolean
 }
 
-export function Toast({ message, actionLabel, onAction, onDismiss, visible }: ToastProps) {
+/** 按 type 选择图标 */
+const TOAST_ICONS: Record<ToastType, string> = {
+  info: '📖',
+  error: '⚠',
+  success: '✓',
+}
+
+export function Toast({ message, type = 'info', actionLabel, onAction, onDismiss, visible }: ToastProps) {
   const [show, setShow] = useState(false)
   const [animate, setAnimate] = useState(false)
   const rafRef = useRef<number>(0)
@@ -35,6 +45,18 @@ export function Toast({ message, actionLabel, onAction, onDismiss, visible }: To
 
   if (!show) return null
 
+  // 按 type 区分边框/图标颜色：error 红色、success 绿色、info 默认
+  const borderColor = type === 'error'
+    ? 'border-red-500/50'
+    : type === 'success'
+      ? 'border-green-500/50'
+      : 'border-[var(--border)]'
+  const iconColor = type === 'error'
+    ? 'text-red-400'
+    : type === 'success'
+      ? 'text-green-400'
+      : ''
+
   return (
     <div
       className={`fixed top-4 left-1/2 z-50 transition-all duration-300 ease-out ${
@@ -42,10 +64,10 @@ export function Toast({ message, actionLabel, onAction, onDismiss, visible }: To
       }`}
       style={{ transform: animate ? 'translate(-50%, 0)' : 'translate(-50%, -1rem)' }}
     >
-      <div className="flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg
-                      bg-[var(--bg-primary)] border border-[var(--border)]
-                      text-sm text-[var(--text-primary)] max-w-md">
-        <span className="text-lg">📖</span>
+      <div className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg
+                      bg-[var(--bg-primary)] border ${borderColor}
+                      text-sm text-[var(--text-primary)] max-w-md`}>
+        <span className={`text-lg flex-shrink-0 ${iconColor}`}>{TOAST_ICONS[type]}</span>
         <span className="flex-1">{message}</span>
         {actionLabel && onAction && (
           <button

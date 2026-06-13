@@ -326,6 +326,14 @@ contextBridge.exposeInMainWorld('hcomic', {
     return onChannel(NOTIFICATION_CHANNELS.UPDATE_CHECK_RESULT, callback)
   },
 
+  onFatalError: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.FATAL_ERROR, callback)
+  },
+
+  getDiagnostics: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_DIAGNOSTICS)
+  },
+
   getTagList: (source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
     if (keyword !== undefined && keyword !== null && typeof keyword !== 'string') throw new Error('Invalid keyword')

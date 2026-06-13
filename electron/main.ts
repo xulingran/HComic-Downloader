@@ -5,6 +5,8 @@ import { getPythonBridge } from './python-bridge'
 import { checkForUpdates } from './update-checker'
 import { NotificationManager } from './notification-manager'
 import { openLoginWindow } from './login-window'
+import { initLogging } from './log-init'
+import { buildDiagnostics } from './diagnostics'
 import {
   SEARCH_MODES, COMIC_SOURCES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
@@ -31,6 +33,9 @@ import {
   assert,
   tagBlacklist as tagBlacklistValidator,
 } from './validators'
+
+// 初始化日志：必须在最早阶段执行，以捕获启动期异常并接管 console.*
+initLogging()
 
 // ── Windows crash workarounds ──
 // Prevent Windows Code Integrity from killing renderer/gpu processes on
@@ -497,6 +502,14 @@ function registerNotificationHandlers(bridge: Bridge) {
   bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.ALBUM_PROGRESS, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.ALBUM_PROGRESS, params)
   })
+
+  // 致命错误：后端进程启动失败或重启超限时转发到渲染进程横幅。
+  // 复用安全发送模式（检查 mainWindow 存在且未销毁）。
+  bridge.onFatal = (payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(NOTIFICATION_CHANNELS.FATAL_ERROR, payload)
+    }
+  }
 }
 
 function registerSearchHandlers(bridge: Bridge) {
@@ -798,6 +811,10 @@ function registerSystemHandlers(bridge: Bridge) {
       properties: ['openDirectory', 'createDirectory'],
     })
     return { canceled: result.canceled, filePaths: result.filePaths }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_DIAGNOSTICS, async () => {
+    return buildDiagnostics()
   })
 }
 
