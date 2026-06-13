@@ -72,6 +72,8 @@ class Config:
     favourite_tag_min_matches: int = 1
     # 启动时检查更新
     check_update_on_start: bool = True
+    # Bika 图片清晰度（预览用，下载始终使用 original）
+    bika_image_quality: str = "original"  # "low" | "medium" | "high" | "original"
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
@@ -85,6 +87,8 @@ class Config:
             self.theme_mode = "auto"
         self._sync_legacy_fields()
         self._validate_ranges()
+        if self.bika_image_quality not in ("low", "medium", "high", "original"):
+            self.bika_image_quality = "original"
 
     def _sync_legacy_fields(self):
         """将 source_auth["hcomic"] 与旧版 auth_cookie/auth_user_agent 保持同步。
