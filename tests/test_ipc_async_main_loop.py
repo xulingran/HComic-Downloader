@@ -235,3 +235,43 @@ def test_concurrent_responses_are_written_atomically():
     assert len(lines) == n, f"expected {n} lines, got {len(lines)}: {raw!r}"
     parsed_ids = sorted(json.loads(ln)["id"] for ln in lines)
     assert parsed_ids == list(range(n))
+
+
+def test_handle_line_routes_unknown_method_to_minus32601():
+    server = _create_test_server()
+    _capture_stdout(server)
+
+    asyncio.run(
+        server._handle_line(
+            json.dumps({"jsonrpc": "2.0", "id": 9, "method": "no_such_method"})
+        )
+    )
+
+    [resp] = _drain_responses(server, 1)
+    assert resp["error"]["code"] == -32601
+
+
+def test_handle_line_rejects_non_object_params():
+    server = _create_test_server()
+    _capture_stdout(server)
+
+    asyncio.run(
+        server._handle_line(
+            json.dumps({"jsonrpc": "2.0", "id": 11, "method": "x", "params": [1, 2]})
+        )
+    )
+
+    [resp] = _drain_responses(server, 1)
+    assert resp["error"]["code"] == -32602
+    assert "must be an object" in resp["error"]["message"]
+
+
+def test_handle_line_handles_invalid_json():
+    server = _create_test_server()
+    _capture_stdout(server)
+
+    asyncio.run(server._handle_line("{not json"))
+
+    [resp] = _drain_responses(server, 1)
+    assert resp["error"]["code"] == -32700
+    assert resp["id"] is None

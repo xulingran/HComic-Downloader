@@ -394,6 +394,93 @@ class IPCServer(
                 }
             )
 
+    async def _handle_line(self, line: str) -> None:
+        """Async entry point for a single stdin line.
+
+        Reproduces the special-case routing previously done by run() for
+        cover/preview fetches, then delegates everything else to
+        _dispatch_request.
+        """
+        req_id = None
+        try:
+            request = json.loads(line)
+            method = request.get("method")
+            req_id = request.get("id")
+            params = request.get("params", {})
+
+            if not isinstance(params, dict):
+                self._write_response(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": req_id,
+                        "error": {
+                            "code": -32602,
+                            "message": "Invalid params: must be an object",
+                        },
+                    }
+                )
+                return
+
+            if method == "fetch_cover":
+                url = params.get("url", "")
+                try:
+                    self._validate_cover_url(url)
+                except ValueError as e:
+                    self._write_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {"code": -32602, "message": str(e)},
+                        }
+                    )
+                    return
+                self._cover_executor.submit(self._async_fetch_cover, url, req_id)
+                return
+
+            if method == "fetch_preview_image":
+                image_url = params.get("image_url", "")
+                scramble_id = params.get("scramble_id", "")
+                comic_id = params.get("comic_id", "")
+                try:
+                    self._validate_preview_image_url(image_url)
+                except ValueError as e:
+                    self._write_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {"code": -32602, "message": str(e)},
+                        }
+                    )
+                    return
+                self._preview_executor.submit(
+                    self._async_fetch_preview_image,
+                    image_url,
+                    req_id,
+                    scramble_id=scramble_id,
+                    comic_id=comic_id,
+                )
+                return
+
+            await self._dispatch_request(request)
+        except json.JSONDecodeError as e:
+            logger.error("JSON parse error: %s", e, exc_info=True)
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": None,
+                    "error": {"code": -32700, "message": f"Parse error: {e}"},
+                }
+            )
+        except Exception as e:
+            logger.error("Unexpected error: %s", e, exc_info=True)
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {"code": -32603, "message": f"Internal error: {e}"},
+                }
+            )
+
     def _async_search(self, params: dict, req_id: str | None) -> None:
         """Thread-pool target: run search without blocking the main loop."""
         try:
