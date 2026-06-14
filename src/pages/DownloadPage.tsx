@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from 'react'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useToastStore } from '../stores/useToastStore'
-import { useDownload, useAlbumProgress, useAlbumCommands } from '../hooks/useIpc'
+import { useDownload, useAlbumProgress, useAlbumCommands, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
 import type { DownloadStatus, DownloadDetail } from '@shared/types'
@@ -26,10 +26,12 @@ export function DownloadPage() {
   const { tasks, setTasks, updateTask, isGloballyPaused } = useDownloadStore()
   const { getDownloads, cancelDownload, progress } = useDownload()
   const { handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause } = useDownloadHelper()
+  const { getConfig, openDownloadDir } = useConfig()
   const [failedDialog, setFailedDialog] = useState<DownloadDetail | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const { forcePackAlbum } = useAlbumCommands()
   const { albumProgress } = useAlbumProgress()
+  const [downloadDir, setDownloadDir] = useState('')
 
   // 专辑分组：按 (sourceSite, albumId) 分组多章专辑任务
   const albumGroups = useMemo(() => {
@@ -71,6 +73,9 @@ export function DownloadPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability
     loadDownloads()
+    getConfig().then((result) => setDownloadDir(result.config?.downloadDir ?? '')).catch((err) => {
+      console.error('Failed to load config:', err)
+    })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -103,6 +108,15 @@ export function DownloadPage() {
     } catch (err) {
       console.error('Failed to load downloads:', err)
       useToastStore.getState().error('加载下载列表失败')
+    }
+  }
+
+  const handleOpenDir = async () => {
+    if (!downloadDir) return
+    try {
+      await openDownloadDir(downloadDir)
+    } catch (err: unknown) {
+      useToastStore.getState().error((err instanceof Error ? err.message : '') || '打开目录失败')
     }
   }
 
@@ -157,6 +171,20 @@ export function DownloadPage() {
           </button>
         </div>
       </div>
+
+      {downloadDir && (
+        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">
+          <span className="text-[var(--text-secondary)]">📂 下载目录:</span>
+          <span className="truncate flex-1" title={downloadDir}>{downloadDir}</span>
+          <button
+            onClick={handleOpenDir}
+            className="px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                       text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] whitespace-nowrap transition-colors"
+          >
+            打开
+          </button>
+        </div>
+      )}
 
 
 

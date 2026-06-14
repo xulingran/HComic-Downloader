@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import type { DownloadTask, ComicInfo } from '@shared/types'
 
 // Hoist mock functions so they are available inside vi.mock factories
-const { mockGetDownloads, mockCancelDownload, mockStoreState } = vi.hoisted(() => {
+const { mockGetDownloads, mockCancelDownload, mockGetConfig, mockOpenDownloadDir, mockStoreState } = vi.hoisted(() => {
   const state = {
     tasks: [] as DownloadTask[],
     setTasks: vi.fn(),
@@ -16,6 +16,8 @@ const { mockGetDownloads, mockCancelDownload, mockStoreState } = vi.hoisted(() =
   return {
     mockGetDownloads: vi.fn(),
     mockCancelDownload: vi.fn(),
+    mockGetConfig: vi.fn(),
+    mockOpenDownloadDir: vi.fn(),
     mockStoreState: state
   }
 })
@@ -39,6 +41,10 @@ vi.mock('@/hooks/useIpc', () => ({
     startDownload: vi.fn(),
     checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
     progress: {},
+  }),
+  useConfig: vi.fn().mockReturnValue({
+    getConfig: mockGetConfig,
+    openDownloadDir: mockOpenDownloadDir,
   }),
   useComicDetail: vi.fn().mockReturnValue({
     getComicDetail: vi.fn().mockResolvedValue({ comic: null })
@@ -95,6 +101,8 @@ describe('DownloadPage', () => {
     mockStoreState.isGloballyPaused = false
     mockGetDownloads.mockResolvedValue({ tasks: [] })
     mockCancelDownload.mockResolvedValue({ success: true })
+    mockGetConfig.mockResolvedValue({ config: { downloadDir: '' } })
+    mockOpenDownloadDir.mockResolvedValue({ success: true })
   })
 
   it('renders page content with title', () => {
@@ -202,5 +210,24 @@ describe('DownloadPage', () => {
     await userEvent.click(refreshButton)
 
     expect(mockGetDownloads).toHaveBeenCalledTimes(2)
+  })
+
+  it('hides download directory bar when config has no downloadDir', () => {
+    render(<DownloadPage />)
+
+    expect(screen.queryByText('打开')).not.toBeInTheDocument()
+  })
+
+  it('shows download directory bar and calls openDownloadDir when clicked', async () => {
+    mockGetConfig.mockResolvedValue({ config: { downloadDir: 'C:\\Comics' } })
+
+    render(<DownloadPage />)
+
+    // 等待异步配置加载完成
+    const openButton = await screen.findByText('打开')
+    expect(screen.getByText('C:\\Comics')).toBeInTheDocument()
+
+    await userEvent.click(openButton)
+    expect(mockOpenDownloadDir).toHaveBeenCalledWith('C:\\Comics')
   })
 })
