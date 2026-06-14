@@ -7,6 +7,7 @@ import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { HistoryItem, PaginationInfo, type ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
+import { useToastStore } from '../stores/useToastStore'
 import { useHistoryStore, type HistoryPageCache } from '../stores/useHistoryStore'
 import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
@@ -150,6 +151,7 @@ export function HistoryPage() {
       loadHistory(currentPage)
     } catch (err) {
       console.error('Failed to delete history item:', err)
+      useToastStore.getState().error('删除历史记录失败')
     }
   }
 
@@ -165,6 +167,7 @@ export function HistoryPage() {
       loadHistory(1)
     } catch (err) {
       console.error('Failed to clear history:', err)
+      useToastStore.getState().error('清空历史记录失败')
     }
   }
 

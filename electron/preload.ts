@@ -326,6 +326,21 @@ contextBridge.exposeInMainWorld('hcomic', {
     return onChannel(NOTIFICATION_CHANNELS.UPDATE_CHECK_RESULT, callback)
   },
 
+  onFatalError: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.FATAL_ERROR, callback)
+  },
+
+  getDiagnostics: () => {
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_DIAGNOSTICS)
+  },
+
+  writeClipboard: (text: unknown) => {
+    if (typeof text !== 'string' || text.length === 0 || text.length > 2_000_000) {
+      throw new Error('Invalid clipboard text')
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.WRITE_CLIPBOARD, text)
+  },
+
   getTagList: (source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
     if (keyword !== undefined && keyword !== null && typeof keyword !== 'string') throw new Error('Invalid keyword')

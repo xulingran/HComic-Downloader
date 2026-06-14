@@ -1,5 +1,6 @@
 import { useDownloadCommands, useComicDetail } from './useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
+import { useToastStore } from '../stores/useToastStore'
 import type { ComicInfo, DownloadStatus } from '@shared/types'
 
 export function useDownloadHelper() {
@@ -40,6 +41,7 @@ export function useDownloadHelper() {
       return true
     } catch (err) {
       console.error('Download failed:', err)
+      useToastStore.getState().error('下载失败，请重试')
       return false
     }
   }
@@ -73,6 +75,7 @@ export function useDownloadHelper() {
       return taskIds.length > 0
     } catch (err) {
       console.error('Chapter download failed:', err)
+      useToastStore.getState().error('章节下载失败，请重试')
       return false
     }
   }
@@ -83,6 +86,7 @@ export function useDownloadHelper() {
       updateTask(taskId, { status: 'pausing' as DownloadStatus })
     } catch (err) {
       console.error('Failed to pause task:', err)
+      useToastStore.getState().error('暂停任务失败')
     }
   }
 
@@ -92,6 +96,7 @@ export function useDownloadHelper() {
       updateTask(taskId, { status: 'queued' as DownloadStatus })
     } catch (err) {
       console.error('Failed to resume task:', err)
+      useToastStore.getState().error('恢复任务失败')
     }
   }
 
@@ -101,6 +106,7 @@ export function useDownloadHelper() {
       updateTask(taskId, { status: 'queued' as DownloadStatus, progress: 0, error: undefined })
     } catch (err) {
       console.error('Failed to retry task:', err)
+      useToastStore.getState().error('重试任务失败')
     }
   }
 
@@ -110,6 +116,7 @@ export function useDownloadHelper() {
       setGlobalPaused(result.isPaused)
     } catch (err) {
       console.error('Failed to toggle global pause:', err)
+      useToastStore.getState().error('切换全局暂停失败')
     }
   }
 

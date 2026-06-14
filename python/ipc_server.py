@@ -7,14 +7,37 @@ import sys
 import threading
 from concurrent.futures import Future as _ConcurrentFuture
 from concurrent.futures import ThreadPoolExecutor
+from logging.handlers import RotatingFileHandler
 
 # Add project root to sys.path so we can import existing modules
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _PROJECT_ROOT not in sys.path:
     sys.path.insert(0, _PROJECT_ROOT)
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+# 日志配置：stderr（供 Electron 捕获）+ 文件双写（方案 A1）。
+# 文件副本确保后端崩溃时已刷盘的日志不丢失；与 Electron 日志共用同一目录。
+_CONFIG_DIR = os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
+LOG_DIR = os.path.join(_CONFIG_DIR, "logs")
+os.makedirs(LOG_DIR, exist_ok=True)
+
+_LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+_file_handler = RotatingFileHandler(
+    os.path.join(LOG_DIR, "python.log"),
+    maxBytes=5 * 1024 * 1024,
+    backupCount=2,
+    encoding="utf-8",
+)
+_file_handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+
+logging.basicConfig(
+    level=logging.INFO,
+    format=_LOG_FORMAT,
+    handlers=[logging.StreamHandler(), _file_handler],
+)
 logger = logging.getLogger(__name__)
+
+# 会话起始标记：诊断报告据此截取本次启动后的日志，避免历史累积干扰
+logger.info("[session-start] python backend started")
 
 # Re-export names used by test files:
 #   tests/test_ipc_config_mapping.py -> CONFIG_KEY_MAP
@@ -140,6 +163,8 @@ class IPCServer(
             self._preview_executor.shutdown(cancel_futures=True, wait=False)
             raise
         self._stdout_lock = threading.Lock()
+        # 序列化 config 写入：避免并发 set_config 同时 os.replace 同一文件导致 WinError 5
+        self._config_write_lock = threading.Lock()
         self._cover_cache = CoverCacheDB(
             max_size_mb=getattr(self.config, "preview_cache_size_limit_mb", 500),
         )
