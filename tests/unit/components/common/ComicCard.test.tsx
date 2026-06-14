@@ -289,4 +289,82 @@ describe('ComicCard', () => {
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
   })
+
+  describe('推荐标签高亮 (isRecommended / recommendedTags)', () => {
+    it('CoverCard: isRecommended 添加左侧琥珀色边框', () => {
+      const { container } = render(
+        <ComicCard comic={mockComic} isRecommended={true} />
+      )
+      const card = container.firstElementChild as HTMLElement
+      expect(card.className).toContain('border-l-2')
+      expect(card.className).toContain('border-l-amber-400/70')
+    })
+
+    it('CoverCard: 未推荐时不显示边框', () => {
+      const { container } = render(<ComicCard comic={mockComic} />)
+      const card = container.firstElementChild as HTMLElement
+      expect(card.className).not.toContain('border-l-amber-400/70')
+    })
+
+    it('DetailedCard: isRecommended 添加左侧琥珀色边框', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR', '魔法少女'] }
+      const { container } = render(<ComicCard comic={comic} isRecommended={true} />)
+      const row = container.firstElementChild as HTMLElement
+      expect(row.className).toContain('border-l-2')
+      expect(row.className).toContain('border-l-amber-400/70')
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+
+    it('DetailedCard: selected 状态下不叠加推荐边框（选中样式优先）', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
+      const { container } = render(
+        <ComicCard comic={comic} isRecommended={true} batchMode={true} selected={true} />
+      )
+      const row = container.firstElementChild as HTMLElement
+      // selected 分支不渲染 amber 边框，而是 accent
+      expect(row.className).not.toContain('border-l-amber-400/70')
+      expect(row.className).toContain('border-l-[var(--accent)]')
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+
+    it('DetailedCard: 命中 recommendedTags 的标签使用琥珀色样式', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR', '魔法少女'] }
+      render(
+        <ComicCard
+          comic={comic}
+          recommendedTags={new Set(['ntr'])}
+        />
+      )
+      // NTR 命中 -> amber 样式
+      const ntrPill = screen.getByText('NTR').closest('span')!
+      expect(ntrPill.className).toContain('bg-amber-500/15')
+      expect(ntrPill.className).toContain('text-amber-600')
+      // 魔法少女 未命中 -> 默认 accent 样式
+      const normalPill = screen.getByText('魔法少女').closest('span')!
+      expect(normalPill.className).not.toContain('bg-amber-500/15')
+      expect(normalPill.className).toContain('bg-[var(--accent)]/10')
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+
+    it('DetailedCard: recommendedTags 匹配不区分大小写', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
+      render(<ComicCard comic={comic} recommendedTags={new Set(['ntr'])} />)
+      const pill = screen.getByText('NTR').closest('span')!
+      expect(pill.className).toContain('bg-amber-500/15')
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+
+    it('DetailedCard: 无 recommendedTags 时所有标签使用默认样式', () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
+      render(<ComicCard comic={comic} />)
+      const pill = screen.getByText('NTR').closest('span')!
+      expect(pill.className).not.toContain('bg-amber-500/15')
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+  })
 })
