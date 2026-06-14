@@ -136,11 +136,24 @@ export function DownloadPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-[var(--text-primary)]">
+      <div className="flex items-center gap-3">
+        <h2 className="text-lg font-semibold text-[var(--text-primary)] flex-shrink-0">
           下载管理
         </h2>
-        <div className="flex gap-2">
+        {downloadDir && (
+          <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] bg-[var(--bg-primary)] rounded-lg px-3 py-1.5 border border-[var(--border)] min-w-0">
+            <span className="text-[var(--text-secondary)] flex-shrink-0">📂 下载目录:</span>
+            <span className="truncate" title={downloadDir}>{downloadDir}</span>
+            <button
+              onClick={handleOpenDir}
+              className="px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                         text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] whitespace-nowrap transition-colors flex-shrink-0"
+            >
+              打开
+            </button>
+          </div>
+        )}
+        <div className="flex gap-2 flex-shrink-0 ml-auto">
           {tasks.length > 0 && (
             <select
               value={statusFilter}
@@ -172,19 +185,6 @@ export function DownloadPage() {
         </div>
       </div>
 
-      {downloadDir && (
-        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] bg-[var(--bg-primary)] rounded-lg px-3 py-2 border border-[var(--border)]">
-          <span className="text-[var(--text-secondary)]">📂 下载目录:</span>
-          <span className="truncate flex-1" title={downloadDir}>{downloadDir}</span>
-          <button
-            onClick={handleOpenDir}
-            className="px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
-                       text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] whitespace-nowrap transition-colors"
-          >
-            打开
-          </button>
-        </div>
-      )}
 
 
 
