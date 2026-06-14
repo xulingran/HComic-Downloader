@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
@@ -21,6 +21,11 @@ export function ComicInfoDrawer() {
   const [favouritesState, setFavouritesState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [favToastMessage, setFavToastMessage] = useState('')
   const [showFavToast, setShowFavToast] = useState(false)
+  // Tag 点击不关闭抽屉（多选搜索），用独立 toast 提示已加入搜索；
+  // 用 ref 持有计时器，支持连续点击多个 tag 时重置计时。
+  const [tagToastMessage, setTagToastMessage] = useState('')
+  const [showTagToast, setShowTagToast] = useState(false)
+  const tagToastTimerRef = useRef<number>(0)
   const [enrichedComic, setEnrichedComic] = useState<ComicInfo | null>(null)
   const [drawerFavTags, setDrawerFavTags] = useState<{ tag: string; count: number }[]>([])
 
@@ -131,6 +136,20 @@ export function ComicInfoDrawer() {
     closeDrawer()
   }
 
+  // 点击 tag 加入搜索但不关闭抽屉，方便用户多选 tag 连续搜索。
+  // parodies/characters/author 等替换式搜索仍走 handleSearch（关闭抽屉）。
+  const handleTagSearch = (tag: string) => {
+    setPendingSearch(tag, 'tag', true)
+    setTagToastMessage(`已加入搜索：${tag}`)
+    setShowTagToast(true)
+    clearTimeout(tagToastTimerRef.current)
+    tagToastTimerRef.current = window.setTimeout(() => setShowTagToast(false), 3000)
+  }
+
+  useEffect(() => {
+    return () => clearTimeout(tagToastTimerRef.current)
+  }, [])
+
   const handleToggleFavourites = async () => {
     if (!drawerComic?.id || favouritesState === 'loading') return
     const isFavourited = favouritesState === 'success'
@@ -177,6 +196,11 @@ export function ComicInfoDrawer() {
         message={favToastMessage}
         visible={showFavToast}
         onDismiss={() => setShowFavToast(false)}
+      />
+      <Toast
+        message={tagToastMessage}
+        visible={showTagToast}
+        onDismiss={() => setShowTagToast(false)}
       />
       <div
         className={`absolute inset-0 transition-opacity duration-300 ${
@@ -333,7 +357,7 @@ export function ComicInfoDrawer() {
                   return (
                     <span key={i} className="relative group">
                       <button
-                        onClick={() => handleSearch(tag, 'tag', true)}
+                        onClick={() => handleTagSearch(tag)}
                         className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
                           blocked
                             ? 'bg-[var(--error)]/10 text-[var(--error)] line-through opacity-60'
