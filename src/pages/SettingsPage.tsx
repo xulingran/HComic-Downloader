@@ -94,7 +94,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     { id: 'auth',       label: '认证设置', icon: '🔑' },
     { id: 'proxy',      label: '代理设置', icon: '🔌' },
     { id: 'notification', label: '通知设置', icon: '🔔' },
-    { id: 'cache',      label: '缓存管理', icon: '💾' },
+    { id: 'cache',        label: '缓存管理', icon: '💾' },
+    { id: 'diagnostics',  label: '诊断信息', icon: '🩺' },
   ] as const
 
   const [activeSection, setActiveSection] = useState<string | null>(null)

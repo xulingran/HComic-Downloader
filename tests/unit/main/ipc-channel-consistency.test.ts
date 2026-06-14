@@ -24,7 +24,7 @@ describe('IPC Channel Consistency', () => {
       ).toBeDefined()
     }
 
-    const knownNonPython = ['open-external', 'select-directory', 'open-login-window', 'check', 'get-diagnostics']
+    const knownNonPython = ['open-external', 'select-directory', 'open-login-window', 'check', 'get-diagnostics', 'write-clipboard']
     for (const ch of nonPythonChannels) {
       expect(
         knownNonPython,

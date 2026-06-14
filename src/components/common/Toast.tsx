@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-
-export type ToastType = 'info' | 'error' | 'success'
+import type { ToastType } from '../../stores/useToastStore'
 
 interface ToastProps {
   message: string

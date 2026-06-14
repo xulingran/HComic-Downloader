@@ -671,6 +671,8 @@ export interface HcomicAPI {
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   onFatalError(callback: (data: FatalErrorEvent) => void): () => void
   getDiagnostics(): Promise<DiagnosticsReport>
+  /** 将文本写入系统剪贴板（绕开渲染进程的文档焦点限制） */
+  writeClipboard(text: string): Promise<void>
 }
 
 /** Valid search modes — shared between preload and main */
@@ -834,6 +836,7 @@ export const IPC_CHANNELS = {
   SELECT_DIRECTORY: 'select-directory',
   UPDATE_CHECK: 'update:check',
   GET_DIAGNOSTICS: 'log:get-diagnostics',
+  WRITE_CLIPBOARD: 'system:write-clipboard',
 } as const
 
 export const NOTIFICATION_CHANNELS = {

@@ -136,9 +136,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 61 total
+      // 62 total
       const count = handleCalls.length
-      expect(count).toBe(61)
+      expect(count).toBe(62)
     })
 
     it('should call get_config on startup to sync notification settings', () => {

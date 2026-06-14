@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, shell, crashReporter } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, crashReporter } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
@@ -815,6 +815,12 @@ function registerSystemHandlers(bridge: Bridge) {
 
   ipcMain.handle(IPC_CHANNELS.GET_DIAGNOSTICS, async () => {
     return buildDiagnostics()
+  })
+
+  // 写入系统剪贴板：在主进程执行，绕开渲染进程 navigator.clipboard 对文档焦心的依赖
+  // （window.confirm 后焦点未恢复会抛 "Document is not focused"）。长度上限由 preload 校验。
+  ipcMain.handle(IPC_CHANNELS.WRITE_CLIPBOARD, async (_, text: string) => {
+    clipboard.writeText(text)
   })
 }
 

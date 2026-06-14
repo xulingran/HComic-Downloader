@@ -154,15 +154,10 @@ export class PythonBridge {
     proc.on('error', (err) => {
       if (this.process !== proc) return
       console.error('Failed to start Python process:', err)
+      // 进入 handleProcessFailure 的重启循环。致命横幅仅在 restartCount 达到 MAX_RESTARTS
+      // 时统一由 handleProcessFailure 发出（backend-restart-exceeded），不在每次 error 时弹，
+      // 避免重试期间横幅被反复刷新、最终又被 restart-exceeded 覆盖。
       this.handleProcessFailure(`Python process error: ${err.message}`)
-      // 致命：进程无法启动（如 python.exe 缺失/路径错误）
-      if (!this.isShuttingDown) {
-        this.onFatal?.({
-          message: '后端服务启动失败',
-          detail: err.message,
-          kind: 'backend-spawn',
-        })
-      }
     })
   }
 
