@@ -61,7 +61,6 @@ dist/
 eslint-report*.json
 
 # Internal docs
-openspec/
 docs/plans/
 docs/code-review*.md
 docs/CLAUDE.md
