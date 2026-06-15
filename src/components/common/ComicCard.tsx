@@ -168,14 +168,17 @@ interface ComicCardProps {
   isRecommended?: boolean
   recommendedTags?: Set<string>
   activeDownload?: DownloadProgressData
+  // 仅详细列表卡片展示的 tag 被点击时触发（追加式 tag 搜索）；
+  // 未传入时 tag 保持纯展示。封面卡片不展示 tag，故不使用。
+  onTagClick?: (tag: string) => void
 }
 
-export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, isRecommended, recommendedTags, activeDownload }: ComicCardProps) {
+export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, isRecommended, recommendedTags, activeDownload, onTagClick }: ComicCardProps) {
   const { cardStyle } = useSettingsStore()
   const { openDrawer } = useDrawerStore()
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} onTagClick={onTagClick} />
   }
   return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} />
 }
@@ -242,7 +245,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, recommendedTags, activeDownload }: ComicCardProps & { onOpenDrawer: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, recommendedTags, activeDownload, onTagClick }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
@@ -303,15 +306,25 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
           <div className="flex flex-wrap gap-1 mt-1.5">
             {(showAllTags ? comic.tags : comic.tags.slice(0, 3)).map((tag, i) => {
               const isRecTag = recommendedTags && recommendedTags.has(tag.toLowerCase())
-              return (
-                <span
+              const interactive = Boolean(onTagClick)
+              // hover 色匹配各自底色，与详情抽屉的 tag 样式保持一致
+              const tagClass = `text-[10px] px-1.5 py-0.5 rounded-full ${
+                isRecTag
+                  ? `bg-amber-500/15 text-amber-600${interactive ? ' hover:bg-amber-500/25 transition-colors' : ''}`
+                  : `bg-[var(--accent)]/10 text-[var(--accent)]${interactive ? ' hover:bg-[var(--accent)]/20 transition-colors' : ''}`
+              }${interactive ? ' cursor-pointer' : ''}`
+              // 可点击时渲染为 button（触发追加式 tag 搜索）；
+              // 未传 onTagClick 时保持 span 纯展示（如收藏/历史页）。
+              return interactive ? (
+                <button
                   key={i}
-                  className={`text-[10px] px-1.5 py-0.5 rounded-full ${
-                    isRecTag
-                      ? 'bg-amber-500/15 text-amber-600'
-                      : 'bg-[var(--accent)]/10 text-[var(--accent)]'
-                  }`}
+                  onClick={(e) => { e.stopPropagation(); onTagClick!(tag) }}
+                  className={tagClass}
                 >
+                  {tag}
+                </button>
+              ) : (
+                <span key={i} className={tagClass}>
                   {tag}
                 </span>
               )

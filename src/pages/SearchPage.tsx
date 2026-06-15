@@ -638,6 +638,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
                 isRecommended={isRecommended}
                 recommendedTags={recommendedTags}
                 activeDownload={activeDownloadMap.get(comic.id)}
+                // 详细列表下 tag 可点击触发追加式 tag 搜索（仅支持 tag 搜索的来源）
+                onTagClick={sourceSupportsTagList(source) ? handleToggleTag : undefined}
               />
             )
           ))}

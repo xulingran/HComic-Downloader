@@ -367,4 +367,56 @@ describe('ComicCard', () => {
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
   })
+
+  describe('DetailedCard tag 点击搜索 (onTagClick)', () => {
+    beforeEach(() => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+    })
+
+    afterEach(() => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+
+    it('传入 onTagClick 时 tag 渲染为 button 且可点击触发回调', async () => {
+      const onTagClick = vi.fn()
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR', '魔法少女'] }
+      render(<ComicCard comic={comic} onTagClick={onTagClick} />)
+
+      const tagBtn = screen.getByRole('button', { name: 'NTR' })
+      expect(tagBtn.tagName).toBe('BUTTON')
+      expect(tagBtn.className).toContain('cursor-pointer')
+      await userEvent.click(tagBtn)
+      expect(onTagClick).toHaveBeenCalledWith('NTR')
+    })
+
+    it('点击 tag 不冒泡到卡片 onClick（stopPropagation）', async () => {
+      const onTagClick = vi.fn()
+      const onClick = vi.fn()
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
+      render(<ComicCard comic={comic} onTagClick={onTagClick} onClick={onClick} />)
+
+      await userEvent.click(screen.getByRole('button', { name: 'NTR' }))
+      expect(onTagClick).toHaveBeenCalledOnce()
+      expect(onClick).not.toHaveBeenCalled()
+    })
+
+    it('未传入 onTagClick 时 tag 保持纯展示 span（如收藏/历史页）', () => {
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
+      render(<ComicCard comic={comic} />)
+      const pill = screen.getByText('NTR')
+      expect(pill.tagName).toBe('SPAN')
+      expect(pill.className).not.toContain('cursor-pointer')
+    })
+
+    it('可点击时推荐标签的 hover 色与琥珀底色匹配（与抽屉一致）', () => {
+      const onTagClick = vi.fn()
+      const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
+      render(<ComicCard comic={comic} onTagClick={onTagClick} recommendedTags={new Set(['ntr'])} />)
+      const pill = screen.getByRole('button', { name: 'NTR' })
+      // 琥珀底色 + 琥珀 hover（而非 accent hover）
+      expect(pill.className).toContain('bg-amber-500/15')
+      expect(pill.className).toContain('hover:bg-amber-500/25')
+      expect(pill.className).not.toContain('hover:bg-[var(--accent)]/20')
+    })
+  })
 })
