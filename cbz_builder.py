@@ -256,6 +256,11 @@ class CBZBuilder:
             characters_str = ", ".join(str(c) for c in comic.characters if c)
             self._add_element(root, "Characters", characters_str)
 
+        # 制作组
+        if comic.groups:
+            groups_str = ", ".join(str(g) for g in comic.groups if g)
+            self._add_element(root, "Groups", groups_str)
+
         # 页数
         if comic.pages > 0:
             self._add_element(root, "PageCount", str(comic.pages))
@@ -589,6 +594,7 @@ class CBZBuilder:
                     tags=comic.tags,
                     parodies=comic.parodies,
                     characters=comic.characters,
+                    groups=comic.groups,
                     publish_date=comic.publish_date,
                     source_site=comic.source_site,
                     comic_source=comic.comic_source,

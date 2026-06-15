@@ -347,6 +347,24 @@ export function ComicInfoDrawer() {
             </div>
           )}
 
+          {displayComic?.groups && displayComic.groups.length > 0 && (
+            <div>
+              <span className="text-xs text-[var(--text-secondary)]">制作组</span>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {displayComic.groups.map((group, i) => (
+                  <span key={i} className="relative group">
+                    <button
+                      onClick={() => handleSearch(group, 'tag')}
+                      className="text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                    >
+                      {group}
+                    </button>
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {displayComic?.tags && displayComic.tags.length > 0 && (
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>

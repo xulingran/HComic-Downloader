@@ -35,6 +35,9 @@ interface ConfigState {
   moeimgUsername: string
   bikaUsername?: string
   hcomicUsername?: string
+  previewPreloadForward: number
+  previewPreloadBackward: number
+  previewPreloadConcurrency: number
 }
 
 interface SettingsPageProps {
@@ -72,6 +75,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     moeimgUsername: '',
     bikaUsername: '',
     hcomicUsername: '',
+    previewPreloadForward: 8,
+    previewPreloadBackward: 2,
+    previewPreloadConcurrency: 3,
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -133,6 +139,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           moeimgUsername: result.config.moeimgUsername ?? '',
           bikaUsername: result.config.bikaUsername ?? '',
           hcomicUsername: result.config.hcomicUsername ?? '',
+          previewPreloadForward: result.config.previewPreloadForward ?? 8,
+          previewPreloadBackward: result.config.previewPreloadBackward ?? 2,
+          previewPreloadConcurrency: result.config.previewPreloadConcurrency ?? 3,
         })
         setJmcomicDomainInput(result.config.jmcomicDomain ?? '')
         setJmcomicDomainMode(result.config.jmcomicDomain ? 'custom' : 'auto')
@@ -552,6 +561,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         <CacheSettings
           sizeLimitMB={config.previewCacheSizeLimitMB}
           onSizeLimitChange={(mb) => handleConfigChange('previewCacheSizeLimitMB', mb)}
+          previewPreloadForward={config.previewPreloadForward}
+          previewPreloadBackward={config.previewPreloadBackward}
+          previewPreloadConcurrency={config.previewPreloadConcurrency}
+          onConfigChange={handleConfigChange}
         />
       </div>
 

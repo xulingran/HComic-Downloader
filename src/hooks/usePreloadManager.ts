@@ -57,6 +57,9 @@ export function usePreloadManager(
   scrambleId?: string,
   comicId?: string,
   imageQuality?: string,
+  forward = 8,
+  backward = 2,
+  concurrency = 3,
 ) {
   const imageCacheRef = useRef(new Map<number, string>())
   const [cacheVersion, setCacheVersion] = useState(0)
@@ -76,9 +79,9 @@ export function usePreloadManager(
     if (preloadTarget == null || loadingState !== 'loaded') return
     let cancelled = false
     const cache = imageCacheRef.current
-    const FORWARD = 8
-    const BACKWARD = 2
-    const CONCURRENCY = 3
+    const FORWARD = forward
+    const BACKWARD = backward
+    const CONCURRENCY = concurrency
     const queue: number[] = []
 
     for (let i = 1; i <= FORWARD; i++) {
@@ -143,7 +146,7 @@ export function usePreloadManager(
     return () => {
       cancelled = true
     }
-  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId, imageQuality])
+  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId, imageQuality, forward, backward, concurrency])
 
   return {
     imageCacheRef,

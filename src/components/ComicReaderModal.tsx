@@ -40,6 +40,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const [blankPosition, setBlankPosition] = useState<BlankPosition>('none')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [bikaImageQuality, setBikaImageQuality] = useState<string>('original')
+  const [preloadForward, setPreloadForward] = useState(8)
+  const [preloadBackward, setPreloadBackward] = useState(2)
+  const [preloadConcurrency, setPreloadConcurrency] = useState(3)
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
   const { mounted, visible, handleTransitionEnd } = useModalAnimation(open)
 
@@ -50,7 +53,16 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     preloadTarget,
     setPreloadTarget,
     clearCache,
-  } = usePreloadManager(imageUrls, loadingState, scrambleId, comicId, comic?.sourceSite === 'bika' ? bikaImageQuality : undefined)
+  } = usePreloadManager(
+    imageUrls,
+    loadingState,
+    scrambleId,
+    comicId,
+    comic?.sourceSite === 'bika' ? bikaImageQuality : undefined,
+    preloadForward,
+    preloadBackward,
+    preloadConcurrency,
+  )
 
   const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
   const {
@@ -81,8 +93,12 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   useEffect(() => {
     window.hcomic?.getConfig().then((result) => {
-      const q = result.config?.bikaImageQuality
+      const cfg = result.config
+      const q = cfg?.bikaImageQuality
       if (typeof q === 'string') setBikaImageQuality(q)
+      if (typeof cfg?.previewPreloadForward === 'number') setPreloadForward(cfg.previewPreloadForward)
+      if (typeof cfg?.previewPreloadBackward === 'number') setPreloadBackward(cfg.previewPreloadBackward)
+      if (typeof cfg?.previewPreloadConcurrency === 'number') setPreloadConcurrency(cfg.previewPreloadConcurrency)
     }).catch(() => {})
   }, [])
 

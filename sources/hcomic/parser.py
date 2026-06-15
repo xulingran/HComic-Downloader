@@ -950,6 +950,9 @@ class HComicParser(ParserContextMixin):
         # 提取角色
         character_names = [t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "character"]
 
+        # 提取制作组
+        group_names = [t.get("name_zh") or t.get("name") for t in tags if t.get("type") == "group"]
+
         # 构建 URL
         preview_url, _ = self._build_book_urls(data)
 
@@ -968,6 +971,7 @@ class HComicParser(ParserContextMixin):
             tags=[tag for tag in tag_names if tag],
             parodies=[p for p in parody_names if p],
             characters=[c for c in character_names if c],
+            groups=[g for g in group_names if g],
             publish_date=self._format_public_date(data.get("upload_date")),
             cover_url=cover_url,
             preview_url=preview_url,

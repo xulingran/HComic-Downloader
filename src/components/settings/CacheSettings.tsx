@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import type { CacheStats } from '@shared/types'
+import type { CacheStats, ConfigKey } from '@shared/types'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -11,9 +11,20 @@ function formatSize(bytes: number): string {
 interface CacheSettingsProps {
   onSizeLimitChange: (mb: number) => void
   sizeLimitMB: number
+  previewPreloadForward: number
+  previewPreloadBackward: number
+  previewPreloadConcurrency: number
+  onConfigChange: (key: ConfigKey, value: unknown) => void
 }
 
-export function CacheSettings({ onSizeLimitChange, sizeLimitMB }: CacheSettingsProps) {
+export function CacheSettings({
+  onSizeLimitChange,
+  sizeLimitMB,
+  previewPreloadForward,
+  previewPreloadBackward,
+  previewPreloadConcurrency,
+  onConfigChange,
+}: CacheSettingsProps) {
   const [stats, setStats] = useState<CacheStats | null>(null)
   const [loading, setLoading] = useState(true)
   const [clearing, setClearing] = useState<'preview' | 'all' | null>(null)
@@ -171,6 +182,56 @@ export function CacheSettings({ onSizeLimitChange, sizeLimitMB }: CacheSettingsP
                     bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]"
                 />
                 <span className="text-sm text-[var(--text-secondary)]">MB</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--border)] pt-4">
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-1">
+              预览预加载
+            </label>
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
+              阅读器在当前页前后提前拉取的图片数量，数值越大翻页越流畅但更占带宽
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm text-[var(--text-primary)] mb-2">
+                  向前预加载页数 ({previewPreloadForward})
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={30}
+                  value={previewPreloadForward}
+                  onChange={(e) => onConfigChange('previewPreloadForward', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[var(--text-primary)] mb-2">
+                  向后预加载页数 ({previewPreloadBackward})
+                </label>
+                <input
+                  type="range"
+                  min={0}
+                  max={10}
+                  value={previewPreloadBackward}
+                  onChange={(e) => onConfigChange('previewPreloadBackward', parseInt(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-[var(--text-primary)] mb-2">
+                  并发加载数 ({previewPreloadConcurrency})
+                </label>
+                <input
+                  type="range"
+                  min={1}
+                  max={6}
+                  value={previewPreloadConcurrency}
+                  onChange={(e) => onConfigChange('previewPreloadConcurrency', parseInt(e.target.value))}
+                  className="w-full"
+                />
               </div>
             </div>
           </div>

@@ -74,6 +74,10 @@ class Config:
     check_update_on_start: bool = True
     # Bika 图片清晰度（预览用，下载始终使用 original）
     bika_image_quality: str = "original"  # "low" | "medium" | "high" | "original"
+    # 预览预加载页数：阅读器在当前页前后提前拉取的图片数量
+    preview_preload_forward: int = 8  # 向前（当前页之后）预加载页数，0 表示禁用
+    preview_preload_backward: int = 2  # 向后（当前页之前）预加载页数
+    preview_preload_concurrency: int = 3  # 预加载并发 worker 数
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
@@ -123,6 +127,9 @@ class Config:
             ("timeout", *self.TIMEOUT_RANGE, 30),
             ("retry_times", *self.RETRY_RANGE, 3),
             ("preview_cache_size_limit_mb", 100, 2048, 500),
+            ("preview_preload_forward", 0, 30, 8),
+            ("preview_preload_backward", 0, 10, 2),
+            ("preview_preload_concurrency", 1, 6, 3),
         ]:
             try:
                 setattr(self, attr, max(lo, min(hi, int(getattr(self, attr)))))

@@ -58,6 +58,7 @@ class SearchMixin:
             "tags": comic.tags if hasattr(comic, "tags") else [],
             "parodies": comic.parodies if hasattr(comic, "parodies") else [],
             "characters": comic.characters if hasattr(comic, "characters") else [],
+            "groups": comic.groups if hasattr(comic, "groups") else [],
             "author": comic.author if hasattr(comic, "author") else None,
             "pages": comic.pages if hasattr(comic, "pages") else None,
             "chapters": [
@@ -91,6 +92,7 @@ class SearchMixin:
             tags=data.get("tags") or [],
             parodies=data.get("parodies") or [],
             characters=data.get("characters") or [],
+            groups=data.get("groups") or [],
             author=data.get("author"),
             album_id=data.get("albumId", ""),
             album_total_chapters=data.get("albumTotalChapters") or 1,

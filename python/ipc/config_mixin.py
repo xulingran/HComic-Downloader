@@ -122,6 +122,9 @@ class ConfigMixin:
             "favourite_tag_min_matches": getattr(self.config, "favourite_tag_min_matches", 1),
             "check_update_on_start": getattr(self.config, "check_update_on_start", True),
             "bika_image_quality": getattr(self.config, "bika_image_quality", "original"),
+            "preview_preload_forward": getattr(self.config, "preview_preload_forward", 8),
+            "preview_preload_backward": getattr(self.config, "preview_preload_backward", 2),
+            "preview_preload_concurrency": getattr(self.config, "preview_preload_concurrency", 3),
         }
         config = {}
         for snake_key, value in raw.items():

@@ -16,6 +16,7 @@ export interface ComicInfo {
   tags?: string[]
   parodies?: string[]
   characters?: string[]
+  groups?: string[]
   author?: string
   pages?: number
   chapters?: ChapterInfo[]
@@ -99,6 +100,9 @@ export interface AppConfig {
   favouriteTagMinMatches?: number
   checkUpdateOnStart?: boolean
   bikaImageQuality?: string
+  previewPreloadForward?: number
+  previewPreloadBackward?: number
+  previewPreloadConcurrency?: number
 }
 
 export type TagBlacklist = Record<ComicSource, string[]>
@@ -210,6 +214,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
   | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
   | 'bikaImageQuality'
+  | 'previewPreloadForward' | 'previewPreloadBackward' | 'previewPreloadConcurrency'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -235,6 +240,9 @@ export type ConfigValueMap = {
   favouriteTagMinMatches: number
   checkUpdateOnStart: boolean
   bikaImageQuality: string
+  previewPreloadForward: number
+  previewPreloadBackward: number
+  previewPreloadConcurrency: number
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -864,4 +872,5 @@ export const CONFIG_KEYS = [
   'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'previewCacheSizeLimitMB',
   'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
   'bikaImageQuality',
+  'previewPreloadForward', 'previewPreloadBackward', 'previewPreloadConcurrency',
 ] as const

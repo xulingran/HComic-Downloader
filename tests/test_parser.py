@@ -59,6 +59,8 @@ class TestHComicParser:
                 {"type": "category", "name_zh": "分类B"},
                 {"type": "tag", "name": "标签C"},
                 {"type": "tag", "name_zh": "中文标签"},
+                {"type": "group", "name": "制作组D"},
+                {"type": "group", "name_zh": "中文制作组"},
             ],
             "upload_date": 1704067200,
         }
@@ -70,6 +72,8 @@ class TestHComicParser:
         assert comic.category == "分类B"
         assert "标签C" in comic.tags
         assert "中文标签" in comic.tags
+        assert "制作组D" in comic.groups
+        assert "中文制作组" in comic.groups
         assert comic.publish_date == "2024-01-01"
 
     def test_parse_comic_item_minimal_data(self, parser):

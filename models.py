@@ -44,6 +44,7 @@ class ComicInfo:
         category: 分类
         tags: 标签列表
         publish_date: 发布日期 (YYYY-MM-DD)
+        groups: 制作组列表 (hcomic tag type=group)
         cover_url: 封面图 URL
         preview_url: 详情页 URL
         media_id: 媒体 ID (用于图片 URL)
@@ -60,6 +61,7 @@ class ComicInfo:
     tags: list[str] = field(default_factory=list)
     parodies: list[str] = field(default_factory=list)
     characters: list[str] = field(default_factory=list)
+    groups: list[str] = field(default_factory=list)
     publish_date: str | None = None
     cover_url: str | None = None
     preview_url: str = ""

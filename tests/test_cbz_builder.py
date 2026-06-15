@@ -20,6 +20,9 @@ class TestCBZBuilder:
             pages=3,
             category="漫画分类",
             tags=["标签1", "标签2", "标签3"],
+            parodies=["原著A"],
+            characters=["角色B"],
+            groups=["制作组C"],
             publish_date="2024-01-15",
         )
 
@@ -66,6 +69,9 @@ class TestCBZBuilder:
         assert "<Writer>测试作者Author</Writer>" in xml_content
         assert "<Genre>漫画分类</Genre>" in xml_content
         assert "<Tags>标签1, 标签2, 标签3</Tags>" in xml_content
+        assert "<Notes>Parodies: 原著A</Notes>" in xml_content
+        assert "<Characters>角色B</Characters>" in xml_content
+        assert "<Groups>制作组C</Groups>" in xml_content
         assert "<PageCount>3</PageCount>" in xml_content
         assert "<Year>2024</Year>" in xml_content
         assert "<Month>01</Month>" in xml_content
