@@ -38,6 +38,7 @@ interface ConfigState {
   previewPreloadForward: number
   previewPreloadBackward: number
   previewPreloadConcurrency: number
+  previewPreloadAdaptive: boolean
 }
 
 interface SettingsPageProps {
@@ -78,6 +79,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     previewPreloadForward: 8,
     previewPreloadBackward: 2,
     previewPreloadConcurrency: 3,
+    previewPreloadAdaptive: false,
   })
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -142,6 +144,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           previewPreloadForward: result.config.previewPreloadForward ?? 8,
           previewPreloadBackward: result.config.previewPreloadBackward ?? 2,
           previewPreloadConcurrency: result.config.previewPreloadConcurrency ?? 3,
+          previewPreloadAdaptive: result.config.previewPreloadAdaptive ?? false,
         })
         setJmcomicDomainInput(result.config.jmcomicDomain ?? '')
         setJmcomicDomainMode(result.config.jmcomicDomain ? 'custom' : 'auto')
@@ -564,6 +567,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           previewPreloadForward={config.previewPreloadForward}
           previewPreloadBackward={config.previewPreloadBackward}
           previewPreloadConcurrency={config.previewPreloadConcurrency}
+          previewPreloadAdaptive={config.previewPreloadAdaptive}
           onConfigChange={handleConfigChange}
         />
       </div>

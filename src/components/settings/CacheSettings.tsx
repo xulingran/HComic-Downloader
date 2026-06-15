@@ -14,6 +14,7 @@ interface CacheSettingsProps {
   previewPreloadForward: number
   previewPreloadBackward: number
   previewPreloadConcurrency: number
+  previewPreloadAdaptive: boolean
   onConfigChange: (key: ConfigKey, value: unknown) => void
 }
 
@@ -23,6 +24,7 @@ export function CacheSettings({
   previewPreloadForward,
   previewPreloadBackward,
   previewPreloadConcurrency,
+  previewPreloadAdaptive,
   onConfigChange,
 }: CacheSettingsProps) {
   const [stats, setStats] = useState<CacheStats | null>(null)
@@ -194,8 +196,20 @@ export function CacheSettings({
               阅读器在当前页前后提前拉取的图片数量，数值越大翻页越流畅但更占带宽
             </p>
             <div className="space-y-4">
+              <label className="flex items-center gap-2 text-sm text-[var(--text-primary)] cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={previewPreloadAdaptive}
+                  onChange={(e) => onConfigChange('previewPreloadAdaptive', e.target.checked)}
+                  className="accent-[var(--accent)]"
+                />
+                <span>自适应预加载</span>
+                <span className="text-xs text-[var(--text-secondary)]">
+                  （按翻页速度自动放大；上方数值作为基线）
+                </span>
+              </label>
               <div>
-                <label className="block text-sm text-[var(--text-primary)] mb-2">
+                <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
                   向前预加载页数 ({previewPreloadForward})
                 </label>
                 <input
