@@ -49,3 +49,48 @@ export function computeAdaptiveParams(
     alternation: false,
   }
 }
+
+/**
+ * 构造预加载页号队列（1-based）。
+ * - alternation=false：顺序 [target+1..target+forward] 后接 [target-1..target-backward]
+ * - alternation=true：远近交替，近页游标从 1、远页游标从 ceil(forward/2) 起，交替取，
+ *   保证即将到达的远页在翻页追上之前落袋。
+ * 全程跳过已缓存（0-based 索引集合）与越界页，返回去重后的数组。
+ */
+export function buildPreloadQueue(
+  target: number,
+  forward: number,
+  backward: number,
+  total: number,
+  cached: Set<number>,
+  alternation: boolean,
+): number[] {
+  const result: number[] = []
+  const seen = new Set<number>()
+  const pushIfValid = (page: number) => {
+    if (page < 1 || page > total) return
+    if (cached.has(page - 1)) return
+    if (seen.has(page)) return
+    seen.add(page)
+    result.push(page)
+  }
+
+  if (alternation && forward > 0) {
+    let nearCursor = 1
+    let farCursor = Math.ceil(forward / 2)
+    while (nearCursor <= forward || farCursor <= forward) {
+      if (nearCursor <= forward) {
+        pushIfValid(target + nearCursor)
+        nearCursor++
+      }
+      if (farCursor <= forward) {
+        pushIfValid(target + farCursor)
+        farCursor++
+      }
+    }
+  } else {
+    for (let i = 1; i <= forward; i++) pushIfValid(target + i)
+  }
+  for (let i = 1; i <= backward; i++) pushIfValid(target - i)
+  return result
+}

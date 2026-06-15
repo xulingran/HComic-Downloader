@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { computeAdaptiveParams, FAST_MS, SLOW_MS } from '@/hooks/adaptive-preload'
+import { computeAdaptiveParams, buildPreloadQueue, FAST_MS, SLOW_MS } from '@/hooks/adaptive-preload'
 
 describe('computeAdaptiveParams', () => {
   const base = { forward: 8, concurrency: 3 }
@@ -53,5 +53,56 @@ describe('computeAdaptiveParams', () => {
     expect(computeAdaptiveParams(FAST_MS, { forward: 0, concurrency: 3 })).toEqual({
       forward: 0, concurrency: 5, alternation: true,
     })
+  })
+})
+
+describe('buildPreloadQueue', () => {
+  it('sequential order when alternation is false', () => {
+    expect(buildPreloadQueue(10, 4, 2, 20, new Set(), false)).toEqual(
+      [11, 12, 13, 14, 9, 8],
+    )
+  })
+
+  it('alternation interleaves near and far pages, first is target+1', () => {
+    const seq = buildPreloadQueue(10, 4, 0, 20, new Set(), true)
+    // 算法定义：nearCursor 1→，farCursor ceil(4/2)=2→，交替取，超出 forward 停
+    // 第一个必为近页 target+1
+    expect(seq[0]).toBe(11)
+    // 无重复
+    expect(new Set(seq).size).toBe(seq.length)
+    // 全部在 [11, 14] 内
+    expect(seq.every((p) => p >= 11 && p <= 14)).toBe(true)
+  })
+
+  it('alternation with forward=12 produces interleaved sequence', () => {
+    const seq = buildPreloadQueue(50, 12, 0, 100, new Set(), true)
+    // 第一个必为近页 target+1，第二个为远页
+    expect(seq[0]).toBe(51)
+    expect(seq[1]).toBe(56) // farCursor 起点 = ceil(12/2) = 6
+    // 不含重复
+    expect(new Set(seq).size).toBe(seq.length)
+    // 全部在 [51, 62] 内
+    expect(seq.every((p) => p >= 51 && p <= 62)).toBe(true)
+  })
+
+  it('skips already-cached pages (0-based indices)', () => {
+    // cached 用 0-based：索引 11 = 第 12 页 = target+2
+    const cached = new Set([11]) // 跳过 page 12
+    expect(buildPreloadQueue(10, 4, 0, 20, cached, false)).toEqual([11, 13, 14])
+  })
+
+  it('clamps out-of-range pages', () => {
+    // target=18, total=20, forward=4 → 19,20 (21,22 越界裁剪)
+    expect(buildPreloadQueue(18, 4, 2, 20, new Set(), false)).toEqual([19, 20, 17, 16])
+  })
+
+  it('returns backward-only when forward is 0', () => {
+    expect(buildPreloadQueue(10, 0, 2, 20, new Set(), false)).toEqual([9, 8])
+    expect(buildPreloadQueue(10, 0, 0, 20, new Set(), false)).toEqual([])
+  })
+
+  it('returns empty when all forward targets cached', () => {
+    const cached = new Set([10, 11, 12, 13]) // pages 11-14 全缓存
+    expect(buildPreloadQueue(10, 4, 0, 20, cached, false)).toEqual([])
   })
 })
