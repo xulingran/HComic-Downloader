@@ -152,6 +152,39 @@ class TestCBZBuilder:
             xml_content = zf.read("ComicInfo.xml").decode("utf-8")
         assert "<Web>https://h-comic.com/comic/123</Web>" in xml_content
 
+    def test_comic_info_xml_writer_falls_back_to_group(self, sample_images, tmp_path):
+        """作者缺失时，<Writer> 回退到首个制作组，<Groups> 仍保留全部制作组。"""
+        builder = CBZBuilder()
+        comic = ComicInfo(
+            id="123",
+            title="无作者漫画",
+            author=None,
+            pages=1,
+            groups=["制作组A", "制作组B"],
+        )
+        output_path = tmp_path / "fallback.cbz"
+        builder.build_cbz(sample_images, comic, str(output_path), download_dir=str(tmp_path))
+        with zipfile.ZipFile(output_path, "r") as zf:
+            xml_content = zf.read("ComicInfo.xml").decode("utf-8")
+        assert "<Writer>制作组A</Writer>" in xml_content
+        assert "<Groups>制作组A, 制作组B</Groups>" in xml_content
+
+    def test_comic_info_xml_writer_prefers_author_over_group(self, sample_images, tmp_path):
+        """有作者时不回退，<Writer> 仍为作者。"""
+        builder = CBZBuilder()
+        comic = ComicInfo(
+            id="123",
+            title="有作者漫画",
+            author="真实作者",
+            pages=1,
+            groups=["制作组A"],
+        )
+        output_path = tmp_path / "author.cbz"
+        builder.build_cbz(sample_images, comic, str(output_path), download_dir=str(tmp_path))
+        with zipfile.ZipFile(output_path, "r") as zf:
+            xml_content = zf.read("ComicInfo.xml").decode("utf-8")
+        assert "<Writer>真实作者</Writer>" in xml_content
+
     def test_comic_info_xml_with_minimal_fields(self, sample_images, tmp_path):
         """测试 ComicInfo.xml 只包含非空字段"""
         builder = CBZBuilder()
@@ -267,6 +300,31 @@ class TestGetOutputPath:
         assert "<" not in os.path.basename(path)
         assert ">" not in os.path.basename(path)
 
+    def test_get_output_path_author_falls_back_to_group(self, builder):
+        """作者缺失时，CBZ 文件名用首个制作组兜底而非 unknown。"""
+        comic = ComicInfo(
+            id="789",
+            title="测试漫画",
+            author=None,
+            pages=5,
+            groups=["制作组X"],
+        )
+        path = builder.get_output_path(comic)
+        assert "制作组X-测试漫画" in path
+        assert "unknown" not in path
+
+    def test_get_folder_name_author_falls_back_to_group(self, builder):
+        """作者缺失时，文件夹名同样用首个制作组兜底。"""
+        comic = ComicInfo(
+            id="789",
+            title="测试漫画",
+            author=None,
+            pages=5,
+            groups=["制作组Y"],
+        )
+        folder = builder._generate_folder_name(comic)
+        assert folder == "制作组Y-测试漫画"
+
 
 class TestAlbumCBZ:
     @pytest.fixture
@@ -299,6 +357,19 @@ class TestAlbumCBZ:
         assert "<" not in name
         assert ">" not in name
         assert "/" not in name
+
+    def test_get_album_folder_name_author_falls_back_to_group(self):
+        """专辑作者缺失时，文件夹名用首个制作组兜底。"""
+        comic = ComicInfo(
+            id="1",
+            album_title="My Album",
+            author=None,
+            groups=["制作组Z"],
+            album_total_chapters=2,
+        )
+        builder = CBZBuilder()
+        name = builder.get_album_folder_name(comic)
+        assert name == "制作组Z-My Album"
 
     def test_get_album_output_path_folder(self, album_comic, tmp_path):
         builder = CBZBuilder()

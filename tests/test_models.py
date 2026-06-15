@@ -27,6 +27,26 @@ class TestComicInfo:
         comic = ComicInfo(author=None)
         assert comic.safe_author == "unknown"
 
+    def test_display_author_uses_author_when_present(self):
+        comic = ComicInfo(author="作者名", groups=["制作组"])
+        assert comic.display_author == "作者名"
+        assert comic.safe_display_author == "作者名"
+
+    def test_display_author_falls_back_to_first_group(self):
+        comic = ComicInfo(author=None, groups=["制作组A", "制作组B"])
+        assert comic.display_author == "制作组A"
+        assert comic.safe_display_author == "制作组A"
+
+    def test_display_author_none_when_author_and_groups_empty(self):
+        comic = ComicInfo(author=None, groups=[])
+        assert comic.display_author is None
+        assert comic.safe_display_author == "unknown"
+
+    def test_display_author_falls_back_on_empty_author(self):
+        # author 为空字符串同样视为缺失，回退到首个制作组
+        comic = ComicInfo(author="", groups=["制作组"])
+        assert comic.display_author == "制作组"
+
     def test_get_image_url_mmcg_short(self):
         comic = ComicInfo(id="12345", media_id="abcde", comic_source="MMCG_SHORT")
         assert comic.get_image_url(1) == "https://h-comic.link/api/mms/abcde/pages/1"

@@ -86,6 +86,24 @@ class ComicInfo:
         return sanitize_filename(self.author or "unknown")
 
     @property
+    def display_author(self) -> str | None:
+        """用于落盘（文件名/ComicInfo.xml）的作者名。
+
+        作者缺失时回退到首个制作组，仍缺失返回 None。解析阶段与前端
+        显示仍使用 author 字段，不受此回退影响。
+        """
+        if self.author:
+            return self.author
+        if self.groups:
+            return self.groups[0]
+        return None
+
+    @property
+    def safe_display_author(self) -> str:
+        """获取带制作组兜底的安全作者名（用于文件名）。"""
+        return sanitize_filename(self.display_author or "unknown")
+
+    @property
     def safe_id(self) -> str:
         """获取安全的 ID（用于文件名）"""
         return sanitize_filename(str(self.id))

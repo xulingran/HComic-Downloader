@@ -233,9 +233,9 @@ class CBZBuilder:
             self._add_element(root, "Title", comic.title)
             self._add_element(root, "Series", comic.title)
 
-        # 作者 -> Writer
-        if comic.author:
-            self._add_element(root, "Writer", comic.author)
+        # 作者 -> Writer（作者缺失时回退到首个制作组）
+        if comic.display_author:
+            self._add_element(root, "Writer", comic.display_author)
 
         # 分类 -> Genre
         if comic.category:
@@ -333,7 +333,7 @@ class CBZBuilder:
             输出文件路径
         """
         filename = self.filename_template.format(
-            author=comic.safe_author,
+            author=comic.safe_display_author,
             title=comic.safe_title,
             id=comic.safe_id,
         )
@@ -489,7 +489,7 @@ class CBZBuilder:
         """生成文件夹名称"""
         # 使用文件名模板生成文件夹名（去掉扩展名）
         folder_name = self.filename_template.format(
-            author=comic.safe_author,
+            author=comic.safe_display_author,
             title=comic.safe_title,
             id=comic.safe_id,
         )
@@ -506,7 +506,7 @@ class CBZBuilder:
 
     def get_album_folder_name(self, comic: ComicInfo) -> str:
         """返回 {author}-{album_title}（已清理非法字符）。"""
-        author = comic.safe_author
+        author = comic.safe_display_author
         album_title = sanitize_filename(comic.album_title) if comic.album_title else comic.safe_title
         folder_name = f"{author}-{album_title}"
         folder_name = sanitize_path_chars(folder_name)
@@ -588,7 +588,7 @@ class CBZBuilder:
                 album_comic = ComicInfo(
                     id=comic.album_id or comic.id,
                     title=comic.album_title or comic.title,
-                    author=comic.author,
+                    author=comic.display_author,
                     pages=page_counter,
                     category=comic.category,
                     tags=comic.tags,
