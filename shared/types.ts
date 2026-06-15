@@ -104,6 +104,7 @@ export interface AppConfig {
   previewPreloadForward?: number
   previewPreloadBackward?: number
   previewPreloadConcurrency?: number
+  previewPreloadAdaptive?: boolean
 }
 
 export type TagBlacklist = Record<ComicSource, string[]>
@@ -225,6 +226,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
   | 'bikaImageQuality'
   | 'previewPreloadForward' | 'previewPreloadBackward' | 'previewPreloadConcurrency'
+  | 'previewPreloadAdaptive'
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -254,6 +256,7 @@ export type ConfigValueMap = {
   previewPreloadForward: number
   previewPreloadBackward: number
   previewPreloadConcurrency: number
+  previewPreloadAdaptive: boolean
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
@@ -874,4 +877,5 @@ export const CONFIG_KEYS = [
   'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
   'bikaImageQuality',
   'previewPreloadForward', 'previewPreloadBackward', 'previewPreloadConcurrency',
+  'previewPreloadAdaptive',
 ] as const
