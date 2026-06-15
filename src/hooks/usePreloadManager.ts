@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useFlipPace, computeAdaptiveParams, buildPreloadQueue } from './adaptive-preload'
 
 /**
  * Compute contiguous 1-based page ranges from a set of 0-based cache indices.
@@ -50,6 +51,9 @@ function recomputeRanges(
 /**
  * Manages concurrent preloading of reader page images around a jump target.
  * Uses a worker-pool pattern to fetch multiple pages in parallel.
+ *
+ * 可选 adaptive 参数开启自适应预加载：按近期翻页间隔动态放大 forward 并在极快时
+ * 启用远近交替队列。关闭时（默认）行为与改造前逐字节一致。
  */
 export function usePreloadManager(
   imageUrls: string[],
@@ -60,6 +64,7 @@ export function usePreloadManager(
   forward = 8,
   backward = 2,
   concurrency = 3,
+  adaptive?: { enabled: boolean },
 ) {
   const imageCacheRef = useRef(new Map<number, string>())
   const [cacheVersion, setCacheVersion] = useState(0)
@@ -68,6 +73,9 @@ export function usePreloadManager(
   >([])
   const [preloadTarget, setPreloadTarget] = useState<number | null>(null)
 
+  // useFlipPace 始终运行（开销极小）；adaptive 关闭时其输出被忽略
+  const { effectiveInterval, isFlippingFast } = useFlipPace(preloadTarget ?? -1)
+
   const clearCache = useCallback(() => {
     imageCacheRef.current.clear()
     setCacheVersion(0)
@@ -75,30 +83,33 @@ export function usePreloadManager(
     setPreloadTarget(null)
   }, [])
 
+  // 计算动态参数（关闭自适应时恒为基线 + alternation:false，行为不变）
+  const params = useMemo(() => {
+    if (!adaptive?.enabled) {
+      return { forward, concurrency, alternation: false }
+    }
+    const p = computeAdaptiveParams(effectiveInterval, { forward, concurrency })
+    return { ...p, alternation: p.alternation && isFlippingFast }
+  }, [adaptive?.enabled, effectiveInterval, isFlippingFast, forward, concurrency])
+
   useEffect(() => {
     if (preloadTarget == null || loadingState !== 'loaded') return
     let cancelled = false
     const cache = imageCacheRef.current
-    const FORWARD = forward
-    const BACKWARD = backward
-    const CONCURRENCY = concurrency
-    const queue: number[] = []
 
-    for (let i = 1; i <= FORWARD; i++) {
-      const pg = preloadTarget + i
-      if (pg >= 1 && pg <= imageUrls.length && !cache.has(pg - 1))
-        queue.push(pg)
-    }
-    for (let i = 1; i <= BACKWARD; i++) {
-      const pg = preloadTarget - i
-      if (pg >= 1 && pg <= imageUrls.length && !cache.has(pg - 1))
-        queue.push(pg)
-    }
+    const queue = buildPreloadQueue(
+      preloadTarget,
+      params.forward,
+      backward,
+      imageUrls.length,
+      new Set(cache.keys()),
+      params.alternation,
+    )
 
     if (queue.length === 0) return
 
     const total = imageUrls.length
-    const workerCount = Math.min(CONCURRENCY, queue.length)
+    const workerCount = Math.min(params.concurrency, queue.length)
     let pendingWrites = 0
     const workers: Promise<void>[] = []
 
@@ -146,7 +157,8 @@ export function usePreloadManager(
     return () => {
       cancelled = true
     }
-  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId, imageQuality, forward, backward, concurrency])
+  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId, imageQuality,
+      params.forward, params.concurrency, params.alternation, backward])
 
   return {
     imageCacheRef,
