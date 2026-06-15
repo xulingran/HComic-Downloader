@@ -257,9 +257,6 @@ export type ConfigValueMap = {
 }
 
 export type ConfigValue = ConfigValueMap[ConfigKey]
-export type SetConfigArgs = {
-  [K in ConfigKey]: [key: K, value: ConfigValueMap[K]]
-}[ConfigKey]
 
 interface DownloadStartResult {
   taskId: string
@@ -595,8 +592,6 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-album-progress': 'get_album_progress',
 } as const
 
-export type PythonIPCChannel = keyof typeof PYTHON_IPC_CHANNEL_MAP
-
 /** Validated notification event for download progress (Python -> Main -> Renderer) */
 export interface DownloadProgressEvent {
   taskId: string
@@ -774,11 +769,6 @@ export const SOURCE_LABELS: Record<ComicSource, string> =
 /** 有收藏夹支持的来源列表 */
 export const SOURCES_WITH_FAVOURITES = COMIC_SOURCES.filter(
   s => SOURCE_META[s].supportsFavourites
-)
-
-/** 需要认证的来源列表 */
-export const AUTH_REQUIRED_SOURCES = COMIC_SOURCES.filter(
-  s => SOURCE_META[s].requiresAuth
 )
 
 /** 支持标签推荐的来源列表 */

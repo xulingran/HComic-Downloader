@@ -7,7 +7,7 @@ export interface TagItem {
 }
 
 /** Merge tag list catalog with favourite tags, deduplicating and summing counts. */
-export function mergeTagSources(listTags: TagItem[], favTags: TagItem[]): TagItem[] {
+function mergeTagSources(listTags: TagItem[], favTags: TagItem[]): TagItem[] {
   const merged = new Map<string, number>()
   for (const t of listTags) {
     merged.set(t.tag, t.count)

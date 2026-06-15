@@ -61,7 +61,7 @@ npm install
 
 ```bash
 npm run dev          # 一键启动 (electron-vite → Electron + Python 子进程) — 推荐
-# run.bat / run.sh 是旧版 tkinter 入口，已不推荐使用
+# 旧版 tkinter 入口（run.bat / run.sh）已移除，仅保留 npm run dev 与 npm run dev.bat
 ```
 
 ### 测试
