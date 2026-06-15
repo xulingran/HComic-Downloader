@@ -15,6 +15,36 @@ vi.mock('@/stores/useReaderStore', () => ({
     selector({ openReader: mockOpenReader }),
 }))
 
+// Mock IntersectionObserver for jsdom — triggers isIntersecting immediately
+class MockIntersectionObserver {
+  private callback: IntersectionObserverCallback
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+  }
+  observe(target: Element) {
+    this.callback(
+      [{ isIntersecting: true, target, boundingClientRect: { top: 0 } }] as unknown as IntersectionObserverEntry[],
+      this as unknown as IntersectionObserver
+    )
+  }
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] { return [] }
+}
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+;(globalThis as any).IntersectionObserver = MockIntersectionObserver
+
+// 可变 store 状态镜像，便于在每个用例里配置 sfwMode
+const storeState = { sfwMode: false }
+vi.mock('@/stores/useSettingsStore', () => ({
+  useSettingsStore: (selector: (s: typeof storeState) => unknown) => selector(storeState),
+}))
+
+const mockCoverSrc: { current: string | null } = { current: 'data:image/png;base64,mock' }
+vi.mock('@/hooks/useCoverImage', () => ({
+  useCoverImage: () => ({ coverSrc: mockCoverSrc.current, retry: vi.fn() }),
+}))
+
 function makeComic(id: string, title: string): ComicInfo {
   return { id, title, url: '', coverUrl: `https://example.com/${id}.jpg`, source: 'hcomic' }
 }
@@ -25,7 +55,11 @@ const sampleGroup = {
 }
 
 describe('DuplicateGroup', () => {
-  beforeEach(() => { mockOpenDrawer.mockClear(); mockOpenReader.mockClear() })
+  beforeEach(() => {
+    mockOpenDrawer.mockClear(); mockOpenReader.mockClear()
+    storeState.sfwMode = false
+    mockCoverSrc.current = 'data:image/png;base64,mock'
+  })
 
   it('renders group header with comic count', () => {
     render(<DuplicateGroup groupIndex={0} group={sampleGroup} />)
@@ -111,5 +145,35 @@ describe('DuplicateGroup', () => {
       <DuplicateGroup groupIndex={0} group={sampleGroup} ignored initialExpanded={false} />
     )
     expect(screen.getByText(/已忽略/)).toBeInTheDocument()
+  })
+
+  describe('SFW mode', () => {
+    beforeEach(() => { storeState.sfwMode = true })
+
+    it('renders placeholder instead of cover image when sfwMode is on', () => {
+      const { container } = render(<DuplicateGroup groupIndex={0} group={sampleGroup} />)
+      // 每本漫画的封面位置不应出现 <img>
+      expect(container.querySelector('img')).not.toBeInTheDocument()
+      // 出现两处 📖 占位符
+      expect(screen.getAllByText('📖')).toHaveLength(2)
+    })
+
+    it('cover button still opens reader when sfwMode is on', async () => {
+      render(<DuplicateGroup groupIndex={0} group={sampleGroup} />)
+      const coverButtons = screen.getAllByTitle('预览漫画')
+      await userEvent.click(coverButtons[0])
+      expect(mockOpenReader).toHaveBeenCalledWith(
+        expect.objectContaining({ id: '1', title: '标题A' })
+      )
+    })
+
+    it('renders fallback placeholder when cover fails to load and sfwMode is off', () => {
+      storeState.sfwMode = false
+      mockCoverSrc.current = null
+      const { container } = render(<DuplicateGroup groupIndex={0} group={sampleGroup} />)
+      // 封面加载失败时也不渲染 <img>，而是占位符
+      expect(container.querySelector('img')).not.toBeInTheDocument()
+      expect(screen.getAllByText('📖')).toHaveLength(2)
+    })
   })
 })

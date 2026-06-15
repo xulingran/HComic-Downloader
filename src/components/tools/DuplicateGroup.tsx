@@ -1,28 +1,45 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import type { DuplicateGroup as DuplicateGroupType } from '@/utils/titleSimilarity'
 import { useDrawerStore } from '@/stores/useDrawerStore'
 import { useReaderStore } from '@/stores/useReaderStore'
+import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useCoverImage } from '@/hooks/useCoverImage'
 
 interface ComicCoverProps {
-  src: string
+  coverUrl: string
   onClick: () => void
 }
 
-function ComicCover({ src, onClick }: ComicCoverProps) {
-  const [hidden, setHidden] = useState(false)
-  if (hidden) return null
+function ComicCover({ coverUrl, onClick }: ComicCoverProps) {
+  const sfwMode = useSettingsStore(s => s.sfwMode)
+  const containerRef = useRef<HTMLButtonElement>(null)
+  // sfwMode 作为 disabled：开启 SFW 模式时不发起封面请求
+  const { coverSrc } = useCoverImage(coverUrl, containerRef, sfwMode)
+
   return (
     <button
+      ref={containerRef}
       onClick={onClick}
       className="flex-shrink-0 cursor-pointer"
       title="预览漫画"
     >
-      <img
-        src={src}
-        alt=""
-        className="w-10 h-14 object-cover rounded bg-[var(--bg-secondary)]"
-        onError={() => setHidden(true)}
-      />
+      {sfwMode ? (
+        <div className="w-10 h-14 rounded bg-[var(--bg-secondary)]
+                        flex items-center justify-center text-[var(--text-secondary)]">
+          <span className="text-lg">📖</span>
+        </div>
+      ) : coverSrc ? (
+        <img
+          src={coverSrc}
+          alt=""
+          className="w-10 h-14 object-cover rounded bg-[var(--bg-secondary)]"
+        />
+      ) : (
+        <div className="w-10 h-14 rounded bg-[var(--bg-secondary)]
+                        flex items-center justify-center text-[var(--text-secondary)]">
+          <span className="text-lg">📖</span>
+        </div>
+      )}
     </button>
   )
 }
@@ -98,7 +115,7 @@ export function DuplicateGroup({
               className="w-full flex items-center gap-3 px-4 py-2
                          hover:bg-[var(--bg-secondary)] transition-colors"
             >
-              <ComicCover src={comic.coverUrl} onClick={() => openReader(comic)} />
+              <ComicCover coverUrl={comic.coverUrl} onClick={() => openReader(comic)} />
               <button
                 onClick={() => openDrawer(comic)}
                 className="flex-1 text-sm text-[var(--text-primary)] break-all text-left cursor-pointer"

@@ -20,9 +20,15 @@ vi.mock('@/stores/useReaderStore', () => ({
     selector({ openReader: vi.fn() }),
 }))
 
+// Mock useCoverImage — DuplicateGroup 内部使用它渲染封面，避免 IntersectionObserver 依赖
+vi.mock('@/hooks/useCoverImage', () => ({
+  useCoverImage: () => ({ coverSrc: 'data:image/png;base64,mock', retry: vi.fn() }),
+}))
+
 // 可变的状态镜像，便于在每个用例里配置 duplicateBlacklist
 let storeState: {
   duplicateBlacklist: DuplicateBlacklist
+  sfwMode: boolean
   addDuplicateIgnore: ReturnType<typeof vi.fn>
   removeDuplicateIgnore: ReturnType<typeof vi.fn>
   confirmMemberCount: ReturnType<typeof vi.fn>
@@ -42,6 +48,7 @@ describe('DuplicateDetector', () => {
     })
     storeState = {
       duplicateBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] },
+      sfwMode: false,
       addDuplicateIgnore: vi.fn(),
       removeDuplicateIgnore: vi.fn(),
       confirmMemberCount: vi.fn(),
