@@ -1,5 +1,14 @@
 // 自适应预加载的三个核心单元。详见 docs/superpowers/specs/2026-06-16-adaptive-preload-design.md
 
+import { useEffect, useRef, useState } from 'react'
+
+/** 最大样本数（时间戳） */
+export const FLIP_PACE_SAMPLE_SIZE = 6
+/** 计算中位数所需的最小间隔样本数 */
+export const FLIP_PACE_MIN_SAMPLES = 3
+/** 无翻页超过此时长(ms)视为已停留 → 回落 */
+export const STALE_MS = 2000
+
 /** 极快阈值(ms)：interval ≤ 此值触发远近交替队列 */
 export const FAST_MS = 700
 /** 慢速阈值(ms)：interval ≥ 此值回落到基线 */
@@ -93,4 +102,76 @@ export function buildPreloadQueue(
   }
   for (let i = 1; i <= backward; i++) pushIfValid(target - i)
   return result
+}
+
+export interface FlipPace {
+  effectiveInterval: number | null
+  isFlippingFast: boolean
+  reset: () => void
+}
+
+/**
+ * 跟踪 preloadTarget 的前进翻页节奏，输出平滑后的间隔与"是否极快"判定。
+ * 仅记录前进方向（页号增大）的变化；样本不足或 stale 时退回 null/false。
+ * 回落通过 1s 节流定时器检测 lastFlipTs 实现——无需额外衰减逻辑。
+ *
+ * 用 Date.now() 而非 performance.now()：前者随系统时钟走，jsdom/vitest 下
+ * vi.setSystemTime / vi.advanceTimersByTime 可控；performance.now() 在 jsdom
+ * 不随定时器推进，会导致测试无法驱动节奏。
+ */
+export function useFlipPace(target: number): FlipPace {
+  const timestampsRef = useRef<number[]>([])
+  const lastTargetRef = useRef<number>(target)
+  const lastFlipTsRef = useRef<number>(0)
+  const [, setPaceTick] = useState(0)
+  const forceUpdate = () => setPaceTick((t) => t + 1)
+
+  // 记录前进翻页
+  useEffect(() => {
+    if (target > lastTargetRef.current) {
+      const now = Date.now()
+      const ts = timestampsRef.current
+      ts.push(now)
+      if (ts.length > FLIP_PACE_SAMPLE_SIZE) ts.shift()
+      lastFlipTsRef.current = now
+      forceUpdate()
+    }
+    lastTargetRef.current = target
+  }, [target])
+
+  // 回落检测定时器（1s 节流）
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (lastFlipTsRef.current > 0 && Date.now() - lastFlipTsRef.current > STALE_MS) {
+        forceUpdate()
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const reset = () => {
+    timestampsRef.current = []
+    lastFlipTsRef.current = 0
+    lastTargetRef.current = target
+    forceUpdate()
+  }
+
+  // 计算中位数间隔
+  const ts = timestampsRef.current
+  const diffs: number[] = []
+  for (let i = 1; i < ts.length; i++) {
+    const d = ts[i] - ts[i - 1]
+    if (d > 0) diffs.push(d)
+  }
+  let effectiveInterval: number | null = null
+  if (diffs.length >= FLIP_PACE_MIN_SAMPLES) {
+    const sorted = [...diffs].sort((a, b) => a - b)
+    const mid = Math.floor(sorted.length / 2)
+    effectiveInterval =
+      sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
+  }
+  const stale = lastFlipTsRef.current === 0 || Date.now() - lastFlipTsRef.current > STALE_MS
+  const isFlippingFast = !stale && effectiveInterval !== null && effectiveInterval <= FAST_MS
+
+  return { effectiveInterval, isFlippingFast, reset }
 }
