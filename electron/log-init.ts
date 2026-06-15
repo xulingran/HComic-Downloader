@@ -21,7 +21,7 @@ export function initLogging(): void {
   fs.mkdirSync(LOG_DIR, { recursive: true })
 
   // 文件输出：写入 ~/.hcomic_downloader/logs/main.log
-  log.transports.file.resolvePath = () => path.join(LOG_DIR, 'main.log')
+  log.transports.file.resolvePathFn = () => path.join(LOG_DIR, 'main.log')
   log.transports.file.maxSize = MAX_FILE_SIZE
   log.transports.file.format = '[{y}-{m}-{d} {h}:{i}:{s}.{ms}] [{level}] {text}'
 
