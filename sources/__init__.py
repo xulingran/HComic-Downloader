@@ -24,14 +24,6 @@ __all__ = ["MultiSourceParser", "ParserResponseError"]
 class MultiSourceParser:
     """多来源解析器分发层。"""
 
-    SOURCE_OPTIONS = (
-        ("hcomic", "h-comic"),
-        ("moeimg", "moeimg.fan"),
-        ("jmcomic", "jmcomic"),
-        ("bika", "哔咔"),
-        ("copymanga", "拷贝漫画"),
-    )
-
     def __init__(
         self,
         timeout: int = 30,
@@ -134,9 +126,6 @@ class MultiSourceParser:
         jm = self.parsers.get("jmcomic")
         if jm and hasattr(jm, "set_custom_domain"):
             jm.set_custom_domain(domain)  # type: ignore[union-attr]
-
-    def get_source_options(self) -> tuple[tuple[str, str], ...]:
-        return self.SOURCE_OPTIONS
 
     def set_source(self, source: str):
         if source in self.parsers:

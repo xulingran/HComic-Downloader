@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import os
 import re
-import time
 
 import requests
 from lxml import etree
@@ -17,13 +16,10 @@ from .session import create_session
 
 logger = logging.getLogger(__name__)
 
-CACHE_TTL_SECONDS = 86400  # 24h
-
 
 class JmDomainResolver:
     """从发布页获取可用域名，带本地缓存。"""
 
-    FALLBACK_DOMAIN = DEFAULT_DOMAIN
     PUBLISH_URL = PUBLISH_URL
     CACHE_FILENAME = "jm_domain.txt"
     TEST_TIMEOUT = 5
@@ -33,54 +29,6 @@ class JmDomainResolver:
         self._cache_path = os.path.join(self._cache_dir, self.CACHE_FILENAME)
         self._session = create_session()
         apply_system_proxy_to_session(self._session)
-
-    def resolve(self) -> str:
-        """返回当前可用域名。优先缓存，其次发布页，最后 fallback。"""
-        cached = self._read_cache()
-        if cached:
-            return cached
-
-        try:
-            domains = self._fetch_publish_domains()
-        except (requests.RequestException, ValueError) as e:
-            logger.warning("Failed to fetch publish domains: %s", e)
-            domains = []
-
-        for domain in domains:
-            if self._test_domain(domain):
-                self._write_cache(domain)
-                return domain
-
-        logger.warning("No available domain found, using fallback: %s", self.FALLBACK_DOMAIN)
-        return self.FALLBACK_DOMAIN
-
-    def _read_cache(self) -> str | None:
-        """读取缓存，未过期则返回域名。"""
-        try:
-            if not os.path.exists(self._cache_path):
-                return None
-            with open(self._cache_path, encoding="utf-8") as f:
-                lines = f.read().strip().split("\n")
-            if len(lines) < 2:
-                return None
-            domain = lines[0].strip()
-            timestamp = float(lines[1].strip())
-            if time.time() - timestamp > CACHE_TTL_SECONDS:
-                return None
-            if domain:
-                return domain
-        except (OSError, ValueError):
-            pass
-        return None
-
-    def _write_cache(self, domain: str) -> None:
-        """写入域名缓存。"""
-        try:
-            os.makedirs(self._cache_dir, exist_ok=True)
-            with open(self._cache_path, "w", encoding="utf-8") as f:
-                f.write(f"{domain}\n{time.time()}\n")
-        except OSError as e:
-            logger.warning("Failed to write domain cache: %s", e)
 
     def _fetch_publish_domains(self) -> list[str]:
         """从发布页解析域名列表。"""

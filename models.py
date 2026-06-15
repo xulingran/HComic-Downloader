@@ -81,11 +81,6 @@ class ComicInfo:
         return sanitize_filename(self.title)
 
     @property
-    def safe_author(self) -> str:
-        """获取安全的作者名（用于文件名）"""
-        return sanitize_filename(self.author or "unknown")
-
-    @property
     def display_author(self) -> str | None:
         """用于落盘（文件名/ComicInfo.xml）的作者名。
 
@@ -176,11 +171,6 @@ class PaginationInfo:
     total_pages: int = 1
     limit: int = 10
     total_items: int = 0
-
-    @property
-    def has_previous(self) -> bool:
-        """是否有上一页"""
-        return self.current_page > 1
 
     @property
     def has_next(self) -> bool:

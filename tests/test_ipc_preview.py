@@ -156,12 +156,6 @@ def test_fetch_preview_image_uses_downloader_auth_and_referer():
     assert captured["closed"] is True
 
 
-def test_detect_image_type_supports_avif():
-    avif_bytes = b"\x00\x00\x00\x20ftypavif" + b"\x00" * 20
-
-    assert IPCServer._detect_image_type(avif_bytes) == "image/avif"
-
-
 def test_resolve_eps_id_prefers_url():
     """多章节：反混淆 eps_id 应取自图片 URL，而非传入的专辑 comic_id。"""
     from python.ipc.preview_mixin import _resolve_eps_id

@@ -6,12 +6,6 @@ from sources import MultiSourceParser
 class TestCopyMangaRegistration:
     """测试 CopyManga 来源注册。"""
 
-    def test_copymanga_in_source_options(self):
-        parser = MultiSourceParser()
-        options = parser.get_source_options()
-        source_ids = [opt[0] for opt in options]
-        assert "copymanga" in source_ids
-
     def test_copymanga_parser_registered(self):
         parser = MultiSourceParser()
         assert "copymanga" in parser.parsers

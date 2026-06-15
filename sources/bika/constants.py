@@ -31,5 +31,3 @@ DEFAULT_HEADERS = {
 class Method:
     GET = "GET"
     POST = "POST"
-    DELETE = "DELETE"
-    PUT = "PUT"

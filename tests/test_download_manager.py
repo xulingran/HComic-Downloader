@@ -259,9 +259,6 @@ class _FakeCBZBuilder:
         ext = ".zip" if output_format == "zip" else ".cbz"
         return os.path.join(output_dir, f"{comic.id}{ext}")
 
-    def get_output_path(self, comic, output_dir):
-        return self.get_output_path_for_format(comic, "cbz", output_dir)
-
 
 class _InstantDownloader:
     def download_comic_resume(self, comic, output_dir, progress_callback=None, options=None, **kwargs):

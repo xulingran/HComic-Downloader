@@ -349,33 +349,6 @@ class HComicParser(ParserContextMixin):
         raise ParserResponseError("登录重定向次数过多")
 
     @staticmethod
-    def _extract_hidden_form_fields(html: str) -> dict[str, str]:
-        """从 Auth0 登录页 HTML 中提取隐藏表单字段。
-
-        Auth0 可能要求在密码提交时附带 _csrf、csrf_token 等隐藏字段。
-
-        Returns:
-            {field_name: field_value} 字典
-        """
-        fields: dict[str, str] = {}
-        # 匹配 <input type="hidden" name="..." value="..." />
-        pattern = re.compile(
-            r'<input[^>]+type\s*=\s*["\']hidden["\'][^>]*>',
-            re.IGNORECASE,
-        )
-        for match in pattern.finditer(html):
-            tag = match.group(0)
-            name_m = re.search(r'name\s*=\s*["\']([^"\']+)["\']', tag, re.IGNORECASE)
-            value_m = re.search(r'value\s*=\s*["\']([^"\']*)["\']', tag, re.IGNORECASE)
-            if name_m:
-                name = name_m.group(1)
-                value = value_m.group(1) if value_m else ""
-                # 只提取 csrf 类字段，避免引入无关字段
-                if name.lower() in ("_csrf", "csrf_token", "_csrf_token", "csrfmiddlewaretoken"):
-                    fields[name] = value
-        return fields
-
-    @staticmethod
     def _extract_auth0_error_from_html(html: str) -> str:
         """从 Auth0 错误页面 HTML 中提取错误信息。"""
         # 尝试多种选择器提取错误信息

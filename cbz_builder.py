@@ -344,18 +344,6 @@ class CBZBuilder:
         download_dir = self._get_download_dir(download_dir)
         return os.path.join(download_dir, filename)
 
-    def get_output_path(self, comic: ComicInfo, download_dir: str | None = None) -> str:
-        """获取漫画的输出路径（不创建文件）
-
-        Args:
-            comic: 漫画信息
-            download_dir: 下载目录（可选，默认使用配置中的目录）
-
-        Returns:
-            输出文件路径
-        """
-        return self._generate_output_path(comic, download_dir)
-
     def _collect_image_files(self, image_dir: str) -> list[str]:
         """收集目录中的图片文件
 
@@ -650,37 +638,3 @@ class CBZBuilder:
         actual_download_dir = self._get_download_dir(download_dir)
         self._validate_path_in_dir(output_path, actual_download_dir)
         return output_path
-
-
-def build_cbz_simple(
-    image_dir: str,
-    output_path: str,
-    comic_info: ComicInfo | None = None,
-    overwrite: bool = False,
-) -> str:
-    """简单方式创建 CBZ
-
-    Args:
-        image_dir: 图片目录
-        output_path: 输出路径
-        comic_info: 漫画信息（可选，为 None 时不写入 ComicInfo.xml）
-        overwrite: 是否覆盖已有文件
-
-    Returns:
-        CBZ 文件路径
-    """
-    if not overwrite and os.path.exists(output_path):
-        raise FileExistsError(f"Output already exists: {output_path}")
-
-    builder = CBZBuilder()
-    comic = comic_info if comic_info else ComicInfo(id="", source_site="", title="")
-    options = ArchiveBuildOptions(
-        image_dir=image_dir,
-        comic=comic,
-        output_path=output_path,
-        download_dir=None,
-        overwrite=overwrite,
-        include_comic_info_xml=comic_info is not None,
-        log_label="CBZ",
-    )
-    return builder.build_archive(options)

@@ -20,13 +20,6 @@ class TestComicInfo:
         comic = ComicInfo(title="标题<>:with|非法?字符")
         assert comic.safe_title == "标题___with_非法_字符"  # sanitize_filename 处理
 
-    def test_safe_author_property(self):
-        comic = ComicInfo(author="作者名")
-        assert comic.safe_author == "作者名"
-
-        comic = ComicInfo(author=None)
-        assert comic.safe_author == "unknown"
-
     def test_display_author_uses_author_when_present(self):
         comic = ComicInfo(author="作者名", groups=["制作组"])
         assert comic.display_author == "作者名"
@@ -160,13 +153,6 @@ class TestPaginationInfo:
         assert pagination.limit == 10
         assert pagination.total_items == 0
 
-    def test_has_previous(self):
-        pagination = PaginationInfo(current_page=1, total_pages=5)
-        assert not pagination.has_previous
-
-        pagination = PaginationInfo(current_page=3, total_pages=5)
-        assert pagination.has_previous
-
     def test_has_next(self):
         pagination = PaginationInfo(current_page=5, total_pages=5)
         assert not pagination.has_next
@@ -176,5 +162,4 @@ class TestPaginationInfo:
 
     def test_single_page(self):
         pagination = PaginationInfo(current_page=1, total_pages=1)
-        assert not pagination.has_previous
         assert not pagination.has_next

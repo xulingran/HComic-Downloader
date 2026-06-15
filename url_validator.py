@@ -90,12 +90,6 @@ class UrlValidator:
         networks = cls._BLOCKED_IPV4 if ip.version == 4 else cls._BLOCKED_IPV6
         return any(ip in net for net in networks)
 
-    def _is_trusted_cdn(self, hostname: str) -> bool:
-        """检查域名是否在可信 CDN 白名单中（含子域名匹配）。"""
-        return hostname in self._trusted_cdn_domains or any(
-            hostname.endswith("." + d) for d in self._trusted_cdn_domains
-        )
-
     @classmethod
     def validate_url(cls, url: str):
         # 需要实例来检查 trusted_cdn，但作为类方法被外部直接调用

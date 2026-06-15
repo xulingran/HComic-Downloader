@@ -135,7 +135,7 @@ def test_check_batch_fallback_to_expected_path(db, sample_comic, tmp_path):
     from cbz_builder import CBZBuilder
 
     builder = CBZBuilder(filename_template="{author}-{title}.cbz")
-    expected_path = builder.get_output_path(sample_comic, str(tmp_path))
+    expected_path = builder.get_output_path_for_format(sample_comic, "cbz", str(tmp_path))
     os.makedirs(os.path.dirname(expected_path), exist_ok=True)
     with open(expected_path, "w") as f:
         f.write("fake cbz")
@@ -173,7 +173,7 @@ def test_check_batch_fallback_uses_comic_data_map(db, tmp_path):
     )
 
     builder = CBZBuilder(filename_template="{author}-{title}.cbz")
-    expected_path = builder.get_output_path(comic, str(tmp_path))
+    expected_path = builder.get_output_path_for_format(comic, "cbz", str(tmp_path))
     os.makedirs(os.path.dirname(expected_path), exist_ok=True)
     with open(expected_path, "w") as f:
         f.write("fake cbz")

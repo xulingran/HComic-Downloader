@@ -42,7 +42,6 @@ logger.info("[session-start] python backend started")
 # Re-export names used by test files:
 #   tests/test_ipc_config_mapping.py -> CONFIG_KEY_MAP
 #   tests/test_ipc_download_conflict.py -> _get_config_path
-#   tests/test_ipc_preview.py -> IPCServer._detect_image_type
 from ipc.auth_mixin import AuthMixin  # noqa: E402
 from ipc.config_mixin import ConfigMixin  # noqa: E402
 from ipc.cover_cache import CoverCacheDB  # noqa: E402
@@ -50,7 +49,6 @@ from ipc.cover_mixin import CoverMixin  # noqa: E402
 from ipc.download_mixin import DownloadMixin  # noqa: E402
 from ipc.favourite_tags_mixin import FavouriteTagsMixin  # noqa: E402
 from ipc.history_mixin import HistoryMixin  # noqa: E402
-from ipc.image_utils import detect_image_type, referer_for_image_url  # noqa: E402,F401
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
 from ipc.search_mixin import SearchMixin  # noqa: E402
@@ -194,16 +192,6 @@ class IPCServer(
             sig = inspect.signature(handler)
             has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
             self._handler_param_keys[attr_name] = None if has_var_keyword else set(sig.parameters.keys())
-
-    # ── backward-compatible static helpers (delegated to image_utils) ─────
-
-    @staticmethod
-    def _detect_image_type(data: bytes) -> str:
-        return detect_image_type(data)
-
-    @staticmethod
-    def _referer_for_image_url(url: str) -> str:
-        return referer_for_image_url(url)
 
     # ── album event notification ─────────────────────────────────────────
 

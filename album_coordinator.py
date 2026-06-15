@@ -77,12 +77,6 @@ class AlbumStagingCoordinator:
         state.task_ids.update(task_ids)
         state.total_chapters = album_total_chapters
 
-    def set_album_comic(self, album_key: AlbumKey, comic: ComicInfo) -> None:
-        """记录专辑的 ComicInfo（用于打包时提取元数据）。"""
-        state = self._tracked.get(album_key)
-        if state:
-            state.comic = comic
-
     def on_chapter_complete(self, task: DownloadTask, album_work_dir: str) -> None:
         """ComicDownloadManager 在章节成功落盘后调用。"""
         album_key: AlbumKey = (
