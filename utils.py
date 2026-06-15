@@ -2,6 +2,7 @@
 
 import os
 import re
+import sqlite3
 from typing import TYPE_CHECKING, Any
 from urllib.request import getproxies
 
@@ -41,6 +42,23 @@ def ensure_dir(path: str):
         path: 目录路径
     """
     os.makedirs(path, exist_ok=True)
+
+
+def open_sqlite_db(db_path: str, *, row_factory: bool = False) -> "sqlite3.Connection":
+    """统一的 sqlite 连接初始化。
+
+    所有 ipc mixin / download_history 共享同一套连接策略：
+    `check_same_thread=False`（下载线程池跨线程访问）+ WAL 模式（并发读写）。
+
+    Args:
+        db_path: 数据库文件路径
+        row_factory: 是否启用 sqlite3.Row（按列名访问）；False 时保持索引访问
+    """
+    conn = sqlite3.connect(db_path, check_same_thread=False)
+    if row_factory:
+        conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    return conn
 
 
 def get_system_proxies() -> dict[str, str]:

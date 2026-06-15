@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 import os
 import random
-import sqlite3
 import threading
 import time
 from typing import Any
+
+from utils import open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
@@ -24,9 +25,7 @@ class TagListDB:
         parent = os.path.dirname(db_path)
         if parent:
             os.makedirs(parent, exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn = open_sqlite_db(db_path, row_factory=True)
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS tag_list (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

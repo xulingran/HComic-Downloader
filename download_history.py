@@ -4,11 +4,11 @@ from __future__ import annotations
 
 import logging
 import os
-import sqlite3
 import threading
 import time
 
 from models import ComicInfo
+from utils import open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
@@ -20,8 +20,7 @@ class DownloadHistoryDB:
         self._db_path = db_path
         self._lock = threading.Lock()
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn = open_sqlite_db(db_path)
         self._create_table()
 
     def _create_table(self):

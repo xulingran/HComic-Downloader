@@ -15,7 +15,7 @@ from pathlib import Path
 import requests
 
 from image_downloader import ImageDownloader
-from image_formats import PAGE_FILENAME_FORMAT
+from image_formats import DEFAULT_IMAGE_EXT, PAGE_FILENAME_FORMAT
 from models import ComicInfo, DownloadCancelledError
 from url_validator import UrlValidator
 from utils import (
@@ -28,7 +28,6 @@ from utils import (
 logger = logging.getLogger(__name__)
 
 PROGRESS_THROTTLE_SEC = 0.1
-DEFAULT_IMAGE_EXT = ".jpg"
 
 
 @dataclass

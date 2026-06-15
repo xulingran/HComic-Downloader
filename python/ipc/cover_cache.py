@@ -3,9 +3,10 @@
 import hashlib
 import logging
 import os
-import sqlite3
 import threading
 from collections import OrderedDict
+
+from utils import open_sqlite_db
 
 from .image_utils import _now
 
@@ -37,8 +38,7 @@ class CoverCacheDB:
         self._db_path = db_path
         self._max_size_bytes = max_size_mb * 1024 * 1024
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn = open_sqlite_db(db_path)
         self._conn.execute("""CREATE TABLE IF NOT EXISTS cover_cache (
                 url_hash TEXT PRIMARY KEY,
                 url TEXT NOT NULL,

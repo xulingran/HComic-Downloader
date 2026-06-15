@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 import os
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
+
+from utils import open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +72,7 @@ class ReadingHistoryDB:
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn = open_sqlite_db(db_path, row_factory=True)
         self._conn.execute("""
             CREATE TABLE IF NOT EXISTS reading_history (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,

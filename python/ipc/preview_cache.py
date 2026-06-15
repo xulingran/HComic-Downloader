@@ -10,9 +10,10 @@ import contextlib
 import hashlib
 import logging
 import os
-import sqlite3
 import threading
 from collections import OrderedDict
+
+from utils import open_sqlite_db
 
 from .image_utils import _now
 
@@ -53,8 +54,7 @@ class PreviewCacheDB:
 
         os.makedirs(self._files_dir, exist_ok=True)
 
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn = open_sqlite_db(db_path)
         self._conn.execute("""CREATE TABLE IF NOT EXISTS preview_cache (
                 url_hash   TEXT PRIMARY KEY,
                 url        TEXT NOT NULL,
