@@ -402,3 +402,9 @@ class TestThemeModeNormalization(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestPreviewPreloadAdaptive(unittest.TestCase):
+    def test_default_is_false(self):
+        config = Config()
+        assert config.preview_preload_adaptive is False

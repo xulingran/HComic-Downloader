@@ -82,6 +82,8 @@ class Config:
     preview_preload_forward: int = 8  # 向前（当前页之后）预加载页数，0 表示禁用
     preview_preload_backward: int = 2  # 向后（当前页之前）预加载页数
     preview_preload_concurrency: int = 3  # 预加载并发 worker 数
+    # 预览自适应预加载开关：开启后按翻页速度动态调节预加载量
+    preview_preload_adaptive: bool = False
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)

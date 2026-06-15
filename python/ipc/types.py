@@ -41,6 +41,7 @@ CONFIG_KEY_MAP = {
     "previewPreloadForward": "preview_preload_forward",
     "previewPreloadBackward": "preview_preload_backward",
     "previewPreloadConcurrency": "preview_preload_concurrency",
+    "previewPreloadAdaptive": "preview_preload_adaptive",
 }
 
 _COVER_POOL_MAX_WORKERS = 4

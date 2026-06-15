@@ -128,6 +128,7 @@ class ConfigMixin:
             "preview_preload_forward": getattr(self.config, "preview_preload_forward", 8),
             "preview_preload_backward": getattr(self.config, "preview_preload_backward", 2),
             "preview_preload_concurrency": getattr(self.config, "preview_preload_concurrency", 3),
+            "preview_preload_adaptive": getattr(self.config, "preview_preload_adaptive", False),
         }
         config = {}
         for snake_key, value in raw.items():
