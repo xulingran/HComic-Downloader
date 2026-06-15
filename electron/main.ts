@@ -226,6 +226,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   previewPreloadForward: and(number(), integer(), range(0, 30)),
   previewPreloadBackward: and(number(), integer(), range(0, 10)),
   previewPreloadConcurrency: and(number(), integer(), range(1, 6)),
+  previewPreloadAdaptive: boolean(),
 }
 
 // ── Reusable validation helpers ──────────────────────────────────────────
