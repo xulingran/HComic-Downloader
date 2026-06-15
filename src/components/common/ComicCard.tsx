@@ -9,13 +9,13 @@ import type { DownloadProgressData } from '../../hooks/useIpc'
 import { isDownloadActive } from '../../hooks/useIpc'
 import type { DownloadStatus } from '@shared/types'
 
-interface DownloadActionProps {
+export interface DownloadActionProps {
   activeDownload?: DownloadProgressData
   onDownload: () => void
   variant: 'cover' | 'detailed'
 }
 
-function DownloadAction({ activeDownload, onDownload, variant }: DownloadActionProps) {
+export function DownloadAction({ activeDownload, onDownload, variant }: DownloadActionProps) {
   const isCover = variant === 'cover'
   const size = isCover ? 24 : 20
   const strokeWidth = isCover ? 3 : 2.5

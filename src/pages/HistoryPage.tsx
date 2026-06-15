@@ -1,6 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
-import { useHistory } from '../hooks/useIpc'
-import { ComicCard, CoverImage } from '../components/common/ComicCard'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { useHistory, useDownloadProgress, type DownloadProgressData } from '../hooks/useIpc'
+import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
+import { ComicCard, CoverImage, DownloadAction } from '../components/common/ComicCard'
+import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
@@ -8,6 +10,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { HistoryItem, PaginationInfo, type ComicInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useToastStore } from '../stores/useToastStore'
+import { useDownloadStore } from '../stores/useDownloadStore'
 import { useHistoryStore, type HistoryPageCache } from '../stores/useHistoryStore'
 import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
@@ -63,12 +66,28 @@ export function HistoryPage() {
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showClearConfirm, setShowClearConfirm] = useState(false)
   const [cacheVersion, setCacheVersion] = useState(0)
+  const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const { getHistory, deleteHistory, clearHistory } = useHistory()
   const { cardStyle } = useSettingsStore()
   const { openReader } = useReaderStore()
+  const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
+  const { probeChaptersBeforeDownload } = useChapterProbe()
+  const { progress: downloadProgress } = useDownloadProgress()
+  const tasks = useDownloadStore((s) => s.tasks)
   const latestPageRef = useRef(initialCache?.currentPage ?? 1)
   const mountedRef = useRef(true)
   const preloadedPagesRef = useRef(new Map<string, HistoryPageCache>())
+
+  const activeDownloadMap = useMemo(() => {
+    const map = new Map<string, DownloadProgressData>()
+    for (const t of tasks) {
+      if (t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused' || t.status === 'failed') {
+        const p = downloadProgress[t.id]
+        if (p) map.set(t.comic.id, p)
+      }
+    }
+    return map
+  }, [tasks, downloadProgress])
 
   const loadHistory = useCallback(async (page: number = 1, reason: 'user' | 'preload' = 'user') => {
     const cachedPage = cache.getPage(page)
@@ -140,6 +159,15 @@ export function HistoryPage() {
       item.lastPage > 0 ? item.lastPage : undefined,
       item.lastChapterId || undefined,
     )
+  }
+
+  const handleDownload = async (comic: ComicInfo) => {
+    const enriched = await probeChaptersBeforeDownload(comic)
+    if (enriched) {
+      setChapterDialogComic(enriched)
+      return
+    }
+    await downloadWithConflictCheck(comic)
   }
 
   const handleDelete = async (item: HistoryItem) => {
@@ -274,6 +302,8 @@ export function HistoryPage() {
                 cardStyle={cardStyle}
                 onOpen={() => handleOpenReader(item)}
                 onDelete={() => handleDelete(item)}
+                onDownload={handleDownload}
+                activeDownload={activeDownloadMap.get(item.comicId)}
               />
             ))}
           </div>
@@ -296,6 +326,19 @@ export function HistoryPage() {
           totalPages={pagination.totalPages || 1}
           onJump={(page) => { loadHistory(page); setShowJumpDialog(false) }}
           onClose={() => setShowJumpDialog(false)}
+        />
+      )}
+
+      {chapterDialogComic && (
+        <ChapterDownloadDialog
+          chapters={chapterDialogComic.chapters ?? []}
+          open={chapterDialogComic !== null}
+          onConfirm={(ids) => {
+            const comic = chapterDialogComic
+            setChapterDialogComic(null)
+            if (comic) downloadChapters(comic, ids)
+          }}
+          onCancel={() => setChapterDialogComic(null)}
         />
       )}
 
@@ -349,11 +392,13 @@ function HistoryCoverThumb({ comic, onOpen }: { comic: ComicInfo; onOpen: () => 
   )
 }
 
-function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
+function HistoryCard({ item, cardStyle, onOpen, onDelete, onDownload, activeDownload }: {
   item: HistoryItem
   cardStyle: 'cover' | 'detailed'
   onOpen: () => void
   onDelete: () => void
+  onDownload: (comic: ComicInfo) => void
+  activeDownload?: DownloadProgressData
 }) {
   const [hovered, setHovered] = useState(false)
   const comic = historyItemToComicInfo(item)
@@ -383,6 +428,11 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
             <span>{formatRelativeTime(item.lastReadAt)}</span>
           </div>
         </div>
+        <DownloadAction
+          variant="detailed"
+          activeDownload={activeDownload}
+          onDownload={() => onDownload(comic)}
+        />
         {hovered && (
           <button
             onClick={(e) => { e.stopPropagation(); onDelete() }}
@@ -418,6 +468,8 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete }: {
       <ComicCard
         comic={comic}
         onOpenReader={onOpen}
+        onDownload={onDownload}
+        activeDownload={activeDownload}
       />
       <div className="px-2 pb-2 -mt-1">
         <div className="text-xs text-[var(--text-secondary)]">

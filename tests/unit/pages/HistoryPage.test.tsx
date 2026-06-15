@@ -16,6 +16,21 @@ vi.mock('@/hooks/useIpc', () => ({
     deleteHistory: mockDeleteHistory,
     clearHistory: mockClearHistory,
   }),
+  useDownloadProgress: vi.fn().mockReturnValue({ progress: {} }),
+}))
+
+vi.mock('@/hooks/useDownloadHelper', () => ({
+  useDownloadHelper: vi.fn().mockReturnValue({
+    downloadWithConflictCheck: vi.fn(),
+    downloadChapters: vi.fn(),
+  }),
+  useChapterProbe: vi.fn().mockReturnValue({
+    probeChaptersBeforeDownload: vi.fn().mockResolvedValue(null),
+  }),
+}))
+
+vi.mock('@/stores/useDownloadStore', () => ({
+  useDownloadStore: vi.fn().mockReturnValue([]),
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
@@ -54,6 +69,9 @@ vi.mock('@/components/common/ComicCard', () => ({
   ),
   CoverImage: ({ coverUrl }: { coverUrl: string }) => (
     <div data-testid="cover-image" data-cover-url={coverUrl || ''} />
+  ),
+  DownloadAction: () => (
+    <div data-testid="download-action" />
   ),
 }))
 
