@@ -5,6 +5,18 @@ export interface DuplicateGroup {
   scores: Map<string, number>
 }
 
+/**
+ * 组的代表指纹：取组内所有漫画 normalized title 的字典序最小值。
+ * 与收藏分页返回顺序、成员增删无关（只要字典序最小的成员仍在组内）。
+ * 空组返回空字符串作为边界保护。
+ */
+export function groupFingerprint(group: DuplicateGroup): string {
+  if (group.comics.length === 0) return ''
+  return group.comics
+    .map(c => normalizeTitle(c.title))
+    .sort()[0] ?? ''
+}
+
 /** Remove common bracket suffixes, whitespace, and normalize full-width chars. */
 export function normalizeTitle(title: string): string {
   let s = title.trim()

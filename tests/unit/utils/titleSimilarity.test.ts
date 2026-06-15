@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { normalizeTitle, lcsRatio, findDuplicateGroups } from '@/utils/titleSimilarity'
+import { normalizeTitle, lcsRatio, findDuplicateGroups, groupFingerprint } from '@/utils/titleSimilarity'
 import type { ComicInfo } from '@shared/types'
 
 function makeComic(id: string, title: string): ComicInfo {
@@ -89,5 +89,51 @@ describe('findDuplicateGroups', () => {
     ]
     expect(findDuplicateGroups(comics)).toHaveLength(1)
     expect(findDuplicateGroups(comics, 0.7)).toHaveLength(0)
+  })
+})
+
+describe('groupFingerprint', () => {
+  it('returns the lexicographically smallest normalized title', () => {
+    const group = {
+      comics: [makeComic('1', 'cherry'), makeComic('2', 'apple'), makeComic('3', 'banana')],
+      scores: new Map(),
+    }
+    expect(groupFingerprint(group)).toBe('apple')
+  })
+
+  it('is independent of member input order', () => {
+    const makeGroup = (order: string[]) => ({
+      comics: order.map(t => makeComic(t, t)),
+      scores: new Map(),
+    })
+    const fp1 = groupFingerprint(makeGroup(['zebra', 'apple', 'mango']))
+    const fp2 = groupFingerprint(makeGroup(['mango', 'zebra', 'apple']))
+    const fp3 = groupFingerprint(makeGroup(['apple', 'mango', 'zebra']))
+    expect(fp1).toBe(fp2)
+    expect(fp2).toBe(fp3)
+    expect(fp1).toBe('apple')
+  })
+
+  it('is unaffected by changes to non-minimum members', () => {
+    // 字典序最小成员 apple 仍在组内，其他成员变化不影响指纹
+    const group = {
+      comics: [makeComic('1', 'apple'), makeComic('2', 'zebra-renamed')],
+      scores: new Map(),
+    }
+    expect(groupFingerprint(group)).toBe('apple')
+  })
+
+  it('normalizes titles before comparing', () => {
+    // （全彩）后缀被抹平，归一化后仍为最小
+    const group = {
+      comics: [makeComic('1', 'banana'), makeComic('2', 'apple（全彩）')],
+      scores: new Map(),
+    }
+    expect(groupFingerprint(group)).toBe('apple')
+  })
+
+  it('returns empty string for empty group', () => {
+    const group = { comics: [], scores: new Map() }
+    expect(groupFingerprint(group)).toBe('')
   })
 })

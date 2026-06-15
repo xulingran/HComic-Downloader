@@ -178,6 +178,96 @@ class TestMultiSourceConfig(unittest.TestCase):
             os.unlink(config_path)
 
 
+class TestDuplicateBlacklistMigration(unittest.TestCase):
+    """测试 duplicate_blacklist 数据结构迁移：纯字符串 → {fingerprint, memberCount}"""
+
+    def test_default_duplicate_blacklist_empty(self):
+        config = Config()
+        self.assertEqual(config.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jmcomic": []})
+
+    def test_legacy_string_entries_migrate_to_objects(self):
+        """旧版纯字符串列表迁移为 {fingerprint, memberCount: None}"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump(
+                {
+                    "download_dir": "/tmp/test",
+                    "duplicate_blacklist": {"hcomic": ["指纹A", "指纹B"], "jmcomic": ["指纹C"]},
+                },
+                f,
+            )
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(
+                loaded.duplicate_blacklist["hcomic"],
+                [{"fingerprint": "指纹A", "memberCount": None}, {"fingerprint": "指纹B", "memberCount": None}],
+            )
+            self.assertEqual(
+                loaded.duplicate_blacklist["jmcomic"],
+                [{"fingerprint": "指纹C", "memberCount": None}],
+            )
+        finally:
+            os.unlink(config_path)
+
+    def test_structured_entries_preserved(self):
+        """新版结构化对象正常加载，memberCount 保留"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump(
+                {
+                    "download_dir": "/tmp/test",
+                    "duplicate_blacklist": {"hcomic": [{"fingerprint": "指纹A", "memberCount": 3}]},
+                },
+                f,
+            )
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(
+                loaded.duplicate_blacklist["hcomic"],
+                [{"fingerprint": "指纹A", "memberCount": 3}],
+            )
+        finally:
+            os.unlink(config_path)
+
+    def test_missing_field_defaults_to_empty(self):
+        """老配置无 duplicate_blacklist 字段时填充空默认值"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump({"download_dir": "/tmp/test"}, f)
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jmcomic": []})
+        finally:
+            os.unlink(config_path)
+
+    def test_mixed_legacy_and_structured_entries(self):
+        """混合旧字符串和新对象的列表都能正确迁移"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump(
+                {
+                    "download_dir": "/tmp/test",
+                    "duplicate_blacklist": {"hcomic": ["旧指纹", {"fingerprint": "新指纹", "memberCount": 2}]},
+                },
+                f,
+            )
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(
+                loaded.duplicate_blacklist["hcomic"],
+                [
+                    {"fingerprint": "旧指纹", "memberCount": None},
+                    {"fingerprint": "新指纹", "memberCount": 2},
+                ],
+            )
+        finally:
+            os.unlink(config_path)
+
+
 class TestConfigConstructorNoSideEffects(unittest.TestCase):
     """测试 Config 构造函数不产生 I/O 副作用"""
 

@@ -73,4 +73,43 @@ describe('DuplicateGroup', () => {
     await userEvent.click(screen.getByText(/疑似重复组 1/))
     expect(screen.getByText('标题A')).toBeInTheDocument()
   })
+
+  it('renders collapsed by default when initialExpanded is false', () => {
+    render(<DuplicateGroup groupIndex={0} group={sampleGroup} initialExpanded={false} />)
+    // 折叠态下漫画标题不可见
+    expect(screen.queryByText('标题A')).not.toBeInTheDocument()
+  })
+
+  it('shows "忽略此组" button for active group and triggers onIgnore', async () => {
+    const onIgnore = vi.fn()
+    render(<DuplicateGroup groupIndex={0} group={sampleGroup} onIgnore={onIgnore} />)
+    const btn = screen.getByRole('button', { name: '忽略此组' })
+    expect(btn).toBeInTheDocument()
+    await userEvent.click(btn)
+    expect(onIgnore).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows "取消忽略" button for ignored group and triggers onUnignore', async () => {
+    const onUnignore = vi.fn()
+    render(
+      <DuplicateGroup
+        groupIndex={0}
+        group={sampleGroup}
+        ignored
+        initialExpanded={false}
+        onUnignore={onUnignore}
+      />
+    )
+    const btn = screen.getByRole('button', { name: '取消忽略' })
+    expect(btn).toBeInTheDocument()
+    await userEvent.click(btn)
+    expect(onUnignore).toHaveBeenCalledTimes(1)
+  })
+
+  it('shows "已忽略" marker for ignored group', () => {
+    render(
+      <DuplicateGroup groupIndex={0} group={sampleGroup} ignored initialExpanded={false} />
+    )
+    expect(screen.getByText(/已忽略/)).toBeInTheDocument()
+  })
 })

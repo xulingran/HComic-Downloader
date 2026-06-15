@@ -116,6 +116,9 @@ class ConfigMixin:
             "sfw_mode": getattr(self.config, "sfw_mode", True),
             "card_style": getattr(self.config, "card_style", "cover"),
             "tag_blacklist": getattr(self.config, "tag_blacklist", {"hcomic": [], "moeimg": []}),
+            "duplicate_blacklist": getattr(
+                self.config, "duplicate_blacklist", {"hcomic": [], "moeimg": [], "jmcomic": []}
+            ),
             "preview_cache_size_limit_mb": getattr(self.config, "preview_cache_size_limit_mb", 500),
             "jmcomic_domain": getattr(self.config, "jmcomic_domain", ""),
             "favourite_tag_highlight": getattr(self.config, "favourite_tag_highlight", False),

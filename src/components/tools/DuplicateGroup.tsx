@@ -30,27 +30,65 @@ function ComicCover({ src, onClick }: ComicCoverProps) {
 interface DuplicateGroupProps {
   groupIndex: number
   group: DuplicateGroupType
+  /** 初始展开状态，默认 true（active 组），ignored 组传 false */
+  initialExpanded?: boolean
+  /** 是否为已忽略组（影响头部按钮：取消忽略 vs 忽略此组） */
+  ignored?: boolean
+  /** active 组的"忽略此组"回调 */
+  onIgnore?: () => void
+  /** ignored 组的"取消忽略"回调 */
+  onUnignore?: () => void
 }
 
-export function DuplicateGroup({ groupIndex, group }: DuplicateGroupProps) {
-  const [expanded, setExpanded] = useState(true)
+export function DuplicateGroup({
+  groupIndex,
+  group,
+  initialExpanded = true,
+  ignored = false,
+  onIgnore,
+  onUnignore,
+}: DuplicateGroupProps) {
+  const [expanded, setExpanded] = useState(initialExpanded)
   const openDrawer = useDrawerStore(s => s.openDrawer)
   const openReader = useReaderStore(s => s.openReader)
 
   return (
     <div className="bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden">
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3
-                   hover:bg-[var(--bg-secondary)] transition-colors text-left"
-      >
-        <span className="text-sm font-medium text-[var(--text-primary)]">
-          疑似重复组 {groupIndex + 1}（{group.comics.length} 本）
-        </span>
-        <span className="text-[var(--text-secondary)] text-xs">
-          {expanded ? '▲' : '▼'}
-        </span>
-      </button>
+      <div className="w-full flex items-center justify-between px-4 py-3 hover:bg-[var(--bg-secondary)] transition-colors text-left">
+        <button
+          onClick={() => setExpanded(!expanded)}
+          className="flex-1 flex items-center justify-between text-left"
+        >
+          <span className="text-sm font-medium text-[var(--text-primary)]">
+            疑似重复组 {groupIndex + 1}（{group.comics.length} 本）
+            {ignored && <span className="ml-2 text-xs text-[var(--text-secondary)]">· 已忽略</span>}
+          </span>
+          <span className="text-[var(--text-secondary)] text-xs">
+            {expanded ? '▲' : '▼'}
+          </span>
+        </button>
+        {ignored ? (
+          <button
+            onClick={onUnignore}
+            className="ml-3 flex-shrink-0 px-2 py-1 text-xs rounded
+                       bg-[var(--bg-secondary)] text-[var(--text-primary)]
+                       hover:bg-[var(--accent)] hover:text-white transition-colors"
+            title="取消忽略"
+          >
+            取消忽略
+          </button>
+        ) : (
+          <button
+            onClick={onIgnore}
+            className="ml-3 flex-shrink-0 px-2 py-1 text-xs rounded
+                       bg-[var(--bg-secondary)] text-[var(--text-primary)]
+                       hover:bg-[var(--accent)] hover:text-white transition-colors"
+            title="将此组加入已忽略"
+          >
+            忽略此组
+          </button>
+        )}
+      </div>
 
       {expanded && (
         <div className="border-t border-[var(--border)] divide-y divide-[var(--border)]">

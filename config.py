@@ -62,6 +62,10 @@ class Config:
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
     card_style: str = "cover"  # 卡片样式："cover"（封面+标题）| "detailed"（详细列表）
     tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []})
+    # 重复检测已忽略的组（按来源隔离，每项为 {fingerprint, memberCount}）
+    duplicate_blacklist: dict[str, list[dict]] = field(
+        default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []}
+    )
     # jmcomic 自定义域名（空字符串表示自动选择）
     jmcomic_domain: str = ""
     # 预览页面缓存大小上限（MB）
@@ -230,6 +234,24 @@ class Config:
             # 兼容旧配置：通知配置
             if "notify_when_foreground" not in data:
                 data["notify_when_foreground"] = "inactive"
+            # 迁移 duplicate_blacklist：旧版纯字符串列表 -> 结构化对象列表
+            dup_bl = data.get("duplicate_blacklist")
+            if isinstance(dup_bl, dict):
+                for source_key, entries in dup_bl.items():
+                    if not isinstance(entries, list):
+                        continue
+                    migrated = []
+                    for entry in entries:
+                        if isinstance(entry, str):
+                            migrated.append({"fingerprint": entry, "memberCount": None})
+                        elif isinstance(entry, dict) and "fingerprint" in entry:
+                            migrated.append(
+                                {
+                                    "fingerprint": str(entry["fingerprint"]),
+                                    "memberCount": entry.get("memberCount"),
+                                }
+                            )
+                    dup_bl[source_key] = migrated
             # 只保留 Config 已知字段，忽略未知 key
             known_fields = {f.name for f in dc_fields(cls)}
             unknown = [k for k in data if k not in known_fields]

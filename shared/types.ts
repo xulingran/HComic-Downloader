@@ -83,6 +83,7 @@ export interface AppConfig {
   sfwMode: boolean
   cardStyle: CardStyle
   tagBlacklist: TagBlacklist
+  duplicateBlacklist: DuplicateBlacklist
   previewCacheSizeLimitMB: number
   proxy?: string
   cookie?: string
@@ -106,6 +107,15 @@ export interface AppConfig {
 }
 
 export type TagBlacklist = Record<ComicSource, string[]>
+
+/** 重复检测已忽略条目：指纹 + 忽略时的基线成员数（null 表示未知，旧数据迁移） */
+export interface DuplicateBlacklistEntry {
+  fingerprint: string
+  memberCount: number | null
+}
+
+/** 重复检测黑名单：按来源隔离的条目列表 */
+export type DuplicateBlacklist = Record<string, DuplicateBlacklistEntry[]>
 
 export type CardStyle = 'cover' | 'detailed'
 
@@ -211,7 +221,7 @@ export type DiagnosticsReport = string
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
-  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'previewCacheSizeLimitMB'
+  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'duplicateBlacklist' | 'previewCacheSizeLimitMB'
   | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
   | 'bikaImageQuality'
   | 'previewPreloadForward' | 'previewPreloadBackward' | 'previewPreloadConcurrency'
@@ -234,6 +244,7 @@ export type ConfigValueMap = {
   sfwMode: boolean
   cardStyle: CardStyle
   tagBlacklist: TagBlacklist
+  duplicateBlacklist: DuplicateBlacklist
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
   favouriteTagHighlight: boolean
@@ -869,7 +880,7 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
-  'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'previewCacheSizeLimitMB',
+  'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'duplicateBlacklist', 'previewCacheSizeLimitMB',
   'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
   'bikaImageQuality',
   'previewPreloadForward', 'previewPreloadBackward', 'previewPreloadConcurrency',

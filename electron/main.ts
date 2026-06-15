@@ -32,6 +32,7 @@ import {
   absolutePath,
   assert,
   tagBlacklist as tagBlacklistValidator,
+  duplicateBlacklist as duplicateBlacklistValidator,
 } from './validators'
 
 // 初始化日志：必须在最早阶段执行，以捕获启动期异常并接管 console.*
@@ -215,6 +216,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   sfwMode: boolean(),
   cardStyle: and(string(), oneOf(['cover', 'detailed'] as const)),
   tagBlacklist: tagBlacklistValidator(),
+  duplicateBlacklist: duplicateBlacklistValidator(),
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
   jmcomicDomain: and(string(), maxLength(256)),
   favouriteTagHighlight: boolean(),

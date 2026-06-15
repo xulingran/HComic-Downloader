@@ -31,6 +31,7 @@ CONFIG_KEY_MAP = {
     "sfwMode": "sfw_mode",
     "cardStyle": "card_style",
     "tagBlacklist": "tag_blacklist",
+    "duplicateBlacklist": "duplicate_blacklist",
     "previewCacheSizeLimitMB": "preview_cache_size_limit_mb",
     "jmcomicDomain": "jmcomic_domain",
     "favouriteTagHighlight": "favourite_tag_highlight",
