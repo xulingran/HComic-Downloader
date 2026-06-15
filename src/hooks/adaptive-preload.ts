@@ -111,55 +111,17 @@ export interface FlipPace {
 }
 
 /**
- * 跟踪 preloadTarget 的前进翻页节奏，输出平滑后的间隔与"是否极快"判定。
- * 仅记录前进方向（页号增大）的变化；样本不足或 stale 时退回 null/false。
- * 回落通过 1s 节流定时器检测 lastFlipTs 实现——无需额外衰减逻辑。
- *
- * 用 Date.now() 而非 performance.now()：前者随系统时钟走，jsdom/vitest 下
- * vi.setSystemTime / vi.advanceTimersByTime 可控；performance.now() 在 jsdom
- * 不随定时器推进，会导致测试无法驱动节奏。
+ * 从时间戳数组与最后一次翻页时间计算派生状态。
+ * 纯函数：读入 ref 当前快照，返回 {effectiveInterval, isFlippingFast}。
+ * 供 effect 调用后写入 state，避免渲染期间访问 ref（react-hooks/refs 规则）。
  */
-export function useFlipPace(target: number): FlipPace {
-  const timestampsRef = useRef<number[]>([])
-  const lastTargetRef = useRef<number>(target)
-  const lastFlipTsRef = useRef<number>(0)
-  const [, setPaceTick] = useState(0)
-  const forceUpdate = () => setPaceTick((t) => t + 1)
-
-  // 记录前进翻页
-  useEffect(() => {
-    if (target > lastTargetRef.current) {
-      const now = Date.now()
-      const ts = timestampsRef.current
-      ts.push(now)
-      if (ts.length > FLIP_PACE_SAMPLE_SIZE) ts.shift()
-      lastFlipTsRef.current = now
-      forceUpdate()
-    }
-    lastTargetRef.current = target
-  }, [target])
-
-  // 回落检测定时器（1s 节流）
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (lastFlipTsRef.current > 0 && Date.now() - lastFlipTsRef.current > STALE_MS) {
-        forceUpdate()
-      }
-    }, 1000)
-    return () => clearInterval(id)
-  }, [])
-
-  const reset = useCallback(() => {
-    timestampsRef.current = []
-    lastFlipTsRef.current = 0
-    forceUpdate()
-  }, [])
-
-  // 计算中位数间隔
-  const ts = timestampsRef.current
+function derivePace(
+  timestamps: number[],
+  lastFlipTs: number,
+): Pick<FlipPace, 'effectiveInterval' | 'isFlippingFast'> {
   const diffs: number[] = []
-  for (let i = 1; i < ts.length; i++) {
-    const d = ts[i] - ts[i - 1]
+  for (let i = 1; i < timestamps.length; i++) {
+    const d = timestamps[i] - timestamps[i - 1]
     if (d > 0) diffs.push(d)
   }
   let effectiveInterval: number | null = null
@@ -169,8 +131,60 @@ export function useFlipPace(target: number): FlipPace {
     effectiveInterval =
       sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
   }
-  const stale = lastFlipTsRef.current === 0 || Date.now() - lastFlipTsRef.current > STALE_MS
+  const stale = lastFlipTs === 0 || Date.now() - lastFlipTs > STALE_MS
   const isFlippingFast = !stale && effectiveInterval !== null && effectiveInterval <= FAST_MS
+  return { effectiveInterval, isFlippingFast }
+}
 
-  return { effectiveInterval, isFlippingFast, reset }
+/**
+ * 跟踪 preloadTarget 的前进翻页节奏，输出平滑后的间隔与"是否极快"判定。
+ * 仅记录前进方向（页号增大）的变化；样本不足或 stale 时退回 null/false。
+ * 回落通过 1s 节流定时器检测 lastFlipTs 实现——无需额外衰减逻辑。
+ *
+ * 派生值（effectiveInterval/isFlippingFast）在 effect 中计算后写入 state，
+ * 渲染期间只读 state，不访问 ref（符合 react-hooks/refs 规则）。
+ *
+ * 用 Date.now() 而非 performance.now()：前者随系统时钟走，jsdom/vitest 下
+ * vi.setSystemTime / vi.advanceTimersByTime 可控；performance.now() 在 jsdom
+ * 不随定时器推进，会导致测试无法驱动节奏。
+ */
+export function useFlipPace(target: number): FlipPace {
+  const timestampsRef = useRef<number[]>([])
+  const lastTargetRef = useRef<number>(target)
+  const lastFlipTsRef = useRef<number>(0)
+  const [pace, setPace] = useState<Pick<FlipPace, 'effectiveInterval' | 'isFlippingFast'>>({
+    effectiveInterval: null,
+    isFlippingFast: false,
+  })
+
+  // 记录前进翻页，并在 effect 内重算派生值（避免渲染期访问 ref）
+  useEffect(() => {
+    if (target > lastTargetRef.current) {
+      const now = Date.now()
+      const ts = timestampsRef.current
+      ts.push(now)
+      if (ts.length > FLIP_PACE_SAMPLE_SIZE) ts.shift()
+      lastFlipTsRef.current = now
+      setPace(derivePace(ts, now))
+    }
+    lastTargetRef.current = target
+  }, [target])
+
+  // 回落检测定时器（1s 节流）：stale 后重算使 isFlippingFast 自然变 false
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (lastFlipTsRef.current > 0 && Date.now() - lastFlipTsRef.current > STALE_MS) {
+        setPace(derivePace(timestampsRef.current, lastFlipTsRef.current))
+      }
+    }, 1000)
+    return () => clearInterval(id)
+  }, [])
+
+  const reset = useCallback(() => {
+    timestampsRef.current = []
+    lastFlipTsRef.current = 0
+    setPace(derivePace([], 0))
+  }, [])
+
+  return { ...pace, reset }
 }
