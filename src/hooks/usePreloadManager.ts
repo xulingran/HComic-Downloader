@@ -74,14 +74,15 @@ export function usePreloadManager(
   const [preloadTarget, setPreloadTarget] = useState<number | null>(null)
 
   // useFlipPace 始终运行（开销极小）；adaptive 关闭时其输出被忽略
-  const { effectiveInterval, isFlippingFast } = useFlipPace(preloadTarget ?? -1)
+  const { effectiveInterval, isFlippingFast, reset: resetPace } = useFlipPace(preloadTarget ?? -1)
 
   const clearCache = useCallback(() => {
     imageCacheRef.current.clear()
     setCacheVersion(0)
     setPreloadedRanges([])
     setPreloadTarget(null)
-  }, [])
+    resetPace() // 同步清空翻页节奏样本，避免残留间隔影响新漫画/章节的初始判定
+  }, [resetPace])
 
   // 计算动态参数（关闭自适应时恒为基线 + alternation:false，行为不变）
   const params = useMemo(() => {

@@ -1,6 +1,6 @@
 // 自适应预加载的三个核心单元。详见 docs/superpowers/specs/2026-06-16-adaptive-preload-design.md
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 /** 最大样本数（时间戳） */
 export const FLIP_PACE_SAMPLE_SIZE = 6
@@ -149,12 +149,11 @@ export function useFlipPace(target: number): FlipPace {
     return () => clearInterval(id)
   }, [])
 
-  const reset = () => {
+  const reset = useCallback(() => {
     timestampsRef.current = []
     lastFlipTsRef.current = 0
-    lastTargetRef.current = target
     forceUpdate()
-  }
+  }, [])
 
   // 计算中位数间隔
   const ts = timestampsRef.current

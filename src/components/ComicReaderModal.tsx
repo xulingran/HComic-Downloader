@@ -43,6 +43,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const [preloadForward, setPreloadForward] = useState(8)
   const [preloadBackward, setPreloadBackward] = useState(2)
   const [preloadConcurrency, setPreloadConcurrency] = useState(3)
+  const [adaptiveEnabled, setAdaptiveEnabled] = useState(false)
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
   const { mounted, visible, handleTransitionEnd } = useModalAnimation(open)
 
@@ -62,6 +63,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     preloadForward,
     preloadBackward,
     preloadConcurrency,
+    { enabled: adaptiveEnabled },
   )
 
   const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
@@ -99,6 +101,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       if (typeof cfg?.previewPreloadForward === 'number') setPreloadForward(cfg.previewPreloadForward)
       if (typeof cfg?.previewPreloadBackward === 'number') setPreloadBackward(cfg.previewPreloadBackward)
       if (typeof cfg?.previewPreloadConcurrency === 'number') setPreloadConcurrency(cfg.previewPreloadConcurrency)
+      if (typeof cfg?.previewPreloadAdaptive === 'boolean') setAdaptiveEnabled(cfg.previewPreloadAdaptive)
     }).catch(() => {})
   }, [])
 
