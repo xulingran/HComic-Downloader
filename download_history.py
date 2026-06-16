@@ -154,6 +154,11 @@ class DownloadHistoryDB:
                 # 这解决了批量专辑下载时 album_id 为 md5 hash 而非 comic_id 导致的匹配失败问题。
                 # 注意：主键查询每 key 最多返回一行，因此直接检查 output_path 存在性即可，
                 # 不需要也用不了 album_total_chapters 的多行聚合逻辑。SELECT 仅取所需列。
+                #
+                # 关键：仅当 output_path 实际存在时才判定 "downloaded" 并写入 result。
+                # 若"DB 有记录但 output_path 缺失"，不要在此处提前判 unknown——否则会短路
+                # 下方第三轮的 expected_path 探测（用于"文件移动/改过输出目录"等 DB 记录失效
+                # 但文件仍存在于新路径的场景）。把这类 key 留给第三轮，由 expected_path 探测决定。
                 unmatched_keys = [key for key in batch if key not in agg]
                 if unmatched_keys:
                     fallback_phs = ",".join(["(?, ?, ?)"] * len(unmatched_keys))
@@ -173,12 +178,11 @@ class DownloadHistoryDB:
                         out_path = row[3]
                         if out_path and os.path.exists(out_path):
                             result[key] = "downloaded"
-                        else:
-                            result[key] = "unknown"
+                        # 否则不写入 result，留给第三轮 expected_path 探测后判定 unknown
 
                 for key in batch:
                     if key in result:
-                        # 已在第二轮回退查询或之前的批次中判定，跳过
+                        # 已在第二轮回退查询中确认 downloaded，或之前的批次中判定，跳过
                         continue
                     bucket = agg.get(key)
                     if bucket and bucket["have"] >= bucket["total"]:

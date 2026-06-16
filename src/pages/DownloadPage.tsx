@@ -4,6 +4,7 @@ import { useToastStore } from '../stores/useToastStore'
 import { useDownload, useAlbumProgress, useAlbumCommands, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
+import { TaskActionButtons } from '../components/common/TaskActionButtons'
 import type { DownloadStatus, DownloadDetail } from '@shared/types'
 
 type StatusFilter = 'all' | 'active' | 'completed' | 'failed' | 'paused'
@@ -88,19 +89,27 @@ export function DownloadPage() {
 
   // 1.2 初始化：首次出现某 key 时，若有失败章节则展开；否则保持折叠。
   // 仅在 key 首次进入集合时写入，避免覆盖用户后续操作。
+  // 注意：ref 更新必须在 effect 体内完成，setExpandedAlbums 的 updater 只返回纯状态，
+  // 不在其中执行副作用——updater 在 StrictMode 下会被双调用、并发模式下可能重放，
+  // 副作用若写在其中会因重放而错乱。
   useEffect(() => {
+    // 第一阶段：在 effect 体内（非 updater 内）识别并标记"本次需初始化"的 key
+    const toInit = [...albumFailedMap.entries()].filter(
+      ([key]) => !albumInitializedRef.current.has(key)
+    )
+    toInit.forEach(([key]) => albumInitializedRef.current.add(key))
+    // 第二阶段：仅对有失败的 key 提交一次纯状态更新
+    const failedInit = toInit.filter(([, hasFailed]) => hasFailed).map(([key]) => key)
+    if (failedInit.length === 0) return
+    // 纯状态更新：set-state-in-effect 在此为必要模式（把派生的失败状态同步到本地
+    // 折叠 UI），updater 保持纯净且有 changed 短路避免无谓重渲染。
     setExpandedAlbums((prev) => {
-      let changed = false
-      // 先拷贝，避免在 reducer 内直接 mutate 当前 state（React 不可变约定）
       const next = new Set(prev)
-      for (const [key, hasFailed] of albumFailedMap.entries()) {
-        // 仅对"从未被用户操作过"的 key 初始化：用一个平行 Set 记录已初始化的 key
-        if (!albumInitializedRef.current.has(key)) {
-          albumInitializedRef.current.add(key)
-          if (hasFailed && !next.has(key)) {
-            next.add(key)
-            changed = true
-          }
+      let changed = false
+      for (const key of failedInit) {
+        if (!next.has(key)) {
+          next.add(key)
+          changed = true
         }
       }
       return changed ? next : prev
@@ -108,20 +117,28 @@ export function DownloadPage() {
   }, [albumFailedMap])
 
   // 1.3 失败上升监听：hasAnyFailed 从 false→true 时展开；恢复时不自动移除。
+  // 同样把 ref 更新留在 effect 体内，updater 保持纯净。
   const albumPrevFailedRef = useRef<Map<string, boolean>>(new Map())
   useEffect(() => {
+    const prevMap = albumPrevFailedRef.current
+    // 第一阶段：在 effect 体内识别"本次新上升为 failed"的 key，并同步 prevMap
+    const newlyFailed: string[] = []
+    for (const [key, hasFailed] of albumFailedMap.entries()) {
+      const wasFailed = prevMap.get(key) ?? false
+      if (hasFailed && !wasFailed) newlyFailed.push(key)
+      prevMap.set(key, hasFailed)
+    }
+    if (newlyFailed.length === 0) return
+    // 第二阶段：纯状态更新（同上，set-state-in-effect 为必要的派生状态同步）
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setExpandedAlbums((prev) => {
-      let changed = false
-      // 先拷贝，避免在 reducer 内直接 mutate 当前 state（React 不可变约定）
       const next = new Set(prev)
-      const prevMap = albumPrevFailedRef.current
-      for (const [key, hasFailed] of albumFailedMap.entries()) {
-        const wasFailed = prevMap.get(key) ?? false
-        if (hasFailed && !wasFailed && !next.has(key)) {
+      let changed = false
+      for (const key of newlyFailed) {
+        if (!next.has(key)) {
           next.add(key)
           changed = true
         }
-        prevMap.set(key, hasFailed)
       }
       return changed ? next : prev
     })
@@ -389,58 +406,17 @@ export function DownloadPage() {
                         <div key={task.id} className="px-2 py-1.5 rounded bg-[var(--bg-secondary)]">
                           <div className="flex items-center justify-between text-xs mb-1 gap-2">
                             <span className="truncate text-[var(--text-primary)] flex-1 min-w-0">{task.comic.title}</span>
-                        <div className="flex gap-1 flex-shrink-0">
-                          {(task.status === 'downloading' || task.status === 'queued') && (
-                            <>
-                              <button
-                                onClick={() => handlePauseTask(task.id)}
-                                className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border)]
-                                           text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
-                              >
-                                ⏸
-                              </button>
-                              <button
-                                onClick={() => handleCancel(task.id)}
-                                className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border)]
-                                           text-[var(--error)] hover:bg-[var(--bg-tertiary)]"
-                              >
-                                ✕
-                              </button>
-                            </>
-                          )}
-                          {task.status === 'pausing' && (
-                            <span className="px-1.5 py-0.5 rounded text-[var(--text-secondary)]">暂停中</span>
-                          )}
-                          {task.status === 'paused' && (
-                            <>
-                              <button
-                                onClick={() => handleResumeTask(task.id)}
-                                className="px-1.5 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                              >
-                                ▶
-                              </button>
-                              <button
-                                onClick={() => handleCancel(task.id)}
-                                className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border)]
-                                           text-[var(--error)] hover:bg-[var(--bg-tertiary)]"
-                              >
-                                ✕
-                              </button>
-                            </>
-                          )}
-                          {task.status === 'failed' && (
-                            <button
-                              onClick={() => handleRetryTask(task.id)}
-                              className="px-1.5 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                            >
-                              ↻
-                            </button>
-                          )}
+                            <TaskActionButtons
+                              task={task}
+                              onPause={handlePauseTask}
+                              onResume={handleResumeTask}
+                              onCancel={handleCancel}
+                              onRetry={handleRetryTask}
+                            />
+                          </div>
+                          <ProgressBar progress={task.progress} status={task.status} totalPages={task.totalPages} downloadedPages={task.downloadedPages} />
                         </div>
-                      </div>
-                      <ProgressBar progress={task.progress} status={task.status} totalPages={task.totalPages} downloadedPages={task.downloadedPages} />
-                    </div>
-                  ))}
+                      ))}
                     </div>
                   </>
                 ) : (

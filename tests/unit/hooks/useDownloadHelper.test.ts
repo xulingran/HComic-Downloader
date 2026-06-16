@@ -95,7 +95,7 @@ describe('useDownloadHelper', () => {
       const { result } = renderHook(() => useDownloadHelper())
       const ok = await result.current.downloadBatchAsAlbum(comics, 'Custom Album')
 
-      expect(ok).toBe(true)
+      expect(ok).toEqual({ success: true, failedCount: 0 })
       const tasks = useDownloadStore.getState().tasks
       expect(tasks.map((task) => task.comic.title)).toEqual(['Comic A', 'Comic B'])
       expect(tasks.map((task) => task.totalPages)).toEqual([12, 34])

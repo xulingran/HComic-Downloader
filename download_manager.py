@@ -480,19 +480,19 @@ class DownloadManager:
         return {"affected": affected, "skipped": skipped, "notFound": False}
 
     def cancel_album_tasks(self, album_key: tuple[str, str]) -> dict:
-        """取消专辑下所有未完成任务（跳过 completed 以保留已下载文件）。"""
+        """取消专辑下所有未完成任务（跳过 completed 以保留已下载文件）。
+
+        不在此处裸读 task.status 做本地预判——`cancel_task` 内部 guard 已排除
+        COMPLETED/CANCELLED/FAILED，会把"是否已完成"的判断收敛到 `self._lock` 下，
+        避免与 worker 线程对 task.status 的写入产生竞态（裸读可能漏判一个正在
+        最后一页完成的任务并将其取消、误删已下完的章节）。
+        """
         task_ids = self._get_album_task_ids(album_key)
         if not task_ids:
             return {"affected": 0, "skipped": 0, "notFound": True}
         affected = 0
         skipped = 0
         for tid in task_ids:
-            # cancel_task 内部 guard 已排除 completed/cancelled/failed，
-            # 这里显式跳过 completed 以保留已下载章节文件。
-            task = self.tasks.get(tid)
-            if task and task.status == DownloadStatus.COMPLETED:
-                skipped += 1
-                continue
             if self.cancel_task(tid):
                 affected += 1
             else:

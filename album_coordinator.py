@@ -62,6 +62,10 @@ class AlbumStagingCoordinator:
         self._on_album_event = on_album_event
         self._tracked: dict[AlbumKey, AlbumState] = {}
         self._pack_lock = threading.Lock()
+        # `_tracked` 的专用锁：保护 register/get_task_ids/is_tracked/pop 等
+        # 字典读写，避免与工作线程的注册/查询/check-then-act 产生竞态。
+        # 与 _pack_lock（含 IO 的打包临界区）分离，防止打包阻塞查询。
+        self._state_lock = threading.Lock()
 
     def register_album_tasks(
         self,
@@ -69,22 +73,29 @@ class AlbumStagingCoordinator:
         task_ids: list[str],
         album_total_chapters: int,
     ) -> None:
-        """_download_chapters 调用：注册本次任务集。"""
-        state = self._tracked.get(album_key)
-        if state is None:
-            state = AlbumState(total_chapters=album_total_chapters)
-            self._tracked[album_key] = state
-        state.task_ids.update(task_ids)
-        state.total_chapters = album_total_chapters
+        """_download_chapters 调用：注册本次任务集。
+
+        check-then-act（先 get 再 set）必须在同一把锁内完成，否则两个并发
+        register 同一新 key 时，后写的 AlbumState 会覆盖前者、丢失 task_ids。
+        """
+        with self._state_lock:
+            state = self._tracked.get(album_key)
+            if state is None:
+                state = AlbumState(total_chapters=album_total_chapters)
+                self._tracked[album_key] = state
+            state.task_ids.update(task_ids)
+            state.total_chapters = album_total_chapters
 
     def get_task_ids(self, album_key: AlbumKey) -> set[str]:
         """返回该专辑已注册的任务 ID 集合（用于批量暂停/继续/取消）。"""
-        state = self._tracked.get(album_key)
-        return set(state.task_ids) if state else set()
+        with self._state_lock:
+            state = self._tracked.get(album_key)
+            return set(state.task_ids) if state else set()
 
     def is_tracked(self, album_key: AlbumKey) -> bool:
         """该专辑是否已注册到 coordinator。"""
-        return album_key in self._tracked
+        with self._state_lock:
+            return album_key in self._tracked
 
     def on_chapter_complete(self, task: DownloadTask, album_work_dir: str) -> None:
         """ComicDownloadManager 在章节成功落盘后调用。"""
@@ -157,7 +168,8 @@ class AlbumStagingCoordinator:
                 output_path=final_path,
                 chapters_on_disk=len(chapter_dirs),
             )
-            self._tracked.pop(album_key, None)
+            with self._state_lock:
+                self._tracked.pop(album_key, None)
             return PackResult(
                 status="packed",
                 output_path=final_path,

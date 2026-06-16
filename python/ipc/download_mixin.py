@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import logging
 import os
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
+
+from models import ComicInfo
 
 if TYPE_CHECKING:
     from concurrent.futures import ThreadPoolExecutor
@@ -67,6 +70,62 @@ class DownloadMixin:
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
 
+    def _build_virtual_chapter_comic(
+        self,
+        comic_data: dict,
+        album_id: str,
+        album_title: str,
+        requested_total: int,
+    ) -> ComicInfo:
+        """从原始漫画数据构建虚拟章节 ComicInfo。
+
+        标题设为 "专辑名 - 原漫画名"，复用 `_build_and_prepare_comic` 获取图片 URL。
+        `album_total_chapters` 暂用 requested_total，由调用方在循环后按实际入队数统一回填。
+        """
+        comic_id = comic_data.get("id", "")
+        original_title = comic_data.get("title", "Unknown")
+        # 复用 _build_and_prepare_comic 获取图片 URL 等完整信息
+        prepared = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
+        chapter_title = f"{album_title} - {original_title}"
+        return ComicInfo(
+            id=comic_id,
+            title=chapter_title,
+            author=comic_data.get("author"),
+            source_site=comic_data.get("sourceSite", "hcomic") or "hcomic",
+            comic_source=comic_data.get("source", ""),
+            media_id=comic_data.get("mediaId", ""),
+            preview_url=comic_data.get("url", ""),
+            cover_url=comic_data.get("coverUrl", ""),
+            tags=comic_data.get("tags", []),
+            pages=comic_data.get("pages", 0),
+            image_urls=prepared.image_urls,
+            album_id=album_id,
+            album_total_chapters=requested_total,
+            album_title=album_title,
+        )
+
+    def _register_album_after_enqueue(
+        self,
+        queued_comics: list[tuple[tuple[str, str], ComicInfo]],
+        grouped_task_ids: dict[tuple[str, str], list[str]],
+        requested_total: int,
+        actual_total: int,
+    ) -> None:
+        """入队完成后回填实际 total 并注册到 album coordinator。
+
+        - 当部分入队失败（actual_total < requested_total）时回填已入队 comic 的
+          album_total_chapters，保证进度条/历史状态可正确收敛（不会因 total 偏大
+          永远到不了 100%）。DownloadTask 直接持有同一 ComicInfo 引用，回填同步生效。
+        - 以实际入队数注册到 coordinator。
+        """
+        if actual_total != requested_total and actual_total > 0:
+            for _, comic in queued_comics:
+                comic.album_total_chapters = actual_total
+        coordinator = getattr(self, "_album_coordinator", None)
+        if coordinator:
+            for album_key, group_task_ids in grouped_task_ids.items():
+                coordinator.register_album_tasks(album_key, group_task_ids, actual_total)
+
     def handle_download_batch_as_album(
         self,
         comics: list[dict],
@@ -74,10 +133,6 @@ class DownloadMixin:
         overwrite: bool = False,
     ) -> dict:
         """将选中的多个漫画作为虚拟专辑的章节进行下载。"""
-        import hashlib
-
-        from models import ComicInfo
-
         if not comics:
             return {"taskIds": [], "status": "error", "albumKey": None}
 
@@ -86,49 +141,18 @@ class DownloadMixin:
         album_id = hashlib.md5(",".join(sorted_ids).encode("utf-8")).hexdigest()
         requested_total = len(comics)
 
-        task_ids = []
-        queued_tasks = []
+        task_ids: list[str] = []
+        queued_tasks: list[dict] = []
         grouped_task_ids: dict[tuple[str, str], list[str]] = {}
-        # 成功入队的 (album_key, comic) 对，循环结束后按实际入队数回填 album_total_chapters。
-        # 注意：DownloadTask 直接持有同一 ComicInfo 引用，回填即可同步影响 task.comic。
         queued_comics: list[tuple[tuple[str, str], ComicInfo]] = []
-        failed = []
-        for _idx, comic_data in enumerate(comics, start=1):
+        failed: list[dict] = []
+        for comic_data in comics:
             comic_id = comic_data.get("id", "")
             original_title = comic_data.get("title", "Unknown")
-            original_author = comic_data.get("author")
-            original_source = comic_data.get("source", "")
             original_source_site = comic_data.get("sourceSite", "hcomic") or "hcomic"
-            original_media_id = comic_data.get("mediaId", "")
-            original_url = comic_data.get("url", "")
-            original_cover_url = comic_data.get("coverUrl", "")
-            original_tags = comic_data.get("tags", [])
-            original_pages = comic_data.get("pages", 0)
-
+            original_source = comic_data.get("source", "")
             try:
-                # 复用 _build_and_prepare_comic 获取图片 URL 等完整信息
-                prepared = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
-
-                # 创建虚拟章节漫画：标题为 "专辑名 - 原漫画名"
-                # album_total_chapters 暂用 requested_total，循环后按实际入队数统一回填，
-                # 避免部分入队失败时 total 偏大导致进度条/历史状态永远无法达到 100%。
-                chapter_title = f"{album_title} - {original_title}"
-                comic = ComicInfo(
-                    id=comic_id,
-                    title=chapter_title,
-                    author=original_author,
-                    source_site=original_source_site,
-                    comic_source=original_source,
-                    media_id=original_media_id,
-                    preview_url=original_url,
-                    cover_url=original_cover_url,
-                    tags=original_tags,
-                    pages=original_pages,
-                    image_urls=prepared.image_urls,
-                    album_id=album_id,
-                    album_total_chapters=requested_total,
-                    album_title=album_title,
-                )
+                comic = self._build_virtual_chapter_comic(comic_data, album_id, album_title, requested_total)
                 task_id = self._download_manager.add_task(comic, overwrite=overwrite)
                 task_ids.append(task_id)
                 album_key = (original_source_site, album_id)
@@ -146,17 +170,8 @@ class DownloadMixin:
                 logger.warning("Failed to queue batch album comic %s (%s): %s", comic_id, original_title, e)
                 failed.append({"id": comic_id, "name": original_title, "error": str(e)})
 
-        # 实际入队数作为专辑总章数：部分入队失败时回填，保证进度条/历史状态可正确收敛。
         actual_total = len(task_ids)
-        if actual_total != requested_total and actual_total > 0:
-            for _, comic in queued_comics:
-                comic.album_total_chapters = actual_total
-
-        # 注册到专辑 coordinator（用实际入队数）
-        coordinator = getattr(self, "_album_coordinator", None)
-        if coordinator:
-            for album_key, group_task_ids in grouped_task_ids.items():
-                coordinator.register_album_tasks(album_key, group_task_ids, actual_total)
+        self._register_album_after_enqueue(queued_comics, grouped_task_ids, requested_total, actual_total)
 
         status = "queued" if task_ids else "error"
         result = {"taskIds": task_ids, "queuedTasks": queued_tasks, "status": status}

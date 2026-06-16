@@ -55,7 +55,10 @@ export function useDownloadHelper() {
     }
   }
 
-  const downloadBatchAsAlbumWithToast = async (comics: ComicInfo[], albumTitle: string) => {
+  const downloadBatchAsAlbumWithToast = async (
+    comics: ComicInfo[],
+    albumTitle: string,
+  ): Promise<{ success: boolean; failedCount: number }> => {
     try {
       const result = await downloadBatchAsAlbum(comics, albumTitle)
       const taskIds = 'taskIds' in result && Array.isArray(result.taskIds)
@@ -92,11 +95,13 @@ export function useDownloadHelper() {
       if (taskIds.length > 0) {
         useToastStore.getState().success(`专辑 "${albumTitle}" 已加入下载队列 (${taskIds.length} 本)`)
       }
-      return taskIds.length > 0
+      // 返回 failedCount 供上层决定是否退出批量模式：部分失败时保留选中以便重试，
+      // 重试时已成功的项会被后端 add_task 的去重 guard 跳过（不会重复下载）。
+      return { success: taskIds.length > 0, failedCount: failed.length }
     } catch (err) {
       console.error('Batch album download failed:', err)
       useToastStore.getState().error('专辑下载失败，请重试')
-      return false
+      return { success: false, failedCount: 0 }
     }
   }
 

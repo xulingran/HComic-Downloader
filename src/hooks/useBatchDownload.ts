@@ -1,7 +1,7 @@
 import { useCallback, useRef } from 'react'
 import { ComicInfo } from '@shared/types'
 import { useDownloadHelper } from './useDownloadHelper'
-import { useBatchSelect, getComicKey } from './useBatchSelect'
+import { useBatchSelect, getComicKey, toggleDirection } from './useBatchSelect'
 
 export { getComicKey }
 
@@ -15,12 +15,11 @@ export function useBatchDownload(comics: ComicInfo[]) {
   const selectedCacheRef = useRef<Map<string, ComicInfo>>(new Map())
 
   // 包装 toggleSelect：选中时缓存漫画数据，取消时删除。
-  // 约定：本层用 batch.selectedIds.has(key) 判断增删方向，与底层 useBatchSelect.toggleSelect
-  // 内部"基于 getComicKey 判断 toggle 方向"的语义一致（同一 key）。两者都基于 getComicKey，
-  // 当前实现保证方向同步；若 useBatchSelect 改为基于对象引用判断，需同步审视此处。
+  // 方向判定复用共享的 toggleDirection（与底层 useBatchSelect.toggleSelect 同一实现），
+  // 避免"两处独立判断方向"导致的改一处忘改另一处的脆弱性。
   const toggleSelect = useCallback((comic: ComicInfo) => {
     const key = getComicKey(comic)
-    if (batch.selectedIds.has(key)) {
+    if (toggleDirection(key, batch.selectedIds) === 'remove') {
       selectedCacheRef.current.delete(key)
     } else {
       selectedCacheRef.current.set(key, comic)
@@ -64,8 +63,11 @@ export function useBatchDownload(comics: ComicInfo[]) {
   const handleBatchDownloadAsAlbum = useCallback(async (albumTitle: string) => {
     const comicsToDownload = selectedComics()
     if (comicsToDownload.length === 0) return false
-    const success = await downloadBatchAsAlbum(comicsToDownload, albumTitle)
-    if (success) {
+    const { success, failedCount } = await downloadBatchAsAlbum(comicsToDownload, albumTitle)
+    // 仅当全部成功（无失败）时才退出批量模式并清空选中。
+    // 部分失败时保留批量模式与选中项，用户可直接再次"下载为专辑"重试失败项；
+    // 已成功入队的项会被后端 add_task 的去重 guard 跳过，不会重复下载。
+    if (success && failedCount === 0) {
       exitBatchMode()
     }
     return success
