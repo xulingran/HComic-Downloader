@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useToastStore } from '../stores/useToastStore'
 import { useDownload, useAlbumProgress, useAlbumCommands, useConfig } from '../hooks/useIpc'
@@ -32,6 +32,13 @@ export function DownloadPage() {
   const { forcePackAlbum } = useAlbumCommands()
   const { albumProgress } = useAlbumProgress()
   const [downloadDir, setDownloadDir] = useState('')
+
+  // 专辑折叠状态：键为 `${sourceSite}_${albumId}`（与 albumGroups key 一致）。
+  // 集合内存放"已展开"的 key；不在集合中即视为折叠。
+  // 纯前端、会话内有效，不持久化（见 spec: download-album-collapse）。
+  const [expandedAlbums, setExpandedAlbums] = useState<Set<string>>(() => new Set())
+  // 记录哪些 key 已被初始化过默认值，避免重复初始化覆盖用户操作
+  const albumInitializedRef = useRef<Set<string>>(new Set())
 
   // 专辑分组：按 (sourceSite, albumId) 分组多章专辑任务
   const albumGroups = useMemo(() => {
@@ -69,6 +76,64 @@ export function DownloadPage() {
     }
     return ids
   }, [albumGroups])
+
+  // 每个专辑是否有失败章节（key → bool），供初始化 / 失败上升监听共用
+  const albumFailedMap = useMemo(() => {
+    const m = new Map<string, boolean>()
+    for (const [key, g] of albumGroups.entries()) {
+      m.set(key, g.tasks.some((t) => t.status === 'failed'))
+    }
+    return m
+  }, [albumGroups])
+
+  // 1.2 初始化：首次出现某 key 时，若有失败章节则展开；否则保持折叠。
+  // 仅在 key 首次进入集合时写入，避免覆盖用户后续操作。
+  useEffect(() => {
+    setExpandedAlbums((prev) => {
+      let changed = false
+      const next = prev
+      for (const [key, hasFailed] of albumFailedMap.entries()) {
+        // 仅对"从未被用户操作过"的 key 初始化：用一个平行 Set 记录已初始化的 key
+        if (!albumInitializedRef.current.has(key)) {
+          albumInitializedRef.current.add(key)
+          if (hasFailed && !next.has(key)) {
+            next.add(key)
+            changed = true
+          }
+        }
+      }
+      return changed ? new Set(next) : prev
+    })
+  }, [albumFailedMap])
+
+  // 1.3 失败上升监听：hasAnyFailed 从 false→true 时展开；恢复时不自动移除。
+  const albumPrevFailedRef = useRef<Map<string, boolean>>(new Map())
+  useEffect(() => {
+    setExpandedAlbums((prev) => {
+      let changed = false
+      const next = prev
+      const prevMap = albumPrevFailedRef.current
+      for (const [key, hasFailed] of albumFailedMap.entries()) {
+        const wasFailed = prevMap.get(key) ?? false
+        if (hasFailed && !wasFailed && !next.has(key)) {
+          next.add(key)
+          changed = true
+        }
+        prevMap.set(key, hasFailed)
+      }
+      return changed ? new Set(next) : prev
+    })
+  }, [albumFailedMap])
+
+  // 1.4 切换折叠
+  const toggleAlbum = useCallback((key: string) => {
+    setExpandedAlbums((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/immutability
@@ -218,10 +283,20 @@ export function DownloadPage() {
             const hasActive = group.tasks.some(t => albumActiveStatuses.includes(t.status))
             const allPaused = group.tasks.length > 0 && group.tasks.every(t => t.status === 'paused' || t.status === 'pausing')
             const hasAnyFailed = group.tasks.some(t => t.status === 'failed')
+            const isExpanded = expandedAlbums.has(key)
+            // 失败优先、其余稳定排序（见 spec: download-album-collapse）
+            const sortedTasks = [
+              ...group.tasks.filter(t => t.status === 'failed'),
+              ...group.tasks.filter(t => t.status !== 'failed'),
+            ]
 
             return (
               <div key={key} className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm border-l-4 border-[var(--accent)]">
-                <div className="flex items-center justify-between mb-2">
+                <div
+                  className="flex items-center justify-between mb-2 cursor-pointer select-none"
+                  onClick={() => toggleAlbum(key)}
+                  title={isExpanded ? '点击折叠章节' : '点击展开章节'}
+                >
                   <h3 className="text-sm font-medium text-[var(--text-primary)] truncate">
                     {group.albumTitle}
                   </h3>
@@ -231,7 +306,7 @@ export function DownloadPage() {
                         {/* 暂停 / 恢复 整个专辑 */}
                         {hasActive && !allPaused && (
                           <button
-                            onClick={() => handlePauseAlbum(group.sourceSite, group.albumId, taskIds)}
+                            onClick={(e) => { e.stopPropagation(); handlePauseAlbum(group.sourceSite, group.albumId, taskIds) }}
                             className="text-xs px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
                                        text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
                           >
@@ -240,7 +315,7 @@ export function DownloadPage() {
                         )}
                         {allPaused && (
                           <button
-                            onClick={() => handleResumeAlbum(group.sourceSite, group.albumId, taskIds)}
+                            onClick={(e) => { e.stopPropagation(); handleResumeAlbum(group.sourceSite, group.albumId, taskIds) }}
                             className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
                           >
                             全部恢复
@@ -249,7 +324,8 @@ export function DownloadPage() {
                         {/* 重试专辑（仅有失败章节时） */}
                         {hasAnyFailed && (
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation()
                               for (const t of group.tasks) {
                                 if (t.status === 'failed') handleRetryTask(t.id)
                               }
@@ -262,7 +338,8 @@ export function DownloadPage() {
                         {/* 取消整个专辑（保留已下载文件） */}
                         {hasActive && (
                           <button
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation()
                               if (window.confirm(`取消专辑 "${group.albumTitle}" 的所有未完成任务？\n已下载的章节会保留在磁盘上。`)) {
                                 handleCancelAlbum(group.sourceSite, group.albumId, taskIds)
                               }
@@ -276,7 +353,7 @@ export function DownloadPage() {
                         {/* 强制打包 */}
                         {completed > 0 && (
                           <button
-                            onClick={() => forcePackAlbum(group.sourceSite, group.albumId)}
+                            onClick={(e) => { e.stopPropagation(); forcePackAlbum(group.sourceSite, group.albumId) }}
                             className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
                           >
                             强制打包
@@ -296,12 +373,20 @@ export function DownloadPage() {
                   totalPages={group.totalChapters}
                   downloadedPages={completed}
                 />
-                {/* 章节子行：每章独立控制 */}
-                <div className="mt-2 space-y-1">
-                  {group.tasks.map(task => (
-                    <div key={task.id} className="px-2 py-1.5 rounded bg-[var(--bg-secondary)]">
-                      <div className="flex items-center justify-between text-xs mb-1 gap-2">
-                        <span className="truncate text-[var(--text-primary)] flex-1 min-w-0">{task.comic.title}</span>
+                {/* 章节列表：默认折叠，仅展开时渲染（见 spec: download-album-collapse） */}
+                {isExpanded ? (
+                  <>
+                    <button
+                      onClick={() => toggleAlbum(key)}
+                      className="mt-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                      ▼ 隐藏章节
+                    </button>
+                    <div className="mt-1 space-y-1">
+                      {sortedTasks.map(task => (
+                        <div key={task.id} className="px-2 py-1.5 rounded bg-[var(--bg-secondary)]">
+                          <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                            <span className="truncate text-[var(--text-primary)] flex-1 min-w-0">{task.comic.title}</span>
                         <div className="flex gap-1 flex-shrink-0">
                           {(task.status === 'downloading' || task.status === 'queued') && (
                             <>
@@ -354,7 +439,16 @@ export function DownloadPage() {
                       <ProgressBar progress={task.progress} status={task.status} totalPages={task.totalPages} downloadedPages={task.downloadedPages} />
                     </div>
                   ))}
-                </div>
+                    </div>
+                  </>
+                ) : (
+                  <button
+                    onClick={() => toggleAlbum(key)}
+                    className="mt-2 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                  >
+                    ▶ 展开查看 {group.tasks.length} 章
+                  </button>
+                )}
               </div>
             )
           })}
