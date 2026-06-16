@@ -8,6 +8,8 @@ export const FLIP_PACE_SAMPLE_SIZE = 6
 export const FLIP_PACE_MIN_SAMPLES = 3
 /** 无翻页超过此时长(ms)视为已停留 → 回落 */
 export const STALE_MS = 2000
+/** 回落检测定时器的节流间隔(ms)：低于此时长重复检测无意义 */
+export const STALE_CHECK_INTERVAL_MS = 1000
 
 /** 极快阈值(ms)：interval ≤ 此值触发远近交替队列 */
 export const FAST_MS = 700
@@ -176,7 +178,7 @@ export function useFlipPace(target: number): FlipPace {
       if (lastFlipTsRef.current > 0 && Date.now() - lastFlipTsRef.current > STALE_MS) {
         setPace(derivePace(timestampsRef.current, lastFlipTsRef.current))
       }
-    }, 1000)
+    }, STALE_CHECK_INTERVAL_MS)
     return () => clearInterval(id)
   }, [])
 

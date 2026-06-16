@@ -93,24 +93,38 @@ export function usePreloadManager(
     return { ...p, alternation: p.alternation && isFlippingFast }
   }, [adaptive?.enabled, effectiveInterval, isFlippingFast, forward, concurrency])
 
+  // 把 params 快照收入 ref，使 effect 不必依赖 params 的细粒度字段——
+  // alternation 在 FAST_MS 边界抖动时不再导致整个 worker pool 被拆解重建，
+  // 已写入缓存的页有 cached 去重保护，下一轮自然会补齐差异。
+  // ref 必须在 effect 内更新（而非 render 期），否则触发 react-hooks/refs 规则。
+  // 注意：仅隔离高频抖动的 params；scrambleId/comicId/imageQuality/backward 是
+  // 低频配置值，应留在依赖数组，变化时正常重启以采用新解码参数。
+  const paramsRef = useRef(params)
+  useEffect(() => {
+    paramsRef.current = params
+  }, [params])
+
   useEffect(() => {
     if (preloadTarget == null || loadingState !== 'loaded') return
     let cancelled = false
     const cache = imageCacheRef.current
+    // params 通过 ref 读取（避免 alternation 抖动重启）；
+    // scrambleId/comicId/imageQuality/backward 直接引用闭包，变化时正常重启。
+    const { forward, concurrency, alternation } = paramsRef.current
 
     const queue = buildPreloadQueue(
       preloadTarget,
-      params.forward,
+      forward,
       backward,
       imageUrls.length,
       new Set(cache.keys()),
-      params.alternation,
+      alternation,
     )
 
     if (queue.length === 0) return
 
     const total = imageUrls.length
-    const workerCount = Math.min(params.concurrency, queue.length)
+    const workerCount = Math.min(concurrency, queue.length)
     let pendingWrites = 0
     const workers: Promise<void>[] = []
 
@@ -158,8 +172,9 @@ export function usePreloadManager(
     return () => {
       cancelled = true
     }
-  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId, imageQuality,
-      params.forward, params.concurrency, params.alternation, backward])
+    // 依赖：target + 决定 URL 集合/解码参数的输入；params 通过 ref 读取，
+    // 其变化（尤其 alternation 在 FAST_MS 边界抖动）不会重启 worker pool。
+  }, [preloadTarget, loadingState, imageUrls, scrambleId, comicId, imageQuality, backward])
 
   return {
     imageCacheRef,

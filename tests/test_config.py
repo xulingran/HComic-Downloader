@@ -400,11 +400,12 @@ class TestThemeModeNormalization(unittest.TestCase):
             os.unlink(config_path)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestPreviewPreloadAdaptive(unittest.TestCase):
     def test_default_is_false(self):
+        """自适应预加载默认关闭，避免改动既有行为"""
         config = Config()
-        assert config.preview_preload_adaptive is False
+        self.assertFalse(config.preview_preload_adaptive)
+
+
+if __name__ == "__main__":
+    unittest.main()

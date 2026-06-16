@@ -79,8 +79,7 @@ describe('usePreloadManager (adaptive disabled, regression)', () => {
 
   it('scroll simulation: preloadedRanges eventually updates after consecutive target changes', async () => {
     // 滚动模式下 currentPage 连续变化 → setPreloadTarget 连续调用。
-    // 即便中途 effect 因 target 变化取消重启，最终 target 的预加载应完成，
-    // 且 preloadedRanges / cacheVersion 反映已缓存的连续区间。
+    // 去抖后只有最后一次（停顿后）触发预加载，preloadedRanges 反映最终 target 区间。
     const urls = Array.from({ length: 20 }, (_, i) => `u${i + 1}`)
     const { result } = renderHook(() =>
       usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 4, 0, 3),
@@ -101,6 +100,34 @@ describe('usePreloadManager (adaptive disabled, regression)', () => {
       (r) => r.start <= 12 && r.end >= 9,
     )
     expect(coversForward).toBe(true)
+  })
+
+  it('param changes (forward/alternation) do not restart preload effect for the same target — fetched pages are not re-fetched', async () => {
+    // 验证 paramsRef 隔离：adaptive 开启时 forward/alternation 抖动（FAST_MS 边界）
+    // 不应重启 effect 重复抓取已缓存页。params 只在 target 变化时通过 ref 读取。
+    // 这里用「重渲染并切换 adaptive 开关」模拟 params 变化：同一 target 下不重复 fetch。
+    const urls = Array.from({ length: 20 }, (_, i) => `u${i + 1}`)
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 4, 0, 3,
+          { enabled }),
+      { initialProps: { enabled: false } },
+    )
+    act(() => result.current.setPreloadTarget(5))
+    // 基线 forward=4：u6-u9
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(4), { timeout: 2000 })
+    const fetchedAfterFirst = mockFetch.mock.calls.length
+    expect(new Set(mockFetch.mock.calls.map((c) => c[0])))
+      .toEqual(new Set(['u6', 'u7', 'u8', 'u9']))
+
+    // 切换 adaptive 开关 → params 从 {forward:4,alt:false} 变为 adaptive 计算值。
+    // effect 不应重启：target 未变，已缓存的 u6-u9 不应被重复抓取。
+    mockFetch.mockClear()
+    rerender({ enabled: true })
+    // 给可能的 effect 重启留出时间窗口；若无重启则 fetch 次数保持 0
+    await new Promise<void>((r) => setTimeout(r, 50))
+    expect(mockFetch).not.toHaveBeenCalled()
+    expect(fetchedAfterFirst).toBe(4)
   })
 })
 
