@@ -7,56 +7,12 @@ from download_manager import ComicDownloadManager, DownloadManager
 from downloader import DownloadResult
 from models import ComicInfo, DownloadStatus, DownloadTask
 
-
-def test_download_status_enum():
-    """测试下载状态枚举"""
-    assert DownloadStatus.QUEUED.value == "queued"
-    assert DownloadStatus.DOWNLOADING.value == "downloading"
-    assert DownloadStatus.PAUSED.value == "paused"
-    assert DownloadStatus.COMPLETED.value == "completed"
-    assert DownloadStatus.FAILED.value == "failed"
-    assert DownloadStatus.CANCELLED.value == "cancelled"
-
-
-def test_download_task_creation():
-    """测试创建下载任务"""
-    comic = ComicInfo(id="123", title="Test Comic", pages=10, media_id="abc123")
-    task = DownloadTask(comic=comic, status=DownloadStatus.QUEUED)
-
-    assert task.comic == comic
-    assert task.status == DownloadStatus.QUEUED
-    assert task.progress_current == 0
-    assert task.progress_total == 0
-    assert task.temp_dir is None
-    assert task.error_message is None
-    assert task.started_at is None
-    assert task.download_speed == 0.0
-    assert task.current_downloading_page == 0
-
-
-def test_download_task_progress_update():
-    """测试更新进度"""
-    comic = ComicInfo(id="123", title="Test")
-    task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
-
-    task.progress_current = 5
-    task.progress_total = 10
-
-    assert task.progress_current == 5
-    assert task.progress_total == 10
-
-
-def test_download_manager_init():
-    """测试 DownloadManager 初始化"""
-    dm = DownloadManager()
-
-    assert dm.tasks == {}
-    assert dm.queue == []
-    assert dm.is_running is False
-    assert dm.global_pause is False
-    assert dm.current_task_id is None
-    assert isinstance(dm._lock, type(threading.Lock()))
-    assert isinstance(dm._stop_event, type(threading.Event()))
+# 注：以下低价值用例已移除（同义反复/框架保证，详见 strengthen-test-suite 变更提案）：
+# - test_download_status_enum        枚举值 == 字符串字面量（Python 语言保证）
+# - test_download_task_creation      dataclass 默认字段赋值（dataclass 保证）
+# - test_download_task_progress_update 赋值后读取（Python 赋值语义保证）
+# - test_download_manager_init       __init__ 默认值（被所有后续行为测试间接覆盖）
+# - test_on_download_success_callback hasattr + is None 存在性检查
 
 
 def test_add_single_task():
@@ -662,17 +618,6 @@ def test_add_duplicate_task_allows_redownload_for_completed():
     assert task_id_2 == task_id_1
     assert len(dm.queue) == 2
     assert dm.tasks[task_id_1].status == DownloadStatus.QUEUED
-
-
-def test_on_download_success_callback(tmp_path):
-    """ComicDownloadManager has on_download_success attribute and calls it on completion."""
-    dm = ComicDownloadManager(
-        downloader=_FakeDownloader(),
-        cbz_builder=_FakeCBZBuilder(),
-        output_dir=str(tmp_path),
-    )
-    assert hasattr(dm, "on_download_success")
-    assert dm.on_download_success is None
 
 
 def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):

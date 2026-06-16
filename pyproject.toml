@@ -1,5 +1,8 @@
 [tool.pytest.ini_options]
 timeout = 60
+markers = [
+    "smoke: 端到端冒烟测试（真实 spawn Python 子进程，可用 -m 'not smoke' 跳过以加速日常反馈）",
+]
 
 [tool.black]
 line-length = 120

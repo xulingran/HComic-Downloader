@@ -37,22 +37,8 @@ describe('useDownload', () => {
     expect(response).toEqual({ taskId: 't1', status: 'queued' })
   })
 
-  it('cancelDownload 应调用 window.hcomic.cancelDownload', async () => {
-    const hcomic = createMockHcomic({ cancelDownload: vi.fn().mockResolvedValue({ success: true }) })
-    const { result } = renderHook(() => useDownload())
-    const response = await result.current.cancelDownload('task-1')
-    expect(hcomic.cancelDownload).toHaveBeenCalledWith('task-1')
-    expect(response).toEqual({ success: true })
-  })
-
-  it('getDownloads 应调用 window.hcomic.getDownloads', async () => {
-    const tasks = [{ id: 't1', status: 'downloading' }]
-    const hcomic = createMockHcomic({ getDownloads: vi.fn().mockResolvedValue({ tasks }) })
-    const { result } = renderHook(() => useDownload())
-    const response = await result.current.getDownloads()
-    expect(hcomic.getDownloads).toHaveBeenCalled()
-    expect(response).toEqual({ tasks })
-  })
+  // 注：已移除两个纯 mock 调用断言用例（cancelDownload/getDownloads 仅验证 mock 被调用 + 返回值透传，
+  // 无独立行为信号，详见 strengthen-test-suite 变更提案）。保留 startDownload 返回值透传与参数完整性验证。
 
   it('startDownload 应传递完整的 ComicInfo 数据', async () => {
     const comicWithExtras: ComicInfo = {

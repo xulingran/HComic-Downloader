@@ -381,10 +381,18 @@ class MigrationEngine:
         if not os.path.exists(item.source):
             raise FileNotFoundError(f"Source not found: {item.source}")
 
+        # 显式预检查目标是否已存在，避免依赖 os.rename / shutil.copytree 的平台相关行为：
+        # macOS/Linux 的 POSIX 语义下 os.rename 会静默覆盖目标（不抛 FileExistsError），
+        # 仅 Windows 会抛出。显式检查使所有平台行为一致——目标已存在时报错且不破坏源文件。
+        if os.path.exists(item.target):
+            raise FileExistsError(f"目标文件已存在: {item.target} (源: {item.source})")
+
         source_dir = self._state.source_dir
         target_dir = self._state.target_dir
 
         if self._is_same_drive(source_dir, target_dir):
+            # 预检查保证跨平台一致；保留 try/except 作为 Windows 上 TOCTOU 窗口
+            # （预检查与 rename 之间目标被创建）的原子失败兜底，两者不冲突。
             try:
                 os.rename(item.source, item.target)
             except FileExistsError:

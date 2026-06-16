@@ -345,6 +345,97 @@ def test_same_drive_target_exists_reports_clear_error(tmp_path):
     assert "目标文件已存在" in state.failed_items[0]["error"]
 
 
+# ── T5b: Regression — source file must be preserved when target exists ─
+# 锁定 macOS/Linux 上 os.rename 静默覆盖的 bug 不再复发：目标已存在时源文件内容必须不变。
+
+
+def test_same_drive_target_exists_preserves_source_content(tmp_path):
+    source_dir = str(tmp_path / "source")
+    target_dir = str(tmp_path / "target")
+    os.makedirs(source_dir, exist_ok=True)
+    os.makedirs(target_dir, exist_ok=True)
+
+    src_file = os.path.join(source_dir, "comic.cbz")
+    tgt_file = os.path.join(target_dir, "comic.cbz")
+    with open(src_file, "w") as f:
+        f.write("SOURCE-MUST-BE-PRESERVED")
+    with open(tgt_file, "w") as f:
+        f.write("existing target")
+
+    mock_db = MagicMock()
+    mock_db.get_all_records.return_value = [
+        {
+            "source_site": "hcomic",
+            "comic_id": "100",
+            "comic_source": "MMCG_SHORT",
+            "title": "Comic",
+            "author": "Author",
+            "output_path": src_file,
+            "output_format": "cbz",
+            "downloaded_at": 1715836800,
+        },
+    ]
+
+    engine = MigrationEngine(history_db=mock_db)
+    engine.plan_full_migration(source_dir, target_dir)
+    engine.execute(on_progress=lambda p: None)
+
+    # 源文件内容不得被覆盖（修复前的 macOS 行为会静默覆盖）
+    with open(src_file, "r") as f:
+        assert f.read() == "SOURCE-MUST-BE-PRESERVED"
+    # 目标文件保持原有的内容，未被源覆盖
+    with open(tgt_file, "r") as f:
+        assert f.read() == "existing target"
+
+
+# ── T5c: Regression — cross-drive target exists also reports error ─────
+
+
+def test_cross_drive_target_exists_reports_error(tmp_path, monkeypatch):
+    source_dir = str(tmp_path / "source")
+    target_dir = str(tmp_path / "target")
+    os.makedirs(source_dir, exist_ok=True)
+    os.makedirs(target_dir, exist_ok=True)
+
+    src_file = os.path.join(source_dir, "comic.cbz")
+    tgt_file = os.path.join(target_dir, "comic.cbz")
+    with open(src_file, "w") as f:
+        f.write("source content")
+    with open(tgt_file, "w") as f:
+        f.write("existing target")
+
+    mock_db = MagicMock()
+    mock_db.get_all_records.return_value = [
+        {
+            "source_site": "hcomic",
+            "comic_id": "100",
+            "comic_source": "MMCG_SHORT",
+            "title": "Comic",
+            "author": "Author",
+            "output_path": src_file,
+            "output_format": "cbz",
+            "downloaded_at": 1715836800,
+        },
+    ]
+
+    engine = MigrationEngine(history_db=mock_db)
+    engine.plan_full_migration(source_dir, target_dir)
+
+    # 强制走跨盘分支（copytree/copy2 路径）
+    monkeypatch.setattr(engine, "_is_same_drive", staticmethod(lambda a, b: False))
+
+    error_calls = []
+    engine.execute(on_progress=lambda p: None, on_error=lambda e: error_calls.append(e))
+    # 在 execute 之后捕获 state 引用，避免 execute 内部若未来重新赋值 _state 导致误绿
+    state = engine._state
+
+    assert state.plan[0].status == "failed"
+    assert "目标文件已存在" in state.failed_items[0]["error"]
+    # 跨盘场景下源文件同样不得被破坏
+    with open(src_file, "r") as f:
+        assert f.read() == "source content"
+
+
 # ── T6: Cross-drive source removal failure ────────────────────────────
 
 

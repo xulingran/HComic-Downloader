@@ -26,10 +26,9 @@ describe('useDownloadStore', () => {
     expect(useDownloadStore.getState().tasks).toEqual([])
   })
 
-  it('应能设置所有任务', () => {
-    useDownloadStore.getState().setTasks([mockTask])
-    expect(useDownloadStore.getState().tasks).toEqual([mockTask])
-  })
+  // 注：已移除 `应能设置所有任务`（setTasks 纯 setState 往返，Zustand 保证），
+  // 以及末尾两个状态字段更新用例（completed/failed 本质是 updateTask 重复）。
+  // 保留 upsert 合并逻辑、updateTask 匹配、remove/no-op 防御逻辑等 store 特有行为。详见 strengthen-test-suite 变更提案。
 
   it('应能通过 upsertTask 添加新任务', () => {
     useDownloadStore.getState().upsertTask(mockTask)
@@ -70,19 +69,5 @@ describe('useDownloadStore', () => {
     useDownloadStore.getState().upsertTask(mockTask)
     useDownloadStore.getState().removeTask('non-existent')
     expect(useDownloadStore.getState().tasks).toHaveLength(1)
-  })
-
-  it('应能更新任务状态为 completed', () => {
-    useDownloadStore.getState().upsertTask(mockTask)
-    useDownloadStore.getState().updateTask('task-1', { status: 'completed', progress: 100 })
-    expect(useDownloadStore.getState().tasks[0].status).toBe('completed')
-  })
-
-  it('应能更新任务状态为 failed', () => {
-    useDownloadStore.getState().upsertTask(mockTask)
-    useDownloadStore.getState().updateTask('task-1', { status: 'failed', error: 'Network timeout' })
-    const task = useDownloadStore.getState().tasks[0]
-    expect(task.status).toBe('failed')
-    expect(task.error).toBe('Network timeout')
   })
 })

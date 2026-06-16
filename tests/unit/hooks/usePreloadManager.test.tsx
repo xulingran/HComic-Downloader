@@ -129,6 +129,35 @@ describe('usePreloadManager (adaptive disabled, regression)', () => {
     expect(mockFetch).not.toHaveBeenCalled()
     expect(fetchedAfterFirst).toBe(4)
   })
+
+  it('cached page content survives params jitter — already-loaded pages remain in cache (no data loss)', async () => {
+    // 更强的不变量：params 抖动不仅不应重复 fetch，已写入缓存的页面 dataUri 必须保持可读。
+    // 这锁定的是「用户视角页面不丢失」而非仅「没多调一次 fetch」。对应 regression-guards spec。
+    const urls = Array.from({ length: 20 }, (_, i) => `u${i + 1}`)
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 4, 0, 3,
+          { enabled }),
+      { initialProps: { enabled: false } },
+    )
+    act(() => result.current.setPreloadTarget(5))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalledTimes(4), { timeout: 2000 })
+    // 缓存 snapshot：target=5 的基线 forward 覆盖 u6-u9（0-based 索引 5-8）
+    const cacheBefore = new Map(result.current.imageCacheRef.current)
+    expect(cacheBefore.size).toBe(4)
+    cacheBefore.forEach((v) => expect(v).toBeTruthy())
+
+    // 触发 params 抖动（切换 adaptive 开关）
+    rerender({ enabled: true })
+    await new Promise<void>((r) => setTimeout(r, 50))
+
+    // 不变量：抖动后缓存内容必须完整保留，不得有页丢失
+    const cacheAfter = result.current.imageCacheRef.current
+    expect(cacheAfter.size).toBeGreaterThanOrEqual(cacheBefore.size)
+    cacheBefore.forEach((dataUri, idx) => {
+      expect(cacheAfter.get(idx)).toBe(dataUri)
+    })
+  })
 })
 
 describe('usePreloadManager (adaptive enabled, fast pace drives boost)', () => {

@@ -74,3 +74,6 @@ npm run dev.bat
 # Temporary / Generated documents
 code review.txt
 .qoder/
+
+# macOS
+.DS_Store
