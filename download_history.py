@@ -150,7 +150,37 @@ class DownloadHistoryDB:
                     if row[3] and os.path.exists(row[3]):
                         bucket["have"] += 1
 
+                # 第二轮：第一轮无匹配的 key，按主键 (source_site, comic_id, comic_source) 回退查询。
+                # 这解决了批量专辑下载时 album_id 为 md5 hash 而非 comic_id 导致的匹配失败问题。
+                # 注意：主键查询每 key 最多返回一行，因此直接检查 output_path 存在性即可，
+                # 不需要也用不了 album_total_chapters 的多行聚合逻辑。
+                unmatched_keys = [key for key in batch if key not in agg]
+                if unmatched_keys:
+                    fallback_phs = ",".join(["(?, ?, ?)"] * len(unmatched_keys))
+                    fallback_flat: list[str] = []
+                    for k in unmatched_keys:
+                        fallback_flat.extend(k)
+                    cursor2 = self._conn.execute(
+                        f"""
+                        SELECT source_site, comic_id, comic_source, output_path,
+                               album_total_chapters, title, author
+                        FROM download_history
+                        WHERE (source_site, comic_id, comic_source) IN ({fallback_phs})
+                    """,
+                        fallback_flat,
+                    )
+                    for row in cursor2:
+                        key = (row[0], row[1], row[2])  # (source_site, comic_id, comic_source) 与 batch key 格式一致
+                        out_path = row[3]
+                        if out_path and os.path.exists(out_path):
+                            result[key] = "downloaded"
+                        else:
+                            result[key] = "unknown"
+
                 for key in batch:
+                    if key in result:
+                        # 已在第二轮回退查询或之前的批次中判定，跳过
+                        continue
                     bucket = agg.get(key)
                     if bucket and bucket["have"] >= bucket["total"]:
                         result[key] = "downloaded"

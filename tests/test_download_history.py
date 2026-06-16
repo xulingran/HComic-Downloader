@@ -343,3 +343,140 @@ def test_update_output_path_by_album_no_match(tmp_path):
     )
     assert count == 0
     db.close()
+
+
+def test_check_batch_fallback_to_primary_key_for_album_download(db, tmp_path):
+    """模拟批量专辑下载场景：album_id 是 md5 hash 而非 comic_id，
+    验证第一轮 album_id 查询无命中后，第二轮主键回退查询能正确返回 downloaded。"""
+    # 模拟批量专辑下载：两条漫画属于同一个虚拟专辑（album_id = md5 hash）
+    # 记录时 album_id = hash，但收藏夹查询时会将 comic_id 当作 album_id 传入
+    album_hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4"
+    for chap_id in ("chap001", "chap002"):
+        out = tmp_path / chap_id
+        out.mkdir()
+        comic = ComicInfo(
+            id=chap_id,
+            title=f"Test Album - Ch{chap_id}",
+            source_site="hcomic",
+            comic_source="MMCG_SHORT",
+            album_id=album_hash,
+            album_total_chapters=2,
+        )
+        db.record_download(comic, str(out), "folder")
+
+    # 收藏夹查询时传入的 key 使用原始 comic_id（不是 album_hash）
+    keys = [
+        ("hcomic", "chap001", "MMCG_SHORT"),
+        ("hcomic", "chap002", "MMCG_SHORT"),
+    ]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "folder", "{title}")
+    assert result[("hcomic", "chap001", "MMCG_SHORT")] == "downloaded"
+    assert result[("hcomic", "chap002", "MMCG_SHORT")] == "downloaded"
+
+
+def test_check_batch_fallback_primary_key_partial_album_individual_comic_downloaded(db, tmp_path):
+    """专辑只下载了 1 章，但回退查询以单个漫画为主键匹配时，
+    如果该漫画的文件存在则判定为 downloaded（因为主键查询每 key 仅一行，
+    不涉及专辑级别的多行聚合）。"""
+    album_hash = "partial_hash_abc123"
+    out = tmp_path / "chap001"
+    out.mkdir()
+    comic = ComicInfo(
+        id="chap001",
+        title="Partial Album - Ch1",
+        source_site="hcomic",
+        comic_source="MMCG_SHORT",
+        album_id=album_hash,
+        album_total_chapters=2,
+    )
+    db.record_download(comic, str(out), "folder")
+
+    keys = [("hcomic", "chap001", "MMCG_SHORT")]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "folder", "{title}")
+    # 该漫画自身的文件存在 → downloaded
+    assert result[("hcomic", "chap001", "MMCG_SHORT")] == "downloaded"
+
+
+def test_check_batch_fallback_primary_key_missing_file(db, tmp_path):
+    """专辑章节文件被删除，回退查询命中但文件不存在 → unknown。"""
+    album_hash = "missing_file_hash_456"
+    # 记录路径指向不存在的文件
+    out = str(tmp_path / "deleted_chapter")
+    comic = ComicInfo(
+        id="chap001",
+        title="Missing Album - Ch1",
+        source_site="hcomic",
+        comic_source="MMCG_SHORT",
+        album_id=album_hash,
+        album_total_chapters=1,
+    )
+    db.record_download(comic, out, "folder")
+
+    keys = [("hcomic", "chap001", "MMCG_SHORT")]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "folder", "{title}")
+    assert result[("hcomic", "chap001", "MMCG_SHORT")] == "unknown"
+
+
+def test_check_batch_single_download_still_hits_first_round(db, sample_comic, tmp_path):
+    """单本下载场景：第一轮按 album_id 查询应直接命中，不受回退查询影响（回归测试）。"""
+    output_path = str(tmp_path / "Test Author-Test Comic.cbz")
+    with open(output_path, "w") as f:
+        f.write("fake cbz")
+    # 单本下载时 album_id 默认为 comic.id（见 record_download 的默认值逻辑）
+    db.record_download(sample_comic, output_path, "cbz")
+
+    keys = [("hcomic", "12345", "MMCG_SHORT")]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "cbz", "{author}-{title}.cbz")
+    assert result[("hcomic", "12345", "MMCG_SHORT")] == "downloaded"
+
+
+def test_check_batch_fallback_primary_key_with_mixed_sources(db, tmp_path):
+    """混合来源场景：同一 source_site 内不同 comic_source 的批量专辑章节。"""
+    album_hash = "mixed_src_hash_789"
+
+    for chap_id, comic_src in [("chapA", "MMCG_SHORT"), ("chapB", "MMCG_LONG")]:
+        out = tmp_path / chap_id
+        out.mkdir()
+        comic = ComicInfo(
+            id=chap_id,
+            title=f"Mixed - {chap_id}",
+            source_site="hcomic",
+            comic_source=comic_src,
+            album_id=album_hash,
+            album_total_chapters=2,
+        )
+        db.record_download(comic, str(out), "folder")
+
+    keys = [
+        ("hcomic", "chapA", "MMCG_SHORT"),
+        ("hcomic", "chapB", "MMCG_LONG"),
+    ]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "folder", "{title}")
+    assert result[("hcomic", "chapA", "MMCG_SHORT")] == "downloaded"
+    assert result[("hcomic", "chapB", "MMCG_LONG")] == "downloaded"
+
+
+def test_check_batch_fallback_primary_key_mixed_hit_and_miss(db, tmp_path):
+    """部分漫画已专辑下载、部分完全不存在 → 各自状态正确。"""
+    album_hash = "mixed_hit_miss_hash"
+
+    # 只有 chap001 被专辑下载了
+    out = tmp_path / "chap001"
+    out.mkdir()
+    comic = ComicInfo(
+        id="chap001",
+        title="Exist - Ch1",
+        source_site="hcomic",
+        comic_source="MMCG_SHORT",
+        album_id=album_hash,
+        album_total_chapters=1,
+    )
+    db.record_download(comic, str(out), "folder")
+
+    keys = [
+        ("hcomic", "chap001", "MMCG_SHORT"),  # 已专辑下载
+        ("hcomic", "chap999", "MMCG_SHORT"),  # 从未下载
+    ]
+    result = db.check_downloaded_batch(keys, str(tmp_path), "folder", "{title}")
+    assert result[("hcomic", "chap001", "MMCG_SHORT")] == "downloaded"
+    assert result[("hcomic", "chap999", "MMCG_SHORT")] == "unknown"
