@@ -13,6 +13,7 @@ import { SearchBar } from '../components/SearchBar'
 import { BikaCategoryGrid } from '../components/BikaCategoryGrid'
 import { TagDialog } from '../components/TagDialog'
 import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
+import { pickAlbumDefaultName } from '../utils/titleSimilarity'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
@@ -41,6 +42,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showAlbumDialog, setShowAlbumDialog] = useState(false)
+  const [albumDefaultName, setAlbumDefaultName] = useState('')
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [needsLogin, setNeedsLogin] = useState(false)
@@ -70,6 +72,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     clearSelection,
     handleBatchDownload,
     handleBatchDownloadAsAlbum,
+    selectedComics,
   } = useBatchDownload(comics)
   const { cardStyle, tagBlacklist, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
@@ -439,9 +442,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
   }
 
+  // 打开弹窗时才提取默认名（而非 useMemo 预算）：保证日志在"即将展示给用户"
+  // 的诊断点输出，且能拿到 selectedComics() 跨页缓存的最新数据。
   const handleBatchDownloadAsAlbumClick = useCallback(() => {
+    const titles = selectedComics().map(c => c.title)
+    setAlbumDefaultName(pickAlbumDefaultName(titles, selectedIds.size))
     setShowAlbumDialog(true)
-  }, [])
+  }, [selectedComics, selectedIds.size])
 
   const handleAlbumNameConfirm = useCallback(async (albumName: string) => {
     setShowAlbumDialog(false)
@@ -677,7 +684,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       {/* ── Album name dialog ── */}
       <AlbumNameDialog
         isOpen={showAlbumDialog}
-        defaultName={`批量下载 - ${selectedIds.size}本漫画`}
+        defaultName={albumDefaultName}
         comicCount={selectedIds.size}
         onConfirm={handleAlbumNameConfirm}
         onCancel={handleAlbumNameCancel}

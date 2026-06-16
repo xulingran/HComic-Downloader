@@ -80,6 +80,7 @@ export function useBatchDownload(comics: ComicInfo[]) {
     selectAll,
     clearSelection,
     exitBatchMode,
+    selectedComics,
     handleBatchDownload,
     handleBatchDownloadAsAlbum,
   }

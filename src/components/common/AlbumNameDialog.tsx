@@ -10,7 +10,21 @@ interface AlbumNameDialogProps {
 
 export function AlbumNameDialog({ isOpen, defaultName, comicCount, onConfirm, onCancel }: AlbumNameDialogProps) {
   const [name, setName] = useState(defaultName)
+  const [wasOpen, setWasOpen] = useState(isOpen)
   const inputRef = useRef<HTMLInputElement>(null)
+
+  // 弹窗从关→开时同步最新 defaultName。
+  // 用"渲染期间检测 prop 变化"模式（React 官方推荐），而非 useEffect：
+  // 避免触发 react-hooks/set-state-in-effect，且无额外渲染开销。
+  // 仅在 isOpen 翻转为 true 的那次渲染重置；弹窗保持打开期间即使用户编辑
+  // 触发重渲染也不会被覆盖（wasOpen 已为 true，分支不进入）。
+  // 对常驻挂载（靠 isOpen 控制显隐）和条件挂载两种用法都成立。
+  if (isOpen && !wasOpen) {
+    setName(defaultName)
+    setWasOpen(true)
+  } else if (!isOpen && wasOpen) {
+    setWasOpen(false)
+  }
 
   useEffect(() => {
     if (isOpen) {

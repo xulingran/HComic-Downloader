@@ -6,6 +6,7 @@ import { ComicCard } from '../components/common/ComicCard'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
+import { pickAlbumDefaultName } from '../utils/titleSimilarity'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
@@ -36,6 +37,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [source, setSource] = useState(() => cache.currentSource)
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const [showAlbumDialog, setShowAlbumDialog] = useState(false)
+  const [albumDefaultName, setAlbumDefaultName] = useState('')
   const { getFavourites, checkDownloadedStatus } = useFavourites()
   const { probeChaptersBeforeDownload } = useChapterProbe()
   const sources = useSources()
@@ -49,6 +51,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     clearSelection,
     handleBatchDownload,
     handleBatchDownloadAsAlbum,
+    selectedComics,
   } = useBatchDownload(comics)
   const { openReader } = useReaderStore()
   const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
@@ -194,9 +197,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     selectAll(notDownloaded)
   }, [comics, downloadedStatus, selectAll])
 
+  // 打开弹窗时才提取默认名（而非 useMemo 预算）：保证日志在"即将展示给用户"
+  // 的诊断点输出，且能拿到 selectedComics() 跨页缓存的最新数据。
   const handleBatchDownloadAsAlbumClick = useCallback(() => {
+    const titles = selectedComics().map(c => c.title)
+    setAlbumDefaultName(pickAlbumDefaultName(titles, selectedIds.size))
     setShowAlbumDialog(true)
-  }, [])
+  }, [selectedComics, selectedIds.size])
 
   const handleAlbumNameConfirm = useCallback(async (albumTitle: string) => {
     setShowAlbumDialog(false)
@@ -390,7 +397,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       {showAlbumDialog && (
         <AlbumNameDialog
           isOpen={showAlbumDialog}
-          defaultName={`批量下载 - ${selectedIds.size}本漫画`}
+          defaultName={albumDefaultName}
           comicCount={selectedIds.size}
           onConfirm={handleAlbumNameConfirm}
           onCancel={handleAlbumNameCancel}
