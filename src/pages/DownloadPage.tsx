@@ -25,7 +25,7 @@ function matchStatusFilter(status: DownloadStatus, filter: StatusFilter): boolea
 export function DownloadPage() {
   const { tasks, setTasks, updateTask, isGloballyPaused } = useDownloadStore()
   const { getDownloads, cancelDownload, progress } = useDownload()
-  const { handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause } = useDownloadHelper()
+  const { handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause, handlePauseAlbum, handleResumeAlbum, handleCancelAlbum } = useDownloadHelper()
   const { getConfig, openDownloadDir } = useConfig()
   const [failedDialog, setFailedDialog] = useState<DownloadDetail | null>(null)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
@@ -211,6 +211,13 @@ export function DownloadPage() {
             const hasFailures = group.tasks.some(t => t.status === 'failed')
             const ap = albumProgress[key]
             const isPacked = ap?.event === 'packed'
+            const taskIds = group.tasks.map(t => t.id)
+
+            // 专辑聚合状态：用于决定头部显示哪些控制按钮
+            const albumActiveStatuses = ['queued', 'downloading', 'pausing', 'paused']
+            const hasActive = group.tasks.some(t => albumActiveStatuses.includes(t.status))
+            const allPaused = group.tasks.length > 0 && group.tasks.every(t => t.status === 'paused' || t.status === 'pausing')
+            const hasAnyFailed = group.tasks.some(t => t.status === 'failed')
 
             return (
               <div key={key} className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm border-l-4 border-[var(--accent)]">
@@ -219,13 +226,63 @@ export function DownloadPage() {
                     {group.albumTitle}
                   </h3>
                   <div className="flex gap-1.5 flex-shrink-0 ml-2">
-                    {!isPacked && completed > 0 && (
-                      <button
-                        onClick={() => forcePackAlbum(group.sourceSite, group.albumId)}
-                        className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                      >
-                        强制打包
-                      </button>
+                    {!isPacked && (
+                      <>
+                        {/* 暂停 / 恢复 整个专辑 */}
+                        {hasActive && !allPaused && (
+                          <button
+                            onClick={() => handlePauseAlbum(group.sourceSite, group.albumId, taskIds)}
+                            className="text-xs px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                                       text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                          >
+                            全部暂停
+                          </button>
+                        )}
+                        {allPaused && (
+                          <button
+                            onClick={() => handleResumeAlbum(group.sourceSite, group.albumId, taskIds)}
+                            className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                          >
+                            全部恢复
+                          </button>
+                        )}
+                        {/* 重试专辑（仅有失败章节时） */}
+                        {hasAnyFailed && (
+                          <button
+                            onClick={() => {
+                              for (const t of group.tasks) {
+                                if (t.status === 'failed') handleRetryTask(t.id)
+                              }
+                            }}
+                            className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                          >
+                            重试失败
+                          </button>
+                        )}
+                        {/* 取消整个专辑（保留已下载文件） */}
+                        {hasActive && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`取消专辑 "${group.albumTitle}" 的所有未完成任务？\n已下载的章节会保留在磁盘上。`)) {
+                                handleCancelAlbum(group.sourceSite, group.albumId, taskIds)
+                              }
+                            }}
+                            className="text-xs px-2 py-0.5 rounded bg-[var(--bg-secondary)] border border-[var(--border)]
+                                       text-[var(--error)] hover:bg-[var(--bg-tertiary)]"
+                          >
+                            全部取消
+                          </button>
+                        )}
+                        {/* 强制打包 */}
+                        {completed > 0 && (
+                          <button
+                            onClick={() => forcePackAlbum(group.sourceSite, group.albumId)}
+                            className="text-xs px-2 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                          >
+                            强制打包
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -239,12 +296,60 @@ export function DownloadPage() {
                   totalPages={group.totalChapters}
                   downloadedPages={completed}
                 />
-                {/* 章节子行 */}
+                {/* 章节子行：每章独立控制 */}
                 <div className="mt-2 space-y-1">
                   {group.tasks.map(task => (
                     <div key={task.id} className="px-2 py-1.5 rounded bg-[var(--bg-secondary)]">
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="truncate text-[var(--text-primary)]">{task.comic.title}</span>
+                      <div className="flex items-center justify-between text-xs mb-1 gap-2">
+                        <span className="truncate text-[var(--text-primary)] flex-1 min-w-0">{task.comic.title}</span>
+                        <div className="flex gap-1 flex-shrink-0">
+                          {(task.status === 'downloading' || task.status === 'queued') && (
+                            <>
+                              <button
+                                onClick={() => handlePauseTask(task.id)}
+                                className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border)]
+                                           text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                              >
+                                ⏸
+                              </button>
+                              <button
+                                onClick={() => handleCancel(task.id)}
+                                className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border)]
+                                           text-[var(--error)] hover:bg-[var(--bg-tertiary)]"
+                              >
+                                ✕
+                              </button>
+                            </>
+                          )}
+                          {task.status === 'pausing' && (
+                            <span className="px-1.5 py-0.5 rounded text-[var(--text-secondary)]">暂停中</span>
+                          )}
+                          {task.status === 'paused' && (
+                            <>
+                              <button
+                                onClick={() => handleResumeTask(task.id)}
+                                className="px-1.5 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                              >
+                                ▶
+                              </button>
+                              <button
+                                onClick={() => handleCancel(task.id)}
+                                className="px-1.5 py-0.5 rounded bg-[var(--bg-primary)] border border-[var(--border)]
+                                           text-[var(--error)] hover:bg-[var(--bg-tertiary)]"
+                              >
+                                ✕
+                              </button>
+                            </>
+                          )}
+                          {task.status === 'failed' && (
+                            <button
+                              onClick={() => handleRetryTask(task.id)}
+                              className="px-1.5 py-0.5 rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                            >
+                              ↻
+                            </button>
+                          )}
+                        </div>
                       </div>
                       <ProgressBar progress={task.progress} status={task.status} totalPages={task.totalPages} downloadedPages={task.downloadedPages} />
                     </div>

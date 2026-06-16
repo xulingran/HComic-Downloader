@@ -157,3 +157,43 @@ class TestAlbumStagingCoordinator:
         assert result.status == "packed"
         assert result.output_path == album_dir
         assert os.path.exists(album_dir)
+
+
+class TestAlbumCoordinatorQueries:
+    """专辑 coordinator 公开查询方法（用于专辑级批量控制）。"""
+
+    def _make_coordinator(self, tmp_path):
+        coord, events, dd = TestAlbumStagingCoordinator._make_coordinator(self, tmp_path)
+        return coord, dd
+
+    def test_get_task_ids_returns_registered_set(self, tmp_path):
+        coord, _ = self._make_coordinator(tmp_path)
+        key: AlbumKey = ("jmcomic", "100")
+        coord.register_album_tasks(key, ["t1", "t2", "t3"], album_total_chapters=3)
+
+        ids = coord.get_task_ids(key)
+        assert ids == {"t1", "t2", "t3"}
+
+    def test_get_task_ids_unknown_album_returns_empty(self, tmp_path):
+        coord, _ = self._make_coordinator(tmp_path)
+        assert coord.get_task_ids(("jmcomic", "unknown")) == set()
+
+    def test_get_task_ids_returns_copy(self, tmp_path):
+        """返回的集合修改不应影响 coordinator 内部状态。"""
+        coord, _ = self._make_coordinator(tmp_path)
+        key: AlbumKey = ("jmcomic", "100")
+        coord.register_album_tasks(key, ["t1"], album_total_chapters=1)
+
+        ids = coord.get_task_ids(key)
+        ids.add("injected")
+        assert "injected" not in coord.get_task_ids(key)
+
+    def test_is_tracked_true_after_register(self, tmp_path):
+        coord, _ = self._make_coordinator(tmp_path)
+        key: AlbumKey = ("jmcomic", "100")
+        coord.register_album_tasks(key, ["t1"], album_total_chapters=1)
+        assert coord.is_tracked(key) is True
+
+    def test_is_tracked_false_for_unknown(self, tmp_path):
+        coord, _ = self._make_coordinator(tmp_path)
+        assert coord.is_tracked(("jmcomic", "unknown")) is False

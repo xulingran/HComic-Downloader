@@ -368,6 +368,32 @@ class DownloadMixin:
         is_paused = self._download_manager.toggle_global_pause()
         return {"isPaused": is_paused}
 
+    def _album_key_from_params(self, source_site: str, album_id: str) -> tuple[str, str]:
+        """校验并构造 album_key。"""
+        if not source_site or not isinstance(source_site, str):
+            raise ValueError("Invalid source_site")
+        if not album_id or not isinstance(album_id, str):
+            raise ValueError("Invalid album_id")
+        return (source_site, album_id)
+
+    def handle_pause_album(self, source_site: str, album_id: str) -> dict:
+        """暂停整个专辑下的所有可暂停任务。"""
+        album_key = self._album_key_from_params(source_site, album_id)
+        result = self._download_manager.pause_album_tasks(album_key)
+        return {"success": True, **result}
+
+    def handle_resume_album(self, source_site: str, album_id: str) -> dict:
+        """继续整个专辑下所有暂停中的任务。"""
+        album_key = self._album_key_from_params(source_site, album_id)
+        result = self._download_manager.resume_album_tasks(album_key)
+        return {"success": True, **result}
+
+    def handle_cancel_album(self, source_site: str, album_id: str) -> dict:
+        """取消整个专辑下所有未完成任务（跳过已完成的章节，保留已下载文件）。"""
+        album_key = self._album_key_from_params(source_site, album_id)
+        result = self._download_manager.cancel_album_tasks(album_key)
+        return {"success": True, **result}
+
     def handle_get_download_detail(self, task_id: str) -> dict:
         """Return detailed information about a download task."""
         if not task_id or not isinstance(task_id, str):

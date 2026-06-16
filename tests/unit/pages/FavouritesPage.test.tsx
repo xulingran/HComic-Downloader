@@ -25,6 +25,13 @@ vi.mock('@/hooks/useIpc', () => ({
     toggleGlobalPause: vi.fn(),
     getDownloadDetail: vi.fn(),
   }),
+  useAlbumCommands: vi.fn().mockReturnValue({
+    forcePackAlbum: vi.fn(),
+    getAlbumProgress: vi.fn(),
+    pauseAlbum: vi.fn(),
+    resumeAlbum: vi.fn(),
+    cancelAlbum: vi.fn(),
+  }),
   useDownload: vi.fn().mockReturnValue({
     startDownload: vi.fn().mockResolvedValue({ taskId: 'test-id' }),
     cancelDownload: vi.fn().mockResolvedValue({ success: true }),

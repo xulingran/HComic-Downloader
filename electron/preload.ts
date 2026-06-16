@@ -381,6 +381,24 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_ALBUM_PROGRESS, sourceSite, albumId)
   },
 
+  pauseAlbum: (sourceSite: unknown, albumId: unknown) => {
+    if (typeof sourceSite !== 'string' || sourceSite.length === 0 || sourceSite.length > 256) throw new Error('Invalid sourceSite')
+    if (typeof albumId !== 'string' || albumId.length === 0 || albumId.length > 256) throw new Error('Invalid albumId')
+    return ipcRenderer.invoke(IPC_CHANNELS.PAUSE_ALBUM, sourceSite, albumId)
+  },
+
+  resumeAlbum: (sourceSite: unknown, albumId: unknown) => {
+    if (typeof sourceSite !== 'string' || sourceSite.length === 0 || sourceSite.length > 256) throw new Error('Invalid sourceSite')
+    if (typeof albumId !== 'string' || albumId.length === 0 || albumId.length > 256) throw new Error('Invalid albumId')
+    return ipcRenderer.invoke(IPC_CHANNELS.RESUME_ALBUM, sourceSite, albumId)
+  },
+
+  cancelAlbum: (sourceSite: unknown, albumId: unknown) => {
+    if (typeof sourceSite !== 'string' || sourceSite.length === 0 || sourceSite.length > 256) throw new Error('Invalid sourceSite')
+    if (typeof albumId !== 'string' || albumId.length === 0 || albumId.length > 256) throw new Error('Invalid albumId')
+    return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_ALBUM, sourceSite, albumId)
+  },
+
   onAlbumProgress: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.ALBUM_PROGRESS, callback)
   },

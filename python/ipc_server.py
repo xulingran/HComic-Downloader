@@ -274,6 +274,9 @@ class IPCServer(
         "refresh_tag_list": "handle_refresh_tag_list",
         "force_pack_album": "handle_force_pack_album",
         "get_album_progress": "handle_get_album_progress",
+        "pause_album": "handle_pause_album",
+        "resume_album": "handle_resume_album",
+        "cancel_album": "handle_cancel_album",
         "download_batch_as_album": "handle_download_batch_as_album",
     }
 

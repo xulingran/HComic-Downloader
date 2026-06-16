@@ -553,6 +553,18 @@ export interface IPCMethods {
       isComplete: boolean
     }
   }
+  pause_album: {
+    params: { source_site: string; album_id: string }
+    result: { success: boolean; affected: number; skipped: number; notFound: boolean }
+  }
+  resume_album: {
+    params: { source_site: string; album_id: string }
+    result: { success: boolean; affected: number; skipped: number; notFound: boolean }
+  }
+  cancel_album: {
+    params: { source_site: string; album_id: string }
+    result: { success: boolean; affected: number; skipped: number; notFound: boolean }
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -614,6 +626,9 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:refresh-tag-list': 'refresh_tag_list',
   'python:force-pack-album': 'force_pack_album',
   'python:get-album-progress': 'get_album_progress',
+  'python:pause-album': 'pause_album',
+  'python:resume-album': 'resume_album',
+  'python:cancel-album': 'cancel_album',
 } as const
 
 /** Validated notification event for download progress (Python -> Main -> Renderer) */
@@ -706,6 +721,9 @@ export interface HcomicAPI {
     packedPath: string | null; totalChapters: number; chaptersOnDisk: number;
     chaptersInQueue: number; isComplete: boolean;
   }>
+  pauseAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
+  resumeAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
+  cancelAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
   onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   onFatalError(callback: (data: FatalErrorEvent) => void): () => void
@@ -843,6 +861,9 @@ export const IPC_CHANNELS = {
   REFRESH_TAG_LIST: 'python:refresh-tag-list',
   FORCE_PACK_ALBUM: 'python:force-pack-album',
   GET_ALBUM_PROGRESS: 'python:get-album-progress',
+  PAUSE_ALBUM: 'python:pause-album',
+  RESUME_ALBUM: 'python:resume-album',
+  CANCEL_ALBUM: 'python:cancel-album',
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
   GET_PREVIEW_URLS: 'python:get-preview-urls',

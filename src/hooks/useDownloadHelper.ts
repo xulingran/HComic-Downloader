@@ -1,4 +1,4 @@
-import { useDownloadCommands, useComicDetail } from './useIpc'
+import { useDownloadCommands, useComicDetail, useAlbumCommands } from './useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useToastStore } from '../stores/useToastStore'
 import type { ComicInfo, DownloadStatus, QueuedBatchAlbumTask } from '@shared/types'
@@ -13,6 +13,7 @@ function queuedBatchTaskKey(task: QueuedBatchAlbumTask) {
 
 export function useDownloadHelper() {
   const { startDownload, checkDownloadConflict, downloadBatchAsAlbum, pauseTask, resumeTask, retryTask, toggleGlobalPause } = useDownloadCommands()
+  const { pauseAlbum, resumeAlbum, cancelAlbum } = useAlbumCommands()
   const upsertTask = useDownloadStore((s) => s.upsertTask)
   const updateTask = useDownloadStore((s) => s.updateTask)
   const setGlobalPaused = useDownloadStore((s) => s.setGlobalPaused)
@@ -173,7 +174,59 @@ export function useDownloadHelper() {
     }
   }
 
-  return { downloadWithConflictCheck, downloadBatchAsAlbum: downloadBatchAsAlbumWithToast, downloadChapters, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause }
+  // ── 专辑级批量控制 ──
+  // 调用后端专辑方法，然后乐观更新 store 中该专辑所有任务的状态。
+  // taskIds 用于本地状态预判（如取消时跳过 completed）。
+  const handlePauseAlbum = async (sourceSite: string, albumId: string, taskIds: string[]) => {
+    try {
+      await pauseAlbum(sourceSite, albumId)
+      for (const tid of taskIds) {
+        const task = useDownloadStore.getState().tasks.find((t) => t.id === tid)
+        if (!task) continue
+        // downloading → pausing；queued → paused
+        const next: DownloadStatus = task.status === 'downloading' || task.status === 'pausing' ? 'pausing' : 'paused'
+        updateTask(tid, { status: next })
+      }
+    } catch (err) {
+      console.error('Failed to pause album:', err)
+      useToastStore.getState().error('暂停专辑失败')
+    }
+  }
+
+  const handleResumeAlbum = async (sourceSite: string, albumId: string, taskIds: string[]) => {
+    try {
+      await resumeAlbum(sourceSite, albumId)
+      for (const tid of taskIds) {
+        const task = useDownloadStore.getState().tasks.find((t) => t.id === tid)
+        if (!task) continue
+        if (task.status === 'paused' || task.status === 'pausing') {
+          updateTask(tid, { status: 'queued' })
+        }
+      }
+    } catch (err) {
+      console.error('Failed to resume album:', err)
+      useToastStore.getState().error('恢复专辑失败')
+    }
+  }
+
+  const handleCancelAlbum = async (sourceSite: string, albumId: string, taskIds: string[]) => {
+    try {
+      await cancelAlbum(sourceSite, albumId)
+      for (const tid of taskIds) {
+        const task = useDownloadStore.getState().tasks.find((t) => t.id === tid)
+        if (!task) continue
+        // 跳过已完成的章节（保留已下载文件）
+        if (task.status !== 'completed' && task.status !== 'cancelled') {
+          updateTask(tid, { status: 'cancelled' })
+        }
+      }
+    } catch (err) {
+      console.error('Failed to cancel album:', err)
+      useToastStore.getState().error('取消专辑失败')
+    }
+  }
+
+  return { downloadWithConflictCheck, downloadBatchAsAlbum: downloadBatchAsAlbumWithToast, downloadChapters, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause, handlePauseAlbum, handleResumeAlbum, handleCancelAlbum }
 }
 
 /**

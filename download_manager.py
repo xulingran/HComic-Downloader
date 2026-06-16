@@ -426,6 +426,80 @@ class DownloadManager:
         logger.info("Global pause: %s", new_state)
         return new_state
 
+    # ── 专辑级批量控制 ──────────────────────────────────────────
+    # 以 (source_site, album_id) 为单位批量暂停/继续/取消整个专辑。
+    # 优先使用注入的 album coordinator 查找任务 ID；若 coordinator 未跟踪该专辑
+    # （例如跨进程重启后状态丢失），则遍历 self.tasks 按 comic.album_id 兜底匹配。
+
+    def _get_album_task_ids(self, album_key: tuple[str, str]) -> list[str]:
+        """查找专辑下的任务 ID 列表（coordinator 优先，tasks 兜底）。"""
+        coordinator = getattr(self, "_album_coordinator", None)
+        if coordinator is not None and coordinator.is_tracked(album_key):
+            return list(coordinator.get_task_ids(album_key))
+        # 兜底：遍历任务按 (source_site, album_id) 匹配
+        source_site, album_id = album_key
+        with self._lock:
+            return [
+                tid
+                for tid, task in self.tasks.items()
+                if task.comic.source_site == source_site and (task.comic.album_id or task.comic.id) == album_id
+            ]
+
+    def pause_album_tasks(self, album_key: tuple[str, str]) -> dict:
+        """暂停专辑下所有可暂停任务（queued/downloading）。
+
+        Returns:
+            {"affected": 暂停成功数, "skipped": 跳过数, "notFound": 是否无任务}
+        """
+        task_ids = self._get_album_task_ids(album_key)
+        if not task_ids:
+            return {"affected": 0, "skipped": 0, "notFound": True}
+        affected = 0
+        skipped = 0
+        for tid in task_ids:
+            if self.pause_task(tid):
+                affected += 1
+            else:
+                skipped += 1
+        logger.info("Pause album %s: %d paused, %d skipped", album_key, affected, skipped)
+        return {"affected": affected, "skipped": skipped, "notFound": False}
+
+    def resume_album_tasks(self, album_key: tuple[str, str]) -> dict:
+        """继续专辑下所有 paused/pausing 任务。"""
+        task_ids = self._get_album_task_ids(album_key)
+        if not task_ids:
+            return {"affected": 0, "skipped": 0, "notFound": True}
+        affected = 0
+        skipped = 0
+        for tid in task_ids:
+            if self.resume_task(tid):
+                affected += 1
+            else:
+                skipped += 1
+        logger.info("Resume album %s: %d resumed, %d skipped", album_key, affected, skipped)
+        return {"affected": affected, "skipped": skipped, "notFound": False}
+
+    def cancel_album_tasks(self, album_key: tuple[str, str]) -> dict:
+        """取消专辑下所有未完成任务（跳过 completed 以保留已下载文件）。"""
+        task_ids = self._get_album_task_ids(album_key)
+        if not task_ids:
+            return {"affected": 0, "skipped": 0, "notFound": True}
+        affected = 0
+        skipped = 0
+        for tid in task_ids:
+            # cancel_task 内部 guard 已排除 completed/cancelled/failed，
+            # 这里显式跳过 completed 以保留已下载章节文件。
+            task = self.tasks.get(tid)
+            if task and task.status == DownloadStatus.COMPLETED:
+                skipped += 1
+                continue
+            if self.cancel_task(tid):
+                affected += 1
+            else:
+                skipped += 1
+        logger.info("Cancel album %s: %d cancelled, %d skipped", album_key, affected, skipped)
+        return {"affected": affected, "skipped": skipped, "notFound": False}
+
     def get_stats(self) -> dict:
         """获取队列统计信息"""
         with self._lock:

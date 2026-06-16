@@ -136,9 +136,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 63 total
+      // 66 total
       const count = handleCalls.length
-      expect(count).toBe(63)
+      expect(count).toBe(66)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -249,6 +249,7 @@ describe('main.ts', () => {
         'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
         'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'get_jmcomic_domains',
         'force_pack_album', 'get_album_progress',
+        'pause_album', 'resume_album', 'cancel_album',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),

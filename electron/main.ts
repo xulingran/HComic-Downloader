@@ -1115,6 +1115,18 @@ function registerAlbumHandlers(bridge: Bridge) {
       album_id: albumId,
     })
   })
+
+  const registerAlbumTaskAction = (channel: string, method: string, label: string) => {
+    ipcMain.handle(channel, async (_, sourceSite: unknown, albumId: unknown) => {
+      assert(and(string(), length(1, 256)), sourceSite, `${label} sourceSite`)
+      assert(and(string(), length(1, 256)), albumId, `${label} albumId`)
+      return bridge.call(method, { source_site: sourceSite, album_id: albumId })
+    })
+  }
+
+  registerAlbumTaskAction(IPC_CHANNELS.PAUSE_ALBUM, 'pause_album', 'pauseAlbum')
+  registerAlbumTaskAction(IPC_CHANNELS.RESUME_ALBUM, 'resume_album', 'resumeAlbum')
+  registerAlbumTaskAction(IPC_CHANNELS.CANCEL_ALBUM, 'cancel_album', 'cancelAlbum')
 }
 
 function registerIPCHandlers() {

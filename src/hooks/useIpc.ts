@@ -322,5 +322,11 @@ export function useAlbumCommands() {
       invoke(() => window.hcomic!.forcePackAlbum(sourceSite, albumId, overwrite)),
     getAlbumProgress: (sourceSite: string, albumId: string) =>
       invoke(() => window.hcomic!.getAlbumProgress(sourceSite, albumId)),
+    pauseAlbum: (sourceSite: string, albumId: string) =>
+      invoke(() => window.hcomic!.pauseAlbum(sourceSite, albumId)),
+    resumeAlbum: (sourceSite: string, albumId: string) =>
+      invoke(() => window.hcomic!.resumeAlbum(sourceSite, albumId)),
+    cancelAlbum: (sourceSite: string, albumId: string) =>
+      invoke(() => window.hcomic!.cancelAlbum(sourceSite, albumId)),
   }), [invoke])
 }

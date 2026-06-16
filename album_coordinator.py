@@ -77,6 +77,15 @@ class AlbumStagingCoordinator:
         state.task_ids.update(task_ids)
         state.total_chapters = album_total_chapters
 
+    def get_task_ids(self, album_key: AlbumKey) -> set[str]:
+        """返回该专辑已注册的任务 ID 集合（用于批量暂停/继续/取消）。"""
+        state = self._tracked.get(album_key)
+        return set(state.task_ids) if state else set()
+
+    def is_tracked(self, album_key: AlbumKey) -> bool:
+        """该专辑是否已注册到 coordinator。"""
+        return album_key in self._tracked
+
     def on_chapter_complete(self, task: DownloadTask, album_work_dir: str) -> None:
         """ComicDownloadManager 在章节成功落盘后调用。"""
         album_key: AlbumKey = (
