@@ -153,7 +153,7 @@ class DownloadHistoryDB:
                 # 第二轮：第一轮无匹配的 key，按主键 (source_site, comic_id, comic_source) 回退查询。
                 # 这解决了批量专辑下载时 album_id 为 md5 hash 而非 comic_id 导致的匹配失败问题。
                 # 注意：主键查询每 key 最多返回一行，因此直接检查 output_path 存在性即可，
-                # 不需要也用不了 album_total_chapters 的多行聚合逻辑。
+                # 不需要也用不了 album_total_chapters 的多行聚合逻辑。SELECT 仅取所需列。
                 unmatched_keys = [key for key in batch if key not in agg]
                 if unmatched_keys:
                     fallback_phs = ",".join(["(?, ?, ?)"] * len(unmatched_keys))
@@ -162,8 +162,7 @@ class DownloadHistoryDB:
                         fallback_flat.extend(k)
                     cursor2 = self._conn.execute(
                         f"""
-                        SELECT source_site, comic_id, comic_source, output_path,
-                               album_total_chapters, title, author
+                        SELECT source_site, comic_id, comic_source, output_path
                         FROM download_history
                         WHERE (source_site, comic_id, comic_source) IN ({fallback_phs})
                     """,

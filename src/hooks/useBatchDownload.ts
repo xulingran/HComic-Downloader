@@ -14,7 +14,10 @@ export function useBatchDownload(comics: ComicInfo[]) {
   // 跨页选择缓存：在选中/取消选中时同步存储漫画完整数据，翻页后仍可定位
   const selectedCacheRef = useRef<Map<string, ComicInfo>>(new Map())
 
-  // 包装 toggleSelect：选中时缓存漫画数据，取消时删除
+  // 包装 toggleSelect：选中时缓存漫画数据，取消时删除。
+  // 约定：本层用 batch.selectedIds.has(key) 判断增删方向，与底层 useBatchSelect.toggleSelect
+  // 内部"基于 getComicKey 判断 toggle 方向"的语义一致（同一 key）。两者都基于 getComicKey，
+  // 当前实现保证方向同步；若 useBatchSelect 改为基于对象引用判断，需同步审视此处。
   const toggleSelect = useCallback((comic: ComicInfo) => {
     const key = getComicKey(comic)
     if (batch.selectedIds.has(key)) {

@@ -91,7 +91,8 @@ export function DownloadPage() {
   useEffect(() => {
     setExpandedAlbums((prev) => {
       let changed = false
-      const next = prev
+      // 先拷贝，避免在 reducer 内直接 mutate 当前 state（React 不可变约定）
+      const next = new Set(prev)
       for (const [key, hasFailed] of albumFailedMap.entries()) {
         // 仅对"从未被用户操作过"的 key 初始化：用一个平行 Set 记录已初始化的 key
         if (!albumInitializedRef.current.has(key)) {
@@ -102,7 +103,7 @@ export function DownloadPage() {
           }
         }
       }
-      return changed ? new Set(next) : prev
+      return changed ? next : prev
     })
   }, [albumFailedMap])
 
@@ -111,7 +112,8 @@ export function DownloadPage() {
   useEffect(() => {
     setExpandedAlbums((prev) => {
       let changed = false
-      const next = prev
+      // 先拷贝，避免在 reducer 内直接 mutate 当前 state（React 不可变约定）
+      const next = new Set(prev)
       const prevMap = albumPrevFailedRef.current
       for (const [key, hasFailed] of albumFailedMap.entries()) {
         const wasFailed = prevMap.get(key) ?? false
@@ -121,7 +123,7 @@ export function DownloadPage() {
         }
         prevMap.set(key, hasFailed)
       }
-      return changed ? new Set(next) : prev
+      return changed ? next : prev
     })
   }, [albumFailedMap])
 

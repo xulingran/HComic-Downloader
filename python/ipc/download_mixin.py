@@ -84,11 +84,14 @@ class DownloadMixin:
         # 生成虚拟专辑 ID：基于漫画 ID 排序后的哈希，确保相同选择产生相同 ID
         sorted_ids = sorted(f"{c.get('sourceSite', 'hcomic')}_{c.get('id', '')}" for c in comics)
         album_id = hashlib.md5(",".join(sorted_ids).encode("utf-8")).hexdigest()
-        total = len(comics)
+        requested_total = len(comics)
 
         task_ids = []
         queued_tasks = []
         grouped_task_ids: dict[tuple[str, str], list[str]] = {}
+        # 成功入队的 (album_key, comic) 对，循环结束后按实际入队数回填 album_total_chapters。
+        # 注意：DownloadTask 直接持有同一 ComicInfo 引用，回填即可同步影响 task.comic。
+        queued_comics: list[tuple[tuple[str, str], ComicInfo]] = []
         failed = []
         for _idx, comic_data in enumerate(comics, start=1):
             comic_id = comic_data.get("id", "")
@@ -107,6 +110,8 @@ class DownloadMixin:
                 prepared = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
 
                 # 创建虚拟章节漫画：标题为 "专辑名 - 原漫画名"
+                # album_total_chapters 暂用 requested_total，循环后按实际入队数统一回填，
+                # 避免部分入队失败时 total 偏大导致进度条/历史状态永远无法达到 100%。
                 chapter_title = f"{album_title} - {original_title}"
                 comic = ComicInfo(
                     id=comic_id,
@@ -121,11 +126,12 @@ class DownloadMixin:
                     pages=original_pages,
                     image_urls=prepared.image_urls,
                     album_id=album_id,
-                    album_total_chapters=total,
+                    album_total_chapters=requested_total,
                     album_title=album_title,
                 )
                 task_id = self._download_manager.add_task(comic, overwrite=overwrite)
                 task_ids.append(task_id)
+                album_key = (original_source_site, album_id)
                 queued_tasks.append(
                     {
                         "taskId": task_id,
@@ -134,16 +140,23 @@ class DownloadMixin:
                         "source": original_source,
                     }
                 )
-                grouped_task_ids.setdefault((original_source_site, album_id), []).append(task_id)
+                grouped_task_ids.setdefault(album_key, []).append(task_id)
+                queued_comics.append((album_key, comic))
             except Exception as e:
                 logger.warning("Failed to queue batch album comic %s (%s): %s", comic_id, original_title, e)
                 failed.append({"id": comic_id, "name": original_title, "error": str(e)})
 
-        # 注册到专辑 coordinator
+        # 实际入队数作为专辑总章数：部分入队失败时回填，保证进度条/历史状态可正确收敛。
+        actual_total = len(task_ids)
+        if actual_total != requested_total and actual_total > 0:
+            for _, comic in queued_comics:
+                comic.album_total_chapters = actual_total
+
+        # 注册到专辑 coordinator（用实际入队数）
         coordinator = getattr(self, "_album_coordinator", None)
         if coordinator:
             for album_key, group_task_ids in grouped_task_ids.items():
-                coordinator.register_album_tasks(album_key, group_task_ids, total)
+                coordinator.register_album_tasks(album_key, group_task_ids, actual_total)
 
         status = "queued" if task_ids else "error"
         result = {"taskIds": task_ids, "queuedTasks": queued_tasks, "status": status}

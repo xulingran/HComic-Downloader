@@ -231,3 +231,83 @@ def test_download_batch_as_album_preserves_source_site_and_returns_task_mapping(
         (("jmcomic", result["albumKey"]["albumId"]), ["jmcomic_JMCOMIC_a"], 2),
         (("bika", result["albumKey"]["albumId"]), ["bika_BIKA_b"], 2),
     ]
+
+
+def test_download_batch_as_album_partial_failure_uses_actual_total(monkeypatch):
+    """部分漫画入队失败时，album_total_chapters 应按实际入队数回填，
+    否则进度条/历史状态永远无法达到 100%（P1 回归）。"""
+    server = _create_test_server()
+    created = []
+    registered = []
+
+    # 第二本（id="b"）解析失败，模拟网络/反爬异常
+    def fake_prepare(comic_data, comic_id=None):
+        if comic_id == "b":
+            raise RuntimeError("prepare failed for b")
+        return SimpleNamespace(image_urls=[f"https://cdn.example/{comic_id}/001.jpg"])
+
+    def fake_add_task(comic, overwrite=False):
+        created.append(comic)
+        return f"{comic.source_site}_{comic.comic_source}_{comic.id}"
+
+    server._build_and_prepare_comic = fake_prepare
+    server._download_manager = SimpleNamespace(add_task=fake_add_task, tasks={})
+    server._album_coordinator = SimpleNamespace(
+        register_album_tasks=lambda album_key, task_ids, total: registered.append((album_key, task_ids, total))
+    )
+
+    result = server.handle_download_batch_as_album(
+        [
+            {"id": "a", "title": "A", "sourceSite": "hcomic", "source": "NH", "pages": 1},
+            {"id": "b", "title": "B", "sourceSite": "hcomic", "source": "NH", "pages": 1},
+            {"id": "c", "title": "C", "sourceSite": "hcomic", "source": "NH", "pages": 1},
+        ],
+        "部分失败专辑",
+    )
+
+    # 只有 a、c 入队成功
+    assert result["taskIds"] == ["hcomic_NH_a", "hcomic_NH_c"]
+    assert result["status"] == "queued"
+    assert len(result["failedComics"]) == 1
+    assert result["failedComics"][0]["id"] == "b"
+
+    # 关键断言：实际入队数 = 2，故 album_total_chapters 应回填为 2（而非原始 3）
+    assert all(
+        comic.album_total_chapters == 2 for comic in created
+    ), f"expected album_total_chapters=2 after partial failure, got {[c.album_total_chapters for c in created]}"
+
+    # coordinator 注册也应使用实际入队数 2
+    assert len(registered) == 1
+    _album_key, task_ids, total = registered[0]
+    assert task_ids == ["hcomic_NH_a", "hcomic_NH_c"]
+    assert total == 2
+
+
+def test_download_batch_as_album_all_failure_returns_error(monkeypatch):
+    """全部入队失败时不应回填 total，返回 error 状态且无 albumKey。"""
+    server = _create_test_server()
+    created = []
+
+    def fake_prepare(comic_data, comic_id=None):
+        raise RuntimeError("always fails")
+
+    def fake_add_task(comic, overwrite=False):
+        created.append(comic)
+        return f"{comic.source_site}_{comic.comic_source}_{comic.id}"
+
+    server._build_and_prepare_comic = fake_prepare
+    server._download_manager = SimpleNamespace(add_task=fake_add_task, tasks={})
+    server._album_coordinator = SimpleNamespace(register_album_tasks=lambda *a, **k: None)
+
+    result = server.handle_download_batch_as_album(
+        [
+            {"id": "a", "title": "A", "sourceSite": "hcomic", "source": "NH"},
+            {"id": "b", "title": "B", "sourceSite": "hcomic", "source": "NH"},
+        ],
+        "全失败专辑",
+    )
+
+    assert result["status"] == "error"
+    assert result["taskIds"] == []
+    assert "albumKey" not in result
+    assert created == []

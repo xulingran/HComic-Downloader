@@ -61,17 +61,17 @@ export function useDownloadHelper() {
       const taskIds = 'taskIds' in result && Array.isArray(result.taskIds)
         ? result.taskIds
         : []
+      // 严格按后端返回的 queuedTasks 中的 (sourceSite, source, comicId) 精确匹配回 comic。
+      // 不使用 taskIds 下标 fallback：当用户中途反选再选时，前端 selectedComics 的顺序
+      // 与后端入队顺序未必一致，下标对齐会错配 comic 到错误的 taskId。
       const comicsByKey = new Map(comics.map((comic) => [comicBatchKey(comic), comic]))
       const queuedTasks = Array.isArray(result.queuedTasks) ? result.queuedTasks : []
-      const taskComics = queuedTasks.length > 0
-        ? queuedTasks.map((task) => comicsByKey.get(queuedBatchTaskKey(task))).filter((comic): comic is ComicInfo => comic !== undefined)
-        : taskIds.map((_, index) => comics[index]).filter((comic): comic is ComicInfo => comic !== undefined)
-      // 为每个任务创建下载状态记录
-      for (const [index, taskId] of taskIds.entries()) {
-        const comic = taskComics[index]
+      // taskId → comic 映射（仅信任 queuedTasks 提供的显式关联）
+      for (const task of queuedTasks) {
+        const comic = comicsByKey.get(queuedBatchTaskKey(task))
         if (!comic) continue
         upsertTask({
-          id: taskId,
+          id: task.taskId,
           comic,
           status: 'queued',
           progress: 0,
