@@ -67,6 +67,94 @@ class DownloadMixin:
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
 
+    def handle_download_batch_as_album(
+        self,
+        comics: list[dict],
+        album_title: str,
+        overwrite: bool = False,
+    ) -> dict:
+        """将选中的多个漫画作为虚拟专辑的章节进行下载。"""
+        import hashlib
+
+        from models import ComicInfo
+
+        if not comics:
+            return {"taskIds": [], "status": "error", "albumKey": None}
+
+        # 生成虚拟专辑 ID：基于漫画 ID 排序后的哈希，确保相同选择产生相同 ID
+        sorted_ids = sorted(f"{c.get('sourceSite', 'hcomic')}_{c.get('id', '')}" for c in comics)
+        album_id = hashlib.md5(",".join(sorted_ids).encode("utf-8")).hexdigest()
+        total = len(comics)
+
+        task_ids = []
+        queued_tasks = []
+        grouped_task_ids: dict[tuple[str, str], list[str]] = {}
+        failed = []
+        for _idx, comic_data in enumerate(comics, start=1):
+            comic_id = comic_data.get("id", "")
+            original_title = comic_data.get("title", "Unknown")
+            original_author = comic_data.get("author")
+            original_source = comic_data.get("source", "")
+            original_source_site = comic_data.get("sourceSite", "hcomic") or "hcomic"
+            original_media_id = comic_data.get("mediaId", "")
+            original_url = comic_data.get("url", "")
+            original_cover_url = comic_data.get("coverUrl", "")
+            original_tags = comic_data.get("tags", [])
+            original_pages = comic_data.get("pages", 0)
+
+            try:
+                # 复用 _build_and_prepare_comic 获取图片 URL 等完整信息
+                prepared = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
+
+                # 创建虚拟章节漫画：标题为 "专辑名 - 原漫画名"
+                chapter_title = f"{album_title} - {original_title}"
+                comic = ComicInfo(
+                    id=comic_id,
+                    title=chapter_title,
+                    author=original_author,
+                    source_site=original_source_site,
+                    comic_source=original_source,
+                    media_id=original_media_id,
+                    preview_url=original_url,
+                    cover_url=original_cover_url,
+                    tags=original_tags,
+                    pages=original_pages,
+                    image_urls=prepared.image_urls,
+                    album_id=album_id,
+                    album_total_chapters=total,
+                    album_title=album_title,
+                )
+                task_id = self._download_manager.add_task(comic, overwrite=overwrite)
+                task_ids.append(task_id)
+                queued_tasks.append(
+                    {
+                        "taskId": task_id,
+                        "comicId": comic_id,
+                        "sourceSite": original_source_site,
+                        "source": original_source,
+                    }
+                )
+                grouped_task_ids.setdefault((original_source_site, album_id), []).append(task_id)
+            except Exception as e:
+                logger.warning("Failed to queue batch album comic %s (%s): %s", comic_id, original_title, e)
+                failed.append({"id": comic_id, "name": original_title, "error": str(e)})
+
+        # 注册到专辑 coordinator
+        coordinator = getattr(self, "_album_coordinator", None)
+        if coordinator:
+            for album_key, group_task_ids in grouped_task_ids.items():
+                coordinator.register_album_tasks(album_key, group_task_ids, total)
+
+        status = "queued" if task_ids else "error"
+        result = {"taskIds": task_ids, "queuedTasks": queued_tasks, "status": status}
+        if task_ids:
+            album_keys = [{"sourceSite": key[0], "albumId": key[1]} for key in grouped_task_ids]
+            result["albumKey"] = album_keys[0]
+            result["albumKeys"] = album_keys
+        if failed:
+            result["failedComics"] = failed
+        return result
+
     def handle_download(
         self,
         comic_id: str,

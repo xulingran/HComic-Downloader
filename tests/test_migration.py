@@ -381,10 +381,10 @@ def test_same_drive_target_exists_preserves_source_content(tmp_path):
     engine.execute(on_progress=lambda p: None)
 
     # 源文件内容不得被覆盖（修复前的 macOS 行为会静默覆盖）
-    with open(src_file, "r") as f:
+    with open(src_file) as f:
         assert f.read() == "SOURCE-MUST-BE-PRESERVED"
     # 目标文件保持原有的内容，未被源覆盖
-    with open(tgt_file, "r") as f:
+    with open(tgt_file) as f:
         assert f.read() == "existing target"
 
 
@@ -432,7 +432,7 @@ def test_cross_drive_target_exists_reports_error(tmp_path, monkeypatch):
     assert state.plan[0].status == "failed"
     assert "目标文件已存在" in state.failed_items[0]["error"]
     # 跨盘场景下源文件同样不得被破坏
-    with open(src_file, "r") as f:
+    with open(src_file) as f:
         assert f.read() == "source content"
 
 

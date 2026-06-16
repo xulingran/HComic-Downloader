@@ -36,6 +36,7 @@ interface SearchBarProps {
   onSelectAll: () => void
   onClearSelection: () => void
   onBatchDownload: () => void
+  onBatchDownloadAsAlbum?: () => void
   onPageJump: () => void
   onPageNavigate: (page: number) => void
   // Tag panel props
@@ -53,7 +54,7 @@ export function SearchBar({
   inputRef, historyDropdownRef,
   hasFilterEnabled, onFilterToggle, hasBlacklistedTags,
   pagination, blockedCount, hasComics,
-  batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onBatchDownload,
+  batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onBatchDownload, onBatchDownloadAsAlbum,
   onPageJump, onPageNavigate,
   // Tag panel
   showTagPanel, onTagPanelToggle,
@@ -232,6 +233,7 @@ export function SearchBar({
             onSelectAll={onSelectAll}
             onClearSelection={onClearSelection}
             onBatchDownload={onBatchDownload}
+            onBatchDownloadAsAlbum={onBatchDownloadAsAlbum}
           />}
         </div>
         {pagination && pagination.totalPages > 1 && (

@@ -5,6 +5,7 @@ import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
+import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
@@ -34,6 +35,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const cache = useFavouritesStore()
   const [source, setSource] = useState(() => cache.currentSource)
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
+  const [showAlbumDialog, setShowAlbumDialog] = useState(false)
   const { getFavourites, checkDownloadedStatus } = useFavourites()
   const { probeChaptersBeforeDownload } = useChapterProbe()
   const sources = useSources()
@@ -46,6 +48,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     selectAll,
     clearSelection,
     handleBatchDownload,
+    handleBatchDownloadAsAlbum,
   } = useBatchDownload(comics)
   const { openReader } = useReaderStore()
   const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
@@ -191,6 +194,19 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     selectAll(notDownloaded)
   }, [comics, downloadedStatus, selectAll])
 
+  const handleBatchDownloadAsAlbumClick = useCallback(() => {
+    setShowAlbumDialog(true)
+  }, [])
+
+  const handleAlbumNameConfirm = useCallback(async (albumTitle: string) => {
+    setShowAlbumDialog(false)
+    await handleBatchDownloadAsAlbum(albumTitle)
+  }, [handleBatchDownloadAsAlbum])
+
+  const handleAlbumNameCancel = useCallback(() => {
+    setShowAlbumDialog(false)
+  }, [])
+
   const handleDownload = async (comic: ComicInfo) => {
     const enriched = await probeChaptersBeforeDownload(comic)
     if (enriched) {
@@ -289,6 +305,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
               onClearSelection={clearSelection}
               onSelectNotDownloaded={handleSelectNotDownloaded}
               onBatchDownload={handleBatchDownload}
+              onBatchDownloadAsAlbum={handleBatchDownloadAsAlbumClick}
             />
           )}
         </div>
@@ -366,6 +383,17 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           totalPages={pagination?.totalPages || 1}
           onJump={(page) => { loadFavourites(page); setShowJumpDialog(false) }}
           onClose={() => setShowJumpDialog(false)}
+        />
+      )}
+
+      {/* ── Album name dialog ── */}
+      {showAlbumDialog && (
+        <AlbumNameDialog
+          isOpen={showAlbumDialog}
+          defaultName={`批量下载 - ${selectedIds.size}本漫画`}
+          comicCount={selectedIds.size}
+          onConfirm={handleAlbumNameConfirm}
+          onCancel={handleAlbumNameCancel}
         />
       )}
 

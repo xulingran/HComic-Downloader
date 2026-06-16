@@ -6,9 +6,10 @@ interface BatchControlsProps {
   onClearSelection: () => void
   onSelectNotDownloaded?: () => void
   onBatchDownload: () => void
+  onBatchDownloadAsAlbum?: () => void
 }
 
-export function BatchControls({ batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onSelectNotDownloaded, onBatchDownload }: BatchControlsProps) {
+export function BatchControls({ batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onSelectNotDownloaded, onBatchDownload, onBatchDownloadAsAlbum }: BatchControlsProps) {
   return (
     <>
       <span className="text-[var(--border)]">|</span>
@@ -44,6 +45,15 @@ export function BatchControls({ batchMode, selectedCount, onToggleBatchMode, onS
           >
             批量下载({selectedCount})
           </button>
+          {onBatchDownloadAsAlbum && (
+            <button
+              onClick={onBatchDownloadAsAlbum}
+              disabled={selectedCount === 0}
+              className="px-2 py-0.5 text-xs rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+            >
+              下载为专辑({selectedCount})
+            </button>
+          )}
         </>
       )}
     </>

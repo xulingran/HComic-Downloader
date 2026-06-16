@@ -50,6 +50,7 @@ export function useDownloadCommands() {
     const api = window.hcomic!
     return {
       startDownload: (...args: Parameters<HcomicAPI['download']>) => invoke(() => api.download(...args)),
+      downloadBatchAsAlbum: (...args: Parameters<HcomicAPI['downloadBatchAsAlbum']>) => invoke(() => api.downloadBatchAsAlbum(...args)),
       checkDownloadConflict: (comicData: ComicInfo) => invoke(() => api.checkDownloadConflict(comicData)),
       cancelDownload: (taskId: string) => invoke(() => api.cancelDownload(taskId)),
       pauseTask: (taskId: string) => invoke(() => api.pauseTask(taskId)),

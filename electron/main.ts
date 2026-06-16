@@ -546,6 +546,20 @@ function registerSearchHandlers(bridge: Bridge) {
 }
 
 function registerDownloadHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.DOWNLOAD_BATCH_AS_ALBUM, async (_, comics: unknown, albumTitle: unknown, overwrite?: unknown) => {
+    if (!Array.isArray(comics) || comics.length === 0) throw new ValidationError('Invalid download_batch_as_album comics: empty')
+    if (comics.length > 200) throw new ValidationError('Invalid download_batch_as_album comics: too many')
+    for (const c of comics) {
+      assert(object(), c, 'download_batch_as_album comic item')
+    }
+    assert(and(string(), length(1, 256), noControlChars()), albumTitle, 'download_batch_as_album albumTitle')
+    const params: Record<string, unknown> = { comics, album_title: albumTitle }
+    if (overwrite === true) {
+      params.overwrite = true
+    }
+    return bridge.call('download_batch_as_album', params)
+  })
+
   ipcMain.handle(IPC_CHANNELS.DOWNLOAD, async (_, comicId, comicData, overwrite?: unknown, chapterIds?: unknown) => {
     validateDownloadPayload(comicId, comicData)
     const params: Record<string, unknown> = { comic_id: comicId, comic_data: comicData }

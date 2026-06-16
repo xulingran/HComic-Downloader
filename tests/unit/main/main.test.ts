@@ -136,9 +136,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 62 total
+      // 63 total
       const count = handleCalls.length
-      expect(count).toBe(62)
+      expect(count).toBe(63)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -148,6 +148,7 @@ describe('main.ts', () => {
     const expectedChannels = [
       'python:search',
       'python:random',
+      'python:download-batch-as-album',
       'python:download',
       'python:check-download-conflict',
       'python:get-favourites',
@@ -234,7 +235,7 @@ describe('main.ts', () => {
 
     it('PYTHON_IPC_CHANNEL_MAP values must match Python handler method names', () => {
       const validMethods = new Set([
-        'search', 'random', 'download', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
+        'search', 'random', 'download', 'download_batch_as_album', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
         'get_downloads', 'cancel_download', 'apply_auth', 'verify_auth', 'shutdown',
         'fetch_cover', 'fetch_preview_image', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
         'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',

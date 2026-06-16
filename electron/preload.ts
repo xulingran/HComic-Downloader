@@ -46,6 +46,17 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.RANDOM, source ?? undefined)
   },
 
+  downloadBatchAsAlbum: (comics: unknown, albumTitle: unknown, overwrite?: unknown) => {
+    if (!Array.isArray(comics) || comics.length === 0) throw new Error('Invalid comics')
+    if (comics.length > 200) throw new Error('Too many comics')
+    for (const c of comics) {
+      if (typeof c !== 'object' || c === null) throw new Error('Invalid comic in comics')
+    }
+    if (typeof albumTitle !== 'string' || albumTitle.length === 0 || albumTitle.length > 256) throw new Error('Invalid albumTitle')
+    if (overwrite !== undefined && typeof overwrite !== 'boolean') throw new Error('Invalid overwrite')
+    return ipcRenderer.invoke(IPC_CHANNELS.DOWNLOAD_BATCH_AS_ALBUM, comics, albumTitle, overwrite ?? false)
+  },
+
   download: (comicId: unknown, comicData: unknown, overwrite?: unknown, chapterIds?: unknown) => {
     if (typeof comicId !== 'string' || comicId.length === 0) throw new Error('Invalid comicId')
     if (typeof comicData !== 'object' || comicData === null) throw new Error('Invalid comicData')

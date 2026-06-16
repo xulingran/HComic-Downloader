@@ -67,6 +67,50 @@ class TestAlbumFolderIntegration:
         assert (chapter_dir / "002.jpg").exists()
         assert not temp_dir.exists()
 
+    def test_chapter_folder_name_sanitizes_windows_illegal_title_chars(self, tmp_path):
+        output_dir = str(tmp_path / "output")
+        os.makedirs(output_dir)
+
+        downloader = MagicMock()
+        cbz_builder = CBZBuilder()
+        manager = ComicDownloadManager(
+            downloader=downloader,
+            cbz_builder=cbz_builder,
+            output_dir=output_dir,
+            output_format="folder",
+        )
+
+        original_title = "[にのこや (にの子)] エルフに淫紋を付ける本 LEVEL:9 [中国翻訳] [DL版]"
+        comic = ComicInfo(
+            id="ch1",
+            title=f"Batch Album - {original_title}",
+            source_site="hcomic",
+            comic_source="MMCG_SHORT",
+            album_id="album1",
+            album_title="Batch Album",
+            album_total_chapters=2,
+            author="ninoko",
+            pages=1,
+        )
+        task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
+        manager.tasks[task.task_id] = task
+
+        temp_dir = tmp_path / "temp_hcomic_ch1"
+        temp_dir.mkdir()
+        (temp_dir / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
+
+        result = DownloadResult(
+            success=True,
+            completed_pages=[1],
+            failed_pages=[],
+            temp_dir=str(temp_dir),
+        )
+        manager._handle_album_chapter_success(task, result)
+
+        album_dir = Path(output_dir) / "ninoko-Batch Album"
+        assert (album_dir / "[にのこや (にの子)] エルフに淫紋を付ける本 LEVEL_9 [中国翻訳] [DL版]").is_dir()
+        assert not any(":" in path.name for path in album_dir.iterdir())
+
 
 class TestAlbumCbzIntegration:
     """output_format=cbz 模式：齐套后自动打包为专辑 cbz。"""

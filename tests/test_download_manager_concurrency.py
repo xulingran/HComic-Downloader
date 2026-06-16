@@ -14,13 +14,11 @@
 from __future__ import annotations
 
 import threading
-from typing import Optional
 
 import pytest
 
 from download_manager import DownloadManager, DownloadStatus
 from models import ComicInfo
-
 
 # ── fixtures ──────────────────────────────────────────────────────────
 
@@ -67,7 +65,7 @@ class TestConcurrentAddTask:
         """
         num_threads = 8
         barrier = threading.Barrier(num_threads)
-        results: list[Optional[str]] = [None] * num_threads
+        results: list[str | None] = [None] * num_threads
         errors: list[Exception] = []
 
         def _adder(idx: int):
@@ -105,8 +103,7 @@ class TestConcurrentAddTask:
         """
         num_threads = 6
         barrier = threading.Barrier(num_threads)
-        results: list[Optional[str]] = [None] * num_threads
-        same_comic = _make_comic("same_comic")
+        results: list[str | None] = [None] * num_threads
 
         def _adder(idx: int):
             barrier.wait()

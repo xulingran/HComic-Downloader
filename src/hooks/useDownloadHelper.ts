@@ -1,10 +1,18 @@
 import { useDownloadCommands, useComicDetail } from './useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useToastStore } from '../stores/useToastStore'
-import type { ComicInfo, DownloadStatus } from '@shared/types'
+import type { ComicInfo, DownloadStatus, QueuedBatchAlbumTask } from '@shared/types'
+
+function comicBatchKey(comic: ComicInfo) {
+  return `${comic.sourceSite ?? 'hcomic'}\0${comic.source ?? ''}\0${comic.id}`
+}
+
+function queuedBatchTaskKey(task: QueuedBatchAlbumTask) {
+  return `${task.sourceSite || 'hcomic'}\0${task.source || ''}\0${task.comicId}`
+}
 
 export function useDownloadHelper() {
-  const { startDownload, checkDownloadConflict, pauseTask, resumeTask, retryTask, toggleGlobalPause } = useDownloadCommands()
+  const { startDownload, checkDownloadConflict, downloadBatchAsAlbum, pauseTask, resumeTask, retryTask, toggleGlobalPause } = useDownloadCommands()
   const upsertTask = useDownloadStore((s) => s.upsertTask)
   const updateTask = useDownloadStore((s) => s.updateTask)
   const setGlobalPaused = useDownloadStore((s) => s.setGlobalPaused)
@@ -42,6 +50,51 @@ export function useDownloadHelper() {
     } catch (err) {
       console.error('Download failed:', err)
       useToastStore.getState().error('下载失败，请重试')
+      return false
+    }
+  }
+
+  const downloadBatchAsAlbumWithToast = async (comics: ComicInfo[], albumTitle: string) => {
+    try {
+      const result = await downloadBatchAsAlbum(comics, albumTitle)
+      const taskIds = 'taskIds' in result && Array.isArray(result.taskIds)
+        ? result.taskIds
+        : []
+      const comicsByKey = new Map(comics.map((comic) => [comicBatchKey(comic), comic]))
+      const queuedTasks = Array.isArray(result.queuedTasks) ? result.queuedTasks : []
+      const taskComics = queuedTasks.length > 0
+        ? queuedTasks.map((task) => comicsByKey.get(queuedBatchTaskKey(task))).filter((comic): comic is ComicInfo => comic !== undefined)
+        : taskIds.map((_, index) => comics[index]).filter((comic): comic is ComicInfo => comic !== undefined)
+      // 为每个任务创建下载状态记录
+      for (const [index, taskId] of taskIds.entries()) {
+        const comic = taskComics[index]
+        if (!comic) continue
+        upsertTask({
+          id: taskId,
+          comic,
+          status: 'queued',
+          progress: 0,
+          totalPages: comic.pages || 0,
+          downloadedPages: 0,
+        })
+      }
+      const failed = result.failedComics ?? []
+      if (failed.length > 0) {
+        const names = failed.map((f) => f.name).join('、')
+        useToastStore.getState().show(
+          taskIds.length > 0
+            ? `部分漫画加入下载失败：${names}`
+            : `漫画加入下载失败：${names}`,
+          'error'
+        )
+      }
+      if (taskIds.length > 0) {
+        useToastStore.getState().success(`专辑 "${albumTitle}" 已加入下载队列 (${taskIds.length} 本)`)
+      }
+      return taskIds.length > 0
+    } catch (err) {
+      console.error('Batch album download failed:', err)
+      useToastStore.getState().error('专辑下载失败，请重试')
       return false
     }
   }
@@ -120,7 +173,7 @@ export function useDownloadHelper() {
     }
   }
 
-  return { downloadWithConflictCheck, downloadChapters, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause }
+  return { downloadWithConflictCheck, downloadBatchAsAlbum: downloadBatchAsAlbumWithToast, downloadChapters, startDownload, checkDownloadConflict, handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause }
 }
 
 /**

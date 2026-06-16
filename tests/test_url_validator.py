@@ -19,7 +19,6 @@ import requests
 
 from url_validator import DownloadError, UrlValidator
 
-
 # ── fixtures ──────────────────────────────────────────────────────────
 
 
@@ -243,7 +242,6 @@ class TestInstanceConfigEffectiveness:
     def test_custom_blocked_ipv4_overrides_default(self):
         """自定义 blocked_ipv4 必须生效，且默认网段不再拦截。"""
         # 仅放行一个公网网段到黑名单，默认的内网网段被替换掉
-        import ipaddress
 
         custom_blocked = [ipaddress.ip_network("203.0.113.0/24")]
         v = UrlValidator(blocked_ipv4=custom_blocked)
@@ -256,7 +254,6 @@ class TestInstanceConfigEffectiveness:
 
     def test_custom_blocked_ipv6_overrides_default(self):
         """自定义 blocked_ipv6 必须生效。"""
-        import ipaddress
 
         custom_blocked = [ipaddress.ip_network("2001:db8::/32")]
         v = UrlValidator(blocked_ipv6=custom_blocked)
@@ -269,7 +266,6 @@ class TestInstanceConfigEffectiveness:
 
     def test_custom_blocked_ipv4_affects_validate_url(self):
         """自定义 blocked_ipv4 通过 is_blocked_ip 影响 validate_url 的 IP 拦截。"""
-        import ipaddress
 
         # 把一个公网 IP 加入黑名单，验证 validate_url 拦截它
         custom_blocked = [ipaddress.ip_network("93.184.216.0/24")]

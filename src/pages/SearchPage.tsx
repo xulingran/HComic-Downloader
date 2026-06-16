@@ -12,6 +12,7 @@ import { EmptyState } from '../components/common/EmptyState'
 import { SearchBar } from '../components/SearchBar'
 import { BikaCategoryGrid } from '../components/BikaCategoryGrid'
 import { TagDialog } from '../components/TagDialog'
+import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
 import { ComicInfo, PaginationInfo } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
@@ -39,6 +40,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [searchTags, setSearchTags] = useState('')
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
+  const [showAlbumDialog, setShowAlbumDialog] = useState(false)
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [needsLogin, setNeedsLogin] = useState(false)
@@ -67,6 +69,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     selectAll,
     clearSelection,
     handleBatchDownload,
+    handleBatchDownloadAsAlbum,
   } = useBatchDownload(comics)
   const { cardStyle, tagBlacklist, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
@@ -436,6 +439,19 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
   }
 
+  const handleBatchDownloadAsAlbumClick = useCallback(() => {
+    setShowAlbumDialog(true)
+  }, [])
+
+  const handleAlbumNameConfirm = useCallback(async (albumName: string) => {
+    setShowAlbumDialog(false)
+    await handleBatchDownloadAsAlbum(albumName)
+  }, [handleBatchDownloadAsAlbum])
+
+  const handleAlbumNameCancel = useCallback(() => {
+    setShowAlbumDialog(false)
+  }, [])
+
   const handleOpenReader = (comic: ComicInfo) => {
     openReader(comic)
   }
@@ -564,6 +580,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         onSelectAll={() => selectAll(comics)}
         onClearSelection={clearSelection}
         onBatchDownload={handleBatchDownload}
+        onBatchDownloadAsAlbum={handleBatchDownloadAsAlbumClick}
         onPageJump={() => setShowJumpDialog(true)}
         onPageNavigate={handleSearch}
         // Tag panel
@@ -656,6 +673,15 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           />
         </div>
       )}
+
+      {/* ── Album name dialog ── */}
+      <AlbumNameDialog
+        isOpen={showAlbumDialog}
+        defaultName={`批量下载 - ${selectedIds.size}本漫画`}
+        comicCount={selectedIds.size}
+        onConfirm={handleAlbumNameConfirm}
+        onCancel={handleAlbumNameCancel}
+      />
 
       {/* ── Page jump dialog ── */}
       {showJumpDialog && (

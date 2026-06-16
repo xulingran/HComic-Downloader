@@ -16,7 +16,6 @@ import requests
 from image_downloader import ImageDownloader
 from url_validator import DownloadError
 
-
 # ── 最小有效图片字节 ──────────────────────────────────────────────────
 
 # 最小有效 JPEG（1x1 像素）

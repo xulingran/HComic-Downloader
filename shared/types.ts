@@ -266,6 +266,22 @@ interface DownloadStartResult {
   status: string
 }
 
+export interface QueuedBatchAlbumTask {
+  taskId: string
+  comicId: string
+  sourceSite: string
+  source: string
+}
+
+export interface DownloadBatchAsAlbumResult {
+  taskIds: string[]
+  queuedTasks?: QueuedBatchAlbumTask[]
+  status: 'queued' | 'error' | string
+  albumKey?: { sourceSite: string; albumId: string } | null
+  albumKeys?: Array<{ sourceSite: string; albumId: string }>
+  failedComics?: Array<{ id: string; name: string; error: string }>
+}
+
 type DownloadResult =
   | DownloadStartResult
   | { taskIds: string[]; status: string; failedChapters?: Array<{ id: string; name: string; error: string }>; albumKey?: { sourceSite: string; albumId: string } }
@@ -294,6 +310,10 @@ export interface IPCMethods {
   random: {
     params: { source?: string }
     result: SearchResult
+  }
+  download_batch_as_album: {
+    params: { comics: ComicInfo[]; album_title: string; overwrite?: boolean }
+    result: DownloadBatchAsAlbumResult
   }
   download: {
     params: { comic_id: string; comic_data: ComicInfo; overwrite?: boolean }
@@ -539,6 +559,7 @@ export interface IPCMethods {
 export const PYTHON_IPC_CHANNEL_MAP = {
   'python:search': 'search',
   'python:random': 'random',
+  'python:download-batch-as-album': 'download_batch_as_album',
   'python:download': 'download',
   'python:check-download-conflict': 'check_download_conflict',
   'python:get-favourites': 'get_favourites',
@@ -609,6 +630,7 @@ export interface DownloadProgressEvent {
 export interface HcomicAPI {
   search(query: string, mode: string, page: number, source?: string, tag?: string): Promise<SearchResult>
   random(source?: string): Promise<SearchResult>
+  downloadBatchAsAlbum(comics: ComicInfo[], albumTitle: string, overwrite?: boolean): Promise<DownloadBatchAsAlbumResult>
   download(comicId: string, comicData: ComicInfo, overwrite?: boolean, chapterIds?: string[]): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
   getFavourites(page?: number, source?: string): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
@@ -789,6 +811,7 @@ export const IPC_ERROR_CODES = {
 export const IPC_CHANNELS = {
   SEARCH: 'python:search',
   RANDOM: 'python:random',
+  DOWNLOAD_BATCH_AS_ALBUM: 'python:download-batch-as-album',
   DOWNLOAD: 'python:download',
   CHECK_DOWNLOAD_CONFLICT: 'python:check-download-conflict',
   GET_FAVOURITES: 'python:get-favourites',

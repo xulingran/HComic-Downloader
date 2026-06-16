@@ -14,6 +14,7 @@ from downloader import DownloadOptions, DownloadResult
 from image_formats import SUPPORTED_IMAGE_EXTENSIONS
 from models import ComicInfo, DownloadCancelledError, DownloadStatus, DownloadTask
 from output_staging import OutputStagingManager
+from utils import sanitize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -707,7 +708,7 @@ class ComicDownloadManager(DownloadManager):
         comic = task.comic
         album_dir_name = self.cbz_builder.get_album_folder_name(comic)
         album_work_dir = os.path.join(self.output_dir, album_dir_name)
-        chapter_name = comic.chapter_display_name
+        chapter_name = sanitize_filename(comic.chapter_display_name)
         chapter_final_path = os.path.join(album_work_dir, chapter_name)
 
         # 如果已有同名章节目录（重试场景），先清理

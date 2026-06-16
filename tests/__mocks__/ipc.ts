@@ -21,6 +21,7 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, unkn
   const mockMethods: HcomicAPI = {
     search: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }),
     random: vi.fn().mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 0, totalItems: 0 } }),
+    downloadBatchAsAlbum: vi.fn().mockResolvedValue({ taskIds: [], queuedTasks: [], status: 'queued' }),
     download: vi.fn().mockResolvedValue({ taskId: 'mock-task', status: 'queued' }),
     checkDownloadConflict: vi.fn().mockResolvedValue({ hasConflict: false, path: '' }),
     getFavourites: vi.fn().mockResolvedValue({ comics: [], pagination: null, needsLogin: false }),

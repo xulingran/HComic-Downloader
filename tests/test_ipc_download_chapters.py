@@ -178,3 +178,56 @@ def test_handle_force_pack_album_no_coordinator():
     del server._album_coordinator
     result = server.handle_force_pack_album("jmcomic", "999001")
     assert result["status"] == "error"
+
+
+def test_download_batch_as_album_preserves_source_site_and_returns_task_mapping(monkeypatch):
+    """批量虚拟专辑不应覆盖原始 source_site，且返回 task 与漫画的映射。"""
+    server = _create_test_server()
+    created = []
+    registered = []
+
+    def fake_prepare(comic_data, comic_id=None):
+        return SimpleNamespace(image_urls=[f"https://cdn.example/{comic_id}/001.jpg"])
+
+    def fake_add_task(comic, overwrite=False):
+        created.append(comic)
+        return comic.task_id if hasattr(comic, "task_id") else f"{comic.source_site}_{comic.comic_source}_{comic.id}"
+
+    server._build_and_prepare_comic = fake_prepare
+    server._download_manager = SimpleNamespace(add_task=fake_add_task, tasks={})
+    server._album_coordinator = SimpleNamespace(
+        register_album_tasks=lambda album_key, task_ids, total: registered.append((album_key, task_ids, total))
+    )
+
+    result = server.handle_download_batch_as_album(
+        [
+            {
+                "id": "a",
+                "title": "A",
+                "sourceSite": "jmcomic",
+                "source": "JMCOMIC",
+                "mediaId": "ma",
+                "pages": 1,
+            },
+            {
+                "id": "b",
+                "title": "B",
+                "sourceSite": "bika",
+                "source": "BIKA",
+                "mediaId": "mb",
+                "pages": 1,
+            },
+        ],
+        "自定义专辑",
+    )
+
+    assert [comic.source_site for comic in created] == ["jmcomic", "bika"]
+    assert result["taskIds"] == ["jmcomic_JMCOMIC_a", "bika_BIKA_b"]
+    assert result["queuedTasks"] == [
+        {"taskId": "jmcomic_JMCOMIC_a", "comicId": "a", "sourceSite": "jmcomic", "source": "JMCOMIC"},
+        {"taskId": "bika_BIKA_b", "comicId": "b", "sourceSite": "bika", "source": "BIKA"},
+    ]
+    assert registered == [
+        (("jmcomic", result["albumKey"]["albumId"]), ["jmcomic_JMCOMIC_a"], 2),
+        (("bika", result["albumKey"]["albumId"]), ["bika_BIKA_b"], 2),
+    ]

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { useDownloadHelper } from '@/hooks/useDownloadHelper'
+import { useDownloadStore } from '@/stores/useDownloadStore'
 import { createMockHcomic } from '../../__mocks__/ipc'
 import type { ComicInfo } from '@shared/types'
 
@@ -15,6 +16,7 @@ const mockComic: ComicInfo = {
 describe('useDownloadHelper', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    useDownloadStore.getState().setTasks([])
     delete (window as unknown as Record<string, unknown>).hcomic
     vi.spyOn(window, 'confirm').mockReturnValue(true)
   })
@@ -71,6 +73,33 @@ describe('useDownloadHelper', () => {
     const returned = await result.current.downloadWithConflictCheck(mockComic)
 
     expect(returned).toBe(false)
+  })
+
+  describe('downloadBatchAsAlbum', () => {
+    it('upserts each returned task with its matching comic', async () => {
+      const comics: ComicInfo[] = [
+        { ...mockComic, id: 'comic-a', title: 'Comic A', pages: 12, sourceSite: 'hcomic', source: 'MMCG_SHORT' },
+        { ...mockComic, id: 'comic-b', title: 'Comic B', pages: 34, sourceSite: 'jmcomic', source: 'JMCOMIC' },
+      ]
+      createMockHcomic({
+        downloadBatchAsAlbum: vi.fn().mockResolvedValue({
+          taskIds: ['hcomic_MMCG_SHORT_comic-a', 'jmcomic_JMCOMIC_comic-b'],
+          queuedTasks: [
+            { taskId: 'hcomic_MMCG_SHORT_comic-a', comicId: 'comic-a', sourceSite: 'hcomic', source: 'MMCG_SHORT' },
+            { taskId: 'jmcomic_JMCOMIC_comic-b', comicId: 'comic-b', sourceSite: 'jmcomic', source: 'JMCOMIC' },
+          ],
+          status: 'queued',
+        }),
+      })
+
+      const { result } = renderHook(() => useDownloadHelper())
+      const ok = await result.current.downloadBatchAsAlbum(comics, 'Custom Album')
+
+      expect(ok).toBe(true)
+      const tasks = useDownloadStore.getState().tasks
+      expect(tasks.map((task) => task.comic.title)).toEqual(['Comic A', 'Comic B'])
+      expect(tasks.map((task) => task.totalPages)).toEqual([12, 34])
+    })
   })
 
   describe('downloadChapters', () => {

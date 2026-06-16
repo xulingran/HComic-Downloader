@@ -274,6 +274,7 @@ class IPCServer(
         "refresh_tag_list": "handle_refresh_tag_list",
         "force_pack_album": "handle_force_pack_album",
         "get_album_progress": "handle_get_album_progress",
+        "download_batch_as_album": "handle_download_batch_as_album",
     }
 
     async def _dispatch_request(self, request: dict) -> None:

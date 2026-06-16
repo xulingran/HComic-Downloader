@@ -1,6 +1,5 @@
 """测试 cbz_builder.py CBZ 打包功能"""
 
-import os
 import zipfile
 from pathlib import Path
 
