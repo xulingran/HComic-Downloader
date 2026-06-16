@@ -296,7 +296,8 @@ describe('SettingsPage', () => {
 
     await waitFor(() => {
       expect(mockApplyAuth).toHaveBeenCalledWith('curl https://example.com', 'hcomic')
-      expect(mockVerifyAuth).toHaveBeenCalled()
+      // 重写：裸 toHaveBeenCalled() 改为带 source，验证 apply 后对 hcomic 发起 verify
+      expect(mockVerifyAuth).toHaveBeenCalledWith('hcomic')
     })
   })
 
@@ -379,7 +380,8 @@ describe('SettingsPage', () => {
     await userEvent.click(screen.getAllByText('测试登录')[0])
 
     await waitFor(() => {
-      expect(mockVerifyAuth).toHaveBeenCalled()
+      // 重写：裸 toHaveBeenCalled() 改为带 source，验证测试登录对 hcomic 发起 verify
+      expect(mockVerifyAuth).toHaveBeenCalledWith('hcomic')
     })
   })
 

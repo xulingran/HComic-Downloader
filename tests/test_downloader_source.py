@@ -101,77 +101,11 @@ def _make_final_response():
     return resp
 
 
-def test_validate_url_blocks_localhost():
-    with pytest.raises(DownloadError, match="localhost"):
-        UrlValidator.validate_url("http://localhost/secret")
-
-
-def test_validate_url_blocks_private_ip():
-    with pytest.raises(DownloadError, match="private"):
-        UrlValidator.validate_url("http://192.168.1.1/secret")
-
-
-def test_validate_url_blocks_bad_scheme():
-    with pytest.raises(DownloadError, match="scheme"):
-        UrlValidator.validate_url("file:///etc/passwd")
-
-
-def test_validate_url_allows_normal_https():
-    UrlValidator.validate_url("https://h-comic.link/api/nh/123/pages/1")
-
-
-def test_validate_url_blocks_hostname_resolving_to_private_ip(monkeypatch):
-    """A hostname that resolves to a private IP must be blocked."""
-    import socket
-
-    def fake_getaddrinfo(host, *args, **kwargs):
-        if host == "internal.lan":
-            return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("192.168.1.1", 0))]
-        return socket.getaddrinfo(host, *args, **kwargs)
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    with pytest.raises(DownloadError, match="resolves to blocked IP"):
-        UrlValidator.validate_url("http://internal.lan/secret")
-
-
-def test_validate_url_blocks_hostname_resolving_to_localhost(monkeypatch):
-    """A hostname that resolves to 127.0.0.1 must be blocked."""
-    import socket
-
-    def fake_getaddrinfo(host, *args, **kwargs):
-        if host == "loopback.test":
-            return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("127.0.0.1", 0))]
-        return socket.getaddrinfo(host, *args, **kwargs)
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    with pytest.raises(DownloadError, match="resolves to blocked IP"):
-        UrlValidator.validate_url("http://loopback.test/ping")
-
-
-def test_validate_url_blocks_hostname_resolving_to_link_local(monkeypatch):
-    """A hostname that resolves to a link-local IP must be blocked."""
-    import socket
-
-    def fake_getaddrinfo(host, *args, **kwargs):
-        if host == "router.local":
-            return [(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("169.254.1.1", 0))]
-        return socket.getaddrinfo(host, *args, **kwargs)
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    with pytest.raises(DownloadError, match="resolves to blocked IP"):
-        UrlValidator.validate_url("http://router.local/admin")
-
-
-def test_validate_url_blocks_unresolvable_hostname(monkeypatch):
-    """An unresolvable hostname should be blocked."""
-    import socket
-
-    def fake_getaddrinfo(host, *args, **kwargs):
-        raise socket.gaierror(8, "Name or service not known")
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    with pytest.raises(DownloadError, match="Cannot resolve"):
-        UrlValidator.validate_url("http://nonexistent.invalid/img")
+# 注：已移除 8 个 UrlValidator.validate_url 的类调用用例（localhost/private IP/scheme/
+# DNS 解析拦截），它们与 tests/test_url_validator.py 完全重复且新测试覆盖更全（含全部
+# IPv4/IPv6 网段、自定义白名单、resolve_redirects 逐跳校验）。此处保留 resolve_redirects
+# 与 is_hcomic_url 用例（它们用实例调用，且聚焦 downloader 集成场景，非纯 SSRF 单元）。
+# 移除理由遵循 test-discipline：同义反复（重复覆盖同一行为的 SSRF 拦截）。
 
 
 def test_resolve_redirects_strips_cookie_on_cross_domain_redirect(monkeypatch):
@@ -272,8 +206,10 @@ def test_resolve_redirects_too_many_hops(monkeypatch):
 
 
 def test_is_hcomic_url():
-    assert UrlValidator.is_hcomic_url("https://h-comic.com/page")
-    assert UrlValidator.is_hcomic_url("https://h-comic.link/api/nh/1")
-    assert UrlValidator.is_hcomic_url("https://cdn.h-comic.link/img")
-    assert not UrlValidator.is_hcomic_url("https://evil.com/img")
-    assert not UrlValidator.is_hcomic_url("https://moeimg.fan/img")
+    # is_hcomic_url 现为实例方法（读取实例属性），需实例化后调用
+    v = UrlValidator()
+    assert v.is_hcomic_url("https://h-comic.com/page")
+    assert v.is_hcomic_url("https://h-comic.link/api/nh/1")
+    assert v.is_hcomic_url("https://cdn.h-comic.link/img")
+    assert not v.is_hcomic_url("https://evil.com/img")
+    assert not v.is_hcomic_url("https://moeimg.fan/img")

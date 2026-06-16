@@ -250,10 +250,14 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
 
+    // 清除 mount 自动搜索的调用记录，隔离按钮点击行为
+    await screen.findByPlaceholderText('输入搜索内容...')
+    mockSearch.mockClear()
+
     await userEvent.click(screen.getByText('搜索'))
 
-    // At least one call should have empty query (mount auto-search or button click)
-    expect(mockSearch).toHaveBeenCalled()
+    // 验证按钮点击确实发起了空 query 搜索（而非仅 mount 残留的调用）
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic', undefined)
   })
 
   it('shows pagination when totalPages > 1', () => {
@@ -540,7 +544,8 @@ describe('SearchPage', () => {
       await screen.findByText('jmcomic 登录信息已过期或未配置，请前往设置页面重新登录')
 
       expect(mockVerifyAuth).toHaveBeenCalledWith('jmcomic')
-      expect(mockSearch).toHaveBeenCalled()
+      // 重写：裸 toHaveBeenCalled() 改为带 source 参数，验证确实对 jmcomic 发起了搜索
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jmcomic')
     })
   })
 

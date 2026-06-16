@@ -307,8 +307,9 @@ describe('ComicReaderModal', () => {
         <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
       )
 
-      // Wait for initial load
-      await waitFor(() => expect(mockFetchPreviewImage).toHaveBeenCalled())
+      // Wait for initial load — 重写：裸 toHaveBeenCalled() 改为次数断言，
+      // 明确表达"初始加载至少触发一次"而非模糊的"被调过"
+      await waitFor(() => expect(mockFetchPreviewImage.mock.calls.length).toBeGreaterThan(0))
 
       mockFetchPreviewImage.mockClear()
 

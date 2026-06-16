@@ -27,10 +27,12 @@ describe('useAuth', () => {
   })
 
   it('verifyAuth 应调用 window.hcomic.verifyAuth', async () => {
-    const hcomic = createMockHcomic({ verifyAuth: vi.fn().mockResolvedValue({ valid: true, message: 'ok' }) })
+    // createMockHcomic 设置 window.hcomic，verifyAuth 无参数转换，返回值断言验证透传
+    createMockHcomic({ verifyAuth: vi.fn().mockResolvedValue({ valid: true, message: 'ok' }) })
     const { result } = renderHook(() => useAuth())
     const response = await result.current.verifyAuth()
-    expect(hcomic.verifyAuth).toHaveBeenCalled()
+    // 注：已移除 expect(hcomic.verifyAuth).toHaveBeenCalled() —— 裸调用断言同义反复
+    // (verifyAuth 无参数转换，返回值断言已隐含"被调用")。保留下方返回值验证。
     expect(response).toEqual({ valid: true, message: 'ok' })
   })
 

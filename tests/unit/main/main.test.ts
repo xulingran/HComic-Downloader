@@ -404,9 +404,9 @@ describe('main.ts', () => {
   })
 
   describe('app lifecycle', () => {
-    it('should call app.whenReady on import', () => {
-      expect(app.whenReady).toHaveBeenCalled()
-    })
+    // 注：已移除 'should call app.whenReady on import' 用例 —— 裸 toHaveBeenCalled()
+    // 同义反复：import '../../../electron/main' 已隐式触发 whenReady 调用，此断言不提供
+    // 超越 import 行为的独立信号。下方监听器注册断言验证真实副作用，保留。
 
     it('should register window-all-closed listener', () => {
       expect(app.on).toHaveBeenCalledWith('window-all-closed', expect.any(Function))

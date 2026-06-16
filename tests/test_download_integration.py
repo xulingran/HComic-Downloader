@@ -213,3 +213,50 @@ def test_download_resume_after_partial_completion_keeps_integrity(tmp_path):
         for img in images:
             data = zf.read(img)
             assert data.startswith(b"\xff\xd8\xff") and data.endswith(b"\xff\xd9")
+
+
+# ── 场景：真实下载路径下 URL 安全校验真实执行 ──────────────────────────
+
+
+def test_real_downloader_blocks_ssrf_url(tmp_path):
+    """真实 ComicDownloader（非 mock）下载内网 URL 时必须被 UrlValidator 拦截。
+
+    与上方 _RealBytesDownloader 测试的区别：此处使用真实 ComicDownloader + 真实
+    ImageDownloader，仅注入可控的图片 URL（指向内网），验证 validate_url 在真实
+    下载路径中真实执行——而非靠 mock 断言。
+    """
+    from downloader import ComicDownloader
+
+    comic = ComicInfo(id="ssrf_test", title="SSRF 测试", pages=1)
+
+    # 通过 monkeypatch 注入内网图片 URL：生产 ComicInfo.get_image_url 由 media_id 规则
+    # 生成 URL，不暴露 hostname 控制点，故直接替换方法以注入可控的内网地址。
+    import models
+
+    original_get = models.ComicInfo.get_image_url
+    models.ComicInfo.get_image_url = lambda self, page: f"http://127.0.0.1/evil/{page}.jpg"
+    try:
+        downloader = ComicDownloader(concurrent_downloads=1, timeout=5)
+        result = downloader.download_comic_resume(comic, str(tmp_path))
+        # 真实 validate_url 必须拦截内网 URL → 所有页失败
+        assert result.success is False or result.failed_pages, "内网 URL 未被真实 validate_url 拦截（SSRF 防护失效）"
+        # 不应有任何文件落盘到内网请求
+        assert len(result.completed_pages) == 0, "内网 URL 不应成功下载任何页"
+    finally:
+        models.ComicInfo.get_image_url = original_get
+
+
+def test_real_downloader_session_has_proxy_applied():
+    """真实 ComicDownloader 的 ImageDownloader 池中 Session 必须已应用系统代理。
+
+    验证 AGENTS.md 硬约束在真实下载器实例化后被落实（trust_env=True），
+    而非靠 mock 断言。
+    """
+    from downloader import ComicDownloader
+
+    downloader = ComicDownloader(concurrent_downloads=1, timeout=5)
+    try:
+        session = downloader.image_downloader._create_session()
+        assert session.trust_env is True, "真实下载器 Session 未应用系统代理"
+    finally:
+        downloader.image_downloader.close()

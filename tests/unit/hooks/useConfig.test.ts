@@ -20,10 +20,12 @@ describe('useConfig', () => {
 
   it('getConfig 应调用 window.hcomic.getConfig', async () => {
     const config = { themeMode: 'dark' }
-    const hcomic = createMockHcomic({ getConfig: vi.fn().mockResolvedValue(config) })
+    // createMockHcomic 设置 window.hcomic，invoke 透传后由返回值断言验证
+    createMockHcomic({ getConfig: vi.fn().mockResolvedValue(config) })
     const { result } = renderHook(() => useConfig())
     const response = await result.current.getConfig()
-    expect(hcomic.getConfig).toHaveBeenCalled()
+    // 注：已移除 expect(hcomic.getConfig).toHaveBeenCalled() —— 裸调用断言同义反复
+    // (getConfig 无参数转换，返回值断言已隐含"被调用")。保留下方返回值验证。
     expect(response).toEqual(config)
   })
 

@@ -77,23 +77,31 @@ class UrlValidator:
         else:
             self._trusted_cdn_domains = self._TRUSTED_CDN_DOMAINS
 
-    @classmethod
-    def is_hcomic_url(cls, url: str) -> bool:
+    def is_hcomic_url(self, url: str) -> bool:
+        """判断 URL 是否属于 hcomic 可信域（读取实例属性，使自定义域名生效）。"""
         try:
             host = url.split("://", 1)[1].split("/", 1)[0].split(":")[0].lower()
-            return host in cls._HCOMIC_DOMAINS or any(host.endswith("." + d) for d in cls._HCOMIC_DOMAINS)
+            return host in self._HCOMIC_DOMAINS or any(host.endswith("." + d) for d in self._HCOMIC_DOMAINS)
         except (IndexError, ValueError):
             return False
 
-    @classmethod
-    def is_blocked_ip(cls, ip) -> bool:
-        networks = cls._BLOCKED_IPV4 if ip.version == 4 else cls._BLOCKED_IPV6
+    def is_blocked_ip(self, ip) -> bool:
+        """判断 IP 是否在内网/保留黑名单（读取实例属性，使自定义网段生效）。"""
+        networks = self._BLOCKED_IPV4 if ip.version == 4 else self._BLOCKED_IPV6
         return any(ip in net for net in networks)
 
-    @classmethod
-    def validate_url(cls, url: str):
-        # 需要实例来检查 trusted_cdn，但作为类方法被外部直接调用
-        # 使用类属性作为默认白名单
+    def validate_url(self, url: str):
+        """校验 URL 安全性：scheme、hostname、IP 黑名单、DNS 解析、可信白名单。
+
+        读取实例属性 self._trusted_cdn_domains（由 __init__ 设置），
+        使实例化时传入的自定义可信 CDN 白名单实际生效。
+
+        Args:
+            url: 待校验的 URL 字符串
+
+        Raises:
+            DownloadError: URL 被 SSRF 防护策略拦截时
+        """
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https"):
             raise DownloadError(f"Blocked URL scheme: {parsed.scheme}")
@@ -105,13 +113,13 @@ class UrlValidator:
             raise DownloadError(f"Blocked localhost URL: {hostname}")
         try:
             ip = ipaddress.ip_address(hostname)
-            if cls.is_blocked_ip(ip):
+            if self.is_blocked_ip(ip):
                 raise DownloadError(f"Blocked private/reserved IP: {hostname}")
             return
         except ValueError:
             pass
         # 已知可信 CDN 域名跳过 DNS 解析验证，防止 TOCTOU 攻击
-        if hostname in cls._TRUSTED_CDN_DOMAINS or any(hostname.endswith("." + d) for d in cls._TRUSTED_CDN_DOMAINS):
+        if hostname in self._trusted_cdn_domains or any(hostname.endswith("." + d) for d in self._trusted_cdn_domains):
             return
         try:
             addrs = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
@@ -119,7 +127,7 @@ class UrlValidator:
             raise DownloadError(f"Cannot resolve hostname: {hostname}") from None
         for _family, _type, _proto, _canon, sockaddr in addrs:
             ip = ipaddress.ip_address(sockaddr[0])
-            if cls.is_blocked_ip(ip):
+            if self.is_blocked_ip(ip):
                 raise DownloadError(f"Hostname {hostname} resolves to blocked IP: {ip}")
 
     def resolve_redirects(

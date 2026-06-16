@@ -17,14 +17,17 @@ describe('useIpc', () => {
   })
 
   it('应通过 window.hcomic 调用并返回结果', async () => {
-    const hcomic = createMockHcomic({
+    // createMockHcomic 设置 window.hcomic，invoke 透传后由返回值断言验证
+    createMockHcomic({
       getConfig: vi.fn().mockResolvedValue({ config: { themeMode: 'dark' } }),
     })
 
     const { result } = renderHook(() => useIpc())
     const response = await result.current.invoke(() => window.hcomic!.getConfig())
 
-    expect(hcomic.getConfig).toHaveBeenCalled()
+    // 注：已移除 expect(hcomic.getConfig).toHaveBeenCalled() —— 裸调用断言同义反复
+    // (invoke 透传 fn，返回值断言已隐含"fn 被执行")。
+    // invoke 的核心行为（hcomic 不存在抛错、IPC 失败重抛）由后续用例覆盖。
     expect(response).toEqual({ config: { themeMode: 'dark' } })
   })
 
