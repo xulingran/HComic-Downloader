@@ -3,6 +3,10 @@ import { writeFileSync } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getPythonBridge } from './python-bridge'
+import {
+  registerRelaxedCspWebContents,
+  unregisterRelaxedCspWebContents,
+} from './csp-relaxed-registry'
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
 const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
@@ -29,6 +33,7 @@ interface LoginWindowContext {
   done: (result: { success: boolean; message?: string }) => void
   clearTimeout: () => void
   removeCspHandler: (() => void) | null
+  removePermissionHandlers: (() => void) | null
 }
 
 async function extractAndApplyCookies(
@@ -145,33 +150,71 @@ async function extractJmcomicUsername(loginWin: BrowserWindow): Promise<string> 
   }
 }
 
+/**
+ * 为登录窗口启用宽松 CSP（script-src 追加 'unsafe-eval'）。
+ *
+ * 历史实现：在此注册第二个 session.webRequest.onHeadersReceived 监听器。但
+ * Electron 对同一 session 的同一事件只保留单个监听器（见 electron#18301），
+ * 后注册者会覆盖先注册者 —— 这会覆盖主窗口 setupCSP 注册的全局 CSP 监听器，
+ * 导致登录窗口打开期间主窗口 CSP 失效，关闭后全局 CSP 被置空永久丢失。
+ *
+ * 现实现：不再注册任何 webRequest 监听器，仅把登录窗口的 webContents 注册到
+ * 共享 registry（csp-relaxed-registry）。主窗口的全局 CSP 监听器（setupCSP）
+ * 会查询此 registry，对登录窗口的响应注入宽松 CSP，对其他响应注入严格 CSP。
+ * 全程单一监听器，杜绝覆盖回归。
+ */
 function setupLoginWindowCSP(win: BrowserWindow): () => void {
-  const filter = { urls: ['*://*/*'] }
-  const loginSession = win.webContents.session
-  loginSession.webRequest.onHeadersReceived(filter, (details, callback) => {
-    const headers = details.responseHeaders
-    if (!headers) {
-      callback({ responseHeaders: headers })
+  const wc = win.webContents
+  registerRelaxedCspWebContents(wc)
+
+  let removed = false
+  return () => {
+    if (removed) return
+    removed = true
+    try {
+      unregisterRelaxedCspWebContents(wc)
+    } catch { /* webContents may be gone during shutdown */ }
+  }
+}
+
+/**
+ * 为登录窗口注册内容隔离策略，返回一个在窗口关闭时调用的清理函数。
+ *
+ * 1. `setWindowOpenHandler`：拒绝所有 `window.open` / `target=_blank` 弹窗。
+ *    登录流程不需要新窗口；第三方广告/重定向脚本可借此绕过 will-navigate
+ *    域名白名单创建不受控窗口。
+ * 2. 权限处理器：登录页是第三方不可信内容（含广告脚本），通知、地理定位、
+ *    摄像头、麦克风、剪贴板读取等权限都不应被授予。
+ *
+ * 注意：登录窗口共用 default session（便于提取 cookie），因此权限处理器按
+ * webContents 过滤 —— 只对登录窗口拒绝，主窗口保持 Electron 默认行为。
+ * 窗口销毁后调用返回的清理函数复位处理器，避免 session 上残留无谓拦截。
+ */
+function setupLoginContentIsolation(win: BrowserWindow): () => void {
+  const loginWebContents = win.webContents
+  const loginSession = loginWebContents.session
+
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    let hostname = ''
+    try { hostname = new URL(url).hostname } catch { /* malformed URL */ }
+    diag(`blocked popup open to: ${hostname}`)
+    return { action: 'deny' }
+  })
+
+  loginSession.setPermissionRequestHandler((wc, permission, callback) => {
+    if (wc === loginWebContents) {
+      diag(`denied permission request from login window: ${permission}`)
+      callback(false)
       return
     }
-
-    const cspKey = Object.keys(headers).find(
-      k => k.toLowerCase() === 'content-security-policy',
-    )
-    if (!cspKey) {
-      callback({ responseHeaders: headers })
-      return
+    callback(true)
+  })
+  loginSession.setPermissionCheckHandler((wc, permission) => {
+    if (wc === loginWebContents) {
+      diag(`denied permission check from login window: ${permission}`)
+      return false
     }
-
-    const modifiedHeaders = { ...headers }
-    modifiedHeaders[cspKey] = headers[cspKey].map(header =>
-      header.replace(/script-src\s+([^;]+)/i, (match, sources) => {
-        if (sources.includes("'unsafe-eval'")) return match
-        return `script-src ${sources} 'unsafe-eval'`
-      }),
-    )
-
-    callback({ responseHeaders: modifiedHeaders })
+    return true
   })
 
   let removed = false
@@ -179,8 +222,8 @@ function setupLoginWindowCSP(win: BrowserWindow): () => void {
     if (removed) return
     removed = true
     try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      loginSession.webRequest.onHeadersReceived(filter, null as any)
+      loginSession.setPermissionRequestHandler(null)
+      loginSession.setPermissionCheckHandler(null)
     } catch { /* session may be gone during shutdown */ }
   }
 }
@@ -188,8 +231,9 @@ function setupLoginWindowCSP(win: BrowserWindow): () => void {
 function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
   diag('createLoginBrowserWindow: start')
   // Use default session to avoid session.fromPartition side effects.
-  // CSP modifications and cleanup are filter-based so they won't
-  // interfere with the main window's setupCSP handler.
+  // CSP 放宽通过共享 registry（csp-relaxed-registry）而非独立 webRequest 监听器
+  // 实现，因此不会与主窗口的 setupCSP 监听器冲突（Electron 同一 session 的同一
+  // webRequest 事件只允许单个监听器，详见 setupLoginWindowCSP 注释）。
   diag('createLoginBrowserWindow: creating BrowserWindow')
   const win = new BrowserWindow({
     width: 500,
@@ -324,6 +368,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
       extractInProgress: false,
       clearTimeout: () => {},
       removeCspHandler,
+      removePermissionHandlers: null,
       done: (result) => {
         diag(`done called: settled=${ctx.settled} success=${result.success}`)
         if (ctx.settled) return
@@ -332,6 +377,10 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
         if (ctx.removeCspHandler) {
           ctx.removeCspHandler()
           ctx.removeCspHandler = null
+        }
+        if (ctx.removePermissionHandlers) {
+          ctx.removePermissionHandlers()
+          ctx.removePermissionHandlers = null
         }
         // 用 destroy() 而非 close()：close 已被 preventDefault，且 destroy 不再
         // 触发 close 事件，避免重入。destroy 后由 'closed' 兜底清理。
@@ -402,6 +451,9 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
         event.preventDefault()
       }
     })
+
+    // 不可信第三方 SPA 内容隔离（popup 拒绝 + 权限拒绝）
+    ctx.removePermissionHandlers = setupLoginContentIsolation(loginWin)
 
     bindManualCloseExtraction(loginWin, ctx, source, loginDomain)
 

@@ -8,6 +8,13 @@ const REQUEST_TIMEOUT_MS = 30_000
 // 20MB: cover image data URIs (base64) and large URL lists can exceed 1MB
 const MAX_BUFFER_SIZE = 20 * 1024 * 1024
 const MAX_RESTARTS = 5
+// 启动崩溃窗口：仅当后端进程在此时间内连续崩溃才计入 restartCount。
+// 超出窗口的崩溃（如长时间运行后 OOM）视为运行期故障而非启动失败，
+// 不应累积到 MAX_RESTARTS 触发"后端重启超限"致命横幅——否则一个本可
+// 正常服务的后端会因偶发运行期崩溃被永久判死。每次 start() 重置窗口起点。
+const STARTUP_CRASH_WINDOW_MS = 30_000
+// 优雅关闭 RPC 的等待上限：给后端时间刷盘（断点续传、下载状态）再强制 kill。
+const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000
 
 interface PendingRequest {
   resolve: (value: unknown) => void
@@ -22,6 +29,8 @@ export class PythonBridge {
   private restartTimer: NodeJS.Timeout | null = null
   private isShuttingDown = false
   private restartCount = 0
+  /** 当前进程的启动时间戳，用于判定崩溃是否落在启动崩溃窗口内 */
+  private processStartTime = 0
   private notificationHandlers = new Map<string, (params: unknown) => void>()
 
   /**
@@ -70,7 +79,9 @@ export class PythonBridge {
     if (line.length > MAX_BUFFER_SIZE) {
       console.error('IPC single message too large, discarding')
       this._clearPendingRequests('IPC response too large')
-      this.handleProcessFailure('IPC response too large')
+      // bufferOverflow: 进程正卡在写超大响应，再发 shutdown RPC 只会继续堆数据
+      // 触发二次溢出。直接强 kill 重新拉起，跳过优雅关闭。
+      this.handleProcessFailure('IPC response too large', 'bufferOverflow')
       return false
     }
     try {
@@ -114,7 +125,8 @@ export class PythonBridge {
     if (this.buffer.length > MAX_BUFFER_SIZE) {
       console.error('IPC buffer overflow, discarding incomplete message')
       this._clearPendingRequests('IPC buffer overflow')
-      this.handleProcessFailure('IPC buffer overflow')
+      // bufferOverflow: 进程正卡在写超大响应，再发 shutdown RPC 只会继续堆数据。
+      this.handleProcessFailure('IPC buffer overflow', 'bufferOverflow')
     }
   }
 
@@ -129,6 +141,7 @@ export class PythonBridge {
       env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
     })
     const proc = this.process
+    this.processStartTime = Date.now()
 
     proc.stdout?.on('data', (data: Buffer) => this.handleStdoutData(data, proc))
 
@@ -148,7 +161,8 @@ export class PythonBridge {
 
     proc.on('exit', (code) => {
       if (this.process !== proc) return
-      this.handleProcessFailure(`Python process exited with code ${code}`)
+      // processExit: 进程已退出，优雅关闭无的放矢，直接走清理+重启。
+      this.handleProcessFailure(`Python process exited with code ${code}`, 'processExit')
     })
 
     proc.on('error', (err) => {
@@ -157,11 +171,26 @@ export class PythonBridge {
       // 进入 handleProcessFailure 的重启循环。致命横幅仅在 restartCount 达到 MAX_RESTARTS
       // 时统一由 handleProcessFailure 发出（backend-restart-exceeded），不在每次 error 时弹，
       // 避免重试期间横幅被反复刷新、最终又被 restart-exceeded 覆盖。
-      this.handleProcessFailure(`Python process error: ${err.message}`)
+      // spawnError: 进程未真正起来，跳过优雅关闭。
+      this.handleProcessFailure(`Python process error: ${err.message}`, 'spawnError')
     })
   }
 
-  private handleProcessFailure(message: string) {
+  /**
+   * 处理后端进程故障：拒绝所有 pending 请求、清理旧进程、按重启策略拉起新进程。
+   *
+   * @param reason 故障来源：
+   *   - `bufferOverflow`：stdout 缓冲区溢出/单条响应过大。进程仍可能存活但卡在写
+   *     超大响应，此时再发 shutdown RPC 只会继续堆数据触发二次溢出，故**跳过**
+   *     优雅关闭，直接 kill 重启。
+   *   - `processExit`：进程已 exit，优雅关闭无的放矢，直接清理。
+   *   - `spawnError`：spawn 失败，进程未真正起来，直接清理。
+   *   - 省略（默认）：缓冲区溢出主动触发重启之外的其他路径，按原行为尝试优雅关闭。
+   */
+  private async handleProcessFailure(
+    message: string,
+    reason: 'bufferOverflow' | 'processExit' | 'spawnError' | 'other' = 'other',
+  ) {
     for (const [, pending] of this.pendingRequests) {
       clearTimeout(pending.timer)
       pending.reject(new Error(message))
@@ -172,9 +201,32 @@ export class PythonBridge {
       const oldProc = this.process
       oldProc.stdout?.removeAllListeners('data')
       oldProc.stderr?.removeAllListeners('data')
+      // 仅在进程仍存活且属可优雅关闭的路径时尝试：发 shutdown RPC 给后端刷盘
+      // （断点续传文件、下载状态）再强 kill。
+      // - processExit：进程已 exit，oldProc.killed/exitCode/pid 为假，直接跳过。
+      // - spawnError：进程未真正起来。
+      // - bufferOverflow：进程可能仍存活但卡在写超大响应，shutdown RPC 只会触发
+      //   二次溢出，跳过优雅关闭直接 kill 重启。
+      const canGracefulShutdown = reason === 'other'
+      if (canGracefulShutdown && !oldProc.killed && oldProc.exitCode === null && oldProc.pid != null) {
+        try {
+          await this._gracefulShutdown(oldProc)
+        } catch {
+          // 优雅关闭失败（进程无响应/RPC 超时）→ 兜底强制 kill
+        }
+      }
       try { oldProc.kill() } catch { /* already dead */ }
       oldProc.removeAllListeners()
       this.process = null
+    }
+
+    // 启动崩溃窗口判定：仅当进程在 STARTUP_CRASH_WINDOW_MS 内崩溃才计入
+    // restartCount。长时间运行后的崩溃（如 OOM）是运行期故障，重置计数重新开始，
+    // 避免一个本可正常服务的后端因偶发崩溃被永久判死为"重启超限"。
+    const uptimeMs = Date.now() - this.processStartTime
+    const isStartupCrash = uptimeMs < STARTUP_CRASH_WINDOW_MS
+    if (!isStartupCrash) {
+      this.restartCount = 0
     }
 
     if (!this.isShuttingDown && this.restartCount < MAX_RESTARTS) {
@@ -191,6 +243,41 @@ export class PythonBridge {
         kind: 'backend-restart-exceeded',
       })
     }
+  }
+
+  /**
+   * 对仍存活的旧进程发送 shutdown RPC，让后端刷盘（断点续传文件、下载状态），
+   * 随后等待最多 GRACEFUL_SHUTDOWN_TIMEOUT_MS 返回，超时后交由调用方强制 kill。
+   *
+   * 注意：Python `handle_shutdown` 仅取消任务/停队列/关 executor，**主循环不退出**，
+   * 因此本方法几乎总是靠超时兜底——这里 onExit 分支是防御性的，目标不是真等到进程
+   * 退出，而是给后端一个刷盘窗口再让调用方 kill 收尾。
+   *
+   * 直接走 proc.stdin 写入而非 this.call()，避免 this.process 已被替换导致的状态错乱。
+   */
+  private _gracefulShutdown(proc: ChildProcess): Promise<void> {
+    return new Promise((resolve) => {
+      let settled = false
+      const finish = () => {
+        if (settled) return
+        settled = true
+        proc.removeListener('exit', onExit)
+        resolve()
+      }
+      const onExit = () => finish()
+      proc.on('exit', onExit)
+
+      const id = crypto.randomUUID()
+      const request = { jsonrpc: '2.0', id, method: 'shutdown', params: {} }
+      try {
+        proc.stdin!.write(JSON.stringify(request) + '\n')
+      } catch {
+        finish()
+        return
+      }
+      // 超时兜底：后端未在窗口内退出则交由调用方 kill()
+      setTimeout(finish, GRACEFUL_SHUTDOWN_TIMEOUT_MS)
+    })
   }
 
   onNotification(method: string, params: unknown) {

@@ -215,6 +215,25 @@ export interface FatalErrorEvent {
   kind?: string
 }
 
+/**
+ * 深度链接（hcomic://）解析后的结构化导航目标。
+ *
+ * 解析自 `hcomic://<action>?<params>`，例如：
+ *   - `hcomic://comic?id=12345&source=jmcomic` → 打开/聚焦某漫画详情
+ *   - `hcomic://search?keyword=...&source=hcomic` → 执行搜索
+ *   - `hcomic://bring-to-front` → 仅前置主窗口（无导航意图）
+ *
+ * 渲染进程收到后据 action 自行决定路由；未知 action 应被忽略以保持向前兼容。
+ */
+export interface DeepLinkTarget {
+  /** 链接的 action 段（URL 的 host），已做小写归一化 */
+  action: string
+  /** 查询参数（已 URL-decode），可能为空 */
+  params: Record<string, string>
+  /** 原始 URL（用于日志/诊断，渲染进程不应据此再解析） */
+  raw: string
+}
+
 /** 诊断信息报告（一键复制到剪贴板的结构化字符串） */
 export type DiagnosticsReport = string
 
@@ -428,7 +447,7 @@ export interface IPCMethods {
     result: PreviewUrlsResult
   }
   fetch_preview_image: {
-    params: { image_url: string }
+    params: { image_url: string; image_quality?: string }
     result: PreviewImageResult
   }
   check_downloaded_status: {
@@ -727,6 +746,8 @@ export interface HcomicAPI {
   onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   onFatalError(callback: (data: FatalErrorEvent) => void): () => void
+  /** 监听来自系统协议唤起（hcomic://…）的深度链接导航目标 */
+  onDeepLink(callback: (target: DeepLinkTarget) => void): () => void
   getDiagnostics(): Promise<DiagnosticsReport>
   /** 将文本写入系统剪贴板（绕开渲染进程的文档焦点限制） */
   writeClipboard(text: string): Promise<void>
@@ -903,6 +924,7 @@ export const NOTIFICATION_CHANNELS = {
   UPDATE_CHECK_RESULT: 'update:check-result',
   ALBUM_PROGRESS: 'album:progress',
   FATAL_ERROR: 'fatal:error',
+  DEEP_LINK: 'app:deep-link',
 } as const
 
 export const PYTHON_NOTIFICATION_METHODS = {

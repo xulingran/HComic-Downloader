@@ -18,6 +18,27 @@ function validateTaskId(id: unknown): asserts id is string {
   if (typeof id !== 'string' || id.length === 0 || id.length > 256) throw new Error('Invalid taskId')
 }
 
+/**
+ * 对称校验下载目录路径，镜像主进程 downloadDirValidator：
+ * 非空字符串 + 合理长度 + 绝对路径 + 无路径遍历 + 无控制字符。
+ * 主进程会再做权威校验，这里仅做早期拒绝以保持契约对称。
+ */
+function validateDownloadDir(dirPath: unknown): asserts dirPath is string {
+  if (typeof dirPath !== 'string' || dirPath.length === 0 || dirPath.length > 1024) {
+    throw new Error('Invalid directory path')
+  }
+  // 绝对路径：Windows 盘符（C:\）或 UNC（\\），POSIX 根（/）
+  const isWindowsAbsolute = /^[A-Za-z]:[\\/]/.test(dirPath) || dirPath.startsWith('\\\\')
+  const isPosixAbsolute = dirPath.startsWith('/')
+  if (!isWindowsAbsolute && !isPosixAbsolute) throw new Error('Directory path must be absolute')
+  // 正则有意匹配控制字符（\u0000-\u001F 即 C0 控制字符 + \u007F 即 DEL）以拦截路径注入
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F]/.test(dirPath)) throw new Error('Directory path must not contain control characters')
+  // 阻断 `..` 遍历片段（兼容正反斜杠分隔符）
+  const parts = dirPath.split(/[\\/]/)
+  if (parts.some((p) => p === '..')) throw new Error('Directory path must not contain traversal segments')
+}
+
 function onChannel(channel: string, callback: unknown, useData = true) {
   if (typeof callback !== 'function') throw new Error('Invalid callback')
   const handler = useData
@@ -187,7 +208,7 @@ contextBridge.exposeInMainWorld('hcomic', {
   getJmcomicDomains: () => ipcRenderer.invoke(IPC_CHANNELS.GET_JMCOMIC_DOMAINS),
 
   openDownloadDir: (dirPath: unknown) => {
-    if (typeof dirPath !== 'string' || dirPath.length === 0) throw new Error('Invalid directory path')
+    validateDownloadDir(dirPath)
     return ipcRenderer.invoke(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, dirPath)
   },
 
@@ -255,7 +276,17 @@ contextBridge.exposeInMainWorld('hcomic', {
   getMigrationStatus: () => ipcRenderer.invoke(IPC_CHANNELS.GET_MIGRATION_STATUS),
 
   resolveUnmatched: (matches: unknown) => {
-    if (!Array.isArray(matches)) throw new Error('Invalid matches')
+    if (!Array.isArray(matches) || matches.length > 10000) throw new Error('Invalid matches')
+    for (const m of matches) {
+      if (typeof m !== 'object' || m === null) throw new Error('Invalid match item')
+      const item = m as Record<string, unknown>
+      if (!Array.isArray(item.dbKey) || !item.dbKey.every((k) => typeof k === 'string')) {
+        throw new Error('Invalid match item: dbKey must be array of strings')
+      }
+      if (typeof item.file_path !== 'string' || item.file_path.length === 0) {
+        throw new Error('Invalid match item: file_path must be a non-empty string')
+      }
+    }
     return ipcRenderer.invoke(IPC_CHANNELS.RESOLVE_UNMATCHED, matches)
   },
 
@@ -339,6 +370,17 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   onFatalError: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.FATAL_ERROR, callback)
+  },
+
+  onDeepLink: (callback: unknown) => {
+    if (typeof callback !== 'function') throw new Error('Invalid callback')
+    const handler = (_event: Electron.IpcRendererEvent, target: unknown) => {
+      if (target && typeof target === 'object' && typeof (target as { action?: unknown }).action === 'string') {
+        ;(callback as (t: unknown) => void)(target)
+      }
+    }
+    ipcRenderer.on(NOTIFICATION_CHANNELS.DEEP_LINK, handler)
+    return () => { ipcRenderer.removeListener(NOTIFICATION_CHANNELS.DEEP_LINK, handler) }
   },
 
   getDiagnostics: () => {

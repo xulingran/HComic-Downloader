@@ -405,6 +405,16 @@ class IPCServer(
                 image_url = params.get("image_url", "")
                 scramble_id = params.get("scramble_id", "")
                 comic_id = params.get("comic_id", "")
+                image_quality = params.get("image_quality", "")
+                if not isinstance(image_quality, str) or image_quality not in ("", "low", "medium", "high", "original"):
+                    self._write_response(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": req_id,
+                            "error": {"code": -32602, "message": "Invalid image_quality"},
+                        }
+                    )
+                    return
                 try:
                     self._validate_preview_image_url(image_url)
                 except ValueError as e:
@@ -422,6 +432,7 @@ class IPCServer(
                     req_id,
                     scramble_id=scramble_id,
                     comic_id=comic_id,
+                    image_quality=image_quality,
                 )
                 return
 

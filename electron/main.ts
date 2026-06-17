@@ -5,12 +5,14 @@ import { getPythonBridge } from './python-bridge'
 import { checkForUpdates } from './update-checker'
 import { NotificationManager } from './notification-manager'
 import { openLoginWindow } from './login-window'
+import { needsRelaxedCsp } from './csp-relaxed-registry'
 import { initLogging } from './log-init'
 import { buildDiagnostics } from './diagnostics'
 import {
   SEARCH_MODES, COMIC_SOURCES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
   type DownloadProgressEvent,
+  type DeepLinkTarget,
 } from '../shared/types'
 import {
   type Validator,
@@ -50,8 +52,17 @@ try {
 } catch { /* crash reporter unsupported in this build */ }
 
 let mainWindow: BrowserWindow | null = null
-let isQuitting = false
-let shutdownDone = false
+/**
+ * 应用关闭状态机，合并原 isQuitting / shutdownDone 两个布尔标志：
+ * - 'running'：正常运行
+ * - 'quitting'：已进入 before-quit，正在等待 Python 后端优雅关闭
+ * - 'done'：关闭流程已收尾，即将真正退出
+ *
+ * 单一状态避免双标志的冗余与组合歧义（如 isQuitting=true & shutdownDone=true
+ * 这种不应出现的中间态）。
+ */
+type ShutdownState = 'running' | 'quitting' | 'done'
+let shutdownState: ShutdownState = 'running'
 const notificationManager = new NotificationManager()
 
 const CLOSE_GET_DOWNLOADS_TIMEOUT_MS = 3_000
@@ -284,6 +295,18 @@ function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
   win.loadURL(url).catch(() => {})
 }
 
+/**
+ * 需要宽松 CSP（含 'unsafe-eval'）的 webContents 集合 —— 登录窗口加载的第三方
+ * SPA（Auth0 / h-comic / jmcomic 镜像）需要在 script-src 中放宽 'unsafe-eval'。
+ *
+ * 关键约束：Electron 的 session.webRequest 对同一事件只保留**单个监听器**，
+ * 后注册的会覆盖先注册的（见 electron/electron#18301）。登录窗口与主窗口共用
+ * default session，因此历史上 setupCSP（全局）与 setupLoginWindowCSP（登录）
+ * 会互相覆盖，导致"登录窗口打开期间主窗口 CSP 失效 / 登录窗口关闭后全局 CSP
+ * 被置空"。修复方式：保留单一全局监听器（setupCSP），通过此集合在监听器内
+ * 区分主窗口与登录窗口的 webContents，注入对应强度的 CSP。
+ */
+
 function setupCSP(win: BrowserWindow) {
   const isDev = !!process.env.ELECTRON_RENDERER_URL
   const baseCspDirectives = [
@@ -299,6 +322,21 @@ function setupCSP(win: BrowserWindow) {
   ]
 
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
+    // 登录窗口 webContents：在 script-src 中追加 'unsafe-eval'（不放宽其他指令）
+    if (needsRelaxedCsp(details.webContents)) {
+      const relaxed = baseCspDirectives.map(d =>
+        d.startsWith('script-src ')
+          ? (d.includes("'unsafe-eval'") ? d : `${d} 'unsafe-eval'`)
+          : d
+      )
+      callback({
+        responseHeaders: {
+          ...details.responseHeaders,
+          'Content-Security-Policy': [relaxed.join('; ')],
+        },
+      })
+      return
+    }
     callback({
       responseHeaders: {
         ...details.responseHeaders,
@@ -329,7 +367,7 @@ function setupRefererInjection(win: BrowserWindow) {
 
 function setupWindowCloseHandler(win: BrowserWindow) {
   win.on('close', async (e) => {
-    if (isQuitting) return
+    if (shutdownState !== 'running') return
 
     // Always prevent to allow async work (Electron won't await async handlers)
     e.preventDefault()
@@ -353,7 +391,7 @@ function setupWindowCloseHandler(win: BrowserWindow) {
         return
       }
 
-      if (isQuitting || !snap || snap.isDestroyed() || mainWindow !== snap) return
+      if (shutdownState !== 'running' || !snap || snap.isDestroyed() || mainWindow !== snap) return
 
       const activeTasks = result.tasks.filter(
         t => t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused'
@@ -370,7 +408,7 @@ function setupWindowCloseHandler(win: BrowserWindow) {
           cancelId: 1,
         })
         if (choice === 0) {
-          isQuitting = true
+          shutdownState = 'quitting'
           app.quit()
         }
       } else {
@@ -458,6 +496,17 @@ function createWindow() {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+  })
+
+  // 渲染进程就绪后补发暂存的深度链接（协议唤起早于窗口加载完成的情况）。
+  // 用 on 而非 once：窗口重载后若仍有 pending 也应补发，且补发后立即清空，
+  // 不会重复推送。
+  mainWindow.webContents.on('did-finish-load', () => {
+    if (pendingDeepLink && mainWindow && !mainWindow.isDestroyed()) {
+      const target = pendingDeepLink
+      pendingDeepLink = null
+      mainWindow.webContents.send(NOTIFICATION_CHANNELS.DEEP_LINK, target)
+    }
   })
 
   setupWindowCloseHandler(mainWindow)
@@ -808,13 +857,20 @@ function registerSystemHandlers(bridge: Bridge) {
     return bridge.call('get_jmcomic_domains')
   })
 
-  ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async (_, dirPath: string) => {
-    if (typeof dirPath !== 'string' || dirPath.length === 0) {
-      throw new Error('Invalid directory path')
+  ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async (_, dirPath: unknown) => {
+    assert(downloadDirValidator, dirPath, 'directory path')
+    let stats: fs.Stats
+    try {
+      stats = fs.statSync(dirPath)
+    } catch (err) {
+      // 区分"路径不存在"（高频、可恢复）与其他 stat 失败（权限不足、路径过长），
+      // 给用户可行动的错误提示。
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+        throw new Error(`Download directory does not exist: ${dirPath}`, { cause: err })
+      }
+      throw new Error(`Cannot access directory: ${dirPath}`, { cause: err })
     }
-    if (!fs.existsSync(dirPath)) {
-      throw new Error(`Download directory does not exist: ${dirPath}`)
-    }
+    if (!stats.isDirectory()) throw new Error(`Path is not a directory: ${dirPath}`)
     const errorMsg = await shell.openPath(dirPath)
     if (errorMsg) {
       throw new Error(`Failed to open directory: ${errorMsg}`)
@@ -876,7 +932,7 @@ function registerPreviewHandlers(bridge: Bridge) {
     return bridge.call('get_chapter_preview_urls', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown, scrambleId?: unknown, comicId?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown, scrambleId?: unknown, comicId?: unknown, imageQuality?: unknown) => {
     assert(and(string(), length(1, 2048)), imageUrl, 'preview image URL')
     let parsed: URL
     try { parsed = new URL(imageUrl) } catch { throw new Error('Invalid preview image URL format') }
@@ -884,6 +940,12 @@ function registerPreviewHandlers(bridge: Bridge) {
     const params: Record<string, unknown> = { image_url: imageUrl }
     if (typeof scrambleId === 'string' && scrambleId) params.scramble_id = scrambleId
     if (typeof comicId === 'string' && comicId) params.comic_id = comicId
+    if (typeof imageQuality === 'string' && imageQuality) {
+      if (!['low', 'medium', 'high', 'original'].includes(imageQuality)) {
+        throw new Error('Invalid imageQuality')
+      }
+      params.image_quality = imageQuality
+    }
     return bridge.call('fetch_preview_image', params)
   })
 
@@ -1178,6 +1240,67 @@ function scheduleStartupUpdateCheck() {
   })
 }
 
+// ── Deep-link (hcomic://) handling ──
+//
+// 解析 `hcomic://<action>?<params>` 为结构化导航目标，转发给渲染进程。
+// 同时处理三种唤起路径：
+//   1. macOS `open-url`（协议已注册为默认客户端）
+//   2. Windows 冷启动：协议 URL 作为命令行 argv 传入（argv 扫描）
+//   3. Windows 热启动：`second-instance` 的 argv 参数
+// 渲染进程挂载前的唤起会暂存为 pending，待其就绪后补发，避免丢失导航意图。
+const DEEP_LINK_SCHEME = 'hcomic:'
+let pendingDeepLink: DeepLinkTarget | null = null
+
+function parseDeepLink(raw: string): DeepLinkTarget | null {
+  let parsed: URL
+  try {
+    parsed = new URL(raw)
+  } catch {
+    return null
+  }
+  if (parsed.protocol.toLowerCase() !== DEEP_LINK_SCHEME) return null
+  // action 取 host（`hcomic://comic?...` → `comic`）；空 action 视为无效
+  const action = parsed.hostname.toLowerCase()
+  if (!action) return null
+  const params: Record<string, string> = {}
+  parsed.searchParams.forEach((value, key) => {
+    // 仅保留字符串键值对，重复键后者覆盖（URLSearchParams 已做 decode）
+    params[key] = value
+  })
+  return { action, params, raw }
+}
+
+function dispatchDeepLink(target: DeepLinkTarget): void {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(NOTIFICATION_CHANNELS.DEEP_LINK, target)
+  } else {
+    // 渲染进程尚未就绪：暂存，createWindow 完成后补发
+    pendingDeepLink = target
+  }
+}
+
+function handleDeepLinkUrl(raw: string): void {
+  const target = parseDeepLink(raw)
+  if (!target) return
+  // 前置主窗口：协议唤起应当把应用带到前台
+  if (mainWindow) {
+    if (mainWindow.isMinimized()) mainWindow.restore()
+    mainWindow.show()
+    mainWindow.focus()
+  }
+  dispatchDeepLink(target)
+}
+
+// 从命令行 argv 中提取首个 hcomic:// 协议 URL（Windows 冷启动入口）
+function extractDeepLinkFromArgv(argv: readonly string[]): string | null {
+  for (const arg of argv) {
+    if (typeof arg === 'string' && arg.toLowerCase().startsWith(DEEP_LINK_SCHEME)) {
+      return arg
+    }
+  }
+  return null
+}
+
 // ── Single instance lock ──
 const gotTheLock = app.requestSingleInstanceLock()
 if (!gotTheLock) {
@@ -1218,16 +1341,31 @@ app.whenReady().then(() => {
     createWindow()
     registerIPCHandlers()
     scheduleStartupUpdateCheck()
+
+    // ── Windows 冷启动深度链接 ──
+    // 协议 URL 作为命令行 argv 传入首个实例；此时 mainWindow 可能尚未
+    // did-finish-load，parseDeepLink 解析后由 dispatchDeepLink 暂存 pending，
+    // 待渲染进程就绪后补发（见下方 did-finish-load 钩子）。
+    const coldStartUrl = extractDeepLinkFromArgv(process.argv)
+    if (coldStartUrl) {
+      const target = parseDeepLink(coldStartUrl)
+      if (target) pendingDeepLink = target
+    }
   } catch (err) {
     dialog.showErrorBox('启动失败', '应用初始化失败: ' + (err as Error).message)
     app.quit()
   }
 })
 
-// ── Handle URI protocol activation (Windows/macOS) ──
-app.on('open-url', (_event, _url: string) => {
-  // hcomic://bring-to-front or similar
-  _event.preventDefault()
+// ── Handle URI protocol activation (macOS) ──
+// `open-url` 携带唤起的 hcomic:// URL；解析后转发渲染进程做导航。
+// 非协议 URL 或解析失败时退化为单纯前置主窗口（保留旧行为兼容）。
+app.on('open-url', (event, url: string) => {
+  event.preventDefault()
+  if (typeof url === 'string' && url.toLowerCase().startsWith(DEEP_LINK_SCHEME)) {
+    handleDeepLinkUrl(url)
+    return
+  }
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
@@ -1236,7 +1374,14 @@ app.on('open-url', (_event, _url: string) => {
 })
 
 // ── Handle URI protocol activation (Windows) ──
-app.on('second-instance', () => {
+// `second-instance` 在第二个实例启动时触发；argv 可能包含 hcomic:// URL
+// （协议热启动）。解析后转发渲染进程；无协议 URL 时仅前置主窗口。
+app.on('second-instance', (_event, argv: readonly string[]) => {
+  const deepLinkUrl = extractDeepLinkFromArgv(argv)
+  if (deepLinkUrl) {
+    handleDeepLinkUrl(deepLinkUrl)
+    return
+  }
   if (mainWindow) {
     if (mainWindow.isMinimized()) mainWindow.restore()
     mainWindow.show()
@@ -1257,17 +1402,17 @@ app.on('activate', () => {
 })
 
 app.on('before-quit', (e) => {
-  if (shutdownDone) return
+  if (shutdownState === 'done') return
   e.preventDefault()
-  isQuitting = true
+  shutdownState = 'quitting'
   const bridge = getPythonBridge()
 
   let timer: NodeJS.Timeout | null = null
   const doQuit = () => {
-    if (shutdownDone) return
+    if (shutdownState === 'done') return
     if (timer) clearTimeout(timer)
     bridge.kill()
-    shutdownDone = true
+    shutdownState = 'done'
     app.quit()
   }
 

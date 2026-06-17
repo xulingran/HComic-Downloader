@@ -63,7 +63,7 @@ describe('IPC Channel Consistency', () => {
   })
 
   it('NOTIFICATION_CHANNELS and PYTHON_NOTIFICATION_METHODS should have matching keys (excluding Electron-only channels)', () => {
-    const electronOnlyNotifications = new Set(['UPDATE_CHECK_RESULT', 'FATAL_ERROR'])
+    const electronOnlyNotifications = new Set(['UPDATE_CHECK_RESULT', 'FATAL_ERROR', 'DEEP_LINK'])
     const notifKeys = Object.keys(NOTIFICATION_CHANNELS).filter(k => !electronOnlyNotifications.has(k))
     const pyNotifKeys = Object.keys(PYTHON_NOTIFICATION_METHODS)
     expect(notifKeys.sort()).toEqual(pyNotifKeys.sort())

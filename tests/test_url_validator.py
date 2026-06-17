@@ -315,8 +315,11 @@ class TestResolveRedirects:
         with pytest.raises(DownloadError, match="(?i)private|reserved|blocked"):
             validator.resolve_redirects("https://h-comic.com/start", session, timeout=5)
 
-    def test_auth_headers_stripped_when_leaving_trusted_domain(self, validator):
+    def test_auth_headers_stripped_when_leaving_trusted_domain(self, validator, monkeypatch):
         """从 hcomic（可信域）重定向到非可信域时，auth 头必须被剥离。"""
+        # public-example.com 是合成测试域名，无法真实解析；用 monkeypatch 注入
+        # 可控 DNS 结果（解析为公网 IP），使测试聚焦于 auth 头剥离逻辑而非网络。
+        monkeypatch.setattr(socket, "getaddrinfo", _make_resolver(["93.184.216.34"]))
         # 链路: h-comic.com/start →(302)→ public-example.com/dest →(200)
         responses = [
             _make_redirect_response(302, "https://public-example.com/dest"),
@@ -333,8 +336,11 @@ class TestResolveRedirects:
         assert "Cookie" not in session.headers, "离开可信域后 Cookie 必须被剥离"
         assert "Authorization" not in session.headers, "离开可信域后 Authorization 必须被剥离"
 
-    def test_auth_headers_restored_when_redirecting_back(self, validator):
+    def test_auth_headers_restored_when_redirecting_back(self, validator, monkeypatch):
         """从非可信域重定向回可信域时，先前剥离的 auth 头必须被恢复。"""
+        # public-example.com 是合成测试域名，无法真实解析；用 monkeypatch 注入
+        # 可控 DNS 结果（解析为公网 IP），使测试聚焦于 auth 头恢复逻辑而非网络。
+        monkeypatch.setattr(socket, "getaddrinfo", _make_resolver(["93.184.216.34"]))
         # 链路: h-comic.com/start →(302)→ public-example.com/intermediate →(302)→ h-comic.com/back →(200)
         responses = [
             _make_redirect_response(302, "https://public-example.com/intermediate"),
