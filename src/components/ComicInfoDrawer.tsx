@@ -5,6 +5,7 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
 import { useModalAnimation } from '../hooks/useModalAnimation'
 import { Toast } from './common/Toast'
+import { Modal } from './common/Modal'
 import { isAuthError } from '../utils/auth'
 import { normalizeSourceKey, sourceSupportsFavourites, sourceSupportsTagRecommendation, sourceNeedsDetailEnrich } from '../utils/source'
 
@@ -393,9 +394,14 @@ export function ComicInfoDrawer() {
         </div>
       </div>
 
-      {confirmTag && (
-        <div className="fixed inset-0 z-[60] bg-black/50 flex items-center justify-center" onClick={() => setConfirmTag(null)}>
-          <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
+      <Modal
+        isOpen={!!confirmTag}
+        onClose={() => setConfirmTag(null)}
+        zIndex={60}
+        contentClassName="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full"
+      >
+        {confirmTag && (
+          <>
             <h3 className="text-base font-medium text-[var(--text-primary)] mb-4">
               {confirmTag.action === 'block'
                 ? `屏蔽标签「${confirmTag.tag}」？`
@@ -433,9 +439,9 @@ export function ComicInfoDrawer() {
                 确认
               </button>
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Modal>
     </div>
   )
 }

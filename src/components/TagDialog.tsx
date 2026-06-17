@@ -1,4 +1,5 @@
 import type { TagItem } from '../hooks/useTagPanel'
+import { Modal } from './common/Modal'
 
 interface TagDialogProps {
   open: boolean
@@ -21,18 +22,15 @@ export function TagDialog({
   tagKeyword, onTagKeywordChange,
   onToggleTag, onClearAllTags, onRefreshTags,
 }: TagDialogProps) {
-  if (!open) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        role="dialog"
-        aria-label="选择标签"
-        className="bg-[var(--bg-primary)] rounded-xl shadow-xl p-5 w-full mx-4 flex flex-col"
-        style={{ maxWidth: 560, maxHeight: '80vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
+    <Modal
+      isOpen={open}
+      onClose={onClose}
+      ariaLabel="选择标签"
+      contentClassName="bg-[var(--bg-primary)] rounded-xl shadow-xl p-5 w-full mx-4 flex flex-col"
+      contentStyle={{ maxWidth: 560, maxHeight: '80vh' }}
+    >
+      {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-semibold text-[var(--text-primary)]">标签</h3>
@@ -144,7 +142,6 @@ export function TagDialog({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   )
 }

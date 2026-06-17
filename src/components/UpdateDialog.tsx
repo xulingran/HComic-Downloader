@@ -1,4 +1,5 @@
 import type { UpdateInfo } from '@shared/types'
+import { Modal } from './common/Modal'
 
 interface UpdateDialogProps {
   info: UpdateInfo
@@ -55,12 +56,12 @@ export function UpdateDialog({ info, onClose }: UpdateDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
-      <div
-        className="bg-[var(--bg-primary)] rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
+    <Modal
+      isOpen
+      onClose={onClose}
+      contentClassName="bg-[var(--bg-primary)] rounded-xl shadow-xl w-full max-w-lg mx-4 max-h-[80vh] flex flex-col"
+    >
+      {/* Header */}
         <div className="px-6 py-4 border-b border-[var(--border)]">
           <h3 className="text-lg font-medium text-[var(--text-primary)]">
             发现新版本 v{info.latestVersion}
@@ -94,7 +95,6 @@ export function UpdateDialog({ info, onClose }: UpdateDialogProps) {
             去下载
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

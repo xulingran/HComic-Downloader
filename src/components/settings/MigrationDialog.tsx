@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useMigration } from '../../hooks/useMigration'
 import type { MigrationPlanPreview } from '@shared/types'
+import { Modal } from '../common/Modal'
 
 interface MigrationDialogProps {
   isOpen: boolean
@@ -49,8 +50,6 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
       logRef.current.scrollTop = logRef.current.scrollHeight
     }
   }, [errors, progress])
-
-  if (!isOpen) return null
 
   const handleNext = async () => {
     setError(null)
@@ -114,10 +113,15 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
     : 0
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
+    <Modal
+      isOpen={isOpen}
+      onClose={handleClose}
+      // 迁移执行中禁止遮罩关闭，避免误触中断迁移；其余阶段统一支持点击遮罩关闭
+      closeOnOverlayClick={!(phase === 'executing' && isActive)}
+      contentClassName="bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--border)]">
           <h3 className="text-base font-medium text-[var(--text-primary)]">
             迁移漫画库
           </h3>
@@ -380,7 +384,6 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
             </button>
           )}
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

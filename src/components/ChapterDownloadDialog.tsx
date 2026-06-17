@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import type { ChapterInfo } from '@shared/types'
+import { Modal } from './common/Modal'
 
 interface Props {
   chapters: ChapterInfo[]
@@ -10,7 +11,6 @@ interface Props {
 
 export function ChapterDownloadDialog({ chapters, open, onConfirm, onCancel }: Props) {
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  if (!open) return null
 
   const toggle = (id: string) =>
     setSelected((prev) => {
@@ -28,15 +28,15 @@ export function ChapterDownloadDialog({ chapters, open, onConfirm, onCancel }: P
   const ordered = () => chapters.filter((c) => selected.has(c.id)).map((c) => c.id)
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div
-        role="dialog"
-        aria-label="选择下载章节"
-        className="bg-[var(--bg-primary)] rounded-xl shadow-xl p-5 max-w-md w-full mx-4 flex flex-col"
-        style={{ maxHeight: '80vh' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center justify-between mb-3">
+    <Modal
+      isOpen={open}
+      onClose={onCancel}
+      zIndex={60}
+      ariaLabel="选择下载章节"
+      contentClassName="bg-[var(--bg-primary)] rounded-xl shadow-xl p-5 max-w-md w-full mx-4 flex flex-col"
+      contentStyle={{ maxHeight: '80vh' }}
+    >
+      <div className="flex items-center justify-between mb-3">
           <h3 className="text-base font-semibold text-[var(--text-primary)]">选择下载章节</h3>
           <button
             onClick={toggleAll}
@@ -78,7 +78,6 @@ export function ChapterDownloadDialog({ chapters, open, onConfirm, onCancel }: P
             下载选中
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

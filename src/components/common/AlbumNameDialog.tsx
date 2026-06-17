@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import { Modal } from './Modal'
 
 interface AlbumNameDialogProps {
   isOpen: boolean
@@ -9,22 +10,10 @@ interface AlbumNameDialogProps {
 }
 
 export function AlbumNameDialog({ isOpen, defaultName, comicCount, onConfirm, onCancel }: AlbumNameDialogProps) {
+  // defaultName 仅作初值。Modal 关闭即卸载本组件，下次打开重新挂载，
+  // useState 自然拿到最新 defaultName，不再需要 wasOpen 渲染期同步逻辑。
   const [name, setName] = useState(defaultName)
-  const [wasOpen, setWasOpen] = useState(isOpen)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  // 弹窗从关→开时同步最新 defaultName。
-  // 用"渲染期间检测 prop 变化"模式（React 官方推荐），而非 useEffect：
-  // 避免触发 react-hooks/set-state-in-effect，且无额外渲染开销。
-  // 仅在 isOpen 翻转为 true 的那次渲染重置；弹窗保持打开期间即使用户编辑
-  // 触发重渲染也不会被覆盖（wasOpen 已为 true，分支不进入）。
-  // 对常驻挂载（靠 isOpen 控制显隐）和条件挂载两种用法都成立。
-  if (isOpen && !wasOpen) {
-    setName(defaultName)
-    setWasOpen(true)
-  } else if (!isOpen && wasOpen) {
-    setWasOpen(false)
-  }
 
   useEffect(() => {
     if (isOpen) {
@@ -45,51 +34,48 @@ export function AlbumNameDialog({ isOpen, defaultName, comicCount, onConfirm, on
     }
   }
 
-  if (!isOpen) return null
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onCancel}>
-      <div
-        className="w-full max-w-md rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] p-6 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
-          下载为专辑
-        </h3>
-        <p className="text-sm text-[var(--text-secondary)] mb-4">
-          将选中的 {comicCount} 本漫画打包为一个专辑下载
-        </p>
-        <form onSubmit={handleSubmit}>
-          <label className="block text-sm text-[var(--text-primary)] mb-2">
-            专辑名称
-          </label>
-          <input
-            ref={inputRef}
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="w-full px-3 py-2 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
-            placeholder="输入专辑名称"
-            maxLength={256}
-          />
-          <div className="flex justify-end gap-3 mt-6">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="px-4 py-2 text-sm rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
-            >
-              取消
-            </button>
-            <button
-              type="submit"
-              disabled={!name.trim()}
-              className="px-4 py-2 text-sm rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
-            >
-              确认下载
-            </button>
-          </div>
-        </form>
-      </div>
-    </div>
+    <Modal
+      isOpen={isOpen}
+      onClose={onCancel}
+      contentClassName="w-full max-w-md rounded-lg bg-[var(--bg-primary)] border border-[var(--border)] p-6 shadow-xl"
+    >
+      <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
+        下载为专辑
+      </h3>
+      <p className="text-sm text-[var(--text-secondary)] mb-4">
+        将选中的 {comicCount} 本漫画打包为一个专辑下载
+      </p>
+      <form onSubmit={handleSubmit}>
+        <label className="block text-sm text-[var(--text-primary)] mb-2">
+          专辑名称
+        </label>
+        <input
+          ref={inputRef}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className="w-full px-3 py-2 rounded border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          placeholder="输入专辑名称"
+          maxLength={256}
+        />
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="px-4 py-2 text-sm rounded bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+          >
+            取消
+          </button>
+          <button
+            type="submit"
+            disabled={!name.trim()}
+            className="px-4 py-2 text-sm rounded bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)] disabled:opacity-50"
+          >
+            确认下载
+          </button>
+        </div>
+      </form>
+    </Modal>
   )
 }
