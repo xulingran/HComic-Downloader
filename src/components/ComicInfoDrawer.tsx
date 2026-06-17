@@ -1,8 +1,9 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react'
+import { useEffect, useState, useMemo, useRef } from 'react'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
+import { useModalAnimation } from '../hooks/useModalAnimation'
 import { Toast } from './common/Toast'
 import { isAuthError } from '../utils/auth'
 import { normalizeSourceKey, sourceSupportsFavourites, sourceSupportsTagRecommendation, sourceNeedsDetailEnrich } from '../utils/source'
@@ -15,8 +16,9 @@ export function ComicInfoDrawer() {
   const { checkFavourite } = useCheckFavourite()
   const { getComicDetail } = useComicDetail()
   const { getFavouriteTags } = useFavouriteTags()
-  const [mounted, setMounted] = useState(false)
-  const [visible, setVisible] = useState(false)
+  // 复用与 ComicReaderModal 一致的双层 rAF 动画 hook，避免单层 rAF
+  // 下 mounted/visible 同帧提交导致 transition 起始态未被 paint、动画无法触发。
+  const { mounted, visible, handleTransitionEnd } = useModalAnimation(isOpen)
   const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' } | null>(null)
   const [favouritesState, setFavouritesState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [favToastMessage, setFavToastMessage] = useState('')
@@ -46,16 +48,6 @@ export function ComicInfoDrawer() {
     const key = normalizeSourceKey(comicSource)
     return tagBlacklist[key].some(t => t.toLowerCase() === tag.toLowerCase())
   }
-
-  useEffect(() => {
-    if (isOpen) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMounted(true)
-      requestAnimationFrame(() => setVisible(true))
-    } else {
-      setVisible(false)
-    }
-  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen || !favouriteTagHighlight || !sourceSupportsTagRecommendation(comicSource)) {
@@ -115,12 +107,6 @@ export function ComicInfoDrawer() {
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, drawerComic?.id, comicSource])
-
-  const handleTransitionEnd = useCallback(() => {
-    if (!visible) {
-      setMounted(false)
-    }
-  }, [visible])
 
   useEffect(() => {
     if (!isOpen) return
