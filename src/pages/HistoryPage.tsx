@@ -14,6 +14,7 @@ import { useDownloadStore } from '../stores/useDownloadStore'
 import { useHistoryStore, type HistoryPageCache } from '../stores/useHistoryStore'
 import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
+import { useDrawerStore } from '../stores/useDrawerStore'
 import { useCoverImage } from '../hooks/useCoverImage'
 
 function formatRelativeTime(isoString: string): string {
@@ -70,6 +71,7 @@ export function HistoryPage() {
   const { getHistory, deleteHistory, clearHistory } = useHistory()
   const { cardStyle } = useSettingsStore()
   const { openReader } = useReaderStore()
+  const { openDrawer } = useDrawerStore()
   const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const { probeChaptersBeforeDownload } = useChapterProbe()
   const { progress: downloadProgress } = useDownloadProgress()
@@ -301,6 +303,7 @@ export function HistoryPage() {
                 item={item}
                 cardStyle={cardStyle}
                 onOpen={() => handleOpenReader(item)}
+                onOpenDrawer={() => openDrawer(historyItemToComicInfo(item))}
                 onDelete={() => handleDelete(item)}
                 onDownload={handleDownload}
                 activeDownload={activeDownloadMap.get(item.comicId)}
@@ -392,10 +395,11 @@ function HistoryCoverThumb({ comic, onOpen }: { comic: ComicInfo; onOpen: () => 
   )
 }
 
-function HistoryCard({ item, cardStyle, onOpen, onDelete, onDownload, activeDownload }: {
+function HistoryCard({ item, cardStyle, onOpen, onOpenDrawer, onDelete, onDownload, activeDownload }: {
   item: HistoryItem
   cardStyle: 'cover' | 'detailed'
   onOpen: () => void
+  onOpenDrawer: () => void
   onDelete: () => void
   onDownload: (comic: ComicInfo) => void
   activeDownload?: DownloadProgressData
@@ -415,7 +419,11 @@ function HistoryCard({ item, cardStyle, onOpen, onDelete, onDownload, activeDown
       >
         <HistoryCoverThumb comic={comic} onOpen={onOpen} />
         <div className="flex-1 min-w-0 ml-3">
-          <h3 className="text-sm font-medium text-[var(--text-primary)] truncate" title={item.title}>
+          <h3
+            className="text-sm font-medium text-[var(--text-primary)] truncate cursor-pointer hover:text-[var(--accent)]"
+            title={item.title}
+            onClick={(e) => { e.stopPropagation(); onOpenDrawer() }}
+          >
             {item.title}
           </h3>
           <div className="text-xs text-[var(--text-secondary)] mt-0.5">
