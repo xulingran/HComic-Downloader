@@ -8,9 +8,6 @@
  *     各组件无需重复判断 useReducedMotion
  *   - useReducedMotionPreference 是对 framer-motion useReducedMotion 的薄封装，
  *     便于测试 mock
- *
- * 本变更（animation-foundation）只定义，不消费。
- * 后续变更（consistency/reader/list/skeleton）按需导入。
  */
 import { useReducedMotion as fmUseReducedMotion, type Variants, type Transition, type Variant } from 'framer-motion'
 
@@ -45,7 +42,7 @@ export const standardTransition: Transition = {
 }
 
 /**
- * 进入/退出 variants 的工厂。
+ * 进入/退出 variants 的工厂（通用）。
  *
  * 在 reduced-motion 开启时退化为纯 opacity 过渡（无位移、无缩放），
  * 这是比全局 CSS 兜底更细腻的退化路径——后者会把所有动画压成瞬时，
@@ -72,4 +69,86 @@ export function createPresenceVariants(opts: {
  */
 export function useReducedMotionPreference(): boolean {
   return fmUseReducedMotion() ?? false
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 容器级弹窗 variants（变更 2 引入）
+//
+// 设计原则：统一曲线（spring）与时长（slow=300ms），但保留各自运动方向——
+// Modal 用 scale（居中）、Drawer 从右滑（右侧定位）、Reader 从下滑（占满）、
+// Toast 从上方滑（顶部定位）。方向有语义意义，不强求统一。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Modal 内层：scale + opacity（居中弹窗）。 */
+export const modalPresenceVariants: Variants = {
+  initial: { opacity: 0, scale: 0.95 },
+  animate: { opacity: 1, scale: 1, transition: springTransition },
+  exit: { opacity: 0, scale: 0.95, transition: springTransition },
+}
+
+/** 遮罩层：纯 opacity（所有弹窗共用）。 */
+export const overlayPresenceVariants: Variants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0 },
+}
+
+/** ComicInfoDrawer：从右滑入。 */
+export const drawerPresenceVariants: Variants = {
+  initial: { x: '100%' },
+  animate: { x: 0, transition: springTransition },
+  exit: { x: '100%', transition: springTransition },
+}
+
+/** ComicReaderModal：从下滑入（保留现有方向）。 */
+export const readerPresenceVariants: Variants = {
+  initial: { y: '100%' },
+  animate: { y: 0, transition: springTransition },
+  exit: { y: '100%', transition: springTransition },
+}
+
+/** Toast：从上方滑入（y 用 rem 单位保持与原 -1rem 一致）。 */
+export const toastPresenceVariants: Variants = {
+  initial: { y: '-1rem', opacity: 0 },
+  animate: { y: 0, opacity: 1, transition: springTransition },
+  exit: { y: '-1rem', opacity: 0, transition: springTransition },
+}
+
+/**
+ * reduced-motion 包装器：把 variant 的运动分量（x/y/scale）置零，只保留 opacity。
+ * 在 reduced-motion 开启时调用，让弹窗退化为纯淡入淡出，无画面位移。
+ */
+export function reduceSafe(variant: Variants): Variants {
+  return {
+    initial: stripMotion(variant.initial),
+    animate: stripMotion(variant.animate),
+    exit: stripMotion(variant.exit),
+  }
+}
+
+function stripMotion(target: Variant | undefined): Variant {
+  if (!target || typeof target !== 'object') return { opacity: 0 }
+  const { x, y, scale, ...rest } = target as Record<string, unknown>
+  void x; void y; void scale
+  return rest as Variant
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ComicInfoDrawer tag 列表 stagger（变更 2 引入）
+//
+// 约束：tag 数量可能很多（几十个），全量 stagger 会让总时长过长。
+// 组件侧通过 slice(0, 20) 实现封顶——仅前 20 个用 motion.button 参与 stagger，
+// 第 21 个及之后用普通 button 立即出现。本处只定义 variants，切片逻辑在组件。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** tag 列表容器：错峰子项，30ms 间隔，起始延迟 100ms。 */
+export const tagListVariants: Variants = {
+  hidden: { transition: { staggerChildren: 0.03, delayChildren: 0.1 } },
+  show: { transition: { staggerChildren: 0.03, delayChildren: 0.1 } },
+}
+
+/** tag 子项：淡入 + 轻微上移。 */
+export const tagItemVariants: Variants = {
+  hidden: { opacity: 0, y: 4 },
+  show: { opacity: 1, y: 0, transition: { duration: DURATION.fast } },
 }

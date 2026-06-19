@@ -5,10 +5,12 @@ import { Toast } from '@/components/common/Toast'
 
 describe('Toast', () => {
   it('renders nothing when visible is false', () => {
-    const { container } = render(
+    render(
       <Toast message="测试消息" visible={false} />
     )
-    expect(container.firstChild).toBeNull()
+    // 变更 2：Toast 外层定位 div 总是渲染（用于 left-1/2 居中），
+    // visible=false 时内部 message 不渲染（AnimatePresence 控制）。
+    expect(screen.queryByText('测试消息')).toBeNull()
   })
 
   it('renders message when visible is true', async () => {
@@ -90,7 +92,7 @@ describe('Toast', () => {
   })
 
   it('hides when visible changes from true to false', async () => {
-    const { rerender, container } = render(
+    const { rerender } = render(
       <Toast message="测试消息" visible={true} />
     )
 
@@ -101,7 +103,7 @@ describe('Toast', () => {
     rerender(<Toast message="测试消息" visible={false} />)
 
     await vi.waitFor(() => {
-      expect(container.firstChild).toBeNull()
+      expect(screen.queryByText('测试消息')).toBeNull()
     })
   })
 })

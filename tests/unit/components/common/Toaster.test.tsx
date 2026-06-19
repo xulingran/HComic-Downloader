@@ -14,8 +14,10 @@ describe('Toaster', () => {
   })
 
   it('visible 为 false 时不渲染内容', () => {
-    const { container } = render(<Toaster />)
-    expect(container.firstChild).toBeNull()
+    render(<Toaster />)
+    // 变更 2：Toaster 内 Toast 的外层定位 div 总是渲染，
+    // 但 visible=false 时内部 message 不出现。
+    expect(screen.queryByText(/.+/)).not.toBeInTheDocument()
   })
 
   it('store 有可见 toast 时渲染消息', async () => {

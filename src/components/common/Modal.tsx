@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
-import { useModalAnimation } from '../../hooks/useModalAnimation'
+import { AnimatePresence, motion } from 'framer-motion'
+import { modalPresenceVariants, overlayPresenceVariants, reduceSafe, useReducedMotionPreference } from '../../lib/anim'
 
 interface ModalProps {
-  /** 控制弹窗显隐；Modal 内部接管 mount/unmount 并驱动淡入淡出动画 */
+  /** 控制弹窗显隐；Modal 内部用 AnimatePresence 接管 mount/unmount 并驱动动画 */
   isOpen: boolean
   /** 关闭回调；遮罩点击（满足方案 A 条件时）与 ESC 键都会触发 */
   onClose: () => void
@@ -33,8 +34,9 @@ interface ModalProps {
  * 都落在遮罩本身（e.target === e.currentTarget）时才关闭。拖选逸出场景中 mousedown
  * 必然在内层输入框，因此永远不会触发关闭。
  *
- * 内层内容无需再调用 stopPropagation——外层的 e.target === e.currentTarget 精确判断
- * 已经排除了内层点击。
+ * 动画策略（变更 2）：用 framer-motion AnimatePresence 替代手动 mounted/visible。
+ * 遮罩层 motion.div 走纯 opacity variants，内层 motion.div 走 scale+opacity variants。
+ * 交互逻辑（mousedown/click 判定）挂在外层 motion.div，与动画解耦。
  */
 export function Modal({
   isOpen,
@@ -47,8 +49,6 @@ export function Modal({
   contentStyle,
   ariaLabel,
 }: ModalProps) {
-  const { mounted, visible, handleTransitionEnd } = useModalAnimation(isOpen)
-
   // 记录最近一次 mousedown 是否落在遮罩本身。仅在 mousedown 与后续 click 都命中
   // 遮罩本身时才视为"用户主动点遮罩关闭"，避免拖选文字逸出误触。
   const mouseDownOnOverlay = useRef(false)
@@ -65,7 +65,8 @@ export function Modal({
     return () => window.removeEventListener('keydown', handler)
   }, [isOpen, onClose])
 
-  if (!mounted) return null
+  const reduceMotion = useReducedMotionPreference()
+  const contentVariants = reduceMotion ? reduceSafe(modalPresenceVariants) : modalPresenceVariants
 
   const handleOverlayMouseDown = (e: React.MouseEvent) => {
     mouseDownOnOverlay.current = e.target === e.currentTarget
@@ -82,25 +83,32 @@ export function Modal({
     ? { role: 'dialog' as const, 'aria-label': ariaLabel }
     : {}
 
-  // 动画策略：只让内层承担 transition 与 onTransitionEnd，遮罩用静态 bg-black/50。
-  // 这样 handleTransitionEnd 只接收内层的事件，unmount 时机清晰，不会被遮罩的事件干扰。
-  // 遮罩的"淡入淡出感"通过内层 scale+opacity 的弹性动画自然带出，无需遮罩自己也 transition。
   return (
-    <div
-      className={`fixed inset-0 z-[${zIndex}] flex items-center justify-center bg-black/50 ${overlayClassName}`}
-      onMouseDown={handleOverlayMouseDown}
-      onClick={handleOverlayClick}
-    >
-      <div
-        {...contentProps}
-        onTransitionEnd={handleTransitionEnd}
-        className={`transition-[opacity,transform] duration-slow ease-spring ${
-          visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
-        } ${contentClassName}`}
-        style={contentStyle}
-      >
-        {children}
-      </div>
-    </div>
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="modal-overlay"
+          variants={overlayPresenceVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          className={`fixed inset-0 z-[${zIndex}] flex items-center justify-center bg-black/50 ${overlayClassName}`}
+          onMouseDown={handleOverlayMouseDown}
+          onClick={handleOverlayClick}
+        >
+          <motion.div
+            {...contentProps}
+            variants={contentVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className={contentClassName}
+            style={contentStyle}
+          >
+            {children}
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   )
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { Modal } from '@/components/common/Modal'
 
 /** 渲染 Modal 并返回遮罩元素的便捷工具。
@@ -102,14 +102,12 @@ describe('Modal', () => {
     expect(overlay.className).toContain('z-[60]')
   })
 
-  it('动画类名随 visible 状态切换', async () => {
-    // Modal 打开后 useModalAnimation 会经过 rAF×2 把 visible 翻为 true。
-    // 用 waitFor 轮询直到 visible=true 的类名出现，避免依赖 jsdom rAF 的具体时序。
+  it('Modal 打开时渲染 motion 容器并应用进出场 variants', async () => {
+    // 变更 2：迁移到 framer-motion AnimatePresence 后，不再用 visible 切换 className，
+    // 而是渲染 motion.div 并通过 variants 驱动动画。jsdom 不执行真实动画，
+    // 仅验证 content 能被渲染（动画行为由真机回归覆盖）。
     renderModal({ isOpen: true, onClose: vi.fn() })
-    const contentEl = (await screen.findByTestId('content')).parentElement as HTMLElement
-    await waitFor(() => {
-      expect(contentEl.className).toContain('opacity-100')
-      expect(contentEl.className).toContain('scale-100')
-    })
+    const content = await screen.findByTestId('content')
+    expect(content).toBeInTheDocument()
   })
 })

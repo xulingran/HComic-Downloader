@@ -65,7 +65,7 @@ body {
 /* reduced-motion 全局兜底：最后一道防线。
  * 即使某个组件忘记读取 prefers-reduced-motion，系统级规则仍生效，
  * 把所有 CSS transition / animation 压成瞬时完成。
- * 组件级细化（如 usePresenceAnimation 在 JS 层退化为纯 opacity）在此之上叠加。 */
+ * 组件级细化（如 framer-motion variants 在 JS 层退化为纯 opacity）在此之上叠加。 */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

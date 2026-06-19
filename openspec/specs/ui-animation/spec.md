@@ -59,20 +59,6 @@
 - **当** 后续新增的组件未在代码中读取 `prefers-reduced-motion`
 - **那么** 该组件的 CSS 动画仍被全局规则压缩为瞬时
 
-### 需求: presence hook 必须在 reduced-motion 下跳过过渡
-
-系统必须提供 `usePresenceAnimation` hook，在 `prefers-reduced-motion: reduce` 为真时跳过双层 rAF 与 visible 渐变，直接进入终态，让组件立即显示；在未启用时维持与旧 `useModalAnimation` 完全一致的双层 rAF 时序。
-
-#### 场景: reduced-motion 开启时弹窗立即显示
-
-- **当** 用户启用"减少动画"且打开一个使用 `usePresenceAnimation` 的弹窗
-- **那么** 弹窗组件跳过 rAF 等待，`mounted` 与 `visible` 同步为 true，无过渡动画
-
-#### 场景: reduced-motion 关闭时保持原有双层 rAF 行为
-
-- **当** 用户未启用"减少动画"且打开弹窗
-- **那么** hook 维持与旧 `useModalAnimation` 完全一致的双层 rAF 时序，保证对调用方零影响
-
 ### 需求: 项目必须提供共享动画 variants 的集中导出
 
 系统必须在 `src/lib/anim.ts` 中导出共享的 framer-motion variants、duration 常量与 `useReducedMotion` 薄封装，供后续变更（animation-consistency、reader-page-transition、list-enter-exit、skeleton-loader）按需消费。
@@ -105,4 +91,51 @@
 
 - **当** 组件（如 Sidebar）的 hover 同时改变背景色、阴影、文字色
 - **那么** 可保留 `transition-all`，但在类名旁加注释说明为何不拆分
+
+### 需求: 所有容器级弹窗必须使用 framer-motion AnimatePresence 驱动进出场
+
+系统**必须**用 framer-motion 的 `AnimatePresence` 替代手动 mounted/visible state 管理，让退出动画由框架自动调度，所有弹窗共享 `src/lib/anim.ts` 中的 variants，曲线与时长由令牌统一。
+
+#### 场景: Modal 进出场用 scale + opacity spring
+
+- **当** 用户打开或关闭一个 Modal
+- **那么** 内层用 `modalPresenceVariants`（opacity 0→1、scale 0.95→1，spring 曲线），退出时反向播放
+
+#### 场景: ComicInfoDrawer 从右滑入
+
+- **当** 用户打开详情抽屉
+- **那么** 抽屉用 `drawerPresenceVariants`（x 100%→0，spring 曲线），退出时向右滑出
+
+#### 场景: ComicReaderModal 从下滑入
+
+- **当** 用户打开阅读器
+- **那么** 阅读器用 `readerPresenceVariants`（y 100%→0，spring 曲线）；退出时整组件立即卸载（全屏接管场景的有意妥协，无 exit 动画）
+
+#### 场景: Toast 从上方滑入
+
+- **当** Toast 显示
+- **那么** Toast 用 `toastPresenceVariants`（y -1rem→0 + opacity，spring 曲线），退出时反向
+
+### 需求: ComicInfoDrawer 的 tag 列表必须错峰出现
+
+ComicInfoDrawer 内的标签列表在抽屉打开时**必须**以 `staggerChildren` 错峰出现，每个 tag 延迟约 30ms；前 20 个 tag 参与错峰，第 21 个及之后立即出现，**禁止**长 tag 列表全量错峰导致总时长过长。
+
+#### 场景: 抽屉打开时 tag 错峰
+
+- **当** ComicInfoDrawer 打开且包含 N 个 tag（N ≤ 20）
+- **那么** tag 按 30ms 间隔依次淡入上移，总时长约 N×30ms + 起始延迟 100ms
+
+#### 场景: tag 超过 20 个时封顶
+
+- **当** ComicInfoDrawer 包含超过 20 个 tag
+- **那么** 仅前 20 个参与错峰，第 21 个及之后立即出现，避免总时长超过 0.7s
+
+### 需求: Modal 的安全遮罩点击逻辑必须保留
+
+Modal 迁移到 AnimatePresence 后，**必须**保留「mousedown 与 click 均落在遮罩本身才触发关闭」的方案 A 判定，**禁止**因 motion.div 替换 div 而丢失拖选文字逸出场景的 bug 修复。
+
+#### 场景: 拖选文字逸出不触发关闭
+
+- **当** 用户在内层输入框 mousedown、拖到遮罩 mouseup（click 落在遮罩）
+- **那么** 不触发 onClose（与迁移前行为一致）
 

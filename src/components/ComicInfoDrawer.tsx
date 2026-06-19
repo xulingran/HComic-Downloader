@@ -1,11 +1,12 @@
 import { useEffect, useState, useMemo, useRef } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
-import { useModalAnimation } from '../hooks/useModalAnimation'
 import { Toast } from './common/Toast'
 import { Modal } from './common/Modal'
+import { drawerPresenceVariants, overlayPresenceVariants, reduceSafe, tagListVariants, tagItemVariants, useReducedMotionPreference } from '../lib/anim'
 import { isAuthError } from '../utils/auth'
 import { normalizeSourceKey, sourceSupportsFavourites, sourceSupportsTagRecommendation, sourceNeedsDetailEnrich } from '../utils/source'
 
@@ -17,9 +18,10 @@ export function ComicInfoDrawer() {
   const { checkFavourite } = useCheckFavourite()
   const { getComicDetail } = useComicDetail()
   const { getFavouriteTags } = useFavouriteTags()
-  // 复用与 ComicReaderModal 一致的双层 rAF 动画 hook，避免单层 rAF
-  // 下 mounted/visible 同帧提交导致 transition 起始态未被 paint、动画无法触发。
-  const { mounted, visible, handleTransitionEnd } = useModalAnimation(isOpen)
+  // 变更 2：改用 framer-motion AnimatePresence 驱动抽屉进出场，删除 useModalAnimation。
+  // Toast 在 AnimatePresence 之外（避免 Drawer 关闭时 Toast 被 unmount）。
+  const reduceMotion = useReducedMotionPreference()
+  const drawerVariants = reduceMotion ? reduceSafe(drawerPresenceVariants) : drawerPresenceVariants
   const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' } | null>(null)
   const [favouritesState, setFavouritesState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [favToastMessage, setFavToastMessage] = useState('')
@@ -175,8 +177,6 @@ export function ComicInfoDrawer() {
     return () => clearTimeout(timer)
   }, [showFavToast, favouritesState])
 
-  if (!mounted) return null
-
   return (
     <div className="fixed inset-0 z-50 flex justify-end">
       <Toast
@@ -189,20 +189,27 @@ export function ComicInfoDrawer() {
         visible={showTagToast}
         onDismiss={() => setShowTagToast(false)}
       />
-      <div
-        className={`absolute inset-0 transition-opacity duration-300 ${
-          visible ? 'bg-black/50' : 'bg-black/0'
-        }`}
-        onClick={closeDrawer}
-      />
-      <div
-        onTransitionEnd={handleTransitionEnd}
-        className={`relative w-80 max-w-[85vw] bg-[var(--bg-primary)] shadow-2xl
-                    flex flex-col overflow-y-auto
-                    transition-transform duration-300 ease-out ${
-                      visible ? 'translate-x-0' : 'translate-x-full'
-                    }`}
-      >
+      <AnimatePresence>
+        {isOpen && (
+          <>
+            <motion.div
+              key="drawer-overlay"
+              variants={overlayPresenceVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              className="absolute inset-0 bg-black/50"
+              onClick={closeDrawer}
+            />
+            <motion.div
+              key="drawer-panel"
+              variants={drawerVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              className="relative w-80 max-w-[85vw] bg-[var(--bg-primary)] shadow-2xl
+                         flex flex-col overflow-y-auto"
+            >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <span className="text-sm text-[var(--text-secondary)]">漫画详情</span>
           <button
@@ -355,12 +362,22 @@ export function ComicInfoDrawer() {
           {displayComic?.tags && displayComic.tags.length > 0 && (
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {displayComic.tags.map((tag, i) => {
+              {(() => {
+                // tag 列表错峰：前 20 个用 motion.button 参与 stagger，第 21+ 立即出现。
+                // reduced-motion 时全部用普通元素，不触发 stagger。
+                const tags = displayComic!.tags!
+                const staggerCount = 20
+                const staggered = tags.slice(0, staggerCount)
+                const rest = tags.slice(staggerCount)
+                const renderTag = (tag: string, idx: number, animate: boolean) => {
                   const blocked = isTagBlocked(tag)
                   const isRec = !blocked && recommendedTagSet.has(tag.toLowerCase())
+                  const Wrapper = animate ? motion.span : 'span'
+                  const wrapperProps = animate
+                    ? { variants: tagItemVariants }
+                    : {}
                   return (
-                    <span key={i} className="relative group">
+                    <Wrapper key={idx} className="relative group" {...wrapperProps}>
                       <button
                         onClick={() => handleTagSearch(tag)}
                         className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
@@ -385,14 +402,42 @@ export function ComicInfoDrawer() {
                       >
                         {blocked ? '✓' : '×'}
                       </button>
-                    </span>
+                    </Wrapper>
                   )
-                })}
-              </div>
+                }
+                if (reduceMotion) {
+                  return (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {tags.map((tag, i) => renderTag(tag, i, false))}
+                    </div>
+                  )
+                }
+                const Container = motion.div
+                return (
+                  <>
+                    <Container
+                      className="flex flex-wrap gap-1.5 mt-2"
+                      variants={tagListVariants}
+                      initial="hidden"
+                      animate="show"
+                    >
+                      {staggered.map((tag, i) => renderTag(tag, i, true))}
+                    </Container>
+                    {rest.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {rest.map((tag, i) => renderTag(tag, staggerCount + i, false))}
+                      </div>
+                    )}
+                  </>
+                )
+              })()}
             </div>
           )}
         </div>
-      </div>
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
 
       <Modal
         isOpen={!!confirmTag}

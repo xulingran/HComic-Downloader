@@ -6,7 +6,8 @@ import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { useZoom } from '../hooks/useZoom'
 import { useSliderDrag } from '../hooks/useSliderDrag'
-import { useModalAnimation } from '../hooks/useModalAnimation'
+import { motion } from 'framer-motion'
+import { readerPresenceVariants, overlayPresenceVariants, reduceSafe, useReducedMotionPreference } from '../lib/anim'
 import { useHistory } from '../hooks/useIpc'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { useReaderStore } from '../stores/useReaderStore'
@@ -45,7 +46,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const [preloadConcurrency, setPreloadConcurrency] = useState(3)
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false)
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
-  const { mounted, visible, handleTransitionEnd } = useModalAnimation(open)
+  // 变更 2：改用 framer-motion AnimatePresence 驱动阅读器进出场，删除 useModalAnimation。
+  const reduceMotion = useReducedMotionPreference()
+  const readerVariants = reduceMotion ? reduceSafe(readerPresenceVariants) : readerPresenceVariants
 
   const {
     imageCacheRef,
@@ -377,26 +380,31 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     return () => clearTimeout(timer)
   }, [isDragging])
 
-  if (!mounted) return null
+  if (!open) return null
 
   const progress = effectiveTotalPages > 0 ? Math.round((currentPage / effectiveTotalPages) * 100) : 0
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* 半透明遮罩层，点击可关闭 */}
-      <div
-        className={`absolute inset-0 bg-black transition-opacity duration-300 ${
-          visible ? 'opacity-50' : 'opacity-0'
-        }`}
-        onClick={onClose}
-      />
-      {/* 模态内容层，垂直方向滑入滑出 */}
-      <div
-        onTransitionEnd={handleTransitionEnd}
-        className={`absolute inset-0 flex flex-col bg-[#1a1a2e] transition-transform duration-300 ease-out ${
-          visible ? 'translate-y-0' : 'translate-y-full'
-        }`}
-      >
+      {/* 注：阅读器是全屏接管场景，open=false 时整组件 unmount（无 exit 动画）。
+          这是有意的妥协——退出立即消失比慢慢滑出更干脆，且避免 hooks 在卸载后执行的复杂性。
+          进入动画（从下滑入）由 motion.div + initial/animate 驱动。 */}
+      <div>
+        <motion.div
+          key="reader-overlay"
+          variants={overlayPresenceVariants}
+          initial="initial"
+          animate="animate"
+          className="absolute inset-0 bg-black/50"
+          onClick={onClose}
+        />
+        <motion.div
+          key="reader-content"
+          variants={readerVariants}
+          initial="initial"
+          animate="animate"
+          className="absolute inset-0 flex flex-col bg-[#1a1a2e]"
+        >
       {/* Header */}
       <div
         className="flex items-center justify-between px-5 py-3 shrink-0"
@@ -746,8 +754,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           </div>
         )}
       </div>
+        </motion.div>
+      </div>
     </div>
-  </div>
   )
 }
 
