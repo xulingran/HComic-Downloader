@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { AnimatePresence, LayoutGroup } from 'framer-motion'
 import { useHistory, useDownloadProgress, type DownloadProgressData } from '../hooks/useIpc'
 import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { ComicCard, CoverImage, DownloadAction } from '../components/common/ComicCard'
+import { AnimatedCardWrapper } from '../components/common/AnimatedCardWrapper'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
@@ -292,25 +294,28 @@ export function HistoryPage() {
       {items.length === 0 ? (
         <EmptyState message="还没有阅读记录，去搜索页发现感兴趣的漫画吧" />
       ) : (
-        <>
-          <div className={cardStyle === 'detailed'
-            ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-            : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
-          }>
-            {items.map((item) => (
-              <HistoryCard
-                key={`${item.comicId}-${item.source}`}
-                item={item}
-                cardStyle={cardStyle}
-                onOpen={() => handleOpenReader(item)}
-                onOpenDrawer={() => openDrawer(historyItemToComicInfo(item))}
-                onDelete={() => handleDelete(item)}
-                onDownload={handleDownload}
-                activeDownload={activeDownloadMap.get(item.comicId)}
-              />
-            ))}
-          </div>
-        </>
+        <LayoutGroup>
+          <AnimatePresence mode="popLayout">
+            <div className={cardStyle === 'detailed'
+              ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+              : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
+            }>
+              {items.map((item, index) => (
+                <AnimatedCardWrapper key={`${item.comicId}-${item.source}`} index={index}>
+                  <HistoryCard
+                    item={item}
+                    cardStyle={cardStyle}
+                    onOpen={() => handleOpenReader(item)}
+                    onOpenDrawer={() => openDrawer(historyItemToComicInfo(item))}
+                    onDelete={() => handleDelete(item)}
+                    onDownload={handleDownload}
+                    activeDownload={activeDownloadMap.get(item.comicId)}
+                  />
+                </AnimatedCardWrapper>
+              ))}
+            </div>
+          </AnimatePresence>
+        </LayoutGroup>
       )}
 
       {!isLoading && pagination && pagination.totalPages > 1 && (

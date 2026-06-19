@@ -214,3 +214,70 @@ export function usePageFlipVariants(): Variants {
 
 void pageFlipTransition // 预留给组件按需引用，避免 tree-shake 误删
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 列表进出场 variants（变更 4 引入）
+//
+// 约束：搜索结果可能上百项，全量 stagger 会让总时长过长且卡顿。
+// 通过 getCardItemVariants(index) 实现 stagger 封顶——前 STAGGER_LIMIT 项错峰，
+// 之后立即出现。STAGGER_LIMIT 与 ComicInfoDrawer tag stagger 保持一致（20）。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** stagger 封顶阈值：仅前 STAGGER_LIMIT 项错峰，之后立即出现。 */
+export const STAGGER_LIMIT = 20
+
+/** 单项 stagger 间隔（秒）。 */
+const CARD_STAGGER_STEP = 0.02
+
+/** ComicCard 网格子项基础 variant（无 delay）。 */
+export const cardItemVariants: Variants = {
+  initial: { opacity: 0, y: 8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, scale: 0.9 },
+}
+
+/**
+ * 带 stagger delay 的卡片 variant。
+ * index < STAGGER_LIMIT 时返回带 delay 的 variant；之后 delay=0。
+ */
+export function getCardItemVariants(index: number): Variants {
+  if (index >= STAGGER_LIMIT) {
+    return {
+      initial: { opacity: 0 },
+      animate: { opacity: 1 },
+      exit: { opacity: 0 },
+    }
+  }
+  const delay = index * CARD_STAGGER_STEP
+  return {
+    initial: { opacity: 0, y: 8 },
+    animate: { opacity: 1, y: 0, transition: { delay } },
+    exit: { opacity: 0, scale: 0.9 },
+  }
+}
+
+/** reduced-motion 卡片 variant：纯 opacity，无位移无缩放。 */
+export function getReducedCardItemVariants(): Variants {
+  return {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+  }
+}
+
+/** DownloadPage 任务项 variant：从顶部滑入。 */
+export const taskItemVariants: Variants = {
+  initial: { opacity: 0, y: -8 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, scale: 0.9 },
+}
+
+/** reduced-motion 任务项 variant。 */
+export function getReducedTaskItemVariants(): Variants {
+  return {
+    initial: { opacity: 0 },
+    animate: { opacity: 1 },
+    exit: { opacity: 0 },
+  }
+}
+
+

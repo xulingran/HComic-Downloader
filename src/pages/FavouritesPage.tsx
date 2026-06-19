@@ -1,8 +1,10 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
+import { AnimatePresence, LayoutGroup } from 'framer-motion'
 import { useFavourites, useDownloadProgress } from '../hooks/useIpc'
 import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
+import { AnimatedCardWrapper } from '../components/common/AnimatedCardWrapper'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
@@ -351,26 +353,29 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       ) : comics.length === 0 ? (
         <EmptyState message="暂无收藏" />
       ) : (
-        <>
-          <div className={cardStyle === 'detailed'
-            ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-            : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
-          }>
-            {comics.map((comic) => (
-              <ComicCard
-                key={getComicKey(comic)}
-                comic={comic}
-                onOpenReader={handleOpenReader}
-                batchMode={batchMode}
-                selected={selectedIds.has(getComicKey(comic))}
-                onToggleSelect={toggleSelect}
-                onDownload={handleDownload}
-                downloadStatus={downloadedStatus[getTaskId(comic)]}
-                activeDownload={activeDownloadMap.get(comic.id)}
-              />
-            ))}
-          </div>
-        </>
+        <LayoutGroup>
+          <AnimatePresence mode="popLayout">
+            <div className={cardStyle === 'detailed'
+              ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+              : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
+            }>
+              {comics.map((comic, index) => (
+                <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
+                  <ComicCard
+                    comic={comic}
+                    onOpenReader={handleOpenReader}
+                    batchMode={batchMode}
+                    selected={selectedIds.has(getComicKey(comic))}
+                    onToggleSelect={toggleSelect}
+                    onDownload={handleDownload}
+                    downloadStatus={downloadedStatus[getTaskId(comic)]}
+                    activeDownload={activeDownloadMap.get(comic.id)}
+                  />
+                </AnimatedCardWrapper>
+              ))}
+            </div>
+          </AnimatePresence>
+        </LayoutGroup>
       ))}
 
       {!isLoading && !needsLogin && pagination && pagination.totalPages > 1 && (

@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { AnimatePresence, LayoutGroup } from 'framer-motion'
 import { useComicStore } from '../stores/useComicStore'
 import { useSearch, useRandom, useConfig, useDownloadProgress, useAuth } from '../hooks/useIpc'
 import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
+import { AnimatedCardWrapper } from '../components/common/AnimatedCardWrapper'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
@@ -643,31 +645,36 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       )}
 
       {!needsLogin && filteredComics.length > 0 && (
-        <div className={cardStyle === 'detailed'
-          ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-          : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
-        }>
-          {filteredComics.map(({ comic, isBlocked, isRecommended }) => (
-            isBlocked ? (
-              <BlockedPlaceholder key={getComicKey(comic)} comic={comic} cardStyle={cardStyle} />
-            ) : (
-              <ComicCard
-                key={getComicKey(comic)}
-                comic={comic}
-                onOpenReader={handleOpenReader}
-                batchMode={batchMode}
-                selected={selectedIds.has(getComicKey(comic))}
-                onToggleSelect={toggleSelect}
-                onDownload={handleDownload}
-                isRecommended={isRecommended}
-                recommendedTags={recommendedTags}
-                activeDownload={activeDownloadMap.get(comic.id)}
-                // 详细列表下 tag 可点击触发追加式 tag 搜索（仅支持 tag 搜索的来源）
-                onTagClick={sourceSupportsTagList(source) ? handleToggleTag : undefined}
-              />
-            )
-          ))}
-        </div>
+        <LayoutGroup>
+          <AnimatePresence mode="popLayout">
+            <div className={cardStyle === 'detailed'
+              ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+              : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
+            }>
+              {filteredComics.map(({ comic, isBlocked, isRecommended }, index) => (
+                <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
+                  {isBlocked ? (
+                    <BlockedPlaceholder comic={comic} cardStyle={cardStyle} />
+                  ) : (
+                    <ComicCard
+                      comic={comic}
+                      onOpenReader={handleOpenReader}
+                      batchMode={batchMode}
+                      selected={selectedIds.has(getComicKey(comic))}
+                      onToggleSelect={toggleSelect}
+                      onDownload={handleDownload}
+                      isRecommended={isRecommended}
+                      recommendedTags={recommendedTags}
+                      activeDownload={activeDownloadMap.get(comic.id)}
+                      // 详细列表下 tag 可点击触发追加式 tag 搜索（仅支持 tag 搜索的来源）
+                      onTagClick={sourceSupportsTagList(source) ? handleToggleTag : undefined}
+                    />
+                  )}
+                </AnimatedCardWrapper>
+              ))}
+            </div>
+          </AnimatePresence>
+        </LayoutGroup>
       )}
 
       {!isLoading && !needsLogin && pagination && pagination.totalPages > 1 && (

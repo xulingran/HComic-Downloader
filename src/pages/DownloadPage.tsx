@@ -1,10 +1,12 @@
 import { useEffect, useState, useMemo, useCallback, useRef } from 'react'
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useToastStore } from '../stores/useToastStore'
 import { useDownload, useAlbumProgress, useAlbumCommands, useConfig } from '../hooks/useIpc'
 import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
 import { TaskActionButtons } from '../components/common/TaskActionButtons'
+import { taskItemVariants, getReducedTaskItemVariants, useReducedMotionPreference } from '../lib/anim'
 import type { DownloadStatus, DownloadDetail } from '@shared/types'
 import { ACTIVE_DOWNLOAD_STATUSES, RUNNING_DOWNLOAD_STATUSES } from '@shared/types'
 
@@ -36,6 +38,9 @@ export function DownloadPage() {
   const { forcePackAlbum } = useAlbumCommands()
   const { albumProgress } = useAlbumProgress()
   const [downloadDir, setDownloadDir] = useState('')
+  // 变更 4：任务列表进出场动画。
+  const reduceMotion = useReducedMotionPreference()
+  const taskVariants = reduceMotion ? getReducedTaskItemVariants() : taskItemVariants
 
   // 专辑折叠状态：键为 `${sourceSite}_${albumId}`（与 albumGroups key 一致）。
   // 集合内存放"已展开"的 key；不在集合中即视为折叠。
@@ -280,6 +285,8 @@ export function DownloadPage() {
           暂无下载任务
         </div>
       ) : (
+        <LayoutGroup>
+        <AnimatePresence mode="popLayout">
         <div className="space-y-3">
           {statusFilter !== 'all' && (
             <div className="text-xs text-[var(--text-secondary)]">
@@ -312,7 +319,7 @@ export function DownloadPage() {
             ]
 
             return (
-              <div key={key} className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm border-l-4 border-[var(--accent)]">
+              <motion.div key={key} layout={!reduceMotion} variants={taskVariants} initial="initial" animate="animate" exit="exit" className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm border-l-4 border-[var(--accent)]">
                 <div
                   className="flex items-center justify-between mb-2 cursor-pointer select-none"
                   onClick={() => toggleAlbum(key)}
@@ -429,14 +436,19 @@ export function DownloadPage() {
                     ▶ 展开查看 {group.tasks.length} 章
                   </button>
                 )}
-              </div>
+              </motion.div>
             )
           })}
 
           {/* 独立任务卡（不属于专辑或单章） */}
           {tasks.filter(t => !albumTaskIds.has(t.id)).filter(t => matchStatusFilter(t.status, statusFilter)).map((task) => (
-            <div
+            <motion.div
               key={task.id}
+              layout={!reduceMotion}
+              variants={taskVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
               className="bg-[var(--bg-primary)] rounded-xl p-4 shadow-sm"
             >
               <div className="flex items-center justify-between mb-3">
@@ -507,9 +519,11 @@ export function DownloadPage() {
               {task.error && (
                 <p className="text-xs text-[var(--error)] mt-2">{task.error}</p>
               )}
-            </div>
+            </motion.div>
           ))}
         </div>
+        </AnimatePresence>
+        </LayoutGroup>
       )}
 
       {/* ── Failed dialog ── */}
