@@ -365,15 +365,19 @@ export function ComicInfoDrawer() {
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
               {(() => {
-                // tag 列表错峰：所有标签参与 stagger（20ms 间隔），
-                // 总时长 ≈ 首项延迟 100ms + (N-1) * 20ms，50 个标签约 1.08s。
+                // tag 列表错峰：前 STAGGER_LIMIT 个 tag 参与 stagger（20ms 间隔），
+                // 总时长 ≈ 100ms + (N-1) * 20ms，40 个 tag 约 0.88s。
+                // 超出部分用普通 span 立即渲染，避免大量 motion 元素造成无意义开销。
                 // reduced-motion 时全部用普通元素，不触发 stagger。
+                const STAGGER_LIMIT = 40
                 const tags = displayComic!.tags!
-                const renderTag = (tag: string, idx: number) => {
+                const renderTag = (tag: string, idx: number, animate: boolean) => {
                   const blocked = isTagBlocked(tag)
                   const isRec = !blocked && recommendedTagSet.has(tag.toLowerCase())
+                  const Wrapper = animate ? motion.span : 'span'
+                  const wrapperProps = animate ? { variants: tagItemVariants } : {}
                   return (
-                    <motion.span key={idx} className="relative group" variants={tagItemVariants}>
+                    <Wrapper key={idx} className="relative group" {...wrapperProps}>
                       <button
                         onClick={() => handleTagSearch(tag)}
                         className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
@@ -398,25 +402,34 @@ export function ComicInfoDrawer() {
                       >
                         {blocked ? '✓' : '×'}
                       </button>
-                    </motion.span>
+                    </Wrapper>
                   )
                 }
                 if (reduceMotion) {
                   return (
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {tags.map((tag, i) => renderTag(tag, i))}
+                      {tags.map((tag, i) => renderTag(tag, i, false))}
                     </div>
                   )
                 }
+                const staggered = tags.slice(0, STAGGER_LIMIT)
+                const rest = tags.slice(STAGGER_LIMIT)
                 return (
-                  <motion.div
-                    className="flex flex-wrap gap-1.5 mt-2"
-                    variants={tagListVariants}
-                    initial="hidden"
-                    animate="show"
-                  >
-                    {tags.map((tag, i) => renderTag(tag, i))}
-                  </motion.div>
+                  <>
+                    <motion.div
+                      className="flex flex-wrap gap-1.5 mt-2"
+                      variants={tagListVariants}
+                      initial="hidden"
+                      animate="show"
+                    >
+                      {staggered.map((tag, i) => renderTag(tag, i, true))}
+                    </motion.div>
+                    {rest.length > 0 && (
+                      <div className="flex flex-wrap gap-1.5 mt-2">
+                        {rest.map((tag, i) => renderTag(tag, STAGGER_LIMIT + i, false))}
+                      </div>
+                    )}
+                  </>
                 )
               })()}
             </div>

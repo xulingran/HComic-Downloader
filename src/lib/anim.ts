@@ -137,8 +137,8 @@ function stripMotion(target: Variant | undefined): Variant {
 // ComicInfoDrawer tag 列表 stagger（变更 2 引入）
 //
 // 约束：tag 数量可能很多（几十个），全量 stagger 会让总时长过长。
-// 组件侧通过 slice(0, 20) 实现封顶——仅前 20 个用 motion.button 参与 stagger，
-// 第 21 个及之后用普通 button 立即出现。本处只定义 variants，切片逻辑在组件。
+// 组件侧通过 STAGGER_LIMIT（40）实现封顶——仅前 40 个用 motion.button 参与 stagger，
+// 第 41 个及之后用普通 button 立即出现。本处只定义 variants，切片逻辑在组件。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** tag 列表容器：错峰子项，20ms 间隔，起始延迟 100ms。 */
@@ -284,7 +284,8 @@ export function getReducedTaskItemVariants(): Variants {
 // Tab 页面切换 variants（变更 tab-switch-animation 引入）
 //
 // 设计要点：方向感知的 slide + fade，位移幅度 8%（克制，非全页翻转），
-// 使用 smooth 曲线（cubic-bezier(0.4,0,0.2,1)），时长 450ms（DURATION.slower）。
+// 使用 smooth 曲线（cubic-bezier(0.4,0,0.2,1)），时长 300ms（DURATION.slow）。
+// mode="sync" 下 exit/enter 同时播放形成推送效果，300ms 保持干脆无等待感。
 // 方向由 AnimatePresence 的 custom prop 注入，索引差决定左/右。
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -314,12 +315,12 @@ export function getTabPageVariants(): Variants {
     animate: {
       x: 0,
       opacity: 1,
-      transition: { ...smoothTransition, duration: DURATION.slow },
+      transition: smoothTransition,
     },
     exit: (dir: number) => ({
       x: dir > 0 ? '-8%' : dir < 0 ? '8%' : 0,
       opacity: 0,
-      transition: { ...smoothTransition, duration: DURATION.slow },
+      transition: smoothTransition,
     }),
   }
 }

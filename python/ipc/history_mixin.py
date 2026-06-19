@@ -136,7 +136,7 @@ class ReadingHistoryDB:
                     now,
                 ),
             )
-        self._conn.commit()
+            self._conn.commit()
 
     def get_history(self, page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
         offset = (page - 1) * page_size
