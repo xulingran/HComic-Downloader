@@ -178,17 +178,19 @@ export function ComicInfoDrawer() {
   }, [showFavToast, favouritesState])
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
-      <Toast
-        message={favToastMessage}
-        visible={showFavToast}
-        onDismiss={() => setShowFavToast(false)}
-      />
-      <Toast
-        message={tagToastMessage}
-        visible={showTagToast}
-        onDismiss={() => setShowTagToast(false)}
-      />
+    <div className="fixed inset-0 z-50 flex justify-end pointer-events-none">
+      <div className="pointer-events-auto">
+        <Toast
+          message={favToastMessage}
+          visible={showFavToast}
+          onDismiss={() => setShowFavToast(false)}
+        />
+        <Toast
+          message={tagToastMessage}
+          visible={showTagToast}
+          onDismiss={() => setShowTagToast(false)}
+        />
+      </div>
       <AnimatePresence>
         {isOpen && (
           <>
@@ -198,7 +200,7 @@ export function ComicInfoDrawer() {
               initial="initial"
               animate="animate"
               exit="exit"
-              className="absolute inset-0 bg-black/50"
+              className="absolute inset-0 bg-black/50 pointer-events-auto"
               onClick={closeDrawer}
             />
             <motion.div
@@ -208,7 +210,7 @@ export function ComicInfoDrawer() {
               animate="animate"
               exit="exit"
               className="relative w-80 max-w-[85vw] bg-[var(--bg-primary)] shadow-2xl
-                         flex flex-col overflow-y-auto"
+                         flex flex-col overflow-y-auto pointer-events-auto"
             >
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <span className="text-sm text-[var(--text-secondary)]">漫画详情</span>
@@ -363,21 +365,15 @@ export function ComicInfoDrawer() {
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
               {(() => {
-                // tag 列表错峰：前 20 个用 motion.button 参与 stagger，第 21+ 立即出现。
+                // tag 列表错峰：所有标签参与 stagger（20ms 间隔），
+                // 总时长 ≈ 首项延迟 100ms + (N-1) * 20ms，50 个标签约 1.08s。
                 // reduced-motion 时全部用普通元素，不触发 stagger。
                 const tags = displayComic!.tags!
-                const staggerCount = 20
-                const staggered = tags.slice(0, staggerCount)
-                const rest = tags.slice(staggerCount)
-                const renderTag = (tag: string, idx: number, animate: boolean) => {
+                const renderTag = (tag: string, idx: number) => {
                   const blocked = isTagBlocked(tag)
                   const isRec = !blocked && recommendedTagSet.has(tag.toLowerCase())
-                  const Wrapper = animate ? motion.span : 'span'
-                  const wrapperProps = animate
-                    ? { variants: tagItemVariants }
-                    : {}
                   return (
-                    <Wrapper key={idx} className="relative group" {...wrapperProps}>
+                    <motion.span key={idx} className="relative group" variants={tagItemVariants}>
                       <button
                         onClick={() => handleTagSearch(tag)}
                         className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
@@ -402,33 +398,25 @@ export function ComicInfoDrawer() {
                       >
                         {blocked ? '✓' : '×'}
                       </button>
-                    </Wrapper>
+                    </motion.span>
                   )
                 }
                 if (reduceMotion) {
                   return (
                     <div className="flex flex-wrap gap-1.5 mt-2">
-                      {tags.map((tag, i) => renderTag(tag, i, false))}
+                      {tags.map((tag, i) => renderTag(tag, i))}
                     </div>
                   )
                 }
-                const Container = motion.div
                 return (
-                  <>
-                    <Container
-                      className="flex flex-wrap gap-1.5 mt-2"
-                      variants={tagListVariants}
-                      initial="hidden"
-                      animate="show"
-                    >
-                      {staggered.map((tag, i) => renderTag(tag, i, true))}
-                    </Container>
-                    {rest.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {rest.map((tag, i) => renderTag(tag, staggerCount + i, false))}
-                      </div>
-                    )}
-                  </>
+                  <motion.div
+                    className="flex flex-wrap gap-1.5 mt-2"
+                    variants={tagListVariants}
+                    initial="hidden"
+                    animate="show"
+                  >
+                    {tags.map((tag, i) => renderTag(tag, i))}
+                  </motion.div>
                 )
               })()}
             </div>
@@ -439,12 +427,13 @@ export function ComicInfoDrawer() {
         )}
       </AnimatePresence>
 
-      <Modal
-        isOpen={!!confirmTag}
-        onClose={() => setConfirmTag(null)}
-        zIndex={60}
-        contentClassName="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full"
-      >
+      <div className="pointer-events-auto">
+        <Modal
+          isOpen={!!confirmTag}
+          onClose={() => setConfirmTag(null)}
+          zIndex={60}
+          contentClassName="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full"
+        >
         {confirmTag && (
           <>
             <h3 className="text-base font-medium text-[var(--text-primary)] mb-4">
@@ -487,6 +476,7 @@ export function ComicInfoDrawer() {
           </>
         )}
       </Modal>
+      </div>
     </div>
   )
 }

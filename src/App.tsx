@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
+import { TAB_ORDER, useTabPageVariants } from './lib/anim'
 import { useTheme } from './hooks/useTheme'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useConfig } from './hooks/useIpc'
@@ -62,24 +64,33 @@ function App() {
 
   const [activePage, setActivePage] = useState('search')
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
+  const [direction, setDirection] = useState(0)
   const { pendingSearch } = useDrawerStore()
   const { readerComic, closeReader } = useReaderStore()
+  const tabVariants = useTabPageVariants()
+
+  const handlePageChange = useCallback((page: string) => {
+    const oldIndex = TAB_ORDER.indexOf(activePage as typeof TAB_ORDER[number])
+    const newIndex = TAB_ORDER.indexOf(page as typeof TAB_ORDER[number])
+    setDirection(oldIndex === -1 || page === activePage ? 0 : newIndex > oldIndex ? 1 : -1)
+    setActivePage(page)
+  }, [activePage])
 
   useEffect(() => {
     if (pendingSearch && activePage !== 'search') {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setActivePage('search')
+      handlePageChange('search')
     }
-  }, [pendingSearch, activePage])
+  }, [pendingSearch, activePage, handlePageChange])
 
   const renderPage = () => {
     switch (activePage) {
       case 'search':
-        return <SearchPage onNavigateToSettings={() => { setActivePage('settings'); setScrollTarget('login') }} />
+        return <SearchPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} />
       case 'downloads':
         return <DownloadPage />
       case 'favourites':
-        return <FavouritesPage onNavigateToSettings={() => { setActivePage('settings'); setScrollTarget('login') }} />
+        return <FavouritesPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} />
       case 'history':
         return <HistoryPage />
       case 'settings':
@@ -105,12 +116,24 @@ function App() {
       />
       {/* 瞬态操作反馈 Toast（错误/成功提示，自动消失） */}
       <Toaster />
-      <Sidebar activePage={activePage} onPageChange={setActivePage} />
+      <Sidebar activePage={activePage} onPageChange={handlePageChange} />
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* 致命错误横幅：位于内容区顶部，不阻塞操作 */}
         <FatalBanner />
-        <main className="flex-1 overflow-auto px-6 py-3">
-          {renderPage()}
+        <main className="flex-1 relative px-6 py-3">
+          <AnimatePresence custom={direction}>
+            <motion.div
+              key={activePage}
+              variants={tabVariants}
+              initial="initial"
+              animate="animate"
+              exit="exit"
+              custom={direction}
+              className="absolute inset-0 overflow-auto"
+            >
+              {renderPage()}
+            </motion.div>
+          </AnimatePresence>
         </main>
       </div>
       <ComicInfoDrawer />

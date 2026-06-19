@@ -120,7 +120,9 @@ describe('App', () => {
 
     await userEvent.click(screen.getByText('Downloads'))
 
-    expect(screen.getByTestId('download-page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('download-page')).toBeInTheDocument()
+    })
     expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
   })
 
@@ -129,7 +131,9 @@ describe('App', () => {
 
     await userEvent.click(screen.getByText('Favourites'))
 
-    expect(screen.getByTestId('favourites-page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('favourites-page')).toBeInTheDocument()
+    })
     expect(screen.getByTestId('active-page')).toHaveTextContent('favourites')
   })
 
@@ -138,7 +142,9 @@ describe('App', () => {
 
     await userEvent.click(screen.getByText('Settings'))
 
-    expect(screen.getByTestId('settings-page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-page')).toBeInTheDocument()
+    })
     expect(screen.getByTestId('active-page')).toHaveTextContent('settings')
   })
 
@@ -146,10 +152,14 @@ describe('App', () => {
     render(<App />)
 
     await userEvent.click(screen.getByText('Settings'))
-    expect(screen.getByTestId('settings-page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('settings-page')).toBeInTheDocument()
+    })
 
     await userEvent.click(screen.getByText('Search'))
-    expect(screen.getByTestId('search-page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('search-page')).toBeInTheDocument()
+    })
     expect(screen.getByTestId('active-page')).toHaveTextContent('search')
   })
 
@@ -197,7 +207,9 @@ describe('App', () => {
 
     await userEvent.click(screen.getByText('Toolbox'))
 
-    expect(screen.getByTestId('toolbox-page')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId('toolbox-page')).toBeInTheDocument()
+    })
     expect(screen.getByTestId('active-page')).toHaveTextContent('toolbox')
   })
 })

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -71,6 +72,7 @@ class ReadingHistoryDB:
 
     def __init__(self, db_path: str) -> None:
         self._db_path = db_path
+        self._lock = threading.Lock()
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self._conn = open_sqlite_db(db_path, row_factory=True)
         self._conn.execute("""
@@ -101,53 +103,55 @@ class ReadingHistoryDB:
 
     def upsert(self, entry: ReadingHistoryEntry) -> None:
         now = datetime.now(timezone.utc).isoformat()  # noqa: UP017
-        self._conn.execute(
-            """
-            INSERT INTO reading_history (comic_id, title, cover_url, source, source_site, media_id, source_url, last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(comic_id, source) DO UPDATE SET
-                title = excluded.title,
-                cover_url = excluded.cover_url,
-                source_site = excluded.source_site,
-                media_id = excluded.media_id,
-                source_url = excluded.source_url,
-                last_page = excluded.last_page,
-                total_pages = excluded.total_pages,
-                last_chapter_id = excluded.last_chapter_id,
-                last_chapter_name = excluded.last_chapter_name,
-                last_read_at = excluded.last_read_at
-            """,
-            (
-                entry.comic_id,
-                entry.title,
-                entry.cover_url,
-                entry.source,
-                entry.source_site,
-                entry.media_id,
-                entry.source_url,
-                entry.last_page,
-                entry.total_pages,
-                entry.last_chapter_id,
-                entry.last_chapter_name,
-                now,
-                now,
-            ),
-        )
+        with self._lock:
+            self._conn.execute(
+                """
+                INSERT INTO reading_history (comic_id, title, cover_url, source, source_site, media_id, source_url, last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(comic_id, source) DO UPDATE SET
+                    title = excluded.title,
+                    cover_url = excluded.cover_url,
+                    source_site = excluded.source_site,
+                    media_id = excluded.media_id,
+                    source_url = excluded.source_url,
+                    last_page = excluded.last_page,
+                    total_pages = excluded.total_pages,
+                    last_chapter_id = excluded.last_chapter_id,
+                    last_chapter_name = excluded.last_chapter_name,
+                    last_read_at = excluded.last_read_at
+                """,
+                (
+                    entry.comic_id,
+                    entry.title,
+                    entry.cover_url,
+                    entry.source,
+                    entry.source_site,
+                    entry.media_id,
+                    entry.source_url,
+                    entry.last_page,
+                    entry.total_pages,
+                    entry.last_chapter_id,
+                    entry.last_chapter_name,
+                    now,
+                    now,
+                ),
+            )
         self._conn.commit()
 
     def get_history(self, page: int = 1, page_size: int = 20) -> tuple[list[dict], int]:
         offset = (page - 1) * page_size
-        total = self._conn.execute("SELECT COUNT(*) FROM reading_history").fetchone()[0]
-        rows = self._conn.execute(
-            """
-            SELECT id, comic_id, title, cover_url, source, source_site, media_id, source_url,
-                   last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at
-            FROM reading_history
-            ORDER BY last_read_at DESC
-            LIMIT ? OFFSET ?
-            """,
-            (page_size, offset),
-        ).fetchall()
+        with self._lock:
+            total = self._conn.execute("SELECT COUNT(*) FROM reading_history").fetchone()[0]
+            rows = self._conn.execute(
+                """
+                SELECT id, comic_id, title, cover_url, source, source_site, media_id, source_url,
+                       last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at
+                FROM reading_history
+                ORDER BY last_read_at DESC
+                LIMIT ? OFFSET ?
+                """,
+                (page_size, offset),
+            ).fetchall()
         items = []
         for row in rows:
             items.append(
@@ -171,12 +175,14 @@ class ReadingHistoryDB:
         return items, total
 
     def delete(self, comic_id: str, source: str) -> None:
-        self._conn.execute(
-            "DELETE FROM reading_history WHERE comic_id = ? AND source = ?",
-            (comic_id, source),
-        )
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute(
+                "DELETE FROM reading_history WHERE comic_id = ? AND source = ?",
+                (comic_id, source),
+            )
+            self._conn.commit()
 
     def clear(self) -> None:
-        self._conn.execute("DELETE FROM reading_history")
-        self._conn.commit()
+        with self._lock:
+            self._conn.execute("DELETE FROM reading_history")
+            self._conn.commit()

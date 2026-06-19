@@ -141,10 +141,10 @@ function stripMotion(target: Variant | undefined): Variant {
 // 第 21 个及之后用普通 button 立即出现。本处只定义 variants，切片逻辑在组件。
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** tag 列表容器：错峰子项，30ms 间隔，起始延迟 100ms。 */
+/** tag 列表容器：错峰子项，20ms 间隔，起始延迟 100ms。 */
 export const tagListVariants: Variants = {
-  hidden: { transition: { staggerChildren: 0.03, delayChildren: 0.1 } },
-  show: { transition: { staggerChildren: 0.03, delayChildren: 0.1 } },
+  hidden: { transition: { staggerChildren: 0.02, delayChildren: 0.1 } },
+  show: { transition: { staggerChildren: 0.02, delayChildren: 0.1 } },
 }
 
 /** tag 子项：淡入 + 轻微上移。 */
@@ -278,6 +278,68 @@ export function getReducedTaskItemVariants(): Variants {
     animate: { opacity: 1 },
     exit: { opacity: 0 },
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Tab 页面切换 variants（变更 tab-switch-animation 引入）
+//
+// 设计要点：方向感知的 slide + fade，位移幅度 8%（克制，非全页翻转），
+// 使用 smooth 曲线（cubic-bezier(0.4,0,0.2,1)），时长 450ms（DURATION.slower）。
+// 方向由 AnimatePresence 的 custom prop 注入，索引差决定左/右。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** TAB_ORDER 常量：与 Sidebar 菜单顺序一致，作为方向计算的单一来源。 */
+export const TAB_ORDER = [
+  'search',
+  'downloads',
+  'favourites',
+  'history',
+  'toolbox',
+  'settings',
+  'about',
+] as const
+
+/** 方向感知的 tab 页面切换 variants。
+ *
+ * 使用 sync 模式（AnimatePresence 默认）：exit 和 enter 同时播放，
+ * 旧页滑出的同时新页滑入，形成连续"推送"效果。
+ * exit 与 enter 同速对称，时长 DURATION.slow 保持干脆。
+ */
+export function getTabPageVariants(): Variants {
+  return {
+    initial: (dir: number) => ({
+      x: dir > 0 ? '8%' : dir < 0 ? '-8%' : 0,
+      opacity: 0,
+    }),
+    animate: {
+      x: 0,
+      opacity: 1,
+      transition: { ...smoothTransition, duration: DURATION.slow },
+    },
+    exit: (dir: number) => ({
+      x: dir > 0 ? '-8%' : dir < 0 ? '8%' : 0,
+      opacity: 0,
+      transition: { ...smoothTransition, duration: DURATION.slow },
+    }),
+  }
+}
+
+/** reduced-motion tab 页面 variants：纯 opacity crossfade，无位移。 */
+export function getReducedTabPageVariants(): Variants {
+  return {
+    initial: { opacity: 0 },
+    animate: { opacity: 1, transition: { duration: DURATION.fast } },
+    exit: { opacity: 0, transition: { duration: DURATION.fast } },
+  }
+}
+
+/**
+ * 统一获取 tab 页面 variants：根据 reduced-motion 偏好自动选择。
+ * direction 由 AnimatePresence 的 custom prop 自动注入到函数形式的 variants。
+ */
+export function useTabPageVariants(): Variants {
+  const reduceMotion = useReducedMotionPreference()
+  return reduceMotion ? getReducedTabPageVariants() : getTabPageVariants()
 }
 
 
