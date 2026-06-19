@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { DisplayMode, BlankPosition } from '../hooks/useReaderSettings'
 import { usePageFlipVariants } from '../lib/anim'
+import { Skeleton } from './common/Skeleton'
 
 interface PageFlipViewProps {
   imageUrls: string[]
@@ -321,13 +322,9 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
   }
 
   if (!dataUri) {
+    // 变更 5：阅读器首屏用骨架屏替代 spinner，占满阅读区。
     return (
-      <div className="flex items-center justify-center" style={{ height: '100%' }}>
-        <svg className="animate-spin h-8 w-8 text-gray-600" viewBox="0 0 24 24" fill="none">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
-      </div>
+      <Skeleton variant="rect" className="h-full w-full" style={{ aspectRatio: '3/4', maxWidth: '100%' }} />
     )
   }
 

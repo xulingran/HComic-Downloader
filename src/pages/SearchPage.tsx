@@ -6,6 +6,7 @@ import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { AnimatedCardWrapper } from '../components/common/AnimatedCardWrapper'
+import { Skeleton } from '../components/common/Skeleton'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
@@ -642,6 +643,24 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           </svg>
           返回分类
         </button>
+      )}
+
+      {/* 变更 5：搜索中且无结果时显示骨架网格，替代空白等待 */}
+      {isLoading && !needsLogin && filteredComics.length === 0 && (
+        <div className={cardStyle === 'detailed'
+          ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+          : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
+        }>
+          {Array.from({ length: 12 }).map((_, i) => (
+            <div key={i} className="bg-[var(--bg-primary)] rounded-xl overflow-hidden">
+              <Skeleton variant="rect" className="aspect-[6/7] w-full" />
+              <div className="p-2 space-y-1.5">
+                <Skeleton variant="text" className="h-3 w-3/4" />
+                <Skeleton variant="text" className="h-2.5 w-1/2" />
+              </div>
+            </div>
+          ))}
+        </div>
       )}
 
       {!needsLogin && filteredComics.length > 0 && (
