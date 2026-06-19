@@ -34,6 +34,8 @@ export class PythonBridge {
   /** 当前进程的启动时间戳，用于判定崩溃是否落在启动崩溃窗口内 */
   private processStartTime = 0
   private notificationHandlers = new Map<string, (params: unknown) => void>()
+  private _readyResolve: (() => void) | null = null
+  private _readyPromise: Promise<void> = Promise.resolve()
 
   /**
    * 致命错误回调：后端进程启动失败或重启超限时触发。
@@ -115,6 +117,11 @@ export class PythonBridge {
 
   private handleStdoutData(data: Buffer, proc: ChildProcess) {
     if (this.process !== proc) return
+    // 首次收到 stdout 数据 → Python 已启动并开始响应，标记就绪
+    if (this._readyResolve !== null) {
+      this._readyResolve()
+      this._readyResolve = null
+    }
     this.buffer += data.toString()
 
     const lines = this.buffer.split('\n')
@@ -132,10 +139,25 @@ export class PythonBridge {
     }
   }
 
+  /**
+   * 返回一个 Promise，在后端子进程就绪（stdin/stdout 管道可用）时 resolve。
+   * IPC handler 在首次 `bridge.call()` 前应 await 此 Promise。
+   */
+  waitForReady(): Promise<void> {
+    return this._readyPromise
+  }
+
   private start() {
     const pythonPath = this.getPythonPath()
     const scriptPath = this.getScriptPath()
     const args = scriptPath ? [scriptPath] : []
+
+    // 创建 pending promise：等首次 stdout 数据（Python 已启动并响应）时 resolve。
+    // 不在 spawn 返回时 resolve —— Python 还在导入模块、初始化 Mixin。
+    this._readyResolve = null
+    this._readyPromise = new Promise((resolve) => {
+      this._readyResolve = resolve
+    })
 
     this.process = spawn(pythonPath, args, {
       stdio: ['pipe', 'pipe', 'pipe'],
@@ -220,6 +242,12 @@ export class PythonBridge {
       this.process = null
     }
 
+    // 放弃旧 ready gate：_readyResolve=null 让 call() 跳过等待，直接走 "not running"。
+    // _readyPromise 设为已 resolve（永远 pending 会让任何残留 await 挂起）。
+    // 重启由 start() 重入时创建全新的 gate。
+    this._readyResolve = null
+    this._readyPromise = Promise.resolve()
+
     // 启动崩溃窗口判定：仅当进程在 STARTUP_CRASH_WINDOW_MS 内崩溃才计入
     // restartCount。长时间运行后的崩溃（如 OOM）是运行期故障，重置计数重新开始，
     // 避免一个本可正常服务的后端因偶发崩溃被永久判死为"重启超限"。
@@ -292,11 +320,22 @@ export class PythonBridge {
   }
 
   async call(method: string, params: Record<string, unknown> = {}, timeoutMs?: number): Promise<unknown> {
-    const proc = this.process
+    // 三种路径：
+    // 1. 进程就绪且 stdin 可写 → 直接使用（热路径）。
+    // 2. 进程尚未启动（this.process === null 且 ready gate 尚未 resolve）→ 等 ready。
+    // 3. 进程对象存在但 stdin 不可写 → 立即抛错（进程在但坏了，等再久也没用）。
+    let proc = this.process
+    if (!proc) {
+      // ready gate 尚未 resolve（_readyResolve 仍非空）说明进程还在启动中，等待 ready。
+      // gate 已被 reject（进程 exit/kill）→ waitForReady 抛错，转成标准 "not running"。
+      if (this._readyResolve !== null) {
+        await this.waitForReady()
+      }
+      proc = this.process
+    }
     if (!proc) {
       throw new Error('Python process not running')
     }
-
     if (!proc.stdin?.writable) {
       throw new Error('Python process stdin not writable')
     }
@@ -341,6 +380,10 @@ export class PythonBridge {
       this.process.kill()
       this.process = null
     }
+    // 放弃 ready gate：_readyResolve=null 让 call() 跳过等待，直接走 "not running"。
+    // _readyPromise 设为已 resolve（永远 pending 会让任何残留 await 挂起）。
+    this._readyResolve = null
+    this._readyPromise = Promise.resolve()
   }
 
   async shutdown(): Promise<void> {

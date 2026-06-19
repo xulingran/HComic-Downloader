@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { TAB_ORDER, useTabPageVariants } from './lib/anim'
 import { useTheme } from './hooks/useTheme'
@@ -7,22 +7,36 @@ import { useConfig } from './hooks/useIpc'
 import { useInitConfig } from './hooks/useInitConfig'
 import { Sidebar } from './components/Sidebar'
 import { SearchPage } from './pages/SearchPage'
-import { DownloadPage } from './pages/DownloadPage'
-import { FavouritesPage } from './pages/FavouritesPage'
-import { HistoryPage } from './pages/HistoryPage'
-import { SettingsPage } from './pages/SettingsPage'
-import { ToolboxPage } from './pages/ToolboxPage'
-import { AboutPage } from './pages/AboutPage'
 import { Toast } from './components/common/Toast'
 import { Toaster } from './components/common/Toaster'
 import { FatalBanner } from './components/FatalBanner'
-import { ComicInfoDrawer } from './components/ComicInfoDrawer'
-import { ComicReaderModal } from './components/ComicReaderModal'
-import { UpdateDialog } from './components/UpdateDialog'
 import { useDrawerStore } from './stores/useDrawerStore'
 import { useReaderStore } from './stores/useReaderStore'
 import { useFatalErrorStore } from './stores/useFatalErrorStore'
 import type { UpdateInfo, FatalErrorEvent } from '@shared/types'
+
+// 代码分割 —— 非首屏页面和模态框（页面均为 named export，需要模块重导出为 default）
+const DownloadPage = lazy(() => import('./pages/DownloadPage').then(m => ({ default: m.DownloadPage })))
+const FavouritesPage = lazy(() => import('./pages/FavouritesPage').then(m => ({ default: m.FavouritesPage })))
+const HistoryPage = lazy(() => import('./pages/HistoryPage').then(m => ({ default: m.HistoryPage })))
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
+const ToolboxPage = lazy(() => import('./pages/ToolboxPage').then(m => ({ default: m.ToolboxPage })))
+const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
+const ComicInfoDrawer = lazy(() => import('./components/ComicInfoDrawer').then(m => ({ default: m.ComicInfoDrawer })))
+const ComicReaderModal = lazy(() => import('./components/ComicReaderModal').then(m => ({ default: m.ComicReaderModal })))
+const UpdateDialog = lazy(() => import('./components/UpdateDialog').then(m => ({ default: m.UpdateDialog })))
+
+/** 页面切换时的骨架屏 fallback。 */
+function PageSkeleton() {
+  return (
+    <div className="flex items-center justify-center h-full">
+      <div className="flex flex-col items-center gap-4">
+        <div className="w-8 h-8 border-2 border-[var(--text-tertiary)] border-t-[var(--accent)] rounded-full animate-spin" />
+        <div className="w-32 h-3 bg-[var(--bg-tertiary)] rounded animate-pulse" />
+      </div>
+    </div>
+  )
+}
 
 function App() {
   const { sfwToastDismissed, dismissSfwToast } = useSettingsStore()
@@ -88,17 +102,17 @@ function App() {
       case 'search':
         return <SearchPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} />
       case 'downloads':
-        return <DownloadPage />
+        return <Suspense fallback={<PageSkeleton />}><DownloadPage /></Suspense>
       case 'favourites':
-        return <FavouritesPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} />
+        return <Suspense fallback={<PageSkeleton />}><FavouritesPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} /></Suspense>
       case 'history':
-        return <HistoryPage />
+        return <Suspense fallback={<PageSkeleton />}><HistoryPage /></Suspense>
       case 'settings':
-        return <SettingsPage scrollTarget={scrollTarget} onScrollDone={() => setScrollTarget(null)} />
+        return <Suspense fallback={<PageSkeleton />}><SettingsPage scrollTarget={scrollTarget} onScrollDone={() => setScrollTarget(null)} /></Suspense>
       case 'toolbox':
-        return <ToolboxPage />
+        return <Suspense fallback={<PageSkeleton />}><ToolboxPage /></Suspense>
       case 'about':
-        return <AboutPage />
+        return <Suspense fallback={<PageSkeleton />}><AboutPage /></Suspense>
       default:
         return <div className="text-[var(--text-primary)]">Unknown page</div>
     }
@@ -136,17 +150,17 @@ function App() {
           </AnimatePresence>
         </main>
       </div>
-      <ComicInfoDrawer />
-      <ComicReaderModal
+      <Suspense fallback={null}><ComicInfoDrawer /></Suspense>
+      <Suspense fallback={null}><ComicReaderModal
         comic={readerComic}
         open={!!readerComic}
         onClose={closeReader}
-      />
+      /></Suspense>
       {updateInfo && (
-        <UpdateDialog
+        <Suspense fallback={null}><UpdateDialog
           info={updateInfo}
           onClose={() => setUpdateInfo(null)}
-        />
+        /></Suspense>
       )}
     </div>
   )

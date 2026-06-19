@@ -58,27 +58,33 @@ vi.mock('@/components/Sidebar', () => ({
 }))
 
 vi.mock('@/pages/SearchPage', () => ({
-  SearchPage: () => <div data-testid="search-page">Search Page</div>
+  SearchPage: () => <div data-testid="search-page">Search Page</div>,
+  default: () => <div data-testid="search-page">Search Page</div>
 }))
 
 vi.mock('@/pages/DownloadPage', () => ({
-  DownloadPage: () => <div data-testid="download-page">Download Page</div>
+  DownloadPage: () => <div data-testid="download-page">Download Page</div>,
+  default: () => <div data-testid="download-page">Download Page</div>
 }))
 
 vi.mock('@/pages/FavouritesPage', () => ({
-  FavouritesPage: () => <div data-testid="favourites-page">Favourites Page</div>
+  FavouritesPage: () => <div data-testid="favourites-page">Favourites Page</div>,
+  default: () => <div data-testid="favourites-page">Favourites Page</div>
 }))
 
 vi.mock('@/pages/SettingsPage', () => ({
-  SettingsPage: () => <div data-testid="settings-page">Settings Page</div>
+  SettingsPage: () => <div data-testid="settings-page">Settings Page</div>,
+  default: () => <div data-testid="settings-page">Settings Page</div>
 }))
 
 vi.mock('@/pages/ToolboxPage', () => ({
-  ToolboxPage: () => <div data-testid="toolbox-page">Toolbox Page</div>
+  ToolboxPage: () => <div data-testid="toolbox-page">Toolbox Page</div>,
+  default: () => <div data-testid="toolbox-page">Toolbox Page</div>
 }))
 
 vi.mock('@/pages/HistoryPage', () => ({
-  HistoryPage: () => <div data-testid="history-page">History Page</div>
+  HistoryPage: () => <div data-testid="history-page">History Page</div>,
+  default: () => <div data-testid="history-page">History Page</div>
 }))
 
 // Import App after all mocks

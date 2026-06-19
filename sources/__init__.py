@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from models import AuthConfig, ComicInfo, PaginationInfo
@@ -21,8 +22,42 @@ _SOURCES_WITH_FAVOURITES = ("hcomic", "jmcomic", "moeimg", "bika")
 __all__ = ["MultiSourceParser", "ParserResponseError"]
 
 
+class _ParserDict:
+    """字典代理：通过 __getitem__ 触发懒创建解析器。
+
+    保持 ``parser.parsers["source"]`` 向后兼容。
+    """
+
+    def __init__(self, owner: MultiSourceParser):
+        self._owner = owner
+
+    def __getitem__(self, key: str) -> HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser:
+        return self._owner._get_parser(key)  # type: ignore[return-value]
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return self.__getitem__(key)
+        except (KeyError, ValueError):
+            return default
+
+    def keys(self) -> set[str]:
+        return set(self._owner._factory.keys())
+
+    def __contains__(self, key: str) -> bool:
+        return key in self._owner._factory
+
+    def __iter__(self):
+        return iter(self._owner._factory)
+
+    def __len__(self) -> int:
+        return len(self._owner._factory)
+
+
 class MultiSourceParser:
-    """多来源解析器分发层。"""
+    """多来源解析器分发层。
+
+    解析器实例按需懒创建 —— 首次访问指定 source 时构造，避免启动时预创建全部 5 个解析器。
+    """
 
     def __init__(
         self,
@@ -44,54 +79,91 @@ class MultiSourceParser:
                 "bearer_token": self.source_auth["hcomic"].get("bearer_token", ""),
             }
 
-        self.parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser] = {
-            "hcomic": HComicParser(
+        self._bika_image_quality = bika_image_quality
+
+        # 工厂函数映射：解析器首次访问时调用对应工厂创建实例
+        self._factory: dict[
+            str, Callable[[], HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser]
+        ] = {
+            "hcomic": lambda: HComicParser(
                 timeout=timeout,
                 cookie=self.source_auth["hcomic"]["cookie"],
                 user_agent=self.source_auth["hcomic"]["user_agent"],
                 bearer_token=self.source_auth["hcomic"]["bearer_token"],
             ),
-            "moeimg": MoeImgParser(
+            "moeimg": lambda: MoeImgParser(
                 timeout=timeout,
                 cookie=self.source_auth["moeimg"]["cookie"],
                 user_agent=self.source_auth["moeimg"]["user_agent"],
             ),
-            "jmcomic": JmParser(
+            "jmcomic": lambda: JmParser(
                 timeout=timeout,
                 cookie=self.source_auth.get("jmcomic", {}).get("cookie", ""),
                 user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
             ),
-            "bika": BikaParser(timeout=timeout),
-            "copymanga": CopyMangaParser(timeout=timeout),
+            "bika": lambda: BikaParser(timeout=timeout),
+            "copymanga": lambda: CopyMangaParser(timeout=timeout),
         }
+
+        # 缓存字典 —— 已创建的解析器实例
+        self._parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser] = {}
+
+        # 只创建 default_source 的解析器，其余等待首次访问时创建
+        self.current_source = default_source if default_source in self._factory else "hcomic"
+        self._get_parser(self.current_source)
+
+    @property
+    def parsers(self) -> _ParserDict:
+        """向后兼容：``parser.parsers["source"]`` 触发懒创建。"""
+        return _ParserDict(self)
+
+    def _get_parser(self, name: str) -> HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser:
+        """按需获取（或创建）指定来源的解析器实例。"""
+        if name not in self._parsers:
+            factory = self._factory.get(name)
+            if factory is None:
+                raise ValueError(f"Unknown source: {name}")
+            parser = factory()
+            self._parsers[name] = parser
+            # 创建后执行凭据恢复等后处理
+            self._apply_post_init(name, parser)
+        return self._parsers[name]
+
+    def _apply_post_init(
+        self,
+        name: str,
+        parser: HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser,
+    ) -> None:
+        """解析器创建后的后处理 —— 恢复存储的凭据、token、图片质量等。"""
+        # 通用：对所有解析器恢复已存储的 cookie/user_agent/bearer_token
+        auth = self.source_auth.get(name, {})
+        cookie = auth.get("cookie", "")
+        user_agent = auth.get("user_agent", "")
+        bearer_token = auth.get("bearer_token", "")
+        if cookie or user_agent or bearer_token:
+            parser.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
         # 为 moeimg 恢复存储的用户名密码（用于懒登录）
-        moeimg_auth = self.source_auth.get("moeimg", {})
-        moeimg_parser = self.parsers["moeimg"]
-        if isinstance(moeimg_parser, MoeImgParser):
-            moeimg_parser.set_stored_credentials(
+        if name == "moeimg" and isinstance(parser, MoeImgParser):
+            moeimg_auth = self.source_auth.get("moeimg", {})
+            parser.set_stored_credentials(
                 moeimg_auth.get("username", ""),
                 moeimg_auth.get("password", ""),
             )
-        # 为 bika 恢复存储的 token 和用户名密码
-        bika_auth = self.source_auth.get("bika", {})
-        bika_parser = self.parsers["bika"]
-        if isinstance(bika_parser, BikaParser):
-            if bika_auth.get("bearer_token"):
-                bika_parser.configure_auth(bearer_token=bika_auth["bearer_token"])
-            bika_parser.set_stored_credentials(
+        # 为 bika 恢复存储的用户名密码和图片质量（configure_auth 已由通用逻辑执行）
+        if name == "bika" and isinstance(parser, BikaParser):
+            bika_auth = self.source_auth.get("bika", {})
+            parser.set_stored_credentials(
                 bika_auth.get("username", ""),
                 bika_auth.get("password", ""),
             )
-            bika_parser.set_image_quality(bika_image_quality)
+            parser.set_image_quality(self._bika_image_quality)
         # 为 hcomic 恢复存储的用户名密码（用于懒登录）
-        hcomic_auth = self.source_auth.get("hcomic", {})
-        hcomic_parser = self.parsers["hcomic"]
-        if isinstance(hcomic_parser, HComicParser):
-            hcomic_parser.set_stored_credentials(
+        if name == "hcomic" and isinstance(parser, HComicParser):
+            hcomic_auth = self.source_auth.get("hcomic", {})
+            parser.set_stored_credentials(
                 hcomic_auth.get("username", ""),
                 hcomic_auth.get("password", ""),
             )
-        self.current_source = default_source if default_source in self.parsers else "hcomic"
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
@@ -103,33 +175,29 @@ class MultiSourceParser:
 
     @property
     def session(self) -> Any:
-        return self.parsers[self.current_source].session
+        return self._get_parser(self.current_source).session
 
     def get_sessions(self) -> list[Any]:
-        return [
-            self.parsers["hcomic"].session,
-            self.parsers["moeimg"].session,
-            self.parsers["jmcomic"].session,
-            self.parsers["bika"].session,
-            self.parsers["copymanga"].session,
-        ]
+        return [p.session for p in self._parsers.values()]
 
     def get_jmcomic_cdn_domain(self) -> str | None:
         """返回 jmcomic 当前解析到的 CDN 域名。"""
-        jm_parser = self.parsers.get("jmcomic")
+        jm_parser = self._parsers.get("jmcomic")
         if jm_parser and hasattr(jm_parser, "cdn_domain"):
             return jm_parser.cdn_domain  # type: ignore[union-attr]
         return None
 
     def set_jmcomic_domain(self, domain: str) -> None:
         """设置 jmcomic 自定义域名。传空字符串则恢复自动选择。"""
-        jm = self.parsers.get("jmcomic")
+        jm = self._parsers.get("jmcomic")
         if jm and hasattr(jm, "set_custom_domain"):
             jm.set_custom_domain(domain)  # type: ignore[union-attr]
 
     def set_source(self, source: str):
-        if source in self.parsers:
+        if source in self._factory:
             self.current_source = source
+        # 确保当前 source 的解析器已创建
+        self._get_parser(source)
 
     def source_supports_favourites(self, source: str | None = None) -> bool:
         current = self._resolve_source(source)
@@ -148,7 +216,7 @@ class MultiSourceParser:
         source: str | None = None,
     ):
         current = self._resolve_source(source)
-        if current not in self.parsers:
+        if current not in self._factory:
             return
         cookie = (cookie or "").strip()
         user_agent = (user_agent or "").strip()
@@ -158,26 +226,29 @@ class MultiSourceParser:
             "user_agent": user_agent,
             "bearer_token": bearer_token,
         }
-        self.parsers[current].configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+        # 如果解析器已创建，即时应用；否则待懒创建时使用最新认证参数
+        parser = self._parsers.get(current)
+        if parser is not None:
+            parser.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
 
     def verify_login_status(self, source: str | None = None) -> tuple[bool, str]:
         src = self._resolve_source(source)
-        return self.parsers[src].verify_login_status()
+        return self._get_parser(src).verify_login_status()
 
     def search(
         self, keyword: str, page: int = 1, source: str | None = None, *, tag: str = ""
     ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = self._resolve_source(source)
-        return self.parsers[src].search(keyword, page=page, tag=tag)
+        return self._get_parser(src).search(keyword, page=page, tag=tag)
 
     def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = self._resolve_source(source)
         if src == "bika":
-            comics = self.parsers["bika"].get_random_comics()
+            comics = self._get_parser("bika").get_random_comics()
             return comics, None
         if src not in ("hcomic", "jmcomic"):
             raise ValueError(f"Random is not supported for source: {src}")
-        return self.parsers[src].random()  # type: ignore[union-attr]
+        return self._get_parser(src).random()  # type: ignore[union-attr]
 
     def favourites(
         self, page: int = 1, raise_errors: bool = False, source: str | None = None
@@ -185,40 +256,41 @@ class MultiSourceParser:
         src = self._resolve_source(source)
         if not self.source_supports_favourites(src):
             return [], None, False
-        return self.parsers[src].favourites(page=page, raise_errors=raise_errors)
+        return self._get_parser(src).favourites(page=page, raise_errors=raise_errors)
 
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
         if src not in _SOURCES_WITH_FAVOURITES:
             return False
-        return self.parsers[src].add_to_favourites(comic_id)
+        return self._get_parser(src).add_to_favourites(comic_id)
 
     def check_favourite(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
         if src not in _SOURCES_WITH_FAVOURITES:
             return False
-        return self.parsers[src].check_favourite(comic_id)
+        return self._get_parser(src).check_favourite(comic_id)
 
     def remove_from_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
         if src not in _SOURCES_WITH_FAVOURITES:
             return False
-        return self.parsers[src].remove_from_favourites(comic_id)
+        return self._get_parser(src).remove_from_favourites(comic_id)
 
     def get_comic_detail(
         self, comic_id: str, slug: str = "", source: str | None = None, source_url: str = ""
     ) -> ComicInfo | None:
         src = self._resolve_source(source)
-        parser = self.parsers[src]
+        parser = self._get_parser(src)
         if src == "hcomic":
             return parser.get_comic_detail(comic_id, slug=slug, source_url=source_url)
         return parser.get_comic_detail(comic_id, slug=slug)
 
     def prepare_for_download(self, comic: ComicInfo) -> ComicInfo:
         source = (comic.source_site or self.current_source or "hcomic").lower()
-        parser = self.parsers.get(source)
-        if not parser:
+        # 未知来源（如脏数据/历史记录字段异常）静默降级，保持原有行为
+        if source not in self._factory:
             return comic
+        parser = self._get_parser(source)
 
         # 对已有下载地址且页数有效的条目，不再重复请求详情。
         if comic.image_urls and comic.pages > 0:

@@ -448,7 +448,7 @@ function createWindow() {
       webviewTag: false,
     },
     icon: getAppIconPath(),
-    show: false
+    show: true
   })
 
   notificationManager.setMainWindow(mainWindow)
@@ -471,12 +471,6 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
-
-  mainWindow.once('ready-to-show', () => {
-    if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.show()
-    }
-  })
 
   mainWindow.webContents.on('will-navigate', (event) => {
     event.preventDefault()

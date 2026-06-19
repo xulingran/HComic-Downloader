@@ -13,7 +13,12 @@ class TestCopyMangaRegistration:
     def test_copymanga_session_available(self):
         parser = MultiSourceParser()
         sessions = parser.get_sessions()
-        assert len(sessions) >= 5
+        # 懒加载后 get_sessions() 只返回已创建的解析器 session
+        assert len(sessions) >= 1
+        # 切换来源后可获取 copymanga session
+        parser.set_source("copymanga")
+        sessions = parser.get_sessions()
+        assert len(sessions) >= 2
 
     def test_set_source_copymanga(self):
         parser = MultiSourceParser()

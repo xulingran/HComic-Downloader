@@ -42,6 +42,12 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: path.resolve(__dirname, 'index.html')
+        },
+        output: {
+          manualChunks: {
+            'react-vendor': ['react', 'react-dom', 'react-router-dom'],
+            'framer-motion': ['framer-motion'],
+          }
         }
       }
     },
