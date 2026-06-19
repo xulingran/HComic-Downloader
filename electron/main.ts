@@ -847,10 +847,14 @@ function registerSystemHandlers(bridge: Bridge) {
     } catch (err) {
       // 区分"路径不存在"（高频、可恢复）与其他 stat 失败（权限不足、路径过长），
       // 给用户可行动的错误提示。
+      // 注意：不用 new Error(msg, { cause }) 第二参数形式——项目 tsconfig lib 是 ES2020，
+      // 缺少 ES2022.Error 库，构造器第二参数会触发 TS2554，直接 .cause 赋值触发 TS2550。
+      // 用 Object.assign 注入 cause，行为等价（Node 运行时原生支持 Error.prototype.cause），
+      // 且不依赖 lib 升级、不需要 cast。
       if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw new Error(`Download directory does not exist: ${dirPath}`, { cause: err })
+        throw Object.assign(new Error(`Download directory does not exist: ${dirPath}`), { cause: err })
       }
-      throw new Error(`Cannot access directory: ${dirPath}`, { cause: err })
+      throw Object.assign(new Error(`Cannot access directory: ${dirPath}`), { cause: err })
     }
     if (!stats.isDirectory()) throw new Error(`Path is not a directory: ${dirPath}`)
     const errorMsg = await shell.openPath(dirPath)
