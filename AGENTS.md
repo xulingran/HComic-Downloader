@@ -145,3 +145,4 @@ npm run lint             # 6. JS/TS lint (ESLint)
 - **安全**：Context Isolation + Sandbox、CSP 按环境分发、IPC 参数严格校验（类型/长度/范围/路径遍历/控制字符）、域名白名单 + Referer 防盗链
 - **版本号管理**：`npm run version:from-git` 执行 `scripts/set-version-from-tag.mjs`，从最近的 git tag（如 `v1.2.3`）提取版本号写入 `package.json` 的 `version` 字段。Electron 运行时通过 `app.getVersion()` 读取该值。此脚本为手动触发，未集成到 `dev` 或 `build` 流程中
 - **jmcomic 图片反混淆**：`sources/jmcomic/descrambler.py` 在下载后对图片进行解混淆处理
+- **动画系统**：所有动画用 framer-motion（AnimatePresence/motion.div/layout），令牌集中在 `tailwind.config.js`（duration/easing/keyframes）与 `src/lib/anim.ts`（variants/transition）。reduced-motion 用全局 CSS 兜底 + 组件级 `useReducedMotionPreference()` 双层策略。性能约束详见 `docs/animation-performance.md`

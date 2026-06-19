@@ -221,7 +221,7 @@ export function PageFlipView({
             exit="exit"
             onAnimationComplete={handleAnimationComplete}
             className="h-full flex items-center justify-center"
-            style={{ pointerEvents: isFlipping ? 'none' : undefined }}
+            style={{ pointerEvents: isFlipping ? 'none' : undefined, willChange: isFlipping ? 'transform' : undefined }}
           >
             {/* renderPageContent 读取 imageCacheRef.current 取预加载图，属原模式 */}
             {/* eslint-disable-next-line react-hooks/refs */}
