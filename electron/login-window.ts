@@ -1,5 +1,5 @@
 import { BrowserWindow, session, type Session } from 'electron'
-import { writeFileSync } from 'fs'
+import { promises as fsPromises } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { getPythonBridge } from './python-bridge'
@@ -13,14 +13,81 @@ const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
 const JMCOMIC_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
 
 const COPYMANGA_LOGIN_COOKIE_NAMES = ['token', 'sessionid', 'copymanga_session']
+const COPYMANGA_DOMAIN = 'www.2026copy.com'
+const HCOMIC_DOMAIN = 'h-comic.com'
+const JMCOMIC_DEFAULT_DOMAIN = '18comic.vip'
+
+/**
+ * 登录窗口允许导航到的域名白名单：
+ * - h-comic + www 前缀（含 Auth0 登录回调）
+ * - jmcomic 全部镜像域名（登录流程在镜像间跳转）
+ * - copymanga
+ * 其他域名的导航（如 h-comic 的广告脚本 juicyads 重定向）会被 will-navigate 拦截。
+ *
+ * 模块级常量：避免每次 openLoginWindow 重新构造（原实现内联在函数体内）。
+ */
+const ALLOWED_NAV_DOMAINS: readonly string[] = [
+  HCOMIC_DOMAIN,
+  `www.${HCOMIC_DOMAIN}`,
+  'auth0.com',
+  ...JMCOMIC_MIRROR_DOMAINS,
+  COPYMANGA_DOMAIN,
+]
 
 const DIAG_LOG = join(tmpdir(), 'hcomic-login-diag.log')
+// diag 批量写入窗口：100ms 内的多次调用合并为一次 appendFile，
+// 避免 close 事件热路径中连续 3-5 条 diag 各自同步写盘阻塞事件循环。
+const DIAG_FLUSH_DELAY_MS = 100
+const diagQueue: string[] = []
+let diagFlushTimer: NodeJS.Timeout | null = null
 
-function diag(msg: string) {
-  const ts = new Date().toISOString()
-  const line = `[${ts}] ${msg}\n`
-  try { writeFileSync(DIAG_LOG, line, { flag: 'as' }) } catch { /* ignore */ }
+function flushDiagQueue(): void {
+  diagFlushTimer = null
+  if (diagQueue.length === 0) return
+  const batch = diagQueue.join('')
+  diagQueue.length = 0
+  // fire-and-forget：日志写入失败不应影响登录流程
+  fsPromises.appendFile(DIAG_LOG, batch).catch(() => { /* ignore */ })
+}
+
+/**
+ * 登录窗口诊断日志：console.log 同步输出（dev 即时可见），文件写入异步批量。
+ *
+ * 历史：用 writeFileSync 同步阻塞，close 事件热路径中调用多次影响响应性。
+ * 现改为：每行立即 console.log + 推入队列，100ms 内合并 appendFile。
+ */
+function diag(msg: string): void {
+  const line = `[${new Date().toISOString()}] ${msg}\n`
+  // console.log 同步：开发期即时可见，且本身不阻塞事件循环
   console.log(`[LoginWindow] ${msg}`)
+  diagQueue.push(line)
+  if (!diagFlushTimer) {
+    diagFlushTimer = setTimeout(flushDiagQueue, DIAG_FLUSH_DELAY_MS)
+  }
+}
+
+/**
+ * 将字符串包装为 POSIX shell 单引号字面量，用于嵌入 Python `shlex.split(posix=True)`
+ * 解析的 curl 文本。
+ *
+ * 背景：Electron 把 cookie/UA 拼成 `curl ... -b '...' -H '...'` 文本传给 Python
+ * `apply_auth`，后者用 `shlex.split(text, posix=True)` 解析。posix 模式下：
+ * - 单引号字符串内无法直接表达 `'` 字符，必须用经典的 `'\''` 切分技巧
+ *   （闭合单引号 → 反斜杠转义单引号 → 重开单引号）。
+ * - **关键**：此函数返回的字符串自带外层单引号，调用方**不得**再用单引号包裹，
+ *   否则形成 `'...'<已带引号的值>'...'` 的嵌套，shlex 会因引号不匹配抛
+ *   `No closing quotation`。正确的用法是 `-b ${shellQuote(raw)}`（无外层引号），
+ *   而非 `-b '${shellQuote(raw)}'`。
+ *
+ * 同时拒绝控制字符：cookie/UA 不应含 C0 控制字符或 DEL，出现即视为异常输入
+ * （防御纵深：阻断可能的 header 注入）。
+ */
+export function shellQuoteForShlex(value: string): string {
+  // eslint-disable-next-line no-control-regex
+  if (/[\x00-\x1f\x7f]/.test(value)) {
+    throw new Error('Value contains control characters')
+  }
+  return `'${value.replace(/'/g, "'\\''")}'`
 }
 
 type ExtractionResult = { success: boolean; message: string; notLoggedIn?: boolean }
@@ -36,114 +103,177 @@ interface LoginWindowContext {
   removePermissionHandlers: (() => void) | null
 }
 
+// ── Cookie 提取与登录态校验（extractAndApplyCookies 的子组件）─────────────
+
+interface CookieExtraction {
+  cookies: Electron.Cookie[]
+  /** 实际命中域名：jmcomic 多镜像时可能与传入 domain 不同 */
+  domain: string
+  notLoggedIn?: boolean
+  message?: string
+}
+
+/**
+ * 按 source 从 session 提取 cookie。
+ * - jmcomic：遍历主域名 + JMCOMIC_MIRROR_DOMAINS，返回首个含登录 cookie 的镜像
+ * - copymanga：仅从传入 domain 提取，过滤 COPYMANGA_LOGIN_COOKIE_NAMES
+ * - 默认（hcomic 等）：直接 get
+ *
+ * 提取后由调用方再走 verifyLoginCookies 做登录态校验。
+ */
+export async function extractCookiesForSource(
+  source: string,
+  domain: string,
+  cookieSession: Session,
+): Promise<CookieExtraction> {
+  if (source === 'jmcomic') {
+    const candidateDomains = [domain, ...JMCOMIC_MIRROR_DOMAINS]
+    for (const d of candidateDomains) {
+      const domainCookies = await cookieSession.cookies.get({ url: `https://${d}` })
+      if (domainCookies.length === 0) continue
+      const cookieNames = domainCookies.map(c => c.name.toLowerCase())
+      if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+        return { cookies: domainCookies, domain: d }
+      }
+    }
+    return { cookies: [], domain, notLoggedIn: true, message: '未获取到登录信息，请确认已登录后关闭窗口' }
+  }
+
+  if (source === 'copymanga') {
+    const domainCookies = await cookieSession.cookies.get({ url: `https://${domain}` })
+    if (domainCookies.length === 0) {
+      return { cookies: [], domain, notLoggedIn: true, message: '未获取到登录信息，请确认已登录后关闭窗口' }
+    }
+    const cookieNames = domainCookies.map(c => c.name.toLowerCase())
+    if (COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+      return { cookies: domainCookies, domain }
+    }
+    return { cookies: [], domain, notLoggedIn: true, message: '未获取到登录信息，请确认已登录后关闭窗口' }
+  }
+
+  // 默认（hcomic 等）：直接 get，不预过滤
+  const cookies = await cookieSession.cookies.get({ url: `https://${domain}` })
+  if (cookies.length === 0) {
+    return { cookies, domain, notLoggedIn: true, message: '未获取到登录信息，请确认已登录后关闭窗口' }
+  }
+  return { cookies, domain }
+}
+
+/**
+ * 校验提取到的 cookies 是否包含登录态标志 cookie。
+ * @returns null 表示通过；ExtractionResult 表示失败（带 notLoggedIn + 提示）。
+ * hcomic 不做登录态标志校验（无专门的登录 cookie 名）。
+ */
+export function verifyLoginCookies(source: string, cookies: Electron.Cookie[]): ExtractionResult | null {
+  const cookieNames = cookies.map(c => c.name.toLowerCase())
+  if (source === 'jmcomic') {
+    if (!JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+      return { success: false, message: '未检测到登录状态，请确认已成功登录后重试', notLoggedIn: true }
+    }
+  }
+  if (source === 'copymanga') {
+    if (!COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+      return { success: false, message: '未检测到登录状态，请在拷贝漫画网站上登录后再关闭窗口', notLoggedIn: true }
+    }
+  }
+  return null
+}
+
+/**
+ * 调用 apply_auth 保存凭证，再尝试 verify_auth（不阻断登录流程）。
+ *
+ * apply_auth 成功后 verify_auth 可能因后端 DNS/网络问题失败（如 curl_cffi 无法解析
+ * 18comic.vip），但浏览器已成功获取有效 Cookie，此时仍视为登录成功，让后续操作
+ * （如收藏夹）使用已保存的凭证重试。
+ */
+async function applyAndVerifyAuth(
+  source: string,
+  cookies: Electron.Cookie[],
+  domain: string,
+  userAgent: string,
+  jmcomicUsername: string,
+): Promise<ExtractionResult> {
+  // 构造原始 cookie 字符串（不预转义每个 value），然后用 shellQuoteForShlex 把
+  // 整个字符串作为一个 POSIX shell token 包装。模板里 -b 与 -H 后**不加外层单引号**——
+  // shellQuoteForShlex 自带引号，再加外层会形成嵌套导致 shlex 抛 No closing quotation。
+  // 这是 cookie value 含 ' 时唯一可正确 round-trip 的拼接方式（参见 shellQuoteForShlex 注释）。
+  const rawCookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
+  const rawUaHeader = `User-Agent: ${userAgent}`
+
+  const bridge = getPythonBridge()
+  await bridge.call('apply_auth', {
+    curl_text: `curl 'https://${domain}' -b ${shellQuoteForShlex(rawCookieStr)} -H ${shellQuoteForShlex(rawUaHeader)}`,
+    source,
+    // jmcomic 用户名由 Electron 从登录窗口 DOM 提取，避免 Python 后端
+    // 因 Cloudflare 403 无法从首页发现用户名
+    ...(source === 'jmcomic' && jmcomicUsername ? { jmcomic_username: jmcomicUsername } : {}),
+  })
+
+  try {
+    const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
+    if (verifyResult.valid) {
+      return { success: true, message: verifyResult.message }
+    }
+    // verify_auth 返回无效但 apply_auth 已成功，Cookie 已保存，
+    // 可能是后端网络问题导致校验失败，仍视为登录成功
+    return { success: true, message: '登录凭证已保存（服务端校验未通过，请检查网络或域名设置）' }
+  } catch {
+    return { success: true, message: '登录凭证已保存（服务端校验跳过）' }
+  }
+}
+
+/**
+ * 提取并应用登录 cookie 的编排函数：extract → verify → apply。
+ * 子函数的错误冒泡到此处的统一 try/catch 转为 ExtractionResult。
+ */
 async function extractAndApplyCookies(
   userAgent: string,
   source: string = 'hcomic',
-  domain: string = 'h-comic.com',
+  domain: string = HCOMIC_DOMAIN,
   cookieSession: Session = session.defaultSession,
   jmcomicUsername: string = '',
 ): Promise<ExtractionResult> {
   try {
-    let cookies: Electron.Cookie[] = []
-    let cookieDomain = domain
-
-    if (source === 'jmcomic') {
-      const domains = [domain, ...JMCOMIC_MIRROR_DOMAINS]
-      for (const d of domains) {
-        const domainCookies = await cookieSession.cookies.get({ url: `https://${d}` })
-        if (domainCookies.length > 0) {
-          const cookieNames = domainCookies.map(c => c.name.toLowerCase())
-          if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
-            cookies = domainCookies
-            cookieDomain = d
-            break
-          }
-        }
-      }
-    } else if (source === 'copymanga') {
-      const domainCookies = await cookieSession.cookies.get({ url: `https://${domain}` })
-      if (domainCookies.length > 0) {
-        const cookieNames = domainCookies.map(c => c.name.toLowerCase())
-        if (COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
-          cookies = domainCookies
-        }
-      }
-    } else {
-      cookies = await cookieSession.cookies.get({ url: `https://${domain}` })
+    const extraction = await extractCookiesForSource(source, domain, cookieSession)
+    if (extraction.notLoggedIn) {
+      return { success: false, message: extraction.message!, notLoggedIn: true }
     }
-
-    if (cookies.length === 0) {
-      return { success: false, message: '未获取到登录信息，请确认已登录后关闭窗口', notLoggedIn: true }
-    }
-
-    if (source === 'jmcomic') {
-      const cookieNames = cookies.map(c => c.name.toLowerCase())
-      const hasLoginCookie = JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
-      if (!hasLoginCookie) {
-        return { success: false, message: '未检测到登录状态，请确认已成功登录后重试', notLoggedIn: true }
-      }
-    }
-
-    if (source === 'copymanga') {
-      const cookieNames = cookies.map(c => c.name.toLowerCase())
-      const hasLoginCookie = COPYMANGA_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))
-      if (!hasLoginCookie) {
-        return { success: false, message: '未检测到登录状态，请在拷贝漫画网站上登录后再关闭窗口', notLoggedIn: true }
-      }
-    }
-
-    const cookieStr = cookies.map(c => `${c.name}=${c.value}`).join('; ')
-
-    const bridge = getPythonBridge()
-    await bridge.call('apply_auth', {
-      curl_text: `curl 'https://${cookieDomain}' -b '${cookieStr}' -H 'User-Agent: ${userAgent}'`,
-      source,
-      // jmcomic 用户名由 Electron 从登录窗口 DOM 提取，避免 Python 后端
-      // 因 Cloudflare 403 无法从首页发现用户名
-      ...(source === 'jmcomic' && jmcomicUsername ? { jmcomic_username: jmcomicUsername } : {}),
-    })
-    // apply_auth 成功后尝试 verify_auth，但不阻断登录流程。
-    // Python 后端可能因 DNS/网络问题无法访问登录域名（如 curl_cffi 无法解析
-    // 18comic.vip），但浏览器已成功获取有效 Cookie 并通过 apply_auth 保存，
-    // 此时应视为登录成功，让后续操作（如收藏夹）使用已保存的凭证重试。
-    try {
-      const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
-      if (verifyResult.valid) {
-        return { success: true, message: verifyResult.message }
-      }
-      // verify_auth 返回无效但 apply_auth 已成功，Cookie 已保存，
-      // 可能是后端网络问题导致校验失败，仍视为登录成功
-      return { success: true, message: '登录凭证已保存（服务端校验未通过，请检查网络或域名设置）' }
-    } catch {
-      return { success: true, message: '登录凭证已保存（服务端校验跳过）' }
-    }
+    const verifyFail = verifyLoginCookies(source, extraction.cookies)
+    if (verifyFail) return verifyFail
+    return await applyAndVerifyAuth(source, extraction.cookies, extraction.domain, userAgent, jmcomicUsername)
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : '登录处理失败'
-    return { success: false, message }
+    return { success: false, message: err instanceof Error ? err.message : '登录处理失败' }
   }
 }
+
+/**
+ * jmcomic 登录窗口 DOM 提取用户名的脚本：从导航栏 /user/{name}/favorite 链接提取，
+ * 次级从任意 /user/{name} 链接提取（排除 profile/favorites/setting 等通用项）。
+ *
+ * 抽为模块级常量便于：(1) 静态审阅脚本逻辑；(2) 单元测试断言 executeJavaScript 入参；
+ * (3) 避免 TS 模板字符串中转义正则反斜杠导致的可读性问题。
+ */
+const EXTRACT_JMCOMIC_USERNAME_SCRIPT = `(() => {
+  const links = document.querySelectorAll('a[href*="/favorite"]');
+  for (const link of links) {
+    const m = (link.getAttribute('href') || '').match(/\\/user\\/([^/?#]+)\\/favorite/);
+    if (m) return m[1];
+  }
+  // 次级：从任意 /user/{name} 链接提取
+  const userLinks = document.querySelectorAll('a[href*="/user/"]');
+  const generic = new Set(['profile','favorites','setting','my_favourite']);
+  for (const link of userLinks) {
+    const m = (link.getAttribute('href') || '').match(/\\/user\\/([^/?#]+)/);
+    if (m && !generic.has(m[1])) return m[1];
+  }
+  return '';
+})()`
 
 /** 从 jmcomic 登录窗口 DOM 中提取用户名（导航栏 /user/{name}/favorite 链接）。 */
 async function extractJmcomicUsername(loginWin: BrowserWindow): Promise<string> {
   if (loginWin.isDestroyed()) return ''
   try {
-    const username = await loginWin.webContents.executeJavaScript(
-      `(() => {
-        const links = document.querySelectorAll('a[href*="/favorite"]');
-        for (const link of links) {
-          const m = (link.getAttribute('href') || '').match(/\\/user\\/([^/?#]+)\\/favorite/);
-          if (m) return m[1];
-        }
-        // 次级：从任意 /user/{name} 链接提取
-        const userLinks = document.querySelectorAll('a[href*="/user/"]');
-        const generic = new Set(['profile','favorites','setting','my_favourite']);
-        for (const link of userLinks) {
-          const m = (link.getAttribute('href') || '').match(/\\/user\\/([^/?#]+)/);
-          if (m && !generic.has(m[1])) return m[1];
-        }
-        return '';
-      })()`,
-    )
+    const username = await loginWin.webContents.executeJavaScript(EXTRACT_JMCOMIC_USERNAME_SCRIPT)
     return (username || '').trim()
   } catch {
     return ''
@@ -330,86 +460,147 @@ function bindManualCloseExtraction(
   })
 }
 
+// ── openLoginWindow 子组件 ──────────────────────────────────────────────
+
+interface LoginTarget {
+  url: string
+  title: string
+  domain: string
+}
+
+/**
+ * 按 source 派发登录 URL/title/domain。纯函数，便于单测。
+ * - jmcomic：resolvedDomain 优先，否则用 JMCOMIC_DEFAULT_DOMAIN
+ * - copymanga：固定 COPYMANGA_DOMAIN
+ * - 其他（hcomic/未知）：HCOMIC_DOMAIN
+ */
+export function resolveLoginTarget(source: string, resolvedDomain?: string): LoginTarget {
+  if (source === 'jmcomic') {
+    const domain = resolvedDomain || JMCOMIC_DEFAULT_DOMAIN
+    return { url: `https://${domain}`, title: '登录 jmcomic', domain }
+  }
+  if (source === 'copymanga') {
+    return { url: `https://${COPYMANGA_DOMAIN}`, title: '登录拷贝漫画', domain: COPYMANGA_DOMAIN }
+  }
+  return { url: `https://${HCOMIC_DOMAIN}`, title: '登录 H-Comic', domain: HCOMIC_DOMAIN }
+}
+
+/**
+ * 构造登录窗口上下文：合并 settled/extractInProgress 标志与 done 闭包。
+ *
+ * done 闭包内引用 ctx 自身（settled 守卫防重入）：先短路检查、再置 settled、
+ * 清 timeout、调用 cleanup、destroy 窗口、resolve Promise。
+ * 用 destroy 而非 close：close 已被 preventDefault，且 destroy 不再触发 close 事件。
+ */
+function createLoginContext(
+  loginWin: BrowserWindow,
+  resolve: (r: { success: boolean; message?: string }) => void,
+  removeCspHandler: () => void,
+): LoginWindowContext {
+  const ctx: LoginWindowContext = {
+    settled: false,
+    savedUserAgent: '',
+    extractInProgress: false,
+    clearTimeout: () => {},
+    removeCspHandler,
+    removePermissionHandlers: null,
+    done: (result) => {
+      diag(`done called: settled=${ctx.settled} success=${result.success}`)
+      if (ctx.settled) return
+      ctx.settled = true
+      ctx.clearTimeout()
+      if (ctx.removeCspHandler) {
+        ctx.removeCspHandler()
+        ctx.removeCspHandler = null
+      }
+      if (ctx.removePermissionHandlers) {
+        ctx.removePermissionHandlers()
+        ctx.removePermissionHandlers = null
+      }
+      // 用 destroy() 而非 close()：close 已被 preventDefault，且 destroy 不再
+      // 触发 close 事件，避免重入。destroy 后由 'closed' 兜底清理。
+      if (!loginWin.isDestroyed()) {
+        loginWin.destroy()
+      }
+      resolve(result)
+    },
+  }
+  return ctx
+}
+
+/**
+ * 绑定登录窗口的页面生命周期事件：render-process-gone（崩溃→done）、
+ * did-fail-load（仅记录，不关闭）、unresponsive（仅记录）、did-finish-load（保存 UA）、
+ * will-navigate（域名白名单拦截）。
+ *
+ * timeout 不在此绑定（需注入 ctx.clearTimeout，由编排层管理 handle）。
+ */
+function attachLoginWindowLifecycle(loginWin: BrowserWindow, ctx: LoginWindowContext): void {
+  loginWin.webContents.on('render-process-gone', (_event, details) => {
+    diag(`render-process-gone: ${details.reason} (exit ${details.exitCode})`)
+    console.error(`[LoginWindow] renderer crashed: ${details.reason} (${details.exitCode})`)
+    ctx.done({ success: false, message: `登录页面崩溃 (${details.reason})，请重试` })
+  })
+
+  loginWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
+    diag(`did-fail-load: ${errorCode} ${errorDescription} url=${validatedURL}`)
+    console.error(`[LoginWindow] page load failed: ${errorCode} ${errorDescription}`)
+    // 不关闭窗口：让用户重试或等 timeout
+  })
+
+  loginWin.on('unresponsive', () => {
+    diag('login window unresponsive')
+    console.error('[LoginWindow] login window became unresponsive')
+  })
+
+  loginWin.webContents.on('did-finish-load', () => {
+    diag('did-finish-load')
+    if (!ctx.savedUserAgent && !loginWin.isDestroyed()) {
+      ctx.savedUserAgent = loginWin.webContents.userAgent
+    }
+  })
+
+  loginWin.webContents.on('will-navigate', (event, url) => {
+    let hostname: string
+    try { hostname = new URL(url).hostname } catch { return }
+    const allowed = ALLOWED_NAV_DOMAINS.some(
+      d => hostname === d || hostname.endsWith('.' + d),
+    )
+    if (!allowed) {
+      diag(`blocked navigation to: ${hostname}`)
+      event.preventDefault()
+    }
+  })
+}
+
+/**
+ * 加载登录 URL，吞掉 ERR_ABORTED（广告脚本重定向触发，主页面通常已通过 did-navigate 加载）。
+ * 不关闭窗口，让用户仍能登录。
+ */
+function loadLoginUrl(loginWin: BrowserWindow, url: string): void {
+  diag(`openLoginWindow: loading URL ${url}`)
+  loginWin.loadURL(url).catch((err) => {
+    diag(`loadURL rejected (non-fatal): ${err}`)
+  })
+}
+
 export function openLoginWindow(mainWindow: BrowserWindow | null, source: string = 'hcomic', resolvedDomain?: string): Promise<{ success: boolean; message?: string }> {
   diag(`openLoginWindow called: source=${source}`)
   if (!mainWindow) {
     return Promise.resolve({ success: false, message: '主窗口不存在' })
   }
 
-  const jmcomicDomain = resolvedDomain || '18comic.vip'
-  const copymangaDomain = 'www.2026copy.com'
-  let loginUrl: string
-  let loginTitle: string
-  let loginDomain: string
-
-  if (source === 'jmcomic') {
-    loginUrl = `https://${jmcomicDomain}`
-    loginTitle = '登录 jmcomic'
-    loginDomain = jmcomicDomain
-  } else if (source === 'copymanga') {
-    loginUrl = `https://${copymangaDomain}`
-    loginTitle = '登录拷贝漫画'
-    loginDomain = copymangaDomain
-  } else {
-    loginUrl = 'https://h-comic.com'
-    loginTitle = '登录 H-Comic'
-    loginDomain = 'h-comic.com'
-  }
+  const target = resolveLoginTarget(source, resolvedDomain)
 
   return new Promise((resolve) => {
     diag('openLoginWindow: creating window')
-    const loginWin = createLoginBrowserWindow(mainWindow, loginTitle)
+    const loginWin = createLoginBrowserWindow(mainWindow, target.title)
     diag('openLoginWindow: setting up CSP')
     const removeCspHandler = setupLoginWindowCSP(loginWin)
 
-    const ctx: LoginWindowContext = {
-      settled: false,
-      savedUserAgent: '',
-      extractInProgress: false,
-      clearTimeout: () => {},
-      removeCspHandler,
-      removePermissionHandlers: null,
-      done: (result) => {
-        diag(`done called: settled=${ctx.settled} success=${result.success}`)
-        if (ctx.settled) return
-        ctx.settled = true
-        ctx.clearTimeout()
-        if (ctx.removeCspHandler) {
-          ctx.removeCspHandler()
-          ctx.removeCspHandler = null
-        }
-        if (ctx.removePermissionHandlers) {
-          ctx.removePermissionHandlers()
-          ctx.removePermissionHandlers = null
-        }
-        // 用 destroy() 而非 close()：close 已被 preventDefault，且 destroy 不再
-        // 触发 close 事件，避免重入。destroy 后由 'closed' 兜底清理。
-        if (!loginWin.isDestroyed()) {
-          loginWin.destroy()
-        }
-        resolve(result)
-      },
-    }
+    const ctx = createLoginContext(loginWin, resolve, removeCspHandler)
 
-    diag('openLoginWindow: registering render-process-gone')
-    loginWin.webContents.on('render-process-gone', (_event, details) => {
-      diag(`render-process-gone: ${details.reason} (exit ${details.exitCode})`)
-      console.error(`[LoginWindow] renderer crashed: ${details.reason} (${details.exitCode})`)
-      ctx.done({ success: false, message: `登录页面崩溃 (${details.reason})，请重试` })
-    })
-
-    diag('openLoginWindow: registering did-fail-load')
-    loginWin.webContents.on('did-fail-load', (_event, errorCode, errorDescription, validatedURL) => {
-      diag(`did-fail-load: ${errorCode} ${errorDescription} url=${validatedURL}`)
-      console.error(`[LoginWindow] page load failed: ${errorCode} ${errorDescription}`)
-      // Don't close — let the user retry or the timeout fire
-    })
-
-    diag('openLoginWindow: registering unresponsive')
-    loginWin.on('unresponsive', () => {
-      diag('login window unresponsive')
-      console.error('[LoginWindow] login window became unresponsive')
-    })
+    attachLoginWindowLifecycle(loginWin, ctx)
 
     const timeout = setTimeout(() => {
       diag('login window timed out')
@@ -417,53 +608,12 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
     }, LOGIN_WINDOW_TIMEOUT_MS)
     ctx.clearTimeout = () => clearTimeout(timeout)
 
-    loginWin.webContents.on('did-finish-load', () => {
-      diag('did-finish-load')
-      if (!ctx.savedUserAgent && !loginWin.isDestroyed()) {
-        ctx.savedUserAgent = loginWin.webContents.userAgent
-      }
-    })
-
-    // Block ad redirects — h-comic.com has ad scripts (juicyads.com etc.)
-    // that attempt page-level redirects. These cause loadURL to reject with
-    // ERR_ABORTED, which the old code treated as a fatal error and closed the
-    // window, causing the perceived "crash".
-    //
-    // jmcomic sources: login may redirect between mirror domains (18comic.vip,
-    // 18comic.org, jmcomic-zzz.one, etc.) during the auth flow, so all known
-    // mirrors must be allowed. Without this the "will-navigate" handler blocks
-    // the redirect and login silently fails.
-    const ALLOWED_NAV_DOMAINS = [
-      'h-comic.com',
-      'www.h-comic.com',
-      'auth0.com',
-      ...JMCOMIC_MIRROR_DOMAINS,
-      copymangaDomain,
-    ]
-    loginWin.webContents.on('will-navigate', (event, url) => {
-      let hostname: string
-      try { hostname = new URL(url).hostname } catch { return }
-      const allowed = ALLOWED_NAV_DOMAINS.some(
-        d => hostname === d || hostname.endsWith('.' + d),
-      )
-      if (!allowed) {
-        diag(`blocked navigation to: ${hostname}`)
-        event.preventDefault()
-      }
-    })
-
     // 不可信第三方 SPA 内容隔离（popup 拒绝 + 权限拒绝）
     ctx.removePermissionHandlers = setupLoginContentIsolation(loginWin)
 
-    bindManualCloseExtraction(loginWin, ctx, source, loginDomain)
+    bindManualCloseExtraction(loginWin, ctx, source, target.domain)
 
-    diag(`openLoginWindow: loading URL ${loginUrl}`)
-    loginWin.loadURL(loginUrl).catch((err) => {
-      // ERR_ABORTED is typically triggered by blocked ad redirects —
-      // the main page likely loaded fine via did-navigate. Don't close
-      // the window so the user can still log in.
-      diag(`loadURL rejected (non-fatal): ${err}`)
-    })
+    loadLoginUrl(loginWin, target.url)
     diag('openLoginWindow: loadURL called')
   })
 }
