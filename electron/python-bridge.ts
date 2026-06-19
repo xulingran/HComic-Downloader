@@ -15,6 +15,8 @@ const MAX_RESTARTS = 5
 const STARTUP_CRASH_WINDOW_MS = 30_000
 // 优雅关闭 RPC 的等待上限：给后端时间刷盘（断点续传、下载状态）再强制 kill。
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 2_000
+// 故障后重启后端的延迟：给 OS 释放端口与文件锁的时间，避免立即 spawn 再次失败。
+const BACKEND_RESTART_DELAY_MS = 2_000
 
 interface PendingRequest {
   resolve: (value: unknown) => void
@@ -191,11 +193,9 @@ export class PythonBridge {
     message: string,
     reason: 'bufferOverflow' | 'processExit' | 'spawnError' | 'other' = 'other',
   ) {
-    for (const [, pending] of this.pendingRequests) {
-      clearTimeout(pending.timer)
-      pending.reject(new Error(message))
-    }
-    this.pendingRequests.clear()
+    // 复用 _clearPendingRequests：与 _processLine 溢出路径对称，避免内联重复
+    // for 循环（原代码在此 inline 了 pending reject 逻辑）。
+    this._clearPendingRequests(message)
 
     if (this.process) {
       const oldProc = this.process
@@ -233,7 +233,7 @@ export class PythonBridge {
       this.restartCount++
       this.restartTimer = setTimeout(() => {
         this.start()
-      }, 2000)
+      }, BACKEND_RESTART_DELAY_MS)
     } else if (this.restartCount >= MAX_RESTARTS) {
       console.error(`Python bridge exceeded max restart attempts (${MAX_RESTARTS})`)
       // 致命：重启已超限，后端无法恢复
@@ -334,6 +334,9 @@ export class PythonBridge {
       clearTimeout(this.restartTimer)
       this.restartTimer = null
     }
+    // 清理 pending 请求：调用方的 Promise 必须被 reject，否则会永久悬挂。
+    // _clearPendingRequests 同时清空 buffer，与 _processLine 溢出路径对称。
+    this._clearPendingRequests('Python bridge killed')
     if (this.process) {
       this.process.kill()
       this.process = null

@@ -1,3 +1,5 @@
+import { SOURCE_VALUES } from '../shared/types'
+
 export type Validator<T> = (value: unknown) => value is T
 
 export class ValidationError extends Error {
@@ -293,4 +295,25 @@ export function assert<T>(
     }
     throw err
   }
+}
+
+// ── Optional source helper ──────────────────────────────────────────────
+
+/**
+ * 可选 source 参数的统一校验+注入：替换 main.ts 中 13+ 处镜像重复的
+ * `if (source !== undefined && source !== null) { assert(...); params.source = source }`。
+ *
+ * - source 为 undefined/null → 跳过（params 不变）
+ * - source 为合法 ComicSource 字符串 → 校验通过并写入 params.source
+ * - 否则 → 抛 ValidationError，错误信息包含 `<label> source` 标签
+ */
+export function withOptionalSource(
+  params: Record<string, unknown>,
+  source: unknown,
+  label: string,
+): void {
+  if (source === undefined || source === null) return
+  const validator = and(string(), oneOf(Array.from(SOURCE_VALUES)))
+  assert(validator, source, `${label} source`)
+  params.source = source
 }

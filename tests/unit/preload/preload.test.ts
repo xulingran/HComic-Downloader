@@ -209,4 +209,100 @@ describe('preload.ts', () => {
       expect(() => exposedApi.onDownloadProgress(callback)).not.toThrow()
     })
   })
+
+  // 回归：validateCredentialPair helper 必须被三个登录函数复用，
+  // 任一处漏接或语义漂移（如 trim 逻辑丢失）都应被这里的统一断言捕获。
+  describe('login helpers (validateCredentialPair)', () => {
+    const loginMethods = ['moeimgLogin', 'bikaLogin', 'hcomicLogin'] as const
+
+    for (const method of loginMethods) {
+      describe(`${method}`, () => {
+        it('rejects empty username', () => {
+          expect(() => exposedApi[method]('', 'pass')).toThrow('Invalid username')
+          expect(() => exposedApi[method]('   ', 'pass')).toThrow('Invalid username')
+        })
+
+        it('rejects non-string username', () => {
+          expect(() => exposedApi[method](123, 'pass')).toThrow('Invalid username')
+          expect(() => exposedApi[method](null, 'pass')).toThrow('Invalid username')
+        })
+
+        it('rejects username over 256 chars', () => {
+          expect(() => exposedApi[method]('a'.repeat(257), 'pass')).toThrow('Invalid username')
+        })
+
+        it('rejects empty password', () => {
+          expect(() => exposedApi[method]('user', '')).toThrow('Invalid password')
+          expect(() => exposedApi[method]('user', '   ')).toThrow('Invalid password')
+        })
+
+        it('rejects non-string password', () => {
+          expect(() => exposedApi[method]('user', 123)).toThrow('Invalid password')
+          expect(() => exposedApi[method]('user', null)).toThrow('Invalid password')
+        })
+
+        it('accepts valid credential pair and invokes IPC', () => {
+          exposedApi[method]('user', 'pass')
+          expect(mockInvoke).toHaveBeenCalled()
+        })
+      })
+    }
+  })
+
+  // 回归：validateComicIdAndOptionalSource helper 必须被三个收藏函数复用。
+  describe('favourites helpers (validateComicIdAndOptionalSource)', () => {
+    const favMethods = ['addToFavourites', 'checkFavourite', 'removeFromFavourites'] as const
+
+    for (const method of favMethods) {
+      describe(`${method}`, () => {
+        it('rejects empty comicId', () => {
+          expect(() => exposedApi[method]('')).toThrow('Invalid comicId')
+        })
+
+        it('rejects non-string comicId', () => {
+          expect(() => exposedApi[method](123)).toThrow('Invalid comicId')
+          expect(() => exposedApi[method](null)).toThrow('Invalid comicId')
+        })
+
+        it('rejects comicId over 256 chars', () => {
+          expect(() => exposedApi[method]('a'.repeat(257))).toThrow('Invalid comicId')
+        })
+
+        it('rejects non-string source', () => {
+          expect(() => exposedApi[method]('id', 123)).toThrow('Invalid source')
+          expect(() => exposedApi[method]('id', { x: 1 })).toThrow('Invalid source')
+        })
+
+        it('accepts undefined/null source', () => {
+          expect(() => exposedApi[method]('id', undefined)).not.toThrow()
+          expect(() => exposedApi[method]('id', null)).not.toThrow()
+        })
+
+        it('accepts valid comicId + source and invokes IPC', () => {
+          exposedApi[method]('id', 'hcomic')
+          expect(mockInvoke).toHaveBeenCalled()
+        })
+      })
+    }
+  })
+
+  // 回归：fetchPreviewImage 的 scrambleId/comicId 必须接受字符串/undefined/null，
+  // 拒绝其他类型（早期类型守卫，主进程会做权威校验）。
+  describe('fetchPreviewImage scrambleId/comicId guards', () => {
+    it('rejects non-string scrambleId', () => {
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', 123)).toThrow('Invalid scrambleId')
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', { a: 1 })).toThrow('Invalid scrambleId')
+    })
+
+    it('rejects non-string comicId', () => {
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', undefined, 123)).toThrow('Invalid comicId')
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', undefined, false)).toThrow('Invalid comicId')
+    })
+
+    it('accepts string/undefined/null scrambleId/comicId', () => {
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', 'sid', 'cid')).not.toThrow()
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', undefined, undefined)).not.toThrow()
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', null, null)).not.toThrow()
+    })
+  })
 })

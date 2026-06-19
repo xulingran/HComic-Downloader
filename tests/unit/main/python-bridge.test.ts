@@ -296,6 +296,19 @@ describe('PythonBridge', () => {
       expect(mockSpawn).toHaveBeenCalledTimes(1)
       vi.useRealTimers()
     })
+
+    // 回归：kill() 必须清理 pending 请求，否则调用方的 Promise 永久悬挂（资源泄漏）。
+    // 历史实现 kill() 仅清进程引用，未 reject pending，导致 bridge.call() 进行中
+    // 被异常路径直接 kill 的场景下 Promise 永不 settle。
+    it('should reject pending requests with clear message when killed', async () => {
+      const bridge = new PythonBridge()
+      // 启动一个永不会被后端响应的请求（mock 进程不回 stdout）
+      const pendingPromise = bridge.call('long_running')
+
+      bridge.kill()
+
+      await expect(pendingPromise).rejects.toThrow('Python bridge killed')
+    })
   })
 
   describe('auto-restart', () => {

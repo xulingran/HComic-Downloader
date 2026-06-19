@@ -11,7 +11,7 @@ import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
-import { ComicInfo, PaginationInfo } from '@shared/types'
+import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore, type FavouritesPageCache } from '../stores/useFavouritesStore'
 import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
@@ -65,7 +65,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const activeDownloadMap = useMemo(() => {
     const map = new Map<string, DownloadProgressData>()
     for (const t of tasks) {
-      if (t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused' || t.status === 'failed') {
+      if (PROGRESS_BADGE_STATUSES.has(t.status)) {
         const p = downloadProgress[t.id]
         if (p) map.set(t.comic.id, p)
       }

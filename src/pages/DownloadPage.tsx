@@ -6,6 +6,7 @@ import { useDownloadHelper } from '../hooks/useDownloadHelper'
 import { ProgressBar } from '../components/common/ProgressBar'
 import { TaskActionButtons } from '../components/common/TaskActionButtons'
 import type { DownloadStatus, DownloadDetail } from '@shared/types'
+import { ACTIVE_DOWNLOAD_STATUSES, RUNNING_DOWNLOAD_STATUSES } from '@shared/types'
 
 type StatusFilter = 'all' | 'active' | 'completed' | 'failed' | 'paused'
 
@@ -19,7 +20,9 @@ const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
 
 function matchStatusFilter(status: DownloadStatus, filter: StatusFilter): boolean {
   if (filter === 'all') return true
-  if (filter === 'active') return status === 'downloading' || status === 'queued' || status === 'pausing'
+  // 'active' 过滤器：运行中（queued/downloading/pausing），不含已暂停的 paused。
+  // 用 RUNNING_DOWNLOAD_STATUSES 派生（语义≠ACTIVE_DOWNLOAD_STATUSES：后者含 paused）。
+  if (filter === 'active') return RUNNING_DOWNLOAD_STATUSES.has(status)
   return status === filter
 }
 
@@ -297,9 +300,8 @@ export function DownloadPage() {
             const isPacked = ap?.event === 'packed'
             const taskIds = group.tasks.map(t => t.id)
 
-            // 专辑聚合状态：用于决定头部显示哪些控制按钮
-            const albumActiveStatuses = ['queued', 'downloading', 'pausing', 'paused']
-            const hasActive = group.tasks.some(t => albumActiveStatuses.includes(t.status))
+            // 专辑聚合状态：用于决定头部显示哪些控制按钮（4 个活跃状态）
+            const hasActive = group.tasks.some(t => ACTIVE_DOWNLOAD_STATUSES.has(t.status))
             const allPaused = group.tasks.length > 0 && group.tasks.every(t => t.status === 'paused' || t.status === 'pausing')
             const hasAnyFailed = group.tasks.some(t => t.status === 'failed')
             const isExpanded = expandedAlbums.has(key)

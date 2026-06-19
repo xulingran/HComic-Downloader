@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ComicInfo } from '@shared/types'
+import { ComicInfo, IMAGE_QUALITIES } from '@shared/types'
 import { useComicReader } from '../hooks/useComicReader'
 import { useReaderSettings, type BlankPosition } from '../hooks/useReaderSettings'
 import { usePreloadManager } from '../hooks/usePreloadManager'
@@ -723,7 +723,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                     </span>
                   </label>
                   <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                    {(['low', 'medium', 'high', 'original'] as const).map((q) => (
+                    {IMAGE_QUALITIES.map((q) => (
                       <button
                         key={q}
                         onClick={() => {

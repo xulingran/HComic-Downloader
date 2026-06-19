@@ -7,7 +7,7 @@ import { PaginationControls } from '../components/common/PaginationControls'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
-import { HistoryItem, PaginationInfo, type ComicInfo } from '@shared/types'
+import { HistoryItem, PaginationInfo, type ComicInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useToastStore } from '../stores/useToastStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
@@ -83,7 +83,7 @@ export function HistoryPage() {
   const activeDownloadMap = useMemo(() => {
     const map = new Map<string, DownloadProgressData>()
     for (const t of tasks) {
-      if (t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused' || t.status === 'failed') {
+      if (PROGRESS_BADGE_STATUSES.has(t.status)) {
         const p = downloadProgress[t.id]
         if (p) map.set(t.comic.id, p)
       }

@@ -9,6 +9,7 @@ import {
   tagBlacklist,
   duplicateBlacklist,
   assert,
+  withOptionalSource,
   ValidationError,
 } from '../../../electron/validators'
 
@@ -357,6 +358,58 @@ describe('validators.ts', () => {
     it('re-throws non-ValidationError exceptions', () => {
       const throws: (v: unknown) => v is string = (_v: unknown): _v is string => { throw new Error('custom') }
       expect(() => assert(throws, 'x', 'test')).toThrow('custom')
+    })
+  })
+
+  describe('withOptionalSource()', () => {
+    it('skips and leaves params untouched when source is undefined', () => {
+      const params: Record<string, unknown> = { foo: 1 }
+      withOptionalSource(params, undefined, 'test')
+      expect(params).toEqual({ foo: 1 })
+      expect(params.source).toBeUndefined()
+    })
+
+    it('skips and leaves params untouched when source is null', () => {
+      const params: Record<string, unknown> = { foo: 1 }
+      withOptionalSource(params, null, 'test')
+      expect(params).toEqual({ foo: 1 })
+      expect(params.source).toBeUndefined()
+    })
+
+    it('injects valid ComicSource into params.source', () => {
+      const params: Record<string, unknown> = { foo: 1 }
+      withOptionalSource(params, 'jmcomic', 'search')
+      expect(params.source).toBe('jmcomic')
+    })
+
+    it('accepts all five COMIC_SOURCES values', () => {
+      for (const src of ['hcomic', 'moeimg', 'jmcomic', 'bika', 'copymanga']) {
+        const params: Record<string, unknown> = {}
+        expect(() => withOptionalSource(params, src, 'test')).not.toThrow()
+        expect(params.source).toBe(src)
+      }
+    })
+
+    it('throws ValidationError with <label> source for unknown source', () => {
+      const params: Record<string, unknown> = {}
+      expect(() => withOptionalSource(params, 'evil', 'search')).toThrow('Invalid search source')
+      expect(params.source).toBeUndefined()
+    })
+
+    it('throws ValidationError for non-string source', () => {
+      const params: Record<string, unknown> = {}
+      expect(() => withOptionalSource(params, 123, 'favourites')).toThrow('Invalid favourites source')
+      expect(() => withOptionalSource(params, { x: 1 }, 'random')).toThrow('Invalid random source')
+    })
+
+    it('includes the label in the error field', () => {
+      try {
+        withOptionalSource({}, 'bad', 'get_favourite_tags')
+        expect.fail('should have thrown')
+      } catch (err) {
+        expect(err).toBeInstanceOf(ValidationError)
+        expect((err as ValidationError).field).toBe('get_favourite_tags source')
+      }
     })
   })
 })

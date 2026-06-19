@@ -46,7 +46,38 @@ export interface DownloadTask {
   error?: string
 }
 
-export type DownloadStatus = 'queued' | 'downloading' | 'pausing' | 'paused' | 'completed' | 'failed' | 'cancelled'
+// ── 派生常量（单一来源）─────────────────────────────────────────
+// DOWNLOAD_STATUSES 是 DownloadStatus 的来源（type 从 const tuple 派生），
+// 不是反向。这保证运行时集合与编译期类型永远同步：增删状态只改一处。
+export const DOWNLOAD_STATUSES = [
+  'queued', 'downloading', 'pausing', 'paused',
+  'completed', 'failed', 'cancelled',
+] as const
+export type DownloadStatus = typeof DOWNLOAD_STATUSES[number]
+
+// 下载"活跃态"子集：用于 UI 显示活跃任务计数、NotificationManager 触发判断、
+// 主窗口 close 拦截。所有用途都是运行时 .has() 查询，故用 ReadonlySet。
+// 注意：含 paused（用户手动暂停的任务仍占用槽位、仍可能恢复，故计入"活跃"）。
+export const ACTIVE_DOWNLOAD_STATUSES: ReadonlySet<string> = new Set([
+  'queued', 'downloading', 'pausing', 'paused',
+])
+
+// 下载"运行中"子集：queued/downloading/pausing，**不含** paused（用户已主动暂停，
+// 不再消耗带宽）。用于"运行中"过滤器、UI 头部按钮可见性等需要与"活跃态"区分的语义。
+// 与 ACTIVE_DOWNLOAD_STATUSES 的区别：ACTIVE 含 paused，RUNNING 不含。
+export const RUNNING_DOWNLOAD_STATUSES: ReadonlySet<string> = new Set([
+  'queued', 'downloading', 'pausing',
+])
+
+// "需要显示进度徽章"的状态集合：活跃 4 态 + failed（失败任务仍需展示进度）。
+// 用于 Favourites/History/Search 等列表页的任务徽章可见性判断。
+export const PROGRESS_BADGE_STATUSES: ReadonlySet<string> = new Set([
+  'queued', 'downloading', 'pausing', 'paused', 'failed',
+])
+
+// 图片质量等级（bika 配置 + 预览图请求共用），单一来源避免字面量重复。
+export const IMAGE_QUALITIES = ['low', 'medium', 'high', 'original'] as const
+export type ImageQuality = typeof IMAGE_QUALITIES[number]
 
 export interface HistoryItem {
   id: number
@@ -760,6 +791,8 @@ export type SearchMode = typeof SEARCH_MODES[number]
 /** Valid comic sources — shared between preload and main */
 export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic', 'bika', 'copymanga'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
+/** Set 形式，供 main/preload 的运行时 oneOf 校验复用，避免每处 `new Set(COMIC_SOURCES)` 重复构造 */
+export const SOURCE_VALUES: ReadonlySet<string> = new Set(COMIC_SOURCES)
 
 /** 来源元数据 — 集中管理标签和能力标志 */
 export const SOURCE_META = {

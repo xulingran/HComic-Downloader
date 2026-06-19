@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
 import type { HcomicAPI, ConfigKey, ConfigValueMap } from '@shared/types'
-import { ComicInfo } from '@shared/types'
+import { ComicInfo, ACTIVE_DOWNLOAD_STATUSES } from '@shared/types'
 
 declare global {
   interface Window {
@@ -72,7 +72,7 @@ export interface DownloadProgressData {
 }
 
 export function isDownloadActive(status?: string): boolean {
-  return status === 'downloading' || status === 'queued' || status === 'pausing' || status === 'paused'
+  return !!status && ACTIVE_DOWNLOAD_STATUSES.has(status)
 }
 
 export function useDownloadProgress() {

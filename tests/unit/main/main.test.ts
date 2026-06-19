@@ -81,6 +81,9 @@ vi.mock('electron', () => {
     crashReporter: {
       start: vi.fn(),
     },
+    clipboard: {
+      writeText: vi.fn(),
+    },
     session: {
       defaultSession: {
         cookies: { get: vi.fn().mockResolvedValue([]) },
@@ -620,6 +623,31 @@ describe('main.ts', () => {
     it('python:apply-auth should reject curlText over 64KB', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
       await expect(handler.handler({}, 'c'.repeat(65537))).rejects.toThrow('Invalid apply_auth curlText')
+    })
+
+    // 回归：WRITE_CLIPBOARD 必须在主进程独立校验，不依赖 preload 透传的 TS 类型签名
+    // （IPC 间类型签名不是安全边界）。校验与项目其他 IPC handler 的"主进程权威校验"契约对齐。
+    it('system:write-clipboard should reject non-string text', async () => {
+      const handler = handleCalls.find(h => h.channel === 'system:write-clipboard')!
+      await expect(handler.handler({}, { foo: 'bar' })).rejects.toThrow('Invalid clipboard text')
+      await expect(handler.handler({}, 12345)).rejects.toThrow('Invalid clipboard text')
+    })
+
+    it('system:write-clipboard should reject empty text', async () => {
+      const handler = handleCalls.find(h => h.channel === 'system:write-clipboard')!
+      await expect(handler.handler({}, '')).rejects.toThrow('Invalid clipboard text')
+    })
+
+    it('system:write-clipboard should reject text over 2MB', async () => {
+      const handler = handleCalls.find(h => h.channel === 'system:write-clipboard')!
+      await expect(handler.handler({}, 'x'.repeat(2_000_001))).rejects.toThrow('Invalid clipboard text')
+    })
+
+    it('system:write-clipboard should accept valid text and call clipboard.writeText', async () => {
+      const { clipboard } = await import('electron')
+      const handler = handleCalls.find(h => h.channel === 'system:write-clipboard')!
+      await handler.handler({}, 'normal text')
+      expect(clipboard.writeText).toHaveBeenCalledWith('normal text')
     })
   })
 

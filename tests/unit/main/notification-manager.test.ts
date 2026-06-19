@@ -57,6 +57,32 @@ describe('NotificationManager', () => {
       manager.handleProgress({ taskId: 't2', status: 'pausing', title: 'B' })
       expect(mockNotification).not.toHaveBeenCalled()
     })
+
+    // 显式覆盖 4 个活跃状态：queued/downloading/pausing/paused 都应保持任务在
+    // active 集合内（不触发批量通知）；任一被错误地从 ACTIVE_STATUSES 漏掉都会
+    // 让该任务被视为已完成并过早触发通知。
+    it('keeps all four active statuses without notifying', () => {
+      for (const status of ['queued', 'downloading', 'pausing', 'paused'] as const) {
+        manager.handleProgress({ taskId: `task-${status}`, status, title: status })
+      }
+      // 4 个活跃任务都未离开 active 集合 → 不应有完成通知
+      expect(mockNotification).not.toHaveBeenCalled()
+    })
+
+    it('only notifies when ALL active tasks have left the active set', () => {
+      // 注册 4 个不同活跃状态的任务
+      for (const status of ['queued', 'downloading', 'pausing', 'paused'] as const) {
+        manager.handleProgress({ taskId: `task-${status}`, status, title: status })
+      }
+      // 让其中 3 个完成：仍有 1 个 active，不应通知
+      manager.handleProgress({ taskId: 'task-queued', status: 'completed', title: 'q' })
+      manager.handleProgress({ taskId: 'task-downloading', status: 'completed', title: 'd' })
+      manager.handleProgress({ taskId: 'task-pausing', status: 'completed', title: 'p' })
+      expect(mockNotification).not.toHaveBeenCalled()
+      // 最后一个 active 任务完成 → 触发批量通知
+      manager.handleProgress({ taskId: 'task-paused', status: 'completed', title: 'pd' })
+      expect(mockNotification).toHaveBeenCalledTimes(1)
+    })
   })
 
   describe('batch notification trigger', () => {

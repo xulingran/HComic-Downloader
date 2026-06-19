@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
-  SEARCH_MODES, COMIC_SOURCES, CONFIG_KEYS,
+  CONFIG_KEYS, IMAGE_QUALITIES, SOURCE_VALUES,
+  SEARCH_MODES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS,
 } from '../shared/types'
 
 const VALID_SEARCH_MODES = new Set<string>(SEARCH_MODES)
-const VALID_SOURCES = new Set<string>(COMIC_SOURCES)
+const VALID_SOURCES = SOURCE_VALUES
 const VALID_CONFIG_KEYS = new Set<string>(CONFIG_KEYS)
 
 function validatePage(page: unknown): asserts page is number {
@@ -16,6 +17,25 @@ function validatePage(page: unknown): asserts page is number {
 
 function validateTaskId(id: unknown): asserts id is string {
   if (typeof id !== 'string' || id.length === 0 || id.length > 256) throw new Error('Invalid taskId')
+}
+
+/**
+ * 用户名/密码对校验：moeimg/bika/hcomic 三个登录 API 共用。
+ * 抽 helper 消除三处镜像重复（每处 4 行 if 抛错）。
+ */
+function validateCredentialPair(username: unknown, password: unknown): void {
+  if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
+  if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')
+}
+
+/**
+ * comicId + 可选 source 校验：addToFavourites/checkFavourite/removeFromFavourites 共用。
+ * 注意 preload 端不校验 source 是否在 COMIC_SOURCES 内（主进程权威校验），
+ * 仅做类型与长度早期拒绝。
+ */
+function validateComicIdAndOptionalSource(comicId: unknown, source: unknown): void {
+  if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
+  if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
 }
 
 /**
@@ -101,20 +121,17 @@ contextBridge.exposeInMainWorld('hcomic', {
   },
 
   addToFavourites: (comicId: unknown, source?: unknown) => {
-    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
-    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    validateComicIdAndOptionalSource(comicId, source)
     return ipcRenderer.invoke(IPC_CHANNELS.ADD_TO_FAVOURITES, comicId, source ?? undefined)
   },
 
   checkFavourite: (comicId: unknown, source?: unknown) => {
-    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
-    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    validateComicIdAndOptionalSource(comicId, source)
     return ipcRenderer.invoke(IPC_CHANNELS.CHECK_FAVOURITE, comicId, source ?? undefined)
   },
 
   removeFromFavourites: (comicId: unknown, source?: unknown) => {
-    if (typeof comicId !== 'string' || comicId.length === 0 || comicId.length > 256) throw new Error('Invalid comicId')
-    if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
+    validateComicIdAndOptionalSource(comicId, source)
     return ipcRenderer.invoke(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, comicId, source ?? undefined)
   },
 
@@ -144,22 +161,19 @@ contextBridge.exposeInMainWorld('hcomic', {
   },
 
   moeimgLogin: (username: unknown, password: unknown) => {
-    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
-    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')
+    validateCredentialPair(username, password)
     return ipcRenderer.invoke(IPC_CHANNELS.MOEIMG_LOGIN, username, password)
   },
 
   bikaLogin: (username: unknown, password: unknown) => {
-    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
-    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')
+    validateCredentialPair(username, password)
     return ipcRenderer.invoke(IPC_CHANNELS.BIKA_LOGIN, username, password)
   },
 
   bikaCategories: () => ipcRenderer.invoke(IPC_CHANNELS.BIKA_CATEGORIES),
 
   hcomicLogin: (username: unknown, password: unknown) => {
-    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) throw new Error('Invalid username')
-    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) throw new Error('Invalid password')
+    validateCredentialPair(username, password)
     return ipcRenderer.invoke(IPC_CHANNELS.HCOMIC_LOGIN, username, password)
   },
 
@@ -237,8 +251,12 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   fetchPreviewImage: (imageUrl: unknown, scrambleId?: unknown, comicId?: unknown, imageQuality?: unknown) => {
     if (typeof imageUrl !== 'string' || imageUrl.length === 0 || imageUrl.length > 2048) throw new Error('Invalid preview image URL')
+    // scrambleId/comicId 早期类型守卫：主进程会做权威校验，这里仅拒绝明显错误类型，
+    // 保持与其他字段的契约对称（避免任意类型透传）。
+    if (scrambleId !== undefined && scrambleId !== null && typeof scrambleId !== 'string') throw new Error('Invalid scrambleId')
+    if (comicId !== undefined && comicId !== null && typeof comicId !== 'string') throw new Error('Invalid comicId')
     if (imageQuality !== undefined && imageQuality !== null) {
-      if (typeof imageQuality !== 'string' || !['low', 'medium', 'high', 'original'].includes(imageQuality)) throw new Error('Invalid imageQuality')
+      if (typeof imageQuality !== 'string' || !IMAGE_QUALITIES.includes(imageQuality as typeof IMAGE_QUALITIES[number])) throw new Error('Invalid imageQuality')
     }
     return ipcRenderer.invoke(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, imageUrl, scrambleId, comicId, imageQuality ?? undefined)
   },

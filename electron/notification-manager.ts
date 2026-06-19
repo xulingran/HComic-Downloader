@@ -1,8 +1,14 @@
 import { app, Notification, BrowserWindow } from 'electron'
+import { ACTIVE_DOWNLOAD_STATUSES } from '../shared/types'
 
 const NOTIFICATION_BATCH_LIMIT = 100
 
 export class NotificationManager {
+  // 活跃态直接复用 shared 单一来源：消除"任一处增删状态需要多点同步"的隐患。
+  // 历史实现曾在本地硬编码 4 个字面量，与 shared 集合语义对齐仅靠测试保证——
+  // 现直接派生，避免漂移。
+  private static readonly ACTIVE_STATUSES = ACTIVE_DOWNLOAD_STATUSES
+
   private activeTaskSet = new Set<string>()
   private completedTasks: Array<{ title: string; outputPath?: string }> = []
   private failedTasks: Array<{ title: string; error?: string }> = []
@@ -28,8 +34,7 @@ export class NotificationManager {
   }
 
   handleProgress(event: { taskId: string; status: string; title: string }) {
-    const activeStatuses = new Set(['queued', 'downloading', 'paused', 'pausing'])
-    if (activeStatuses.has(event.status)) {
+    if (NotificationManager.ACTIVE_STATUSES.has(event.status)) {
       this.activeTaskSet.add(event.taskId)
     } else {
       this.activeTaskSet.delete(event.taskId)

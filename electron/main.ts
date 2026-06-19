@@ -9,7 +9,8 @@ import { needsRelaxedCsp } from './csp-relaxed-registry'
 import { initLogging } from './log-init'
 import { buildDiagnostics } from './diagnostics'
 import {
-  SEARCH_MODES, COMIC_SOURCES,
+  SEARCH_MODES, SOURCE_VALUES,
+  DOWNLOAD_STATUSES, ACTIVE_DOWNLOAD_STATUSES, IMAGE_QUALITIES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
   type DownloadProgressEvent,
   type DeepLinkTarget,
@@ -33,6 +34,7 @@ import {
   noPathTraversal,
   absolutePath,
   assert,
+  withOptionalSource,
   tagBlacklist as tagBlacklistValidator,
   duplicateBlacklist as duplicateBlacklistValidator,
 } from './validators'
@@ -69,6 +71,8 @@ const CLOSE_GET_DOWNLOADS_TIMEOUT_MS = 3_000
 const DEV_SERVER_MAX_RETRIES = 5
 const DEV_SERVER_RETRY_DELAY_MS = 1_000
 const SHUTDOWN_TIMEOUT_MS = 5_000
+/** 应用启动后延迟多久执行首次更新检查（避开启动高负载期） */
+const STARTUP_UPDATE_CHECK_DELAY_MS = 3_000
 
 const ALLOWED_EXTERNAL_DOMAINS = [
   'github.com',
@@ -139,11 +143,7 @@ const downloadDirValidator = and(
 )
 
 const MODE_VALUES = new Set<string>(SEARCH_MODES)
-const SOURCE_VALUES = new Set<string>(COMIC_SOURCES)
-
-const VALID_DOWNLOAD_STATUSES = new Set([
-  'queued', 'downloading', 'pausing', 'paused', 'completed', 'failed', 'cancelled',
-])
+// SOURCE_VALUES 由 shared/types.ts 派生提供，避免本地重复 new Set(COMIC_SOURCES)
 
 // ── Composable field-level comic validators ──────────────────────────────
 
@@ -194,7 +194,7 @@ function validateDownloadProgress(params: unknown): DownloadProgressEvent {
   const p = params as Record<string, unknown>
 
   assert(and(string(), length(1, 256)), p.taskId, 'download progress: taskId')
-  assert(and(string(), oneOf(Array.from(VALID_DOWNLOAD_STATUSES))), p.status, 'download progress: status')
+  assert(and(string(), oneOf(DOWNLOAD_STATUSES)), p.status, 'download progress: status')
   assert(and(number(), range(0, 100)), p.progress, 'download progress: progress')
   assert(and(number(), integer(), minValue(0)), p.current, 'download progress: current')
   assert(and(number(), integer(), minValue(0)), p.total, 'download progress: total')
@@ -233,7 +233,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   favouriteTagHighlight: boolean(),
   favouriteTagMinMatches: and(number(), integer(), range(1, 10)),
   checkUpdateOnStart: boolean(),
-  bikaImageQuality: and(string(), oneOf(['low', 'medium', 'high', 'original'] as const)),
+  bikaImageQuality: and(string(), oneOf(IMAGE_QUALITIES)),
   previewPreloadForward: and(number(), integer(), range(0, 30)),
   previewPreloadBackward: and(number(), integer(), range(0, 10)),
   previewPreloadConcurrency: and(number(), integer(), range(1, 6)),
@@ -394,7 +394,7 @@ function setupWindowCloseHandler(win: BrowserWindow) {
       if (shutdownState !== 'running' || !snap || snap.isDestroyed() || mainWindow !== snap) return
 
       const activeTasks = result.tasks.filter(
-        t => t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused'
+        t => ACTIVE_DOWNLOAD_STATUSES.has(t.status)
       )
 
       if (activeTasks.length > 0) {
@@ -573,10 +573,7 @@ function registerSearchHandlers(bridge: Bridge) {
     assert(and(string(), oneOf(Array.from(MODE_VALUES))), mode, 'search mode')
     assert(and(number(), integer(), range(1, 1000)), page, 'search page')
     const params: Record<string, unknown> = { query, mode, page }
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'search source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'search')
     if (tag !== undefined && tag !== null && tag !== '') {
       assert(and(string(), maxLength(128), noControlChars()), tag, 'search tag')
       params.tag = tag
@@ -586,10 +583,7 @@ function registerSearchHandlers(bridge: Bridge) {
 
   ipcMain.handle(IPC_CHANNELS.RANDOM, async (_, source?: string) => {
     const params: Record<string, unknown> = {}
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'random source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'random')
     return bridge.call('random', params)
   })
 }
@@ -634,40 +628,28 @@ function registerDownloadHandlers(bridge: Bridge) {
     const p = page ?? 1
     assert(and(number(), integer(), range(1, 1000)), p, 'favourites page')
     const params: Record<string, unknown> = { page: p }
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'favourites source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'favourites')
     return bridge.call('get_favourites', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.ADD_TO_FAVOURITES, async (_, comicId: unknown, source?: unknown) => {
     assert(comicIdValidator, comicId, 'add_to_favourites comicId')
     const params: Record<string, unknown> = { comic_id: comicId }
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'add_to_favourites source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'add_to_favourites')
     return bridge.call('add_to_favourites', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.CHECK_FAVOURITE, async (_, comicId: unknown, source?: unknown) => {
     assert(comicIdValidator, comicId, 'check_favourite comicId')
     const params: Record<string, unknown> = { comic_id: comicId }
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'check_favourite source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'check_favourite')
     return bridge.call('check_favourite', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.REMOVE_FROM_FAVOURITES, async (_, comicId: unknown, source?: unknown) => {
     assert(comicIdValidator, comicId, 'remove_from_favourites comicId')
     const params: Record<string, unknown> = { comic_id: comicId }
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'remove_from_favourites source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'remove_from_favourites')
     return bridge.call('remove_from_favourites', params)
   })
 
@@ -894,8 +876,10 @@ function registerSystemHandlers(bridge: Bridge) {
   })
 
   // 写入系统剪贴板：在主进程执行，绕开渲染进程 navigator.clipboard 对文档焦心的依赖
-  // （window.confirm 后焦点未恢复会抛 "Document is not focused"）。长度上限由 preload 校验。
-  ipcMain.handle(IPC_CHANNELS.WRITE_CLIPBOARD, async (_, text: string) => {
+  // （window.confirm 后焦点未恢复会抛 "Document is not focused"）。
+  // 主进程权威校验：与项目其他 IPC handler 一致，不依赖 preload 透传的 TS 类型签名。
+  ipcMain.handle(IPC_CHANNELS.WRITE_CLIPBOARD, async (_, text: unknown) => {
+    assert(and(string(), length(1, 2_000_000)), text, 'clipboard text')
     clipboard.writeText(text)
   })
 }
@@ -941,7 +925,7 @@ function registerPreviewHandlers(bridge: Bridge) {
     if (typeof scrambleId === 'string' && scrambleId) params.scramble_id = scrambleId
     if (typeof comicId === 'string' && comicId) params.comic_id = comicId
     if (typeof imageQuality === 'string' && imageQuality) {
-      if (!['low', 'medium', 'high', 'original'].includes(imageQuality)) {
+      if (!IMAGE_QUALITIES.includes(imageQuality as typeof IMAGE_QUALITIES[number])) {
         throw new Error('Invalid imageQuality')
       }
       params.image_quality = imageQuality
@@ -967,10 +951,7 @@ function registerPreviewHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_COMIC_DETAIL, async (_, comicId: unknown, source?: unknown, sourceUrl?: unknown) => {
     assert(comicIdValidator, comicId, 'get_comic_detail comicId')
     const params: Record<string, unknown> = { comic_id: comicId }
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'get_comic_detail source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'get_comic_detail')
     if (sourceUrl !== undefined && sourceUrl !== null) {
       assert(and(string(), length(1, 2048)), sourceUrl, 'get_comic_detail sourceUrl')
       params.source_url = sourceUrl
@@ -1090,38 +1071,26 @@ function registerHistoryHandlers(bridge: Bridge) {
 function registerFavouriteTagHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_FAVOURITE_TAGS, async (_, source?: unknown) => {
     const params: Record<string, unknown> = {}
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'get_favourite_tags source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'get_favourite_tags')
     return bridge.call('get_favourite_tags', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.CLEAR_FAVOURITE_TAGS, async (_, source?: unknown) => {
     const params: Record<string, unknown> = {}
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'clear_favourite_tags source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'clear_favourite_tags')
     return bridge.call('clear_favourite_tags', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.REMOVE_FAVOURITE_TAG, async (_, tag: unknown, source?: unknown) => {
     assert(and(string(), length(1, 64), noControlChars()), tag, 'remove_favourite_tag tag')
     const params: Record<string, unknown> = { tag }
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'remove_favourite_tag source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'remove_favourite_tag')
     return bridge.call('remove_favourite_tag', params)
   })
 
   ipcMain.handle(IPC_CHANNELS.SYNC_FAVOURITE_TAGS, async (_, source?: unknown) => {
     const params: Record<string, unknown> = {}
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'sync_favourite_tags source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'sync_favourite_tags')
     return bridge.call('sync_favourite_tags', params, 300_000) // 5 min timeout for large sync + enrichment
   })
 }
@@ -1129,10 +1098,7 @@ function registerFavouriteTagHandlers(bridge: Bridge) {
 function registerTagListHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_TAG_LIST, async (_, source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
     const params: Record<string, unknown> = {}
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'get_tag_list source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'get_tag_list')
     if (keyword !== undefined && keyword !== null) {
       assert(and(string(), maxLength(128), noControlChars()), keyword, 'get_tag_list keyword')
       params.keyword = keyword
@@ -1150,10 +1116,7 @@ function registerTagListHandlers(bridge: Bridge) {
 
   ipcMain.handle(IPC_CHANNELS.REFRESH_TAG_LIST, async (_, source?: unknown) => {
     const params: Record<string, unknown> = {}
-    if (source !== undefined && source !== null) {
-      assert(and(string(), oneOf(Array.from(SOURCE_VALUES))), source, 'refresh_tag_list source')
-      params.source = source
-    }
+    withOptionalSource(params, source, 'refresh_tag_list')
     return bridge.call('refresh_tag_list', params, 300_000) // 5 min timeout for full sync
   })
 }
@@ -1234,7 +1197,7 @@ function scheduleStartupUpdateCheck() {
       } catch {
         // Silent failure for auto-check
       }
-    }, 3000)
+    }, STARTUP_UPDATE_CHECK_DELAY_MS)
   }).catch(() => {
     // Failed to read config, skip update check
   })

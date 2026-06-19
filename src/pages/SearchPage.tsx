@@ -14,7 +14,7 @@ import { BikaCategoryGrid } from '../components/BikaCategoryGrid'
 import { TagDialog } from '../components/TagDialog'
 import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
 import { pickAlbumDefaultName } from '../utils/titleSimilarity'
-import { ComicInfo, PaginationInfo } from '@shared/types'
+import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -94,7 +94,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const activeDownloadMap = useMemo(() => {
     const map = new Map<string, DownloadProgressData>()
     for (const t of tasks) {
-      if (t.status === 'downloading' || t.status === 'queued' || t.status === 'pausing' || t.status === 'paused' || t.status === 'failed') {
+      if (PROGRESS_BADGE_STATUSES.has(t.status)) {
         const p = downloadProgress[t.id]
         if (p) map.set(t.comic.id, p)
       }
