@@ -152,3 +152,65 @@ export const tagItemVariants: Variants = {
   hidden: { opacity: 0, y: 4 },
   show: { opacity: 1, y: 0, transition: { duration: DURATION.fast } },
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 阅读器翻页 variants（变更 3 引入）
+//
+// 设计要点：翻页用 smooth 曲线（cubic-bezier(0.4,0,0.2,1)）而非 spring。
+// spring 的 overshoot 会让页面"弹过"再回弹，翻页场景不合适——用户期望页面
+// 稳稳停下。smooth 有"减速停下"的感觉，符合翻页直觉。
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** 翻页过渡时长（smooth 曲线）。 */
+export const PAGE_FLIP_DURATION = 0.25
+
+/** 翻页过渡配置：smooth tween。 */
+export const pageFlipTransition: Transition = {
+  type: 'tween',
+  ease: [0.4, 0, 0.2, 1],
+  duration: PAGE_FLIP_DURATION,
+}
+
+/**
+ * 方向感知的翻页 variants。
+ * enter/exit 是函数形式，framer-motion 通过 AnimatePresence 的 custom prop
+ * 自动注入 direction。forward 时新页从右进、旧页向左出；backward 反之。
+ */
+export function getDirectionalPageVariants(): Variants {
+  return {
+    enter: (dir: 'forward' | 'backward') => ({
+      x: dir === 'forward' ? '100%' : '-100%',
+      opacity: 1,
+    }),
+    center: { x: 0, opacity: 1 },
+    exit: (dir: 'forward' | 'backward') => ({
+      x: dir === 'forward' ? '-100%' : '100%',
+      opacity: 1,
+    }),
+  }
+}
+
+/**
+ * reduced-motion 翻页 variants：退化为纯 opacity crossfade，无位移。
+ * 时长压到 150ms（DURATION.fast）。
+ */
+export function getReducedPageVariants(): Variants {
+  return {
+    enter: { opacity: 0 },
+    center: { opacity: 1, transition: { duration: DURATION.fast } },
+    exit: { opacity: 0, transition: { duration: DURATION.fast } },
+  }
+}
+
+/**
+ * 统一获取翻页 variants：根据 reduced-motion 决策。
+ * direction 由 framer-motion 通过 AnimatePresence 的 custom prop 自动注入给
+ * 函数形式的 variants，无需在此处传入。
+ */
+export function usePageFlipVariants(): Variants {
+  const reduceMotion = useReducedMotionPreference()
+  return reduceMotion ? getReducedPageVariants() : getDirectionalPageVariants()
+}
+
+void pageFlipTransition // 预留给组件按需引用，避免 tree-shake 误删
+
