@@ -56,10 +56,12 @@ export function Toast({ message, type = 'info', actionLabel, onAction, onDismiss
       ? 'text-green-400'
       : ''
 
+  // transform 由 inline style 接管（需要兼顾 -50% 水平居中），
+  // 故 className 不再写 translate-y-*，避免被覆盖的死代码。
   return (
     <div
-      className={`fixed top-4 left-1/2 z-50 transition-all duration-300 ease-out ${
-        animate ? 'translate-y-0 opacity-100' : '-translate-y-4 opacity-0'
+      className={`fixed top-4 left-1/2 z-50 transition-[opacity,transform] duration-slow ease-spring ${
+        animate ? 'opacity-100' : 'opacity-0'
       }`}
       style={{ transform: animate ? 'translate(-50%, 0)' : 'translate(-50%, -1rem)' }}
     >

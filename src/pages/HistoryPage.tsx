@@ -456,7 +456,7 @@ function HistoryCard({ item, cardStyle, onOpen, onOpenDrawer, onDelete, onDownlo
 
   return (
     <div
-      className="bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-all duration-200
+      className="bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200
                  cursor-pointer overflow-hidden group relative"
       onClick={onOpen}
       onMouseEnter={() => setHovered(true)}

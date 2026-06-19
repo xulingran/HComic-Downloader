@@ -94,7 +94,7 @@ export function Modal({
       <div
         {...contentProps}
         onTransitionEnd={handleTransitionEnd}
-        className={`transition-all duration-200 ease-out ${
+        className={`transition-[opacity,transform] duration-slow ease-spring ${
           visible ? 'opacity-100 scale-100' : 'opacity-0 scale-95'
         } ${contentClassName}`}
         style={contentStyle}

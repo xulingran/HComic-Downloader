@@ -1,26 +1,13 @@
-import { useState, useEffect, useCallback } from 'react'
+import { usePresenceAnimation } from './usePresenceAnimation'
 
+/**
+ * @deprecated 已委托给 `usePresenceAnimation`。
+ *
+ * 保留导出名以兼容 3 个调用方（Modal、ComicInfoDrawer、ComicReaderModal）。
+ * 变更 2（animation-consistency）完成迁移后此文件会被删除。
+ *
+ * 新代码请直接使用 `usePresenceAnimation`。
+ */
 export function useModalAnimation(open: boolean) {
-  const [mounted, setMounted] = useState(false)
-  const [visible, setVisible] = useState(false)
-
-  useEffect(() => {
-    if (open) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setMounted(true)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => setVisible(true))
-      })
-    } else {
-      setVisible(false)
-    }
-  }, [open])
-
-  const handleTransitionEnd = useCallback(() => {
-    if (!visible) {
-      setMounted(false)
-    }
-  }, [visible])
-
-  return { mounted, visible, handleTransitionEnd }
+  return usePresenceAnimation(open)
 }

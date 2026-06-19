@@ -33,7 +33,7 @@ export function ProgressBar({ progress, status, totalPages, downloadedPages, cla
     <div className={`flex items-center gap-3 ${className}`}>
       <div className="flex-1 h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
         <div
-          className="h-full rounded-full transition-all duration-300"
+          className="h-full rounded-full transition-[width] duration-slow"
           style={{
             width: `${progress}%`,
             backgroundColor: statusColors[status]

@@ -195,7 +195,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
     <div
       ref={containerRef}
       onClick={handleCardClick}
-      className={`bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-all duration-200
+      className={`bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200
                  cursor-pointer overflow-hidden group relative
                  ${selected ? 'ring-2 ring-[var(--accent)] shadow-[var(--accent)]/20 shadow-lg' : ''}
                  ${isRecommended ? 'border-l-2 border-l-amber-400/70' : ''}`}

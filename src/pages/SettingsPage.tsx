@@ -379,7 +379,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
             </p>
             <div className="w-full h-1.5 bg-[var(--bg-secondary)] rounded-full mt-2 overflow-hidden">
               <div
-                className="h-full bg-[var(--accent)] rounded-full transition-all duration-300"
+                className="h-full bg-[var(--accent)] rounded-full transition-[width] duration-slow"
                 style={{
                   width: `${migrationHook.progress && migrationHook.progress.total > 0
                     ? Math.round((migrationHook.progress.completed / migrationHook.progress.total) * 100) : 0}%`

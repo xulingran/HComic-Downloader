@@ -75,7 +75,7 @@ export function BikaCategoryGrid({ onSelectCategory }: BikaCategoryGridProps) {
             key={cat.id || cat.title}
             onClick={() => onSelectCategory(cat.title)}
             className="group relative aspect-square rounded-lg overflow-hidden bg-[var(--bg-secondary)]
-                       hover:ring-2 hover:ring-[var(--accent)] transition-all duration-200"
+                       hover:ring-2 hover:ring-[var(--accent)] transition-[box-shadow,--tw-ring-color] duration-200"
           >
             {showImage ? (
               <>

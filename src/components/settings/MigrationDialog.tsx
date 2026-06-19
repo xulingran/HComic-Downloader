@@ -268,7 +268,7 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
                 </div>
                 <div className="w-full h-2 bg-[var(--bg-secondary)] rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-[var(--accent)] rounded-full transition-all duration-300"
+                    className="h-full bg-[var(--accent)] rounded-full transition-[width] duration-slow"
                     style={{ width: `${percent}%` }}
                   />
                 </div>
