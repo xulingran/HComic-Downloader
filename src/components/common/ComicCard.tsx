@@ -227,16 +227,14 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
             e.stopPropagation()
             handleTitleClick()
           }}
-          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-none line-clamp-2"
+          className="text-sm font-medium text-[var(--text-primary)] cursor-pointer select-none line-clamp-2 min-h-[2.5rem]"
           title={comic.title}
         >
           {comic.title}
         </h3>
-        {comic.author && (
-          <p className="text-xs text-[var(--text-secondary)] mt-0.5 truncate select-none">
-            {comic.author}
-          </p>
-        )}
+        <p className="text-xs text-[var(--text-secondary)] mt-0.5 h-4 truncate select-none">
+          {comic.author || '\u00A0'}
+        </p>
       </div>
     </div>
   )
