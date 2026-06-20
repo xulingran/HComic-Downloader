@@ -291,28 +291,45 @@ describe('ComicCard', () => {
   })
 
   describe('推荐标签高亮 (isRecommended / recommendedTags)', () => {
-    it('CoverCard: isRecommended 添加左侧琥珀色边框', () => {
+    it('CoverCard: isRecommended 添加整圈琥珀内描边与微背景色', () => {
       const { container } = render(
         <ComicCard comic={mockComic} isRecommended={true} />
       )
       const card = container.firstElementChild as HTMLElement
-      expect(card.className).toContain('border-l-2')
-      expect(card.className).toContain('border-l-amber-400/70')
+      // 用 inset shadow 画内描边,避免 ring 溢出视口(卡片紧贴窗口边缘时)
+      expect(card.className).toContain('bg-amber-500/10')
+      expect(card.className).toContain('shadow-[inset_0_0_0_2px_rgba(245,158,11,0.8)]')
     })
 
-    it('CoverCard: 未推荐时不显示边框', () => {
+    it('CoverCard: 未推荐时不显示推荐样式', () => {
       const { container } = render(<ComicCard comic={mockComic} />)
       const card = container.firstElementChild as HTMLElement
-      expect(card.className).not.toContain('border-l-amber-400/70')
+      expect(card.className).not.toContain('bg-amber-500/10')
+      expect(card.className).not.toContain('shadow-[inset_0_0_0_2px')
     })
 
-    it('DetailedCard: isRecommended 添加左侧琥珀色边框', () => {
+    it('CoverCard: selected+recommended 叠加时只显示选中环(推荐让位)', () => {
+      const { container } = render(
+        <ComicCard comic={mockComic} isRecommended={true} batchMode={true} selected={true} />
+      )
+      const card = container.firstElementChild as HTMLElement
+      // 选中环优先,推荐内描边与背景色隐藏
+      expect(card.className).toContain('ring-2')
+      expect(card.className).toContain('ring-[var(--accent)]')
+      expect(card.className).not.toContain('bg-amber-500/10')
+      expect(card.className).not.toContain('shadow-[inset_0_0_0_2px')
+    })
+
+    it('DetailedCard: isRecommended 添加加粗左侧琥珀边框与微背景色', () => {
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
       const comic: ComicInfo = { ...mockComic, tags: ['NTR', '魔法少女'] }
       const { container } = render(<ComicCard comic={comic} isRecommended={true} />)
       const row = container.firstElementChild as HTMLElement
-      expect(row.className).toContain('border-l-2')
-      expect(row.className).toContain('border-l-amber-400/70')
+      expect(row.className).toContain('border-l-4')
+      expect(row.className).toContain('border-l-amber-400')
+      expect(row.className).toContain('bg-amber-500/10')
+      // 近实色边框:不应再带透明度修饰(/80 已移除,直接 amber-400)
+      expect(row.className).not.toContain('border-l-amber-400/')
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
 

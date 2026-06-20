@@ -195,7 +195,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
       className={`bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200
                  cursor-pointer overflow-hidden group relative
                  ${selected ? 'ring-2 ring-[var(--accent)] shadow-[var(--accent)]/20 shadow-lg' : ''}
-                 ${isRecommended ? 'border-l-2 border-l-amber-400/70' : ''}`}
+                 ${isRecommended && !selected ? 'bg-amber-500/10 shadow-[inset_0_0_0_2px_rgba(245,158,11,0.8)]' : ''}`}
     >
       {batchMode && (
         <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center
@@ -256,7 +256,7 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
       className={`flex items-center px-4 py-2.5 cursor-pointer transition-colors duration-150
                   border-b border-[var(--border)] hover:bg-[var(--bg-secondary)]
                   ${selected ? 'border-l-2 border-l-[var(--accent)] bg-[var(--accent)]/5' : ''}
-                  ${isRecommended && !selected ? 'border-l-2 border-l-amber-400/70' : ''}`}
+                  ${isRecommended && !selected ? 'border-l-4 border-l-amber-400 bg-amber-500/10' : ''}`}
     >
       {batchMode && (
         <div className={`mr-2 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
