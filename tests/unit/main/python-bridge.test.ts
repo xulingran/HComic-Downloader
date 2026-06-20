@@ -24,7 +24,7 @@ vi.mock('electron', () => ({
 }))
 
 // Must import after mocks are set up
-import { PythonBridge, getPythonBridge } from '../../../electron/python-bridge'
+import { PythonBridge, getPythonBridge, parseStartupProgressLine } from '../../../electron/python-bridge'
 
 describe('PythonBridge', () => {
   let mockProcess: Record<string, unknown>
@@ -543,6 +543,114 @@ describe('PythonBridge', () => {
     it('should return a PythonBridge instance', () => {
       const bridge = getPythonBridge()
       expect(bridge).toBeInstanceOf(PythonBridge)
+    })
+  })
+
+  describe('parseStartupProgressLine()', () => {
+    it('应解析有效的进度行', () => {
+      const result = parseStartupProgressLine('PROGRESS:50:下载引擎已就绪')
+      expect(result).toEqual({ percent: 50, label: '下载引擎已就绪' })
+    })
+
+    it('应解析边界 percent 值 0', () => {
+      const result = parseStartupProgressLine('PROGRESS:0:准备启动')
+      expect(result).toEqual({ percent: 0, label: '准备启动' })
+    })
+
+    it('应解析边界 percent 值 100', () => {
+      const result = parseStartupProgressLine('PROGRESS:100:完成')
+      expect(result).toEqual({ percent: 100, label: '完成' })
+    })
+
+    it('非 PROGRESS 前缀行应返回 null（降级为日志转发）', () => {
+      expect(parseStartupProgressLine('INFO - IPC Server started')).toBeNull()
+      expect(parseStartupProgressLine('')).toBeNull()
+      expect(parseStartupProgressLine('  ')).toBeNull()
+    })
+
+    it('percent 非整数应返回 null（格式错误，降级转发不抛错）', () => {
+      expect(parseStartupProgressLine('PROGRESS:abc:xxx')).toBeNull()
+      expect(parseStartupProgressLine('PROGRESS:5.5:xxx')).toBeNull()
+    })
+
+    it('缺少 label 应返回 null', () => {
+      // 正则 (.+) 要求至少一个字符，故无 label 行不匹配
+      expect(parseStartupProgressLine('PROGRESS:50')).toBeNull()
+      expect(parseStartupProgressLine('PROGRESS:50:')).toBeNull()
+    })
+
+    it('percent 超出 0-100 范围应返回 null', () => {
+      expect(parseStartupProgressLine('PROGRESS:101:xxx')).toBeNull()
+      expect(parseStartupProgressLine('PROGRESS:-1:xxx')).toBeNull()
+    })
+
+    it('中文 label 应原样保留', () => {
+      const result = parseStartupProgressLine('PROGRESS:85:数据库已就绪')
+      expect(result).toEqual({ percent: 85, label: '数据库已就绪' })
+    })
+  })
+
+  describe('stderr 进度行集成（onStartupProgress 回调）', () => {
+    let bridge: PythonBridge
+
+    beforeEach(() => {
+      bridge = new PythonBridge()
+    })
+
+    it('stderr 收到 PROGRESS 行应触发 onStartupProgress', () => {
+      const received: { percent: number; label: string }[] = []
+      bridge.onStartupProgress = (event) => received.push(event)
+
+      // 模拟 Python stderr 输出一行进度
+      stderrCallbacks.forEach(cb => cb(Buffer.from('PROGRESS:50:下载引擎已就绪\n')))
+
+      expect(received).toEqual([{ percent: 50, label: '下载引擎已就绪' }])
+    })
+
+    it('stderr 收到非 PROGRESS 行应走 console.log 不触发回调', () => {
+      const received: { percent: number; label: string }[] = []
+      bridge.onStartupProgress = (event) => received.push(event)
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      stderrCallbacks.forEach(cb => cb(Buffer.from('INFO - IPC Server started\n')))
+
+      expect(received).toEqual([])
+      // 非 PROGRESS 行应带 [Python] 前缀转发到日志
+      expect(logSpy).toHaveBeenCalledWith('[Python]', 'INFO - IPC Server started')
+      logSpy.mockRestore()
+    })
+
+    it('stderr 收到格式错误的 PROGRESS 行应降级为日志转发，不抛错', () => {
+      const received: { percent: number; label: string }[] = []
+      bridge.onStartupProgress = (event) => received.push(event)
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      // percent 非整数 + 缺 label，均应降级
+      expect(() => {
+        stderrCallbacks.forEach(cb => cb(Buffer.from('PROGRESS:abc:xxx\n')))
+        stderrCallbacks.forEach(cb => cb(Buffer.from('PROGRESS:50\n')))
+      }).not.toThrow()
+
+      expect(received).toEqual([])
+      expect(logSpy).toHaveBeenCalledWith('[Python]', 'PROGRESS:abc:xxx')
+      expect(logSpy).toHaveBeenCalledWith('[Python]', 'PROGRESS:50')
+      logSpy.mockRestore()
+    })
+
+    it('stderr 多行混合应正确分流', () => {
+      const received: { percent: number; label: string }[] = []
+      bridge.onStartupProgress = (event) => received.push(event)
+      const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+      // 一次 stderr data 事件含多行：日志 + 进度 + 日志
+      stderrCallbacks.forEach(cb => cb(Buffer.from(
+        'INFO - starting\nPROGRESS:35:解析器已就绪\nWARNING - minor\n'
+      )))
+
+      expect(received).toEqual([{ percent: 35, label: '解析器已就绪' }])
+      expect(logSpy).toHaveBeenCalledWith('[Python]', 'INFO - starting')
+      expect(logSpy).toHaveBeenCalledWith('[Python]', 'WARNING - minor')
+      logSpy.mockRestore()
     })
   })
 })

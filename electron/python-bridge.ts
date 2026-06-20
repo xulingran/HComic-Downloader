@@ -3,6 +3,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { app } from 'electron'
+import type { StartupProgressEvent } from '../shared/types'
 
 const REQUEST_TIMEOUT_MS = 30_000
 // 20MB: cover image data URIs (base64) and large URL lists can exceed 1MB
@@ -42,6 +43,13 @@ export class PythonBridge {
    * 由主进程注册，转发到渲染进程的致命错误横幅。
    */
   onFatal: ((payload: { message: string; detail?: string; kind?: string }) => void) | null = null
+
+  /**
+   * 启动进度回调：解析到 Python stderr 的 PROGRESS:<percent>:<label> 行时触发。
+   * 由主进程注册，转发到渲染进程的 STARTUP_PROGRESS 通道驱动启动进度条。
+   * 仅在 Python 初始化期间有效，ready 之后不再有意义（Python 已就绪）。
+   */
+  onStartupProgress: ((event: StartupProgressEvent) => void) | null = null
 
   constructor() {
     this.start()
@@ -176,10 +184,20 @@ export class PythonBridge {
       // 真正的级别由 Python 日志里的 " - ERROR - " 等字样体现。
       // 逐行转发：确保 main.log 里每一行都带 [Python] 前缀，
       // 便于诊断报告按前缀过滤掉与 python.log 重复的转发副本。
+      //
+      // 启动进度行例外：PROGRESS:<percent>:<label> 是协议数据而非日志，
+      // 解析后调 onStartupProgress 转发到渲染进程，不写入 main.log。
+      // 格式错误（非整数 percent、缺 label）降级为普通日志转发，不抛错。
       const text = data.toString()
       for (const line of text.split('\n')) {
         const trimmed = line.trimEnd()
-        if (trimmed) console.log('[Python]', trimmed)
+        if (!trimmed) continue
+        const progress = parseStartupProgressLine(trimmed)
+        if (progress && this.onStartupProgress) {
+          this.onStartupProgress(progress)
+        } else {
+          console.log('[Python]', trimmed)
+        }
       }
     })
 
@@ -404,4 +422,25 @@ export function getPythonBridge(): PythonBridge {
     bridge = new PythonBridge()
   }
   return bridge
+}
+
+/**
+ * 解析 Python stderr 的启动进度行。
+ *
+ * 格式：`PROGRESS:<percent>:<label>`，percent 为 0-100 整数，label 为不含冒号的中文文案。
+ * 解析成功返回 { percent, label }；格式不匹配（无前缀/percent 非整数/缺 label）返回 null，
+ * 调用方据此降级为普通日志转发，不抛错中断启动。
+ */
+const PROGRESS_LINE_RE = /^PROGRESS:(\d+):(.+)$/
+
+export function parseStartupProgressLine(line: string): StartupProgressEvent | null {
+  const match = PROGRESS_LINE_RE.exec(line)
+  if (!match) return null
+  const percent = Number.parseInt(match[1], 10)
+  const label = match[2]
+  // percent 范围校验：0-100 整数（正则已保证是数字，这里防溢出）
+  if (!Number.isInteger(percent) || percent < 0 || percent > 100) return null
+  // label 非空（正则 (.+) 已保证至少一个字符，双重防御）
+  if (!label) return null
+  return { percent, label }
 }

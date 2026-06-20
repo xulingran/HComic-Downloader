@@ -54,6 +54,18 @@ try {
 } catch { /* crash reporter unsupported in this build */ }
 
 let mainWindow: BrowserWindow | null = null
+
+/**
+ * 启动进度缓存：记录 Python 经 stderr 推送的最新进度。
+ *
+ * 为什么需要：渲染进程的订阅者（index.html 原生 JS、React useStartupProgress）
+ * 注册时机晚于部分 PROGRESS 事件（Python 极快就绪时，事件在 React 挂载前就发完），
+ * 纯 push 模型会丢失历史事件导致进度条卡在 0%。did-finish-load 时重发此缓存值，
+ * 让后注册的订阅者也能立即拿到最新进度（pull 初始 + push 增量混合模式）。
+ *
+ * 缓存值 null 表示尚未收到任何 PROGRESS（did-finish-load 时发送默认初始进度）。
+ */
+let latestStartupProgress: { percent: number; label: string } | null = null
 /**
  * 应用关闭状态机，合并原 isQuitting / shutdownDone 两个布尔标志：
  * - 'running'：正常运行
@@ -501,6 +513,14 @@ function createWindow() {
       pendingDeepLink = null
       mainWindow.webContents.send(NOTIFICATION_CHANNELS.DEEP_LINK, target)
     }
+    // 重发最新启动进度：渲染进程的订阅者（index.html JS / React hook）注册
+    // 时机可能晚于 Python 的 PROGRESS 事件（Python 极快就绪时事件在订阅前发完），
+    // did-finish-load 时重发缓存值让它们立即拿到最新进度，避免卡在 0%。
+    // 若 Python 尚未输出任何 PROGRESS，发送默认初始进度 10%。
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const progress = latestStartupProgress ?? { percent: 10, label: '正在启动应用…' }
+      mainWindow.webContents.send(NOTIFICATION_CHANNELS.STARTUP_PROGRESS, progress)
+    }
   })
 
   setupWindowCloseHandler(mainWindow)
@@ -557,6 +577,18 @@ function registerNotificationHandlers(bridge: Bridge) {
   bridge.onFatal = (payload) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.send(NOTIFICATION_CHANNELS.FATAL_ERROR, payload)
+    }
+  }
+
+  // 启动进度：Python __init__ 各阶段经 stderr 输出 PROGRESS 行，
+  // PythonBridge 解析后转发到渲染进程驱动启动进度条。
+  // 复用与 onFatal 相同的安全发送模式（mainWindow 可能在启动期被关闭）。
+  // 同时缓存最新进度：渲染进程订阅者注册可能晚于事件（Python 极快就绪时），
+  // did-finish-load 时重发缓存值让后注册者也能拿到最新进度。
+  bridge.onStartupProgress = (event) => {
+    latestStartupProgress = event
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(NOTIFICATION_CHANNELS.STARTUP_PROGRESS, event)
     }
   }
 }

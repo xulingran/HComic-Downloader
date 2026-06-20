@@ -115,6 +115,7 @@ export interface AppConfig {
   cardStyle: CardStyle
   tagBlacklist: TagBlacklist
   duplicateBlacklist: DuplicateBlacklist
+  missingBlacklist: MissingBlacklist
   previewCacheSizeLimitMB: number
   proxy?: string
   cookie?: string
@@ -148,6 +149,9 @@ export interface DuplicateBlacklistEntry {
 
 /** 重复检测黑名单：按来源隔离的条目列表 */
 export type DuplicateBlacklist = Record<string, DuplicateBlacklistEntry[]>
+
+/** 查缺补漏黑名单：按来源隔离的条目列表（与 DuplicateBlacklist 同构但独立存储） */
+export type MissingBlacklist = Record<string, DuplicateBlacklistEntry[]>
 
 export type CardStyle = 'cover' | 'detailed'
 
@@ -272,7 +276,7 @@ export type DiagnosticsReport = string
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
-  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'duplicateBlacklist' | 'previewCacheSizeLimitMB'
+  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'duplicateBlacklist' | 'missingBlacklist' | 'previewCacheSizeLimitMB'
   | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
   | 'bikaImageQuality'
   | 'previewPreloadForward' | 'previewPreloadBackward' | 'previewPreloadConcurrency'
@@ -297,6 +301,7 @@ export type ConfigValueMap = {
   cardStyle: CardStyle
   tagBlacklist: TagBlacklist
   duplicateBlacklist: DuplicateBlacklist
+  missingBlacklist: MissingBlacklist
   previewCacheSizeLimitMB: number
   jmcomicDomain: string
   favouriteTagHighlight: boolean
@@ -777,6 +782,8 @@ export interface HcomicAPI {
   onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   onFatalError(callback: (data: FatalErrorEvent) => void): () => void
+  /** 订阅启动进度事件（Python __init__ 各阶段经 stderr → PythonBridge → 渲染进程） */
+  onStartupProgress(callback: (event: StartupProgressEvent) => void): () => void
   /** 监听来自系统协议唤起（hcomic://…）的深度链接导航目标 */
   onDeepLink(callback: (target: DeepLinkTarget) => void): () => void
   getDiagnostics(): Promise<DiagnosticsReport>
@@ -958,7 +965,22 @@ export const NOTIFICATION_CHANNELS = {
   ALBUM_PROGRESS: 'album:progress',
   FATAL_ERROR: 'fatal:error',
   DEEP_LINK: 'app:deep-link',
+  STARTUP_PROGRESS: 'startup:progress',
 } as const
+
+/**
+ * 启动进度事件（主进程 → 渲染进程）。
+ *
+ * Python 后端在 IPCServer.__init__ 各阶段经 stderr 输出 PROGRESS 行，
+ * 由 PythonBridge 解析后通过 STARTUP_PROGRESS 通道转发。percent 按各阶段
+ * 真实耗时分配权重单调递增（0-100），label 为当前阶段的中文文案。
+ */
+export interface StartupProgressEvent {
+  /** 进度百分比，0-100 整数，单调递增 */
+  percent: number
+  /** 当前阶段中文文案 */
+  label: string
+}
 
 export const PYTHON_NOTIFICATION_METHODS = {
   DOWNLOAD_PROGRESS: 'download_progress',
@@ -972,7 +994,7 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
-  'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'duplicateBlacklist', 'previewCacheSizeLimitMB',
+  'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'duplicateBlacklist', 'missingBlacklist', 'previewCacheSizeLimitMB',
   'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
   'bikaImageQuality',
   'previewPreloadForward', 'previewPreloadBackward', 'previewPreloadConcurrency',

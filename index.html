@@ -68,6 +68,65 @@
           border-top-color: #7c5cbf;
         }
       }
+      /* 启动进度条 —— React 挂载前由原生 JS 更新，挂载后由 <StartupScreen> 接管 */
+      .skeleton-progress-wrap {
+        width: 220px;
+        margin-top: 18px;
+      }
+      .skeleton-progress-track {
+        width: 100%;
+        height: 4px;
+        background: #d0d0d0;
+        border-radius: 2px;
+        overflow: hidden;
+      }
+      @media (prefers-color-scheme: dark) {
+        .skeleton-progress-track {
+          background: #3a3a5c;
+        }
+      }
+      .skeleton-progress-fill {
+        width: 0%;
+        height: 100%;
+        background: #4a90d9;
+        border-radius: 2px;
+        /* CSS transition 兜底流畅感：信号间隔期进度条平滑爬行而非跳变。
+           方案 Q：快就快、慢就慢，不强制最小时长。 */
+        transition: width 0.4s ease;
+      }
+      @media (prefers-color-scheme: dark) {
+        .skeleton-progress-fill {
+          background: #7c5cbf;
+        }
+      }
+      .skeleton-progress-meta {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 8px;
+        font-size: 12px;
+        white-space: nowrap;
+      }
+      .skeleton-percent {
+        color: #555;
+        font-variant-numeric: tabular-nums;
+      }
+      @media (prefers-color-scheme: dark) {
+        .skeleton-percent {
+          color: #b0b0b0;
+        }
+      }
+      .skeleton-label {
+        color: #777;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 140px;
+      }
+      @media (prefers-color-scheme: dark) {
+        .skeleton-label {
+          color: #909090;
+        }
+      }
     </style>
   </head>
   <body>
@@ -76,9 +135,50 @@
         <div class="skeleton-spinner"></div>
         <img class="skeleton-logo" src="assets/icon.svg" alt="HComic Downloader" />
         <div class="skeleton-text">HComic Downloader 启动中…</div>
+        <div class="skeleton-progress-wrap">
+          <div class="skeleton-progress-track">
+            <div class="skeleton-progress-fill" id="startup-progress-fill"></div>
+          </div>
+          <div class="skeleton-progress-meta">
+            <span class="skeleton-label" id="startup-label">正在启动应用…</span>
+            <span class="skeleton-percent" id="startup-percent">0%</span>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // 启动进度条原生更新：React 挂载前由这段 JS 订阅 IPC 更新 DOM。
+      // React 挂载后 createRoot().render() 会替换 #root，此 DOM 自然消失，
+      // 由同款 <StartupScreen> 接管渲染（视觉一致，用户无感知切换）。
+      // 模块级缓存：即使 React 挂载滞后，最新进度也保留在变量里，
+      // 但此时 DOM 已被替换，缓存仅供 useStartupProgress 通过模块读取（见 hook 实现）。
+      (function () {
+        var fill = document.getElementById('startup-progress-fill');
+        var labelEl = document.getElementById('startup-label');
+        var percentEl = document.getElementById('startup-percent');
+        // 单调递增：新 percent 小于当前时忽略，防乱序回退
+        var current = 0;
+        function update(percent, label) {
+          if (percent < current) return;
+          current = percent;
+          if (fill) fill.style.width = percent + '%';
+          if (percentEl) percentEl.textContent = percent + '%';
+          if (labelEl && label) labelEl.textContent = label;
+        }
+        // window.hcomic 可能在 preload 就绪前不可用，轮询等待
+        function trySubscribe() {
+          if (window.hcomic && typeof window.hcomic.onStartupProgress === 'function') {
+            window.hcomic.onStartupProgress(function (event) {
+              update(event.percent, event.label);
+            });
+          } else {
+            setTimeout(trySubscribe, 50);
+          }
+        }
+        trySubscribe();
+      })();
+    </script>
     <noscript>请启用 JavaScript 以使用 HComic Downloader</noscript>
   </body>
 </html>

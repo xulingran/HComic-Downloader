@@ -390,6 +390,10 @@ contextBridge.exposeInMainWorld('hcomic', {
     return onChannel(NOTIFICATION_CHANNELS.FATAL_ERROR, callback)
   },
 
+  onStartupProgress: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.STARTUP_PROGRESS, callback)
+  },
+
   onDeepLink: (callback: unknown) => {
     if (typeof callback !== 'function') throw new Error('Invalid callback')
     const handler = (_event: Electron.IpcRendererEvent, target: unknown) => {

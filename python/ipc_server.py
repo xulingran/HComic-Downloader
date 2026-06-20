@@ -88,11 +88,13 @@ class IPCServer(
         except Exception as e:
             logger.warning("Config load failed, using defaults: %s", e)
             self.config = Config()
+        self._emit_progress(25, "配置已加载")
         self.parser = MultiSourceParser(
             default_source=self.config.default_source,
             source_auth=self.config.source_auth,
             bika_image_quality=self.config.bika_image_quality,
         )
+        self._emit_progress(35, "解析器已就绪")
         self.downloader = ComicDownloader(
             concurrent_downloads=self.config.concurrent_downloads,
             timeout=self.config.timeout,
@@ -119,6 +121,7 @@ class IPCServer(
         self._download_manager.set_delay_after(self.config.batch_download_delay)
         self._download_manager.set_callbacks(on_task_update=self._on_download_update)
         self._download_manager.start()
+        self._emit_progress(50, "下载引擎已就绪")
 
         # Download history database
         from download_history import DownloadHistoryDB
@@ -160,6 +163,7 @@ class IPCServer(
             self._cover_executor.shutdown(cancel_futures=True, wait=False)
             self._preview_executor.shutdown(cancel_futures=True, wait=False)
             raise
+        self._emit_progress(65, "线程池已就绪")
         self._stdout_lock = threading.Lock()
         # 序列化 config 写入：避免并发 set_config 同时 os.replace 同一文件导致 WinError 5
         self._config_write_lock = threading.Lock()
@@ -184,6 +188,7 @@ class IPCServer(
 
         # Tag list catalog database
         self._init_tag_list()
+        self._emit_progress(85, "数据库已就绪")
 
         # Pre-compute handler parameter sets for request routing
         self._handler_param_keys: dict[str, set[str] | None] = {}
@@ -192,6 +197,20 @@ class IPCServer(
             sig = inspect.signature(handler)
             has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
             self._handler_param_keys[attr_name] = None if has_var_keyword else set(sig.parameters.keys())
+        self._emit_progress(95, "准备就绪")
+
+    def _emit_progress(self, percent: int, label: str) -> None:
+        """向 Electron 主进程输出启动进度信号。
+
+        格式：PROGRESS:<percent>:<label>（单行，写入 stderr，立即 flush）。
+        Electron 的 PythonBridge 解析此行后通过 STARTUP_PROGRESS IPC 通道转发到渲染进程。
+        走 stderr 而非 stdout：stdout 仅用于 JSON-RPC 响应，ready gate 契约不受影响。
+
+        Args:
+            percent: 进度百分比 0-100，调用方必须保证单调递增。
+            label: 当前阶段中文文案，禁止含冒号（避免解析歧义）。
+        """
+        print(f"PROGRESS:{percent}:{label}", file=sys.stderr, flush=True)
 
     # ── album event notification ─────────────────────────────────────────
 

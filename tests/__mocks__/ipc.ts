@@ -62,6 +62,7 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, unkn
     onMigrationProgress: vi.fn().mockReturnValue(vi.fn()),
     onMigrationComplete: vi.fn().mockReturnValue(vi.fn()),
     onMigrationError: vi.fn().mockReturnValue(vi.fn()),
+    onStartupProgress: vi.fn().mockReturnValue(vi.fn()),
     ...overrides,
   }
 

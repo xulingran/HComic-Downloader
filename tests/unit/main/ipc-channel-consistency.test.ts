@@ -63,7 +63,9 @@ describe('IPC Channel Consistency', () => {
   })
 
   it('NOTIFICATION_CHANNELS and PYTHON_NOTIFICATION_METHODS should have matching keys (excluding Electron-only channels)', () => {
-    const electronOnlyNotifications = new Set(['UPDATE_CHECK_RESULT', 'FATAL_ERROR', 'DEEP_LINK'])
+    // STARTUP_PROGRESS: Python 经 stderr 输出 PROGRESS 行，PythonBridge 解析后转发，
+    // 不走 Python JSON-RPC notification 通道，故属于 Electron-only。
+    const electronOnlyNotifications = new Set(['UPDATE_CHECK_RESULT', 'FATAL_ERROR', 'DEEP_LINK', 'STARTUP_PROGRESS'])
     const notifKeys = Object.keys(NOTIFICATION_CHANNELS).filter(k => !electronOnlyNotifications.has(k))
     const pyNotifKeys = Object.keys(PYTHON_NOTIFICATION_METHODS)
     expect(notifKeys.sort()).toEqual(pyNotifKeys.sort())

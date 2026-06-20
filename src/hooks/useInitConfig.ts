@@ -1,15 +1,17 @@
-import { useEffect, useRef } from 'react'
-import { COMIC_SOURCES, type TagBlacklist, type DuplicateBlacklist, type DuplicateBlacklistEntry } from '@shared/types'
-import { useSettingsStore, subscribeToBlacklistChanges, subscribeToDuplicateBlacklistChanges, subscribeToFavouriteTagHighlightChanges, subscribeToFavouriteTagMinMatchesChanges } from '../stores/useSettingsStore'
+import { useEffect, useRef, useState } from 'react'
+import { COMIC_SOURCES, type TagBlacklist, type DuplicateBlacklist, type DuplicateBlacklistEntry, type MissingBlacklist } from '@shared/types'
+import { useSettingsStore, subscribeToBlacklistChanges, subscribeToDuplicateBlacklistChanges, subscribeToMissingBlacklistChanges, subscribeToFavouriteTagHighlightChanges, subscribeToFavouriteTagMinMatchesChanges } from '../stores/useSettingsStore'
 import { useConfig } from './useIpc'
 
 export function useInitConfig() {
   const {
-    setThemeMode, setCardStyle, setSfwMode, setTagBlacklist, setDuplicateBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches,
+    setThemeMode, setCardStyle, setSfwMode, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches,
   } = useSettingsStore()
   const { getConfig, setConfig } = useConfig()
   const subscribedRef = useRef(false)
   const unsubRef = useRef<(() => void) | null>(null)
+  // 配置是否加载完成：App 据此判定首屏就绪，触发 StartupScreen 淡出
+  const [configLoaded, setConfigLoaded] = useState(false)
 
   useEffect(() => {
     getConfig().then((result) => {
@@ -58,6 +60,29 @@ export function useInitConfig() {
         setDuplicateBlacklist(normalized)
       }
 
+      const rawMissingBlacklist = result.config?.missingBlacklist
+      if (rawMissingBlacklist && typeof rawMissingBlacklist === 'object') {
+        const raw = rawMissingBlacklist as Record<string, unknown>
+        const normalized: MissingBlacklist = Object.fromEntries(
+          COMIC_SOURCES.map(s => {
+            const arr = Array.isArray(raw[s]) ? raw[s] as unknown[] : []
+            // 兼容旧版纯字符串与新版结构化对象（与 duplicateBlacklist 同构）
+            const entries: DuplicateBlacklistEntry[] = arr.map(item => {
+              if (typeof item === 'string') {
+                return { fingerprint: item, memberCount: null }
+              }
+              const obj = item as Record<string, unknown>
+              return {
+                fingerprint: typeof obj.fingerprint === 'string' ? obj.fingerprint : '',
+                memberCount: typeof obj.memberCount === 'number' ? obj.memberCount : null,
+              }
+            })
+            return [s, entries]
+          })
+        ) as MissingBlacklist
+        setMissingBlacklist(normalized)
+      }
+
       if (typeof result.config?.favouriteTagHighlight === 'boolean') {
         setFavouriteTagHighlight(result.config.favouriteTagHighlight)
       }
@@ -70,17 +95,23 @@ export function useInitConfig() {
         subscribedRef.current = true
         const unsubBlacklist = subscribeToBlacklistChanges(setConfig)
         const unsubDupBlacklist = subscribeToDuplicateBlacklistChanges(setConfig)
+        const unsubMissBlacklist = subscribeToMissingBlacklistChanges(setConfig)
         const unsubHighlight = subscribeToFavouriteTagHighlightChanges(setConfig)
         const unsubMinMatches = subscribeToFavouriteTagMinMatchesChanges(setConfig)
         unsubRef.current = () => {
           unsubBlacklist()
           unsubDupBlacklist()
+          unsubMissBlacklist()
           unsubHighlight()
           unsubMinMatches()
         }
       }
+      // 配置加载完成：标记首屏就绪，触发 StartupScreen 淡出
+      setConfigLoaded(true)
     }).catch(() => {
       setSfwMode(true)
+      // 失败也算就绪：否则 StartupScreen 永不淡出，应用卡死
+      setConfigLoaded(true)
     })
 
     return () => {
@@ -88,7 +119,7 @@ export function useInitConfig() {
       unsubRef.current = null
       subscribedRef.current = false
     }
-  }, [setThemeMode, setCardStyle, setSfwMode, setConfig, getConfig, setTagBlacklist, setDuplicateBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches])
+  }, [setThemeMode, setCardStyle, setSfwMode, setConfig, getConfig, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches])
 
-  return { setSfwMode, setConfig }
+  return { setSfwMode, setConfig, configLoaded }
 }

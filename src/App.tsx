@@ -5,11 +5,13 @@ import { useTheme } from './hooks/useTheme'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useConfig } from './hooks/useIpc'
 import { useInitConfig } from './hooks/useInitConfig'
+import { useStartupProgress, markStartupReady } from './hooks/useStartupProgress'
 import { Sidebar } from './components/Sidebar'
 import { SearchPage } from './pages/SearchPage'
 import { Toast } from './components/common/Toast'
 import { Toaster } from './components/common/Toaster'
 import { FatalBanner } from './components/FatalBanner'
+import { StartupScreen } from './components/StartupScreen'
 import { useDrawerStore } from './stores/useDrawerStore'
 import { useReaderStore } from './stores/useReaderStore'
 import { useFatalErrorStore } from './stores/useFatalErrorStore'
@@ -42,8 +44,18 @@ function App() {
   const { sfwToastDismissed, dismissSfwToast } = useSettingsStore()
   const { setConfig } = useConfig()
   useTheme()
-  const { setSfwMode, } = useInitConfig()
+  const { setSfwMode, configLoaded } = useInitConfig()
   const setFatalError = useFatalErrorStore((s) => s.setError)
+  // 启动进度：done=false 时覆盖渲染 <StartupScreen>，done=true 时淡出显示真实内容。
+  // index.html 骨架屏 → React <StartupScreen>（视觉一致）→ 真实内容，三态无缝衔接。
+  const startupProgress = useStartupProgress()
+
+  // 首屏就绪信号：配置加载完成（首个 IPC getConfig 成功）= 真实内容可安全渲染。
+  // 触发 markStartupReady 让 StartupScreen 淡出。Python 进度最高 95%，最后的
+  // 95→100 由这个信号补上（设计文档"首屏就绪 95-100% 由渲染进程触发"的实现）。
+  useEffect(() => {
+    if (configLoaded) markStartupReady()
+  }, [configLoaded])
 
   const [showSfwToast, setShowSfwToast] = useState(true)
 
@@ -120,6 +132,13 @@ function App() {
 
   return (
     <div className="flex h-screen bg-[var(--bg-secondary)]">
+      {/* 启动进度界面：done=false 时覆盖真实内容，done=true 时淡出。
+          fixed inset-0 z-50 确保覆盖整个窗口，与真实内容切换通过 framer-motion 淡入淡出过渡。 */}
+      <AnimatePresence>
+        {!startupProgress.done && (
+          <StartupScreen key="startup" {...startupProgress} />
+        )}
+      </AnimatePresence>
       {/* SFW 提示：交互型常驻 Toast（带 action），保留原有交互 */}
       <Toast
         message="当前处于 SFW 模式，封面已隐藏"
