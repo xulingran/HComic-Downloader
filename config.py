@@ -66,6 +66,11 @@ class Config:
     duplicate_blacklist: dict[str, list[dict]] = field(
         default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []}
     )
+    # 查缺补漏已忽略的组（按来源隔离，每项为 {fingerprint, memberCount}）
+    # 与 duplicate_blacklist 同构但独立存储，两个功能的忽略状态互不影响
+    missing_blacklist: dict[str, list[dict]] = field(
+        default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []}
+    )
     # jmcomic 自定义域名（空字符串表示自动选择）
     jmcomic_domain: str = ""
     # 预览页面缓存大小上限（MB）
@@ -254,6 +259,24 @@ class Config:
                                 }
                             )
                     dup_bl[source_key] = migrated
+            # 迁移 missing_blacklist：与 duplicate_blacklist 同构迁移逻辑
+            miss_bl = data.get("missing_blacklist")
+            if isinstance(miss_bl, dict):
+                for source_key, entries in miss_bl.items():
+                    if not isinstance(entries, list):
+                        continue
+                    migrated = []
+                    for entry in entries:
+                        if isinstance(entry, str):
+                            migrated.append({"fingerprint": entry, "memberCount": None})
+                        elif isinstance(entry, dict) and "fingerprint" in entry:
+                            migrated.append(
+                                {
+                                    "fingerprint": str(entry["fingerprint"]),
+                                    "memberCount": entry.get("memberCount"),
+                                }
+                            )
+                    miss_bl[source_key] = migrated
             # 只保留 Config 已知字段，忽略未知 key
             known_fields = {f.name for f in dc_fields(cls)}
             unknown = [k for k in data if k not in known_fields]

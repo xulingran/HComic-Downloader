@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { DuplicateDetector } from '../components/tools/DuplicateDetector'
+import { MissingChapterDetector } from '../components/tools/MissingChapterDetector'
 import { TagFilterSettings } from '../components/settings/TagFilterSettings'
 import { FavouriteTagSettings } from '../components/settings/FavouriteTagSettings'
 
@@ -8,6 +9,7 @@ const SECTIONS = [
   { id: 'tag-filter', label: '标签过滤', icon: '\u{1F3F7}\uFE0F' },
   { id: 'favourite-tags', label: '推荐标签', icon: '\u2B50' },
   { id: 'duplicate', label: '重复检测', icon: '\u{1F4CB}' },
+  { id: 'missing', label: '查缺补漏', icon: '\u{1F50D}' },
 ] as const
 
 export function ToolboxPage() {
@@ -61,6 +63,10 @@ export function ToolboxPage() {
 
         <div id="section-duplicate">
           <DuplicateDetector />
+        </div>
+
+        <div id="section-missing">
+          <MissingChapterDetector />
         </div>
       </div>
     </div>

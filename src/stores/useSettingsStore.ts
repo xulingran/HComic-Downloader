@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { COMIC_SOURCES, type TagBlacklist, type DuplicateBlacklist, type CardStyle } from '@shared/types'
+import { COMIC_SOURCES, type TagBlacklist, type DuplicateBlacklist, type MissingBlacklist, type CardStyle } from '@shared/types'
 import { normalizeSourceKey } from '../utils/source'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
@@ -11,6 +11,7 @@ interface SettingsState {
   sfwToastDismissed: boolean
   tagBlacklist: TagBlacklist
   duplicateBlacklist: DuplicateBlacklist
+  missingBlacklist: MissingBlacklist
   filterEnabled: boolean
   favouriteTagHighlight: boolean
   favouriteTagMinMatches: number
@@ -25,6 +26,10 @@ interface SettingsState {
   removeDuplicateIgnore: (source: string, fingerprint: string) => void
   confirmMemberCount: (source: string, fingerprint: string, memberCount: number) => void
   setDuplicateBlacklist: (blacklist: DuplicateBlacklist) => void
+  addMissingIgnore: (source: string, fingerprint: string, memberCount: number) => void
+  removeMissingIgnore: (source: string, fingerprint: string) => void
+  confirmMissingMemberCount: (source: string, fingerprint: string, memberCount: number) => void
+  setMissingBlacklist: (blacklist: MissingBlacklist) => void
   setFilterEnabled: (enabled: boolean) => void
   setFavouriteTagHighlight: (enabled: boolean) => void
   setFavouriteTagMinMatches: (n: number) => void
@@ -38,6 +43,10 @@ const DEFAULT_DUPLICATE_BLACKLIST: DuplicateBlacklist = Object.fromEntries(
   COMIC_SOURCES.map(s => [s, []])
 ) as DuplicateBlacklist
 
+const DEFAULT_MISSING_BLACKLIST: MissingBlacklist = Object.fromEntries(
+  COMIC_SOURCES.map(s => [s, []])
+) as MissingBlacklist
+
 export const useSettingsStore = create<SettingsState>((set) => ({
   themeMode: 'auto',
   cardStyle: 'cover',
@@ -45,6 +54,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   sfwToastDismissed: false,
   tagBlacklist: { ...DEFAULT_TAG_BLACKLIST },
   duplicateBlacklist: { ...DEFAULT_DUPLICATE_BLACKLIST },
+  missingBlacklist: { ...DEFAULT_MISSING_BLACKLIST },
   filterEnabled: true,
   favouriteTagHighlight: false,
   favouriteTagMinMatches: 1,
@@ -130,6 +140,56 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     })
   },
   setDuplicateBlacklist: (blacklist) => set({ duplicateBlacklist: blacklist }),
+  addMissingIgnore: (source, fingerprint, memberCount) => {
+    const fp = fingerprint.trim()
+    if (!fp) return
+    set((state) => {
+      const key = normalizeSourceKey(source)
+      const list = state.missingBlacklist[key]
+      // 已存在则更新 memberCount，否则追加
+      const existing = list.find(e => e.fingerprint === fp)
+      if (existing) {
+        return {
+          missingBlacklist: {
+            ...state.missingBlacklist,
+            [key]: list.map(e => e.fingerprint === fp ? { ...e, memberCount } : e),
+          },
+        }
+      }
+      return {
+        missingBlacklist: {
+          ...state.missingBlacklist,
+          [key]: [...list, { fingerprint: fp, memberCount }],
+        },
+      }
+    })
+  },
+  removeMissingIgnore: (source, fingerprint) => {
+    set((state) => {
+      const key = normalizeSourceKey(source)
+      return {
+        missingBlacklist: {
+          ...state.missingBlacklist,
+          [key]: state.missingBlacklist[key].filter(e => e.fingerprint !== fingerprint),
+        },
+      }
+    })
+  },
+  // confirmMissingMemberCount 同时用于：用户手动确认变动、检测时静默填充 null 基线
+  confirmMissingMemberCount: (source, fingerprint, memberCount) => {
+    set((state) => {
+      const key = normalizeSourceKey(source)
+      return {
+        missingBlacklist: {
+          ...state.missingBlacklist,
+          [key]: state.missingBlacklist[key].map(e =>
+            e.fingerprint === fingerprint ? { ...e, memberCount } : e
+          ),
+        },
+      }
+    })
+  },
+  setMissingBlacklist: (blacklist) => set({ missingBlacklist: blacklist }),
   setFilterEnabled: (enabled) => set({ filterEnabled: enabled }),
   setFavouriteTagHighlight: (enabled) => set({ favouriteTagHighlight: enabled }),
   setFavouriteTagMinMatches: (n) => set({ favouriteTagMinMatches: n }),
@@ -153,6 +213,17 @@ export function subscribeToDuplicateBlacklistChanges(setConfig: (key: 'duplicate
     if (state.duplicateBlacklist !== prev) {
       prev = state.duplicateBlacklist
       setConfig('duplicateBlacklist', state.duplicateBlacklist).catch(() => {})
+    }
+  })
+}
+
+/** Subscribe to missingBlacklist changes and persist via setConfig. */
+export function subscribeToMissingBlacklistChanges(setConfig: (key: 'missingBlacklist', value: MissingBlacklist) => Promise<unknown>) {
+  let prev = useSettingsStore.getState().missingBlacklist
+  return useSettingsStore.subscribe((state) => {
+    if (state.missingBlacklist !== prev) {
+      prev = state.missingBlacklist
+      setConfig('missingBlacklist', state.missingBlacklist).catch(() => {})
     }
   })
 }

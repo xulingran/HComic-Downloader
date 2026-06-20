@@ -44,6 +44,8 @@ APP_CONFIG_REQUIRED_KEYS: dict[str, type] = {
     "cardStyle": str,
     "tagBlacklist": dict,
     "duplicateBlacklist": dict,
+    # 与 duplicateBlacklist 同构（shared/types.ts:118 必需字段），Python get_config 必须返回
+    "missingBlacklist": dict,
     "previewCacheSizeLimitMB": int,
 }
 

@@ -42,11 +42,18 @@ describe('ToolboxPage', () => {
     expect(matches.length).toBeGreaterThanOrEqual(1)
   })
 
+  it('renders the missing chapter detector tool', () => {
+    render(<ToolboxPage />)
+    const matches = screen.getAllByText('查缺补漏')
+    expect(matches.length).toBeGreaterThanOrEqual(1)
+  })
+
   it('renders sidebar navigation buttons', () => {
     render(<ToolboxPage />)
     expect(screen.getAllByText('标签过滤').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('推荐标签').length).toBeGreaterThanOrEqual(1)
     expect(screen.getAllByText('重复检测').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('查缺补漏').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders all section anchors for smooth-scroll navigation', () => {
@@ -54,5 +61,6 @@ describe('ToolboxPage', () => {
     expect(document.getElementById('section-tag-filter')).toBeInTheDocument()
     expect(document.getElementById('section-favourite-tags')).toBeInTheDocument()
     expect(document.getElementById('section-duplicate')).toBeInTheDocument()
+    expect(document.getElementById('section-missing')).toBeInTheDocument()
   })
 })

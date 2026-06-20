@@ -119,6 +119,9 @@ class ConfigMixin:
             "duplicate_blacklist": getattr(
                 self.config, "duplicate_blacklist", {"hcomic": [], "moeimg": [], "jmcomic": []}
             ),
+            # 与 duplicate_blacklist 同构但独立存储：查缺补漏的忽略黑名单。
+            # 读路径必须返回，否则前端 useInitConfig 拿不到值，重启后忽略列表全部丢失。
+            "missing_blacklist": getattr(self.config, "missing_blacklist", {"hcomic": [], "moeimg": [], "jmcomic": []}),
             "preview_cache_size_limit_mb": getattr(self.config, "preview_cache_size_limit_mb", 500),
             "jmcomic_domain": getattr(self.config, "jmcomic_domain", ""),
             "favourite_tag_highlight": getattr(self.config, "favourite_tag_highlight", False),
