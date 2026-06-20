@@ -8,6 +8,7 @@ import {
   noControlChars, noPathSeparators, noPathTraversal, absolutePath,
   tagBlacklist,
   duplicateBlacklist,
+  missingBlacklist,
   assert,
   withOptionalSource,
   ValidationError,
@@ -334,6 +335,60 @@ describe('validators.ts', () => {
 
     it('rejects non-object/non-string entry', () => {
       expect(() => duplicateBlacklist()({ hcomic: [123] })).toThrow(ValidationError)
+    })
+  })
+
+  describe('missingBlacklist()', () => {
+    // missingBlacklist 与 duplicateBlacklist 数据结构同构（{ [source]: { fingerprint, memberCount }[] }），
+    // 校验规则一致。这里复用同一组用例确保对称。
+    it('passes for valid entries with memberCount', () => {
+      const v = missingBlacklist()
+      expect(v({ hcomic: [{ fingerprint: '指纹A', memberCount: 3 }] })).toBe(true)
+    })
+
+    it('passes for entries with null memberCount (legacy migration)', () => {
+      const v = missingBlacklist()
+      expect(v({ hcomic: [{ fingerprint: '指纹A', memberCount: null }] })).toBe(true)
+    })
+
+    it('passes for legacy pure-string entries', () => {
+      const v = missingBlacklist()
+      expect(v({ hcomic: ['旧指纹'] })).toBe(true)
+    })
+
+    it('passes for empty object', () => {
+      expect(missingBlacklist()({})).toBe(true)
+    })
+
+    it('rejects non-object', () => {
+      expect(() => missingBlacklist()(null)).toThrow(ValidationError)
+      expect(() => missingBlacklist()('string')).toThrow(ValidationError)
+    })
+
+    it('rejects non-array source values', () => {
+      expect(() => missingBlacklist()({ hcomic: 'not-array' })).toThrow(ValidationError)
+    })
+
+    it('rejects entries exceeding 500 items', () => {
+      const big = Array(501).fill({ fingerprint: 'fp', memberCount: 1 })
+      expect(() => missingBlacklist()({ hcomic: big })).toThrow(ValidationError)
+    })
+
+    it('rejects entry missing fingerprint', () => {
+      expect(() => missingBlacklist()({ hcomic: [{ memberCount: 3 }] })).toThrow(ValidationError)
+    })
+
+    it('rejects duplicate fingerprints within same source', () => {
+      expect(() => missingBlacklist()({
+        hcomic: [
+          { fingerprint: 'fp', memberCount: 1 },
+          { fingerprint: 'fp', memberCount: 2 },
+        ],
+      })).toThrow(ValidationError)
+    })
+
+    it('rejects non-object/non-string entry', () => {
+      expect(() => missingBlacklist()({ hcomic: [123] })).toThrow(ValidationError)
     })
   })
 

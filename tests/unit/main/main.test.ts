@@ -720,6 +720,22 @@ describe('main.ts', () => {
       expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'themeMode', value: 'dark' })
     })
 
+    it('should accept and forward missingBlacklist (regression: was rejected as unknown key)', async () => {
+      // 回归：012fdbb 新增 missingBlacklist 时漏在主进程 CONFIG_VALIDATORS 注册，
+      // 导致 setConfig('missingBlacklist') 抛 "Unknown config key: missingBlacklist"，
+      // 持久化静默失败（subscribeToMissingBlacklistChanges 用 .catch(()=>{}) 吞错）。
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      const value = { hcomic: [{ fingerprint: 'fp', memberCount: 3 }] }
+      await handler.handler({}, 'missingBlacklist', value)
+      expect(mockBridgeCall).toHaveBeenCalledWith('set_config', { key: 'missingBlacklist', value })
+    })
+
+    it('should reject invalid missingBlacklist value', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:set-config')!
+      await expect(handler.handler({}, 'missingBlacklist', { hcomic: 'not-array' }))
+        .rejects.toThrow('Invalid value for missingBlacklist')
+    })
+
     it('should reject invalid themeMode value', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:set-config')!
       await expect(handler.handler({}, 'themeMode', 'invalid'))

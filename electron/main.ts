@@ -37,6 +37,7 @@ import {
   withOptionalSource,
   tagBlacklist as tagBlacklistValidator,
   duplicateBlacklist as duplicateBlacklistValidator,
+  missingBlacklist as missingBlacklistValidator,
 } from './validators'
 
 // 初始化日志：必须在最早阶段执行，以捕获启动期异常并接管 console.*
@@ -240,6 +241,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   cardStyle: and(string(), oneOf(['cover', 'detailed'] as const)),
   tagBlacklist: tagBlacklistValidator(),
   duplicateBlacklist: duplicateBlacklistValidator(),
+  missingBlacklist: missingBlacklistValidator(),
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
   jmcomicDomain: and(string(), maxLength(256)),
   favouriteTagHighlight: boolean(),
