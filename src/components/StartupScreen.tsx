@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion'
 import { useState } from 'react'
 import type { StartupProgressState } from '../hooks/useStartupProgress'
-
 /**
  * 启动进度界面（React 版）。
  *
@@ -27,7 +26,7 @@ function useSystemDarkMode(): boolean {
   return useState(() => window.matchMedia?.('(prefers-color-scheme: dark)').matches ?? false)[0]
 }
 
-export function StartupScreen({ percent, label }: StartupProgressState) {
+export function StartupScreen({ percent, label }: Pick<StartupProgressState, 'percent' | 'label'>) {
   const dark = useSystemDarkMode()
   // 配色与 index.html 骨架屏的 hex 值完全一致
   const colors = {

@@ -64,13 +64,19 @@ export function markStartupReady(): void {
  * 配合 main 进程在 did-finish-load 重发缓存进度，能保证订阅就绪后接到重发事件。
  *
  * window.hcomic 通常在 hook 模块加载时已就绪（preload 先于页面脚本注入），
- * 但为防御边界情况，用轮询等待其就绪再订阅。
+ * 但为防御边界情况，用带上限的轮询等待其就绪（约 1s，20 次），超时放弃——
+ * 该场景下整个应用都已不可用，进度条卡住是次要问题。
  */
+const MAX_SUBSCRIBE_ATTEMPTS = 20
+let subscribeAttempts = 0
 function ensureSubscribed(): void {
   if (subscribed) return
   if (!window.hcomic?.onStartupProgress) {
     // window.hcomic 尚未就绪：轮询重试（preload 注入与模块加载的边界情况）
-    setTimeout(ensureSubscribed, 50)
+    if (subscribeAttempts < MAX_SUBSCRIBE_ATTEMPTS) {
+      subscribeAttempts++
+      setTimeout(ensureSubscribed, 50)
+    }
     return
   }
   subscribed = true

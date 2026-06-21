@@ -126,9 +126,9 @@ describe('useStartupProgress', () => {
   it('React 挂载滞后时不丢失进度（模块级缓存）', async () => {
     const { useStartupProgress } = await loadHook()
 
-    // 模拟事件在 React 挂载前到达：先手动触发订阅
-    // （hook 模块加载时不会自动订阅，需 ensureSubscribed 被调用）
-    // 这里通过先 render 一次触发订阅，再卸载，再 render 模拟"滞后"
+    // hook 模块加载时即调用 ensureSubscribed() 自动订阅（见 useStartupProgress.ts:88）。
+    // 这里模拟"事件在第二次挂载前到达"：先 render 一次触发模块加载与订阅，
+    // 推送事件写入模块级缓存，卸载后再 render 时 useState 初始化应读到缓存值。
     const first = renderHook(() => useStartupProgress())
     act(() => {
       progressCallback?.({ percent: 75, label: '数据库已就绪' })

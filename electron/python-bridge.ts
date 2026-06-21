@@ -428,10 +428,13 @@ export function getPythonBridge(): PythonBridge {
  * 解析 Python stderr 的启动进度行。
  *
  * 格式：`PROGRESS:<percent>:<label>`，percent 为 0-100 整数，label 为不含冒号的中文文案。
- * 解析成功返回 { percent, label }；格式不匹配（无前缀/percent 非整数/缺 label）返回 null，
+ * 解析成功返回 { percent, label }；格式不匹配（无前缀/percent 非整数/缺 label/label 含冒号）返回 null，
  * 调用方据此降级为普通日志转发，不抛错中断启动。
+ *
+ * 正则用 [^:]+ 限定 label 不含冒号，与 Python 端契约一致（ipc_server.py _emit_progress
+ * 注明 label 禁止含冒号，避免冒号分隔歧义）。
  */
-const PROGRESS_LINE_RE = /^PROGRESS:(\d+):(.+)$/
+const PROGRESS_LINE_RE = /^PROGRESS:(\d+):([^:]+)$/
 
 export function parseStartupProgressLine(line: string): StartupProgressEvent | null {
   const match = PROGRESS_LINE_RE.exec(line)

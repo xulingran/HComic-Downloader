@@ -210,6 +210,12 @@ class IPCServer(
             percent: 进度百分比 0-100，调用方必须保证单调递增。
             label: 当前阶段中文文案，禁止含冒号（避免解析歧义）。
         """
+        # 开发期断言：percent 必须单调递增。生产路径无开销（assert 在 -O 下被移除）。
+        # 调用方顺序错误时尽早暴露，避免前端靠单调保护静默吞掉回退。
+        # 用 getattr 兜底：测试用 __new__ 绕过 __init__ 时 _last_progress 未初始化。
+        last = getattr(self, "_last_progress", None)
+        assert last is None or percent >= last, f"进度回退：{last} -> {percent}（label={label}）"
+        self._last_progress = percent
         print(f"PROGRESS:{percent}:{label}", file=sys.stderr, flush=True)
 
     # ── album event notification ─────────────────────────────────────────

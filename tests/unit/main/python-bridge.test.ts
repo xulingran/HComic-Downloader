@@ -588,6 +588,11 @@ describe('PythonBridge', () => {
       const result = parseStartupProgressLine('PROGRESS:85:数据库已就绪')
       expect(result).toEqual({ percent: 85, label: '数据库已就绪' })
     })
+
+    it('label 含冒号应返回 null（契约：label 禁止冒号，避免分隔歧义）', () => {
+      // 正则 [^:]+ 限定 label 不含冒号，与 Python 端 _emit_progress 注释契约一致
+      expect(parseStartupProgressLine('PROGRESS:50:a:b')).toBeNull()
+    })
   })
 
   describe('stderr 进度行集成（onStartupProgress 回调）', () => {
