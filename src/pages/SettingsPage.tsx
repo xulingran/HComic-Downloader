@@ -12,6 +12,7 @@ import { ProxySettings } from '../components/settings/ProxySettings'
 import { NotificationSettings } from '../components/settings/NotificationSettings'
 import { CacheSettings } from '../components/settings/CacheSettings'
 import { MigrationDialog } from '../components/settings/MigrationDialog'
+import { Modal } from '../components/common/Modal'
 import { copyDiagnosticsWithConfirm } from '../utils/diagnostics'
 import { useMigration } from '../hooks/useMigration'
 
@@ -92,6 +93,12 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const { createHandler } = useOptimisticConfig(setConfig, setSaveError, setIsSaving)
   const [isMigrationOpen, setIsMigrationOpen] = useState(false)
   const migrationHook = useMigration()
+  // 下载目录变更触发的迁移确认：plan 后等待用户确认，确认后执行迁移
+  const [pendingDirMigration, setPendingDirMigration] = useState<{
+    migrationId: string
+    totalItems: number
+    newDir: string
+  } | null>(null)
   const [jmcomicDomainInput, setJmcomicDomainInput] = useState('')
   const [jmcomicDomainMode, setJmcomicDomainMode] = useState<'auto' | 'custom'>('auto')
 
@@ -234,7 +241,21 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     const value = (config as unknown as Record<string, unknown>)[key]
     setIsSaving(true)
     try {
-      await setConfig(key, value as ConfigValueMap[ConfigKey])
+      const result = await setConfig(key, value as ConfigValueMap[ConfigKey]) as
+        { success: boolean; migrationTriggered?: boolean; migrationId?: string; migrationTotalItems?: number } | null
+      // 下载目录变更可能触发文件迁移：后端 plan 完毕，等待前端确认后才执行
+      if (
+        key === 'downloadDir' &&
+        result?.migrationTriggered &&
+        result.migrationId &&
+        typeof result.migrationTotalItems === 'number'
+      ) {
+        setPendingDirMigration({
+          migrationId: result.migrationId,
+          totalItems: result.migrationTotalItems,
+          newDir: value as string,
+        })
+      }
     } catch (err: unknown) {
       try {
         const result = await getConfig()
@@ -264,6 +285,55 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     const auth = authMap[source as keyof typeof authMap] ?? hcomicAuth
     await auth.apply(curlText)
   }
+
+  // 下载目录迁移确认：用户确认后执行迁移（文件移动 + DB 更新 + 落库）
+  const handleConfirmDirMigration = async () => {
+    if (!pendingDirMigration) return
+    try {
+      await migrationHook.confirmMigration(pendingDirMigration.migrationId)
+      useToastStore.getState().success(`正在迁移 ${pendingDirMigration.totalItems} 个文件…`)
+    } catch (err: unknown) {
+      setSaveError((err instanceof Error ? err.message : String(err)) || '启动迁移失败')
+      setTimeout(() => setSaveError(null), 5000)
+    }
+    setPendingDirMigration(null)
+  }
+
+  // 下载目录迁移取消：回滚 configState 到后端真实值（旧 download_dir，未落库）
+  const handleCancelDirMigration = async () => {
+    if (!pendingDirMigration) return
+    try {
+      await migrationHook.cancelMigration()
+    } catch {
+      /* cancel 失败不阻断 */
+    }
+    // 后端 download_dir 未落库仍是旧值，重新拉取回填本地 state
+    try {
+      const result = await getConfig()
+      if (result.config) {
+        setConfigState(prev => ({ ...prev, downloadDir: result.config.downloadDir ?? prev.downloadDir }))
+      }
+    } catch { /* reload 失败则保留当前显示，下次加载会修正 */ }
+    setPendingDirMigration(null)
+  }
+
+  // 迁移完成时刷新本地 configState（迁移成功后后端已落库新 download_dir）
+  useEffect(() => {
+    if (migrationHook.complete) {
+      const c = migrationHook.complete
+      if (c.failed > 0) {
+        useToastStore.getState().error(`迁移完成：成功 ${c.succeeded}，失败 ${c.failed}（请查看迁移日志）`)
+      } else {
+        useToastStore.getState().success(`迁移完成：${c.succeeded} 个文件已更新`)
+      }
+      // 刷新本地 configState 以反映后端已落库的新 download_dir
+      getConfig().then(result => {
+        if (result.config) {
+          setConfigState(prev => ({ ...prev, downloadDir: result.config.downloadDir ?? prev.downloadDir }))
+        }
+      }).catch(() => { /* 刷新失败不阻断 */ })
+    }
+  }, [migrationHook.complete, getConfig])
 
   const handleTestAuth = async (source: string = 'hcomic') => {
     const auth = authMap[source as keyof typeof authMap] ?? hcomicAuth
@@ -595,6 +665,42 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           currentDownloadDir={config.downloadDir}
           onSelectDirectory={selectDirectory}
         />
+
+        {/* 下载目录变更触发的迁移确认弹窗 */}
+        <Modal
+          isOpen={pendingDirMigration !== null}
+          onClose={handleCancelDirMigration}
+          closeOnOverlayClick={false}
+          ariaLabel="下载目录迁移确认"
+          contentClassName="w-[420px] rounded-xl bg-[var(--bg-primary)] p-6 space-y-4"
+        >
+          {pendingDirMigration && (
+            <>
+              <h3 className="text-base font-semibold text-[var(--text-primary)]">迁移下载文件</h3>
+              <p className="text-sm text-[var(--text-secondary)]">
+                检测到 <span className="font-semibold text-[var(--text-primary)]">{pendingDirMigration.totalItems}</span> 个已下载文件在旧目录，
+                将自动迁移到新目录并更新历史记录。
+              </p>
+              <p className="text-xs text-[var(--text-secondary)] break-all">
+                新目录：{pendingDirMigration.newDir}
+              </p>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={handleCancelDirMigration}
+                  className="px-4 py-2 text-sm rounded-lg bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)]"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={handleConfirmDirMigration}
+                  className="px-4 py-2 text-sm rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                >
+                  确认迁移
+                </button>
+              </div>
+            </>
+          )}
+        </Modal>
       </div>
     </div>
   )

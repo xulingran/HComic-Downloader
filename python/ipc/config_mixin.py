@@ -31,6 +31,55 @@ class ConfigMixin:
     _write_response: Callable[[dict], None]
     _config_write_lock: threading.Lock
 
+    def _apply_download_dir_change(self, new_dir: str) -> dict | None:
+        """变更下载目录时联动迁移已记录文件。
+
+        - 新旧目录相同或旧目录为空（首次设置）→ 直接 set_output_dir（快速路径）
+        - 新旧不同 → 触发 trigger_download_dir_migration，返回迁移信息 dict
+          （migrationId/totalItems/skipped），落库由迁移完成回调负责，本方法不落库
+
+        返回 None 表示快速路径（调用方正常落库）；返回 dict 表示触发了迁移
+        （调用方须跳过自身落库，交给 _migration_complete_callback）。
+        """
+        import os
+
+        old_dir = self.config.download_dir
+        new_dir_normalized = os.path.normpath(os.path.realpath(new_dir))
+        old_dir_normalized = os.path.normpath(os.path.realpath(old_dir)) if old_dir else ""
+
+        # 快速路径：新旧相同、或旧目录为空（首次设置）
+        if not old_dir or new_dir_normalized == old_dir_normalized:
+            self._download_manager.set_output_dir(new_dir)
+            return None
+
+        # 联动迁移：落库交给迁移完成回调，此处只触发并返回信息
+        try:
+            migration_info = self.trigger_download_dir_migration(new_dir)
+        except RuntimeError as e:
+            # 已有迁移进行中，退化为仅更新运行时目录（不阻断配置变更）
+            logger.warning("Download dir migration skipped (%s), updating output_dir only: %s", e, new_dir)
+            self._download_manager.set_output_dir(new_dir)
+            return None
+
+        if migration_info.get("skipped"):
+            # 旧目录无可迁移记录，走快速路径落库
+            self._download_manager.set_output_dir(new_dir)
+            return None
+
+        # 预检查发现需迁移文件：返回迁移计划供前端弹窗确认。
+        # 落库责任移交给 _migration_complete_callback（用户确认并执行迁移后）。
+        logger.info(
+            "Download dir change pending migration confirmation: %s items %s -> %s",
+            migration_info.get("totalItems"),
+            old_dir,
+            new_dir,
+        )
+        return {
+            "migrationTriggered": True,
+            "migrationId": migration_info["migrationId"],
+            "migrationTotalItems": migration_info["totalItems"],
+        }
+
     def _apply_timeout(self, v: int) -> None:
         self.downloader.timeout = v
         self.downloader.image_downloader.timeout = v
@@ -69,10 +118,14 @@ class ConfigMixin:
                 raise ValueError(f"测试域名 {v} 失败: {e}") from e
         self.parser.set_jmcomic_domain(v)
 
-    def _apply_runtime(self, key: str, value: Any) -> None:
-        """Apply a config value to the live runtime objects."""
+    def _apply_runtime(self, key: str, value: Any) -> dict | None:
+        """Apply a config value to the live runtime objects.
+
+        返回值：对于触发异步迁移的配置项（downloadDir），返回迁移信息 dict
+        供 handle_set_config 透传给前端；其他配置项返回 None。
+        """
         _RUNTIME_APPLIERS = {
-            "downloadDir": lambda v: self._download_manager.set_output_dir(v),
+            "downloadDir": self._apply_download_dir_change,
             "outputFormat": lambda v: self._download_manager.set_output_format(v),
             "batchDownloadDelay": lambda v: self._download_manager.set_delay_after(v),
             "autoRetryMaxAttempts": lambda v: self._download_manager.set_auto_retry_max_attempts(v),
@@ -94,7 +147,8 @@ class ConfigMixin:
         }
         applier = _RUNTIME_APPLIERS.get(key)
         if applier:
-            applier(value)
+            return applier(value)
+        return None
 
     def handle_get_config(self) -> dict:
         reverse_map = {v: k for k, v in CONFIG_KEY_MAP.items()}
@@ -169,11 +223,18 @@ class ConfigMixin:
 
         old_value = getattr(self.config, python_key)
 
+        migration_info = None
         try:
-            self._apply_runtime(key, value)
+            # _apply_runtime 返回迁移信息 dict（仅 downloadDir 变更且需迁移时），否则 None
+            migration_info = self._apply_runtime(key, value)
         except Exception as e:
             logger.error("Set config runtime error for %s: %s", key, e)
             raise
+
+        # 若触发了下载目录迁移，落库责任移交给 _migration_complete_callback，
+        # 此处跳过 config.save（迁移成功后回调中统一落库 download_dir）。
+        if migration_info and migration_info.get("migrationTriggered"):
+            return {"success": True, **migration_info}
 
         try:
             # 序列化 config 写入：并发 set_config 同时 os.replace 会触发 WinError 5

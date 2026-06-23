@@ -466,7 +466,13 @@ export interface IPCMethods {
   }
   set_config: {
     params: { key: ConfigKey; value: ConfigValue }
-    result: { success: boolean }
+    result: {
+      success: boolean
+      /** 仅当 downloadDir 变更且触发文件迁移时存在 */
+      migrationTriggered?: boolean
+      migrationId?: string
+      migrationTotalItems?: number
+    }
   }
   get_downloads: {
     params: Record<string, never>

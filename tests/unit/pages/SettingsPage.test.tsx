@@ -9,7 +9,9 @@ const {
   mockVerifyAuth,
   mockSetThemeMode,
   mockSetCardStyle,
-  mockSetSfwMode
+  mockSetSfwMode,
+  mockConfirmMigration,
+  mockCancelMigration
 } = vi.hoisted(() => ({
   mockGetConfig: vi.fn(),
   mockSetConfig: vi.fn(),
@@ -17,7 +19,9 @@ const {
   mockVerifyAuth: vi.fn(),
   mockSetThemeMode: vi.fn(),
   mockSetCardStyle: vi.fn(),
-  mockSetSfwMode: vi.fn()
+  mockSetSfwMode: vi.fn(),
+  mockConfirmMigration: vi.fn().mockResolvedValue({ started: true }),
+  mockCancelMigration: vi.fn().mockResolvedValue({ cancelled: true })
 }))
 
 vi.mock('@/hooks/useIpc', () => ({
@@ -31,6 +35,24 @@ vi.mock('@/hooks/useIpc', () => ({
     getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
     clearFavouriteTags: vi.fn(),
     removeFavouriteTag: vi.fn()
+  }),
+}))
+
+vi.mock('@/hooks/useMigration', () => ({
+  useMigration: () => ({
+    confirmMigration: mockConfirmMigration,
+    cancelMigration: mockCancelMigration,
+    startMigration: vi.fn(),
+    pauseMigration: vi.fn(),
+    resumeMigration: vi.fn(),
+    getMigrationStatus: vi.fn(),
+    resolveUnmatched: vi.fn(),
+    syncFromBackend: vi.fn(),
+    progress: null,
+    complete: null,
+    errors: [],
+    isActive: false,
+    resetState: vi.fn(),
   }),
 }))
 
@@ -227,6 +249,88 @@ describe('SettingsPage', () => {
     await userEvent.tab()
 
     expect(mockSetConfig).toHaveBeenCalledWith('downloadDir', '/new/path')
+  })
+
+  it('shows migration confirm dialog when downloadDir change triggers migration', async () => {
+    // 模拟后端返回 migrationTriggered=true
+    mockSetConfig.mockResolvedValueOnce({
+      success: true,
+      migrationTriggered: true,
+      migrationId: 'mig-123',
+      migrationTotalItems: 5,
+    })
+
+    render(<SettingsPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByPlaceholderText('请输入下载目录的绝对路径').length).toBeGreaterThanOrEqual(1)
+    })
+
+    const input = screen.getAllByPlaceholderText('请输入下载目录的绝对路径')[0]
+    await userEvent.clear(input)
+    await userEvent.type(input, '/new/migrated/path')
+    await userEvent.tab()
+
+    // 确认对话框出现，展示迁移文件数
+    expect(await screen.findByText('迁移下载文件')).toBeInTheDocument()
+    expect(screen.getByText('5')).toBeInTheDocument()
+
+    // 用户确认 → 调 confirmMigration
+    await userEvent.click(screen.getByText('确认迁移'))
+    await waitFor(() => {
+      expect(mockConfirmMigration).toHaveBeenCalledWith('mig-123')
+    })
+  })
+
+  it('cancels migration and rolls back when user clicks cancel', async () => {
+    mockSetConfig.mockResolvedValueOnce({
+      success: true,
+      migrationTriggered: true,
+      migrationId: 'mig-456',
+      migrationTotalItems: 3,
+    })
+    // cancel 后 getConfig 回填旧值
+    mockGetConfig.mockResolvedValueOnce({ config: { ...defaultConfig, downloadDir: '/downloads' } })
+
+    render(<SettingsPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByPlaceholderText('请输入下载目录的绝对路径').length).toBeGreaterThanOrEqual(1)
+    })
+
+    const input = screen.getAllByPlaceholderText('请输入下载目录的绝对路径')[0]
+    await userEvent.clear(input)
+    await userEvent.type(input, '/cancelled/path')
+    await userEvent.tab()
+
+    expect(await screen.findByText('迁移下载文件')).toBeInTheDocument()
+    await userEvent.click(screen.getByText('取消'))
+
+    await waitFor(() => {
+      expect(mockCancelMigration).toHaveBeenCalled()
+    })
+  })
+
+  it('does not show migration dialog when setConfig returns no migrationTriggered', async () => {
+    // 普通配置变更（N=0 快速路径），不触发对话框
+    mockSetConfig.mockResolvedValueOnce({ success: true })
+
+    render(<SettingsPage />)
+
+    await waitFor(() => {
+      expect(screen.getAllByPlaceholderText('请输入下载目录的绝对路径').length).toBeGreaterThanOrEqual(1)
+    })
+
+    const input = screen.getAllByPlaceholderText('请输入下载目录的绝对路径')[0]
+    await userEvent.clear(input)
+    await userEvent.type(input, '/normal/path')
+    await userEvent.tab()
+
+    // 等待 setConfig 完成，确认无迁移对话框
+    await waitFor(() => {
+      expect(mockSetConfig).toHaveBeenCalledWith('downloadDir', '/normal/path')
+    })
+    expect(screen.queryByText('迁移下载文件')).not.toBeInTheDocument()
   })
 
   it('calls setConfig when source button clicked', async () => {

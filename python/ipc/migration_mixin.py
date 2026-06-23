@@ -142,6 +142,41 @@ class MigrationMixin:
             ),
         }
 
+    def trigger_download_dir_migration(self, new_dir: str) -> dict:
+        """供 config_mixin 在检测到 downloadDir 变更时调用，预检查迁移需求。
+
+        只 plan 不执行：返回迁移计划信息（migrationId/totalItems/skipped）。
+        - total_items == 0（旧目录无记录或无文件）→ skipped=True，调用方直接落库
+        - total_items > 0 → skipped=False，调用方须让前端弹窗确认；
+          前端确认后调既有 handle_confirm_migration(migrationId) 启动迁移，
+          迁移完成后由 _migration_complete_callback 落库新 download_dir。
+
+        这样保留了"知情确认"：用户在文件实际移动前可看到 N 并决定是否继续。
+
+        Returns:
+            {"migrationId": str, "totalItems": int, "skipped": bool,
+             "sourceDir": str, "targetDir": str}
+        """
+        new_dir = os.path.realpath(new_dir)
+        if not os.path.isabs(new_dir):
+            raise ValueError("new_dir must be an absolute path")
+
+        with self._migration_lock:
+            current = self._migration_engine.state
+            if current and current.status in ("running", "paused"):
+                raise RuntimeError("A migration is already in progress")
+
+            self._init_migration()
+            state = self._migration_engine.plan_full_migration(self.config.download_dir, new_dir)
+
+        return {
+            "migrationId": state.id,
+            "totalItems": state.total_items,
+            "skipped": state.total_items == 0,
+            "sourceDir": state.source_dir,
+            "targetDir": state.target_dir,
+        }
+
     def handle_confirm_migration(self, migration_id: str) -> dict:
         with self._migration_lock:
             state = self._migration_engine.state
