@@ -634,6 +634,66 @@ def test_search_with_tag_parameter():
     assert isinstance(comics, list)
 
 
+def test_search_by_id_returns_single_comic(monkeypatch):
+    """纯数字 keyword 应直接请求 /album/{id} 并返回单条结果。"""
+    html = (FIXTURES / "jm_album_detail.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    captured_urls = []
+
+    def fake_request_text(url):
+        captured_urls.append(url)
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+
+    comics, pagination = parser.search("430371")
+
+    assert len(captured_urls) == 1
+    assert captured_urls[0] == "https://test.one/album/430371"
+    assert len(comics) == 1
+    assert comics[0].id == "430371"
+    assert comics[0].title == "[MANA] 神里綾華 1–4 (原神) [中国語] [無修正]"
+    assert pagination is not None
+    assert pagination.current_page == 1
+    assert pagination.total_pages == 1
+    assert pagination.total_items == 1
+
+
+def test_search_by_id_fallback_to_keyword_on_failure(monkeypatch):
+    """ID 详情页获取失败时应 fallback 到普通关键词搜索。"""
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    parser = _make_parser_with_session()
+    captured_urls = []
+
+    def fake_request_text(url):
+        captured_urls.append(url)
+        return html
+
+    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+    monkeypatch.setattr(parser, "get_comic_detail", lambda comic_id: None)
+
+    comics, pagination = parser.search("430371")
+
+    assert any("/search/photos?" in u and "search_query=430371" in u for u in captured_urls)
+    assert len(comics) == 2
+    assert pagination is not None
+    assert pagination.total_pages == 3
+
+
+def test_search_results_parses_detail_page():
+    """搜索响应为详情页时应解析为单条结果。"""
+    html = (FIXTURES / "jm_album_detail.html").read_text(encoding="utf-8")
+    parser = _make_parser()
+
+    comics, pagination = parser._parse_search_results(html, domain="test.one")
+
+    assert len(comics) == 1
+    assert comics[0].id == "430371"
+    assert pagination is not None
+    assert pagination.total_pages == 1
+    assert pagination.total_items == 1
+
+
 # ---------------------------------------------------------------------------
 # random()
 # ---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 
 _RANKING_RE = re.compile(r"^[日周月总](更新|点击|评分|评论|收藏)$")
 _INVALID_ID_RE = re.compile(r"album_missing|login")
+_COMIC_ID_RE = re.compile(r"^\d+$")
 _CHALLENGE_MIN_LENGTH = 500
 _CHALLENGE_KEYWORDS = ("cloudflare", "just a moment", "captcha", "cf-")
 
@@ -334,10 +335,21 @@ class JmParser(ParserContextMixin):
             raise RuntimeError(f"移除收藏夹失败: {e}") from e
 
     def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
-        """搜索漫画。支持关键词、标签和排行模式。"""
+        """搜索漫画。支持关键词、标签、排行模式和漫画 ID 直搜。"""
         domain = self._ensure_domain()
         if self._is_ranking_keyword(keyword):
             return self._search_ranking(keyword, page=page)
+
+        # 漫画 ID 优先路径：纯数字 keyword 直接请求详情页
+        if self._is_comic_id(keyword):
+            try:
+                comic = self.get_comic_detail(keyword)
+                if comic:
+                    return [comic], PaginationInfo(current_page=1, total_pages=1, total_items=1)
+            except ParserResponseError:
+                raise
+            except Exception as e:
+                logger.warning("jmcomic id search fallback to keyword search: %s", e)
 
         url = self._build_search_url(keyword, page=page)
         try:
@@ -612,6 +624,11 @@ class JmParser(ParserContextMixin):
         return bool(_RANKING_RE.match(keyword or ""))
 
     @staticmethod
+    def _is_comic_id(keyword: str) -> bool:
+        """判断 keyword 是否为纯数字漫画专辑 ID。"""
+        return bool(_COMIC_ID_RE.match(keyword or ""))
+
+    @staticmethod
     def _is_challenge_page(html: str) -> bool:
         """检测 Cloudflare/反爬挑战页面。"""
         if len(html) >= _CHALLENGE_MIN_LENGTH:
@@ -646,7 +663,18 @@ class JmParser(ParserContextMixin):
         return resp.text
 
     def _parse_search_results(self, html: str, domain: str) -> tuple[list[ComicInfo], PaginationInfo | None]:
-        """解析搜索结果页面。"""
+        """解析搜索结果页面。若响应为详情页则返回单条结果。"""
+        # 详情页兜底识别：服务端可能对数字/特殊关键词直接返回详情页
+        if "album_photo_cover" in html:
+            id_match = re.search(r"var\s+aid\s*=\s*(\d+);", html)
+            if id_match:
+                comic_id = id_match.group(1)
+                try:
+                    comic = self._parse_detail(html, comic_id=comic_id, domain=domain)
+                    return [comic], PaginationInfo(current_page=1, total_pages=1, total_items=1)
+                except Exception as e:
+                    logger.warning("jmcomic parse detail page from search response failed: %s", e)
+
         doc = etree.HTML(html)
         items = doc.xpath('//div[contains(@class,"thumb-overlay")]')
         comics = []
