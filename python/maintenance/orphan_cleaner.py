@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
-from maintenance.scanner import _dir_size, _validate_path_in_dir
+from maintenance.scanner import _collect_history_output_paths, _dir_size, _validate_path_in_dir
 
 if TYPE_CHECKING:
     from download_history import DownloadHistoryDB
@@ -76,15 +76,7 @@ def scan_orphan_temp_dirs(
 
     active_temp_dirs = active_temp_dirs or set()
 
-    output_paths: set[str] = set()
-    if history_db is not None:
-        try:
-            for rec in history_db.get_all_records():
-                out_path = rec.get("output_path", "")
-                if out_path:
-                    output_paths.add(out_path)
-        except Exception as e:
-            logger.warning("Failed to load history output paths: %s", e)
+    output_paths = _collect_history_output_paths(history_db)
 
     orphans: list[OrphanTempDir] = []
     for entry in os.listdir(download_dir):
@@ -149,15 +141,7 @@ def cleanup_orphan_temp_dirs(
 
     active_temp_dirs = active_temp_dirs or set()
 
-    output_paths: set[str] = set()
-    if history_db is not None:
-        try:
-            for rec in history_db.get_all_records():
-                out_path = rec.get("output_path", "")
-                if out_path:
-                    output_paths.add(out_path)
-        except Exception as e:
-            logger.warning("Failed to load history output paths for cleanup: %s", e)
+    output_paths = _collect_history_output_paths(history_db)
 
     removed = 0
     freed_bytes = 0

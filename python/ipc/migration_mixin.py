@@ -19,6 +19,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# 迁移引擎的终态集合：state 为 None 或 status 属于此集合时，引擎可接受新 plan；
+# 其余状态（ready / running / paused）一律视为占用，禁止被新 plan 覆盖。
+# 采用补集式判据避免"新增状态忘记加入占用枚举"的疏漏。
+_TERMINAL_MIGRATION_STATUSES = frozenset({"cancelled", "completed", "failed"})
+
 
 class MigrationMixin:
     """Mixin providing migration handler methods for IPCServer."""
@@ -27,6 +32,20 @@ class MigrationMixin:
     _write_response: Callable[[dict], None]
     _download_manager: ComicDownloadManager
     _history_db: DownloadHistoryDB
+    # 类型注解：运行时由 IPCServer.__init__ 创建，与 ConfigMixin 共享同一把锁。
+    # 迁移完成回调落库时持此锁，与 handle_set_config 的 config.save 路径串行化，
+    # 避免两处 os.replace 并发触发 Windows WinError 5。
+    _config_write_lock: threading.Lock
+
+    def _is_migration_occupied(self) -> bool:
+        """引擎是否处于占用态（非终态）。
+
+        state 为 None 或 status ∈ 终态集合时返回 False（可接受新 plan）；
+        status ∈ {ready, running, paused} 时返回 True（禁止覆盖）。
+        所有 plan 入口必须共用此判据。
+        """
+        state = self._migration_engine.state
+        return bool(state and state.status not in _TERMINAL_MIGRATION_STATUSES)
 
     def _init_migration(self):
         """Initialize migration state. Call from IPCServer.__init__."""
@@ -64,9 +83,14 @@ class MigrationMixin:
 
         if succeeded > 0 and state.target_dir and state.status not in ("cancelled",):
             try:
-                self._apply_runtime("downloadDir", state.target_dir)
-                self.config.download_dir = state.target_dir
-                self.config.save(_get_config_path())
+                # 持 _config_write_lock：迁移在工作线程落库，与 handle_set_config
+                # 的 config.save 路径串行化，避免并发 os.replace 在 Windows 上
+                # 触发 WinError 5（PermissionError）导致文件已移动但配置未更新。
+                # 锁粒度仅 setattr + save（毫秒级），不阻塞进度推送。
+                with self._config_write_lock:
+                    self._apply_runtime("downloadDir", state.target_dir)
+                    self.config.download_dir = state.target_dir
+                    self.config.save(_get_config_path())
                 logger.info(
                     "Download dir auto-updated to migration target: %s",
                     state.target_dir,
@@ -121,8 +145,7 @@ class MigrationMixin:
             raise ValueError("mode must be 'full' or 'repair'")
 
         with self._migration_lock:
-            current = self._migration_engine.state
-            if current and current.status in ("running", "paused"):
+            if self._is_migration_occupied():
                 raise RuntimeError("A migration is already in progress")
 
             self._init_migration()
@@ -162,8 +185,7 @@ class MigrationMixin:
             raise ValueError("new_dir must be an absolute path")
 
         with self._migration_lock:
-            current = self._migration_engine.state
-            if current and current.status in ("running", "paused"):
+            if self._is_migration_occupied():
                 raise RuntimeError("A migration is already in progress")
 
             self._init_migration()
@@ -222,11 +244,9 @@ class MigrationMixin:
 
     def handle_cancel_migration(self) -> dict:
         with self._migration_lock:
-            self._migration_engine.pause()
-            state = self._migration_engine.state
-            if state:
-                state.status = "cancelled"
-                self._migration_engine._save_state_if_needed()
+            # mark_cancelled 封装了 pause + status=cancelled + 持久化，
+            # 避免在此跨类访问引擎的 _save_state_if_needed 私有方法。
+            self._migration_engine.mark_cancelled()
         if self._migration_paused_dm and hasattr(self, "_download_manager"):
             try:
                 self._download_manager.toggle_global_pause()

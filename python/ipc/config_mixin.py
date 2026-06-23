@@ -40,6 +40,12 @@ class ConfigMixin:
 
         返回 None 表示快速路径（调用方正常落库）；返回 dict 表示触发了迁移
         （调用方须跳过自身落库，交给 _migration_complete_callback）。
+
+        已有迁移进行中（含 ready 等待前端确认态）时，trigger_download_dir_migration
+        会抛 RuntimeError，本方法不 catch——让其向上冒泡到 handle_set_config，
+        由后者透传给前端展示"请等待当前迁移完成"。禁止退化为"只改运行时目录 +
+        落库新 download_dir"的脱节路径（旧目录文件此时未迁移，会复现目录变更
+        不联动的根因问题）。
         """
         import os
 
@@ -52,14 +58,9 @@ class ConfigMixin:
             self._download_manager.set_output_dir(new_dir)
             return None
 
-        # 联动迁移：落库交给迁移完成回调，此处只触发并返回信息
-        try:
-            migration_info = self.trigger_download_dir_migration(new_dir)
-        except RuntimeError as e:
-            # 已有迁移进行中，退化为仅更新运行时目录（不阻断配置变更）
-            logger.warning("Download dir migration skipped (%s), updating output_dir only: %s", e, new_dir)
-            self._download_manager.set_output_dir(new_dir)
-            return None
+        # 联动迁移：落库交给迁移完成回调，此处只触发并返回信息。
+        # 已有迁移进行中时此处会抛 RuntimeError，由调用方拒绝本次配置变更。
+        migration_info = self.trigger_download_dir_migration(new_dir)
 
         if migration_info.get("skipped"):
             # 旧目录无可迁移记录，走快速路径落库

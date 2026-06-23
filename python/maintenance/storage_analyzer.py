@@ -8,7 +8,7 @@ from collections import defaultdict
 from typing import TYPE_CHECKING
 
 from maintenance.orphan_cleaner import _is_temp_dir
-from maintenance.scanner import _dir_size, scan_download_dir
+from maintenance.scanner import _collect_history_output_paths, _dir_size, scan_download_dir
 
 if TYPE_CHECKING:
     from download_history import DownloadHistoryDB
@@ -48,15 +48,7 @@ def analyze_storage(download_dir: str, history_db: DownloadHistoryDB | None = No
     by_author: dict[str, dict] = defaultdict(lambda: {"sizeBytes": 0, "itemCount": 0})
 
     # 用于 untracked 判定（资产是否在历史记录中）
-    history_paths: set[str] = set()
-    if history_db is not None:
-        try:
-            for rec in history_db.get_all_records():
-                out_path = rec.get("output_path", "")
-                if out_path:
-                    history_paths.add(out_path)
-        except Exception as e:
-            logger.warning("Failed to load history paths for storage analysis: %s", e)
+    history_paths = _collect_history_output_paths(history_db)
 
     untracked_count = 0
     untracked_size = 0

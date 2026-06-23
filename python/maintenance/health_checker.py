@@ -9,7 +9,7 @@ from collections import defaultdict
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PIL import Image
 
@@ -26,6 +26,20 @@ HealthCheckKind = str
 # 默认仅校验图片头部（verify），成本约为全解码的 1/50；
 # 设 HCOMIC_HEALTH_FULL_DECODE=1 时退回逐像素 load()，用于可疑资产的深度校验。
 _FULL_DECODE = os.environ.get("HCOMIC_HEALTH_FULL_DECODE") == "1"
+
+
+def _coerce_pages(value: Any) -> int:
+    """把 pages 字段（可能为 str/int/None）容错转为 int。
+
+    DB 列类型为 INTEGER，但 mock 字典或外部传入可能给 str；
+    非法值统一回退为 0（健康检查跳过该条页数对账，不误报）。
+    """
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return int(value or 0)
 
 
 @dataclass
@@ -142,12 +156,7 @@ class HealthChecker:
                 album_id,
                 rec.get("comic_source", ""),
             )
-            pages = rec.get("pages", 0) or 0
-            if isinstance(pages, str):
-                try:
-                    pages = int(pages)
-                except ValueError:
-                    pages = 0
+            pages = _coerce_pages(rec.get("pages", 0))
             agg[key] += pages
         return agg
 
@@ -248,12 +257,7 @@ class HealthChecker:
                 return aggregated
 
         # 单本：使用记录中的 pages 列
-        pages = record.get("pages", 0) or 0
-        if isinstance(pages, str):
-            try:
-                pages = int(pages)
-            except ValueError:
-                pages = 0
+        pages = _coerce_pages(record.get("pages", 0))
         if pages > 0:
             return pages
 

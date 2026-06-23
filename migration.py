@@ -435,6 +435,18 @@ class MigrationEngine:
             self._state.status = "running"
             self._pause_requested = False
 
+    def mark_cancelled(self):
+        """把当前迁移标记为 cancelled 并持久化。
+
+        封装"暂停 + 置 cancelled + 持久化"的取消语义，作为外部调用方
+        （如 IPC mixin）取消迁移的公共入口，避免外部直接读写 state.status
+        或访问 _save_state_if_needed 私有方法。state 为 None 时 no-op。
+        """
+        self.pause()
+        if self._state:
+            self._state.status = "cancelled"
+            self._save_state_if_needed()
+
     # ── Logging ───────────────────────────────────────────────────────
 
     @staticmethod

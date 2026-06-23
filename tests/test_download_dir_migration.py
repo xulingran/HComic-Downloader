@@ -53,6 +53,7 @@ class _DirChangeHarness:
 
     _init_migration = _MM._init_migration
     trigger_download_dir_migration = _MM.trigger_download_dir_migration
+    _is_migration_occupied = _MM._is_migration_occupied
     plan_full_migration_via = _MM.trigger_download_dir_migration  # alias for clarity
 
     # 复用 config_mixin 的真实方法实现
@@ -154,4 +155,59 @@ def test_apply_download_dir_change_with_records_returns_migration_info(harness, 
     assert result["migrationId"]
     assert result["migrationTotalItems"] == 2
     # 关键：未调 set_output_dir（落库延后到迁移完成）
+    harness._download_manager.set_output_dir.assert_not_called()
+
+
+# ─── 状态机占用判据回归（防止 ready 态被新 plan 覆盖）─────────────────────────
+
+
+def test_ready_state_blocks_new_plan(harness, tmp_path: Path):
+    """状态机回归：ready 态禁止被新 plan 覆盖。
+
+    场景：用户改下载目录触发 plan（state.status="ready"），等待前端确认期间
+    再次 plan（无论是再次改目录还是迁移对话框 start_migration），必须抛
+    RuntimeError 且不覆盖既有 state.id。
+    """
+    _make_record(harness, tmp_path, "comic1")
+    first_dir = str(tmp_path / "first_dir")
+    second_dir = str(tmp_path / "second_dir")
+
+    # 第一次 plan：成功，进入 ready 态
+    first_info = harness.trigger_download_dir_migration(first_dir)
+    assert first_info["skipped"] is False
+    first_state_id = harness._migration_engine.state.id
+    assert harness._migration_engine.state.status == "ready"
+
+    # 第二次 plan：必须被拒绝
+    with pytest.raises(RuntimeError, match="already in progress"):
+        harness.trigger_download_dir_migration(second_dir)
+
+    # 既有 state 未被覆盖（id 不变，仍是第一次的 plan）
+    assert harness._migration_engine.state.id == first_state_id
+    assert harness._migration_engine.state.target_dir == first_dir
+
+
+# ─── 并发改目录必须拒绝（防止 config 与文件位置脱节）─────────────────────────
+
+
+def test_apply_download_dir_change_rejects_when_migration_in_progress(harness, tmp_path: Path):
+    """并发改目录回归：已有迁移进行中（ready 态）时改目录必须向上抛 RuntimeError。
+
+    旧实现会 catch RuntimeError 后退化为"只改运行时目录 + 返回 None 让调用方落库
+    新 download_dir"，但旧目录文件未迁移、历史记录 output_path 仍指旧目录，
+    造成 config 与文件位置脱节（复现 download-dir-change-migration 要根治的问题）。
+    修复后必须让错误向上冒泡，由 handle_set_config 拒绝本次配置变更。
+    """
+    _make_record(harness, tmp_path, "comic1")
+    first_dir = str(tmp_path / "first_dir")
+    # 先触发一次 plan 进入 ready 态
+    harness.trigger_download_dir_migration(first_dir)
+    assert harness._migration_engine.state.status == "ready"
+
+    # 再次改目录：_apply_download_dir_change 应向上抛 RuntimeError，不调 set_output_dir
+    second_dir = str(tmp_path / "second_dir")
+    with pytest.raises(RuntimeError, match="already in progress"):
+        harness._apply_download_dir_change(second_dir)
+
+    # 关键：未退化为 set_output_dir（不污染运行时输出目录）
     harness._download_manager.set_output_dir.assert_not_called()

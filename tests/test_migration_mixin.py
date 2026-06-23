@@ -1,5 +1,6 @@
 """Tests for migration_mixin.py"""
 
+import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -28,6 +29,8 @@ def mixin(tmp_path):
     m.config.download_dir = str(tmp_path / "downloads")
     m.config.cbz_filename_template = "{author}-{title}.cbz"
     m._write_response = MagicMock()
+    # ConfigMixin 在 IPCServer.__init__ 中创建的锁，迁移回调落库时需共享。
+    m._config_write_lock = threading.Lock()
     m._init_migration()
     return m
 
@@ -156,3 +159,83 @@ class TestLockProtection:
         mixin.handle_pause_migration()
 
         assert "pause" in pause_order
+
+
+class TestConfigWriteLockSerialization:
+    """迁移完成回调落库必须与 set_config 落库串行（共享 _config_write_lock）。
+
+    回归：迁移回调在工作线程内 config.save 不持锁时，与 set_config 的
+    config.save 并发触发 os.replace，Windows 上偶发 WinError 5，导致
+    文件已移动但 config.download_dir 未更新（配置与磁盘脱节）。
+    """
+
+    def test_migration_complete_callback_holds_config_write_lock(self, mixin):
+        """回调落库段必须持 _config_write_lock（用锁竞争观察验证）。"""
+        mixin._migration_engine = MagicMock()
+        mixin._migration_engine.state = _make_migration_state(
+            status="completed", completed_items=1, target_dir="/new/dir"
+        )
+
+        lock_held_during_save = {"value": False}
+        original_save = mixin.config.save
+
+        def observing_save(*args, **kwargs):
+            # config.save 执行时，_config_write_lock 应已被回调持有（locked 不可再获）
+            # 用 acquire(blocking=False) 探测：返回 False 说明锁正被持有
+            lock_held_during_save["value"] = not mixin._config_write_lock.acquire(blocking=False)
+            if lock_held_during_save["value"]:
+                # 探测成功，立刻释放让回调继续（实际是同一把锁，不会再 release）
+                # 注意：这里不 release，因为锁就是回调自己持有的；acquire 失败=正确
+                pass
+            else:
+                mixin._config_write_lock.release()
+            return original_save(*args, **kwargs)
+
+        mixin.config.save = observing_save
+        mixin._apply_runtime = MagicMock()
+
+        mixin._migration_complete_callback()
+
+        assert lock_held_during_save["value"] is True, "config.save 执行期间 _config_write_lock 必须被持有"
+
+    def test_concurrent_save_calls_are_serialized(self, mixin):
+        """两处 config.save（回调 + 模拟 set_config）并发时不得重叠执行。"""
+        mixin._migration_engine = MagicMock()
+        mixin._migration_engine.state = _make_migration_state(
+            status="completed", completed_items=1, target_dir="/new/dir"
+        )
+
+        overlap = {"active": 0, "max": 0}
+        lock = threading.Lock()
+
+        def tracking_save(*args, **kwargs):
+            with lock:
+                overlap["active"] += 1
+                overlap["max"] = max(overlap["max"], overlap["active"])
+            # 模拟 save 耗时，放大并发窗口
+            import time
+
+            time.sleep(0.01)
+            with lock:
+                overlap["active"] -= 1
+
+        mixin.config.save = tracking_save
+        mixin._apply_runtime = MagicMock()
+
+        # 模拟 set_config 路径的落库（持同一把锁）
+        def set_config_save_path():
+            with mixin._config_write_lock:
+                mixin.config.save()
+
+        threads = [
+            threading.Thread(target=mixin._migration_complete_callback),
+            threading.Thread(target=set_config_save_path),
+            threading.Thread(target=set_config_save_path),
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # 串行化验证：任何时刻最多 1 个 save 在执行
+        assert overlap["max"] == 1, f"config.save 调用必须串行，实测峰值并发 = {overlap['max']}（应 = 1）"

@@ -51,6 +51,26 @@ def _validate_path_in_dir(path: str, parent_dir: str) -> str:
     return real_path
 
 
+def _collect_history_output_paths(history_db: DownloadHistoryDB | None) -> set[str]:
+    """收集历史记录中所有非空 output_path。
+
+    多个维护模块（orphan_cleaner / storage_analyzer）都需要这一集合判定
+    "资产是否在历史中"，抽到此处作为单一真相源，避免各自重复实现。
+    DB 异常时返回空集并 warning（保持既有兜底语义）。
+    """
+    paths: set[str] = set()
+    if history_db is None:
+        return paths
+    try:
+        for rec in history_db.get_all_records():
+            out_path = rec.get("output_path", "")
+            if out_path:
+                paths.add(out_path)
+    except Exception as e:
+        logger.warning("Failed to load history output paths: %s", e)
+    return paths
+
+
 def _collect_image_files(image_dir: str) -> list[str]:
     """收集目录中的图片文件（按文件名排序）。"""
     image_files = []
@@ -280,6 +300,7 @@ __all__ = [
     "MaintenanceError",
     "scan_download_dir",
     "is_image_file",
+    "_collect_history_output_paths",
     "_collect_image_files",
     "_dir_size",
     "_parse_cbz_comic_info",
