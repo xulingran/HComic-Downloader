@@ -74,6 +74,42 @@ def test_missing_file(checker: HealthChecker, tmp_path: Path):
     assert result["issues"][0]["checks"][0]["kind"] == "missing_file"
 
 
+def test_path_outside_download_dir_but_exists_is_checked(tmp_path: Path):
+    """回归：output_path 在当前 download_dir 之外但文件存在时，应正常检查而非报越界。
+
+    场景：用户曾把下载目录设在 E:\\foo，下载了漫画；后改为 E:\\foo\\hcomic。
+    历史记录仍指向 E:\\foo\\comic.cbz，文件还在。健康检查是只读操作，
+    应继续检查该文件，不应因"不在当前下载目录"而误报路径越界。
+    """
+    # download_dir = tmp_path/hcomic；实际文件放在 tmp_path 下（download_dir 的父目录）
+    download_dir = tmp_path / "hcomic"
+    download_dir.mkdir()
+    cbz_in_old_dir = tmp_path / "relocated.cbz"
+    _make_cbz(cbz_in_old_dir)  # 文件存在但不在 download_dir 内
+
+    db = MagicMock()
+    db.get_all_records_with_album.return_value = [
+        {
+            "source_site": "hcomic",
+            "comic_id": "1",
+            "comic_source": "NH",
+            "title": "Relocated",
+            "author": "",
+            "output_path": str(cbz_in_old_dir),
+            "output_format": "cbz",
+            "downloaded_at": 0,
+            "album_id": "1",
+            "album_total_chapters": 1,
+            "pages": 2,
+        }
+    ]
+    checker = HealthChecker(db, str(download_dir))
+    result = checker.check_all()
+    assert result["scanned"] == 1
+    # 文件存在且页数匹配 → 不应报越界，也不应报任何 issue
+    assert result["issues"] == [], "路径在当前 download_dir 之外但文件存在时不应报越界"
+
+
 def test_valid_cbz_no_issues(checker: HealthChecker, tmp_path: Path):
     cbz = tmp_path / "author-title.cbz"
     _make_cbz(cbz)
@@ -287,3 +323,95 @@ def test_progress_callback(checker: HealthChecker, tmp_path: Path):
     checker.check_all()
     assert progress_calls
     assert progress_calls[-1] == (1, 1, "检查完成")
+
+
+# ─── 真实 DB schema 契约测试（防止 Critical #1 回退）────────────────────────
+# 上述单元测试用 MagicMock 提供 pages 字段，无法发现生产 schema 缺列问题。
+# 以下测试用真实 DownloadHistoryDB，钉死 record_download 持久化 pages 列、
+# get_all_records_with_album 返回 pages 键、健康检查在生产 schema 下能真正对账。
+
+
+@pytest.fixture
+def real_db(tmp_path: Path):
+    from download_history import DownloadHistoryDB
+
+    db_path = str(tmp_path / "health_contract.db")
+    history_db = DownloadHistoryDB(db_path)
+    yield history_db
+    history_db.close()
+
+
+def test_pages_persisted_and_health_check_reconciles(real_db, tmp_path: Path):
+    """Critical #1 回归：真实 schema 下 expected_pages 来自持久化 pages 列，incomplete_pages 必须可触发。"""
+    from models import ComicInfo
+
+    # CBZ 实际只有 1 张图
+    cbz = tmp_path / "incomplete.cbz"
+    _make_cbz(cbz, images=[_make_valid_image_bytes()])
+
+    comic = ComicInfo(
+        id="1",
+        title="Incomplete",
+        source_site="hcomic",
+        comic_source="NH",
+    )
+    # 持久化期望页数 = 5（远超实际 1 页）
+    real_db.record_download(comic, str(cbz), "cbz", pages=5)
+
+    # 契约断言：get_all_records_with_album 必须返回 pages 键
+    records = real_db.get_all_records_with_album()
+    assert len(records) == 1
+    assert "pages" in records[0], "get_all_records_with_album 必须返回 pages 键"
+    assert records[0]["pages"] == 5, "record_download 必须持久化 pages 参数"
+
+    checker = HealthChecker(real_db, str(tmp_path))
+    result = checker.check_all()
+    kinds = {c["kind"] for c in result["issues"][0]["checks"]}
+    assert "incomplete_pages" in kinds, "生产 schema 下 incomplete_pages 必须可触发（expected=5 actual=1）"
+
+
+def test_pages_zero_falls_back_to_comic_info(real_db, tmp_path: Path):
+    """pages=0 时回退 ComicInfo.xml PageCount；无 PageCount 时跳过对账不误报。"""
+    from models import ComicInfo
+
+    # CBZ 含 ComicInfo.xml PageCount=1，实际 1 张图（匹配，无 issue）
+    cbz_with_info = tmp_path / "with_info.cbz"
+    _make_cbz(cbz_with_info, images=[_make_valid_image_bytes()], comic_info=True)
+    # 覆盖默认 ComicInfo 让 PageCount=1（_make_cbz 默认写 PageCount=2，这里手动重写）
+    import zipfile as zf_mod
+
+    with zf_mod.ZipFile(cbz_with_info, "w") as zf:
+        zf.writestr("ComicInfo.xml", "<ComicInfo><Title>T</Title><PageCount>1</PageCount></ComicInfo>")
+        zf.writestr("001.jpg", _make_valid_image_bytes())
+
+    comic = ComicInfo(id="2", title="WithInfo", source_site="hcomic", comic_source="NH")
+    real_db.record_download(comic, str(cbz_with_info), "cbz", pages=0)
+
+    checker = HealthChecker(real_db, str(tmp_path))
+    result = checker.check_all()
+    # 找到 with_info 这条
+    with_info_issues = [i for i in result["issues"] if "with_info" in i["outputPath"]]
+    # PageCount=1 与实际 1 页匹配，不应有 incomplete/unexpected_pages
+    for issue in with_info_issues:
+        kinds = {c["kind"] for c in issue["checks"]}
+        assert "incomplete_pages" not in kinds
+        assert "unexpected_pages" not in kinds
+
+
+def test_pages_zero_no_comic_info_skips_reconciliation(real_db, tmp_path: Path):
+    """pages=0 且无 ComicInfo.xml PageCount 时跳过页数对账（不误报）。"""
+    from models import ComicInfo
+
+    cbz_no_info = tmp_path / "no_info.cbz"
+    _make_cbz(cbz_no_info, images=[_make_valid_image_bytes()], comic_info=False)
+
+    comic = ComicInfo(id="3", title="NoInfo", source_site="hcomic", comic_source="NH")
+    real_db.record_download(comic, str(cbz_no_info), "cbz", pages=0)
+
+    checker = HealthChecker(real_db, str(tmp_path))
+    result = checker.check_all()
+    no_info_issues = [i for i in result["issues"] if "no_info" in i["outputPath"]]
+    for issue in no_info_issues:
+        kinds = {c["kind"] for c in issue["checks"]}
+        assert "incomplete_pages" not in kinds
+        assert "unexpected_pages" not in kinds

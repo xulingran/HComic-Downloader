@@ -52,7 +52,7 @@ function IssueItem({ item }: { item: HealthCheckResultItem }) {
 
 export function HealthCheckPanel() {
   const { runHealthCheck } = useMaintenance()
-  const { progress } = useMaintenanceProgress()
+  const { progress, clear } = useMaintenanceProgress()
   const toast = useToastStore()
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{ scanned: number; issues: HealthCheckResultItem[] } | null>(null)
@@ -60,6 +60,7 @@ export function HealthCheckPanel() {
   const handleRun = useCallback(async () => {
     setLoading(true)
     setResult(null)
+    clear() // 重置上次扫描的残留进度，避免进度条闪烁旧值
     try {
       const res = await runHealthCheck('all')
       setResult(res)
@@ -73,7 +74,7 @@ export function HealthCheckPanel() {
     } finally {
       setLoading(false)
     }
-  }, [runHealthCheck, toast])
+  }, [runHealthCheck, toast, clear])
 
   return (
     <div className="space-y-4">

@@ -9,7 +9,7 @@ const mockError = vi.fn()
 
 vi.mock('@/hooks/useIpc', () => ({
   useMaintenance: () => ({ runHealthCheck: mockRunHealthCheck }),
-  useMaintenanceProgress: () => ({ progress: null }),
+  useMaintenanceProgress: () => ({ progress: null, clear: vi.fn() }),
 }))
 
 vi.mock('@/stores/useToastStore', () => ({

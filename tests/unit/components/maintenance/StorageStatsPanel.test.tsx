@@ -42,6 +42,7 @@ describe('StorageStatsPanel', () => {
         },
       ],
       orphanFiles: { count: 1, sizeBytes: 1024 * 1024 },
+      untrackedFiles: { count: 2, sizeBytes: 1024 * 1024 * 2 },
     })
 
     render(<StorageStatsPanel />)
@@ -49,7 +50,7 @@ describe('StorageStatsPanel', () => {
     await waitFor(() => expect(mockGetStorageStats).toHaveBeenCalled())
     expect(await screen.findByText('100.0 MB')).toBeInTheDocument()
     expect(screen.getByText('10 个文件/目录')).toBeInTheDocument()
-    expect(screen.getByText('1 个')).toBeInTheDocument() // orphan count
+    expect(screen.getByText('2 个')).toBeInTheDocument() // untracked count（未在历史记录中）
     expect(screen.getByText('Top Comic')).toBeInTheDocument()
     expect(screen.getByText('Author A')).toBeInTheDocument()
   })

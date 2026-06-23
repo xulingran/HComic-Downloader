@@ -199,8 +199,8 @@ hcomic_downloader/
 │   └── generate-icons.mjs     # 图标生成
 │
 ├── tests/                     # 测试
-│   ├── test_*.py              # Python 单元测试（48 个文件）
-│   └── unit/                  # TypeScript/React 单元测试（73 个文件）
+│   ├── test_*.py              # Python 单元测试
+│   └── unit/                  # TypeScript/React 单元测试
 │
 ├── config.py                  # 配置管理（dataclass + JSON 持久化）
 ├── downloader.py              # 多线程下载器（断点续传 + 重试）

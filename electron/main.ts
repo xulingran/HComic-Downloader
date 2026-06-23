@@ -1196,17 +1196,19 @@ function registerMaintenanceHandlers(bridge: Bridge) {
     assert(and(string(), oneOf(['all', 'selected'])), s, 'runHealthCheck scope')
     const params: Record<string, unknown> = { scope: s }
     if (comicKeys !== undefined && comicKeys !== null) {
-      assert(and(object()), comicKeys, 'runHealthCheck comicKeys')
-      const keys = comicKeys as unknown as unknown[]
-      if (!Array.isArray(keys) || keys.length > 10_000) {
+      // 显式 Array.isArray 校验，避免对 {foo:1} 这类非数组对象误判通过（旧实现用 object() 断言给出虚假安全感）
+      if (!Array.isArray(comicKeys) || comicKeys.length > 10_000) {
         throw new ValidationError('comicKeys must be an array')
       }
-      for (const key of keys) {
-        if (!Array.isArray(key) || key.length < 3 || !key.every((k) => typeof k === 'string')) {
-          throw new ValidationError('Each comicKey must be an array of at least 3 strings')
+      for (const key of comicKeys) {
+        if (!Array.isArray(key) || key.length < 3 || key.length > 8) {
+          throw new ValidationError('Each comicKey must be an array of 3-8 strings')
+        }
+        for (const k of key) {
+          assert(and(string(), length(1, 256), noControlChars()), k, 'runHealthCheck comicKey element')
         }
       }
-      params.comic_keys = keys
+      params.comic_keys = comicKeys
     }
     return bridge.call('run_health_check', params)
   })

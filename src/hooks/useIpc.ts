@@ -354,5 +354,7 @@ export function useMaintenanceProgress() {
     return unsubscribe
   }, [])
 
-  return { progress }
+  // 暴露 clear() 让调用方在开始新扫描时重置残留进度，避免上次扫描的 progress 闪烁
+  const clear = useCallback(() => setProgress(null), [])
+  return { progress, clear }
 }

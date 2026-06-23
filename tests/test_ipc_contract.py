@@ -149,6 +149,27 @@ def test_maintenance_handlers_are_registered():
         assert method in server._HANDLER_NAMES, f"handler {method} 未注册"
 
 
+def test_get_all_records_with_album_returns_pages_key(tmp_path):
+    """Critical #1 契约：get_all_records_with_album() 返回的 dict 必须包含 pages 键。
+
+    防止 pages 列再次从 schema 回退（曾因 mock 字典掩盖导致健康检查页数对账失效）。
+    """
+    from download_history import DownloadHistoryDB
+    from models import ComicInfo
+
+    db = DownloadHistoryDB(str(tmp_path / "contract_pages.db"))
+    try:
+        comic = ComicInfo(id="c1", title="T", source_site="hcomic", comic_source="NH")
+        db.record_download(comic, str(tmp_path / "out.cbz"), "cbz", pages=7)
+
+        records = db.get_all_records_with_album()
+        assert len(records) == 1
+        assert "pages" in records[0], "get_all_records_with_album 必须返回 pages 键"
+        assert records[0]["pages"] == 7, "record_download 的 pages 参数必须持久化"
+    finally:
+        db.close()
+
+
 def test_search_returns_structure_matching_search_result_type():
     """search 必须返回 {comics: [...], pagination: {...}}，结构匹配前端 SearchResult。
 

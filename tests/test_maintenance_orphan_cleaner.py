@@ -110,3 +110,66 @@ def test_cleanup_revalidates_active_temp(tmp_path: Path):
     assert result["removed"] == 0
     assert len(result["failed"]) == 1
     assert active.exists()
+
+
+def test_cleanup_toctou_new_active_after_scan(tmp_path: Path):
+    """Critical #2 回归：扫描后才有新下载任务复用该 temp_* 目录。
+
+    扫描时 active_temp_dirs 为空（目录当时未被占用），扫描后被新任务复用。
+    清理时即时传入最新 active 集合，必须将该目录加入 failed 且不删除。
+    """
+    orphan = tmp_path / "temp_hcomic_456"
+    orphan.mkdir()
+    (orphan / "001.jpg").write_text("img")
+    _age_directory(orphan, 25)
+
+    db = MagicMock()
+    db.get_all_records.return_value = []
+
+    # 扫描时刻无活跃任务
+    orphans = scan_orphan_temp_dirs(str(tmp_path), history_db=db, active_temp_dirs=set())
+    assert len(orphans) == 1
+
+    # 清理时刻：新下载任务已复用该目录（active_temp_dirs 即时重取到最新集合）
+    result = cleanup_orphan_temp_dirs(
+        str(tmp_path),
+        paths=[str(orphan)],
+        history_db=db,
+        active_temp_dirs={str(orphan)},  # 模拟清理前即时重取发现的新活跃任务
+    )
+    assert result["removed"] == 0
+    assert any("活跃任务" in f["reason"] for f in result["failed"])
+    assert orphan.exists(), "被新活跃任务复用的目录必须保留"
+
+
+def test_cleanup_toctou_mtime_refreshed_after_scan(tmp_path: Path):
+    """Critical #2 回归：扫描后目录被写入导致 mtime 刷新到 24 小时以内。
+
+    扫描时目录足够旧（判定为孤儿），清理前被新内容刷新 mtime。
+    清理时实时读 mtime，必须将该目录加入 failed 且不删除。
+    """
+    orphan = tmp_path / "temp_hcomic_789"
+    orphan.mkdir()
+    (orphan / "001.jpg").write_text("img")
+    _age_directory(orphan, 25)
+
+    db = MagicMock()
+    db.get_all_records.return_value = []
+
+    # 扫描时刻目录足够旧
+    orphans = scan_orphan_temp_dirs(str(tmp_path), history_db=db, active_temp_dirs=set())
+    assert len(orphans) == 1
+
+    # 清理前：模拟新写入刷新 mtime 到当前时间
+    (orphan / "002.jpg").write_text("new")
+    os.utime(orphan, (time.time(), time.time()))
+
+    result = cleanup_orphan_temp_dirs(
+        str(tmp_path),
+        paths=[str(orphan)],
+        history_db=db,
+        active_temp_dirs=set(),
+    )
+    assert result["removed"] == 0
+    assert any("24 小时" in f["reason"] for f in result["failed"])
+    assert orphan.exists(), "mtime 被刷新的目录必须保留"

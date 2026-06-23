@@ -286,6 +286,7 @@ export interface StorageStats {
   byAuthor: StorageDistribution[]
   topItems: StorageTopItem[]
   orphanFiles: { count: number; sizeBytes: number }
+  untrackedFiles: { count: number; sizeBytes: number }
 }
 
 export interface MaintenanceProgressEvent {

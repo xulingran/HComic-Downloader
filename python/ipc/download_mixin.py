@@ -65,7 +65,9 @@ class DownloadMixin:
     def _on_download_success_record(self, comic, output_path: str, output_format: str):
         """Record a successful download to the history database."""
         try:
-            self._history_db.record_download(comic, output_path, output_format)
+            # 持久化实际页数，供健康检查页数对账使用。
+            pages = getattr(comic, "pages", 0) or 0
+            self._history_db.record_download(comic, output_path, output_format, pages=pages)
             logger.info("Recorded download history for %s", comic.title)
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)

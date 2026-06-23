@@ -163,6 +163,13 @@ def cleanup_orphan_temp_dirs(
     freed_bytes = 0
     failed: list[dict] = []
 
+    # 以下四项校验必须在删除循环内逐个实时执行，禁止下沉到扫描阶段：
+    #   - _validate_path_in_dir：防止 path 越界下载目录
+    #   - _is_temp_dir：仅删 temp_* 目录
+    #   - _is_active_temp_dir：扫描后新启动的下载任务可能复用同名目录
+    #   - _is_old_enough：实时读 os.path.getmtime，防止扫描后被刷新的 mtime 误判
+    #   - _is_in_history_output_paths：扫描后历史记录可能新增引用
+    # 这是消除扫描-删除 TOCTOU 窗口的关键，active_temp_dirs 由调用方即时重取。
     for orphan in orphans:
         path = orphan.path
         try:

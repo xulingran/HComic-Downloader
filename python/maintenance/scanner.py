@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import zipfile
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
@@ -125,9 +126,12 @@ def _count_folder_pages(path: str) -> int:
 def _parse_filename_author_title(filename: str) -> tuple[str, str]:
     """从文件名模板 `{author}-{title}` 中解析作者和标题。
 
-    以第一个 "-" 分隔；无法解析时返回 ("", "")。
+    先剥离前导 ``[...]`` / ``(...)`` 分组（如 ``[Author]`` / ``(Author)``），
+    再按第一个 ``-`` 分隔；无法解析时返回 ("", base)。
     """
     base = os.path.splitext(filename)[0]
+    # 剥离前导方/圆括号分组（如 "[Author] " / "(Author) "），避免把整段含括号的字符串当作作者
+    base = re.sub(r"^\s*[\[(][^\])]*[\])]\s*", "", base)
     # 去掉可能存在的专辑序号前缀等，优先按第一个 "-" 分割
     if "-" not in base:
         return "", base

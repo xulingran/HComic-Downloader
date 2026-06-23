@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import sys
 from collections.abc import Callable
 from typing import TYPE_CHECKING
 
@@ -29,7 +30,11 @@ class MaintenanceMixin:
     _write_response: Callable[[dict], None]
 
     def _emit_maintenance_progress(self, current: int, total: int, label: str) -> None:
-        """Send maintenance progress JSON-RPC notification to stdout."""
+        """Send maintenance progress JSON-RPC notification to stdout.
+
+        显式 flush stdout：非 TTY 环境下 stdout 默认块缓冲，不 flush 会让进度通知
+        滞留缓冲区直到扫描结束，UI 进度条全程静止。
+        """
         notification = {
             "jsonrpc": "2.0",
             "method": "maintenance_progress",
@@ -41,6 +46,7 @@ class MaintenanceMixin:
             },
         }
         self._write_response(notification)
+        sys.stdout.flush()
 
     def _get_active_temp_dirs(self) -> set[str]:
         """Return temp_dirs currently in use by active download tasks."""
@@ -98,7 +104,12 @@ class MaintenanceMixin:
         }
 
     def handle_cleanup_orphan_temps(self, paths: list[str] | None = None) -> dict:
-        """Clean up orphan temporary directories."""
+        """Clean up orphan temporary directories.
+
+        即时重新获取 active_temp_dirs：扫描与删除之间存在时间窗口，期间可能有
+        新下载任务复用同名 temp_* 目录。复用扫描时刻的快照会漏判新活跃目录导致误删，
+        因此必须在删除前重新拉取最新活跃集合。
+        """
         download_dir = self.config.download_dir
         result = cleanup_orphan_temp_dirs(
             download_dir,

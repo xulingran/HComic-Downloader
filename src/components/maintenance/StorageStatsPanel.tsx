@@ -86,9 +86,9 @@ export function StorageStatsPanel() {
               <div className="text-xs text-[var(--text-secondary)]">{stats.totalFiles} 个文件/目录</div>
             </Panel>
             <Panel>
-              <div className="text-xs text-[var(--text-secondary)]">孤儿文件</div>
-              <div className="text-xl font-semibold text-[var(--text-primary)]">{stats.orphanFiles.count} 个</div>
-              <div className="text-xs text-[var(--text-secondary)]">{formatSize(stats.orphanFiles.sizeBytes)}</div>
+              <div className="text-xs text-[var(--text-secondary)]">未在历史记录中</div>
+              <div className="text-xl font-semibold text-[var(--text-primary)]">{stats.untrackedFiles.count} 个</div>
+              <div className="text-xs text-[var(--text-secondary)]">{formatSize(stats.untrackedFiles.sizeBytes)}（删除请谨慎）</div>
             </Panel>
             <Panel>
               <div className="text-xs text-[var(--text-secondary)]">最大来源</div>
@@ -100,6 +100,12 @@ export function StorageStatsPanel() {
               </div>
             </Panel>
           </div>
+
+          {stats.orphanFiles.count > 0 && (
+            <div className="text-xs text-[var(--text-secondary)]">
+              另有 {stats.orphanFiles.count} 个临时目录（{formatSize(stats.orphanFiles.sizeBytes)}），可在「临时目录清理」中安全清理
+            </div>
+          )}
 
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
             <Panel>

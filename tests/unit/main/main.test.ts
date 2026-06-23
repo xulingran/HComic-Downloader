@@ -590,6 +590,33 @@ describe('main.ts', () => {
       await expect(handler.handler({}, 0)).rejects.toThrow('Invalid favourites page')
     })
 
+    it('python:run-health-check should reject non-array comicKeys (object)', async () => {
+      // Critical #3 回归：旧实现用 object() 断言会让 {foo:1} 这类非数组对象误判通过
+      const handler = handleCalls.find(h => h.channel === 'python:run-health-check')!
+      await expect(handler.handler({}, 'selected', { foo: 1 }))
+        .rejects.toThrow('comicKeys must be an array')
+    })
+
+    it('python:run-health-check should reject comicKey with control chars', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:run-health-check')!
+      await expect(
+        handler.handler({}, 'selected', [['hcomic', 'id\ninjection', 'NH']])
+      ).rejects.toThrow('runHealthCheck comicKey element')
+    })
+
+    it('python:run-health-check should reject comicKey with wrong arity', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:run-health-check')!
+      // key.length 必须 3-8
+      await expect(handler.handler({}, 'selected', [['only-one']]))
+        .rejects.toThrow('Each comicKey must be an array of 3-8 strings')
+    })
+
+    it('python:run-health-check should accept valid payload', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:run-health-check')!
+      await handler.handler({}, 'all')
+      expect(mockBridgeCall).toHaveBeenCalledWith('run_health_check', { scope: 'all' })
+    })
+
     it('python:set-config should reject non-string key', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:set-config')!
       await expect(handler.handler({}, 123, 'value')).rejects.toThrow('Invalid set_config parameters')

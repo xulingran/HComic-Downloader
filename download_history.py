@@ -34,6 +34,7 @@ class DownloadHistoryDB:
                 output_path TEXT NOT NULL DEFAULT '',
                 output_format TEXT NOT NULL DEFAULT '',
                 downloaded_at INTEGER NOT NULL,
+                pages INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (source_site, comic_id, comic_source)
             )
         """)
@@ -45,6 +46,9 @@ class DownloadHistoryDB:
             self._conn.execute(
                 "ALTER TABLE download_history ADD COLUMN album_total_chapters INTEGER NOT NULL DEFAULT 1"
             )
+        # 列迁移：补充 pages 列，供健康检查页数对账使用。旧记录默认 0（跳过对账，不误报）。
+        if "pages" not in existing:
+            self._conn.execute("ALTER TABLE download_history ADD COLUMN pages INTEGER NOT NULL DEFAULT 0")
         self._conn.commit()
         self._migrate_album_ids()
 
@@ -54,16 +58,20 @@ class DownloadHistoryDB:
             self._conn.execute("UPDATE download_history SET album_id = comic_id WHERE album_id = ''")
             self._conn.commit()
 
-    def record_download(self, comic: ComicInfo, output_path: str, output_format: str):
-        """INSERT OR REPLACE a download record."""
+    def record_download(self, comic: ComicInfo, output_path: str, output_format: str, pages: int = 0):
+        """INSERT OR REPLACE a download record.
+
+        Args:
+            pages: 实际下载图片页数，用于健康检查页数对账。0 表示未知（健康检查跳过对账）。
+        """
         with self._lock:
             self._conn.execute(
                 """
                 INSERT OR REPLACE INTO download_history
                     (source_site, comic_id, comic_source, title, author,
                      output_path, output_format, album_id, album_total_chapters,
-                     downloaded_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     pages, downloaded_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
                 (
                     comic.source_site,
@@ -75,6 +83,7 @@ class DownloadHistoryDB:
                     output_format,
                     getattr(comic, "album_id", "") or comic.id,
                     getattr(comic, "album_total_chapters", 1) or 1,
+                    int(pages or 0),
                     int(time.time()),
                 ),
             )
@@ -231,7 +240,7 @@ class DownloadHistoryDB:
         with self._lock:
             cursor = self._conn.execute(
                 "SELECT source_site, comic_id, comic_source, title, author, "
-                "output_path, output_format, downloaded_at, album_id, album_total_chapters "
+                "output_path, output_format, downloaded_at, album_id, album_total_chapters, pages "
                 "FROM download_history"
             )
             columns = [
@@ -245,6 +254,7 @@ class DownloadHistoryDB:
                 "downloaded_at",
                 "album_id",
                 "album_total_chapters",
+                "pages",
             ]
             return [dict(zip(columns, row, strict=True)) for row in cursor]
 

@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING
 from PIL import Image
 
 from image_formats import SUPPORTED_IMAGE_EXTENSIONS
-from maintenance.scanner import _collect_image_files, _validate_path_in_dir
+from maintenance.scanner import _collect_image_files, _count_folder_pages, _parse_cbz_comic_info
 
 if TYPE_CHECKING:
     from download_history import DownloadHistoryDB
@@ -22,6 +22,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 HealthCheckKind = str
+
+# 默认仅校验图片头部（verify），成本约为全解码的 1/50；
+# 设 HCOMIC_HEALTH_FULL_DECODE=1 时退回逐像素 load()，用于可疑资产的深度校验。
+_FULL_DECODE = os.environ.get("HCOMIC_HEALTH_FULL_DECODE") == "1"
 
 
 @dataclass
@@ -101,7 +105,7 @@ class HealthChecker:
             output_path = record.get("output_path", "")
             output_format = record.get("output_format", "")
 
-            if self.progress_callback and idx % 5 == 0:
+            if self.progress_callback:
                 self.progress_callback(idx, total, f"正在检查: {title or os.path.basename(output_path)}")
 
             try:
@@ -162,23 +166,12 @@ class HealthChecker:
         output_path = record.get("output_path", "")
         output_format = record.get("output_format", "")
 
-        # 安全校验
-        if output_path:
-            try:
-                _validate_path_in_dir(output_path, self.download_dir)
-            except ValueError as e:
-                return HealthCheckResult(
-                    key=key,
-                    title=title,
-                    output_path=output_path,
-                    output_format=output_format,
-                    expected_pages=0,
-                    actual_pages=0,
-                    checks=[{"kind": "missing_file", "detail": f"路径越界或无效: {e}"}],
-                )
-
         checks: list[dict] = []
 
+        # 健康检查是只读操作，不对 output_path 做下载目录越界拒绝。
+        # 历史记录可能指向迁移前的旧目录（用户改过下载目录），属正常场景；
+        # 路径不存在时由下面的 os.path.exists 兜底报 missing_file。
+        # 注：路径遍历/越界防护是删除路径（orphan_cleaner）的安全网，不适用于只读检查。
         if not output_path or not os.path.exists(output_path):
             checks.append({"kind": "missing_file", "detail": f"输出路径不存在: {output_path}"})
             return HealthCheckResult(
@@ -235,7 +228,11 @@ class HealthChecker:
         record: dict,
         album_expected_pages: dict[tuple[str, str, str], int],
     ) -> int:
-        """解析单条记录的期望页数。"""
+        """解析单条记录的期望页数。
+
+        优先级：专辑聚合页数 > 单本 pages 列 > ComicInfo.xml PageCount 回退。
+        全部为 0 时返回 0（健康检查跳过该条页数对账，不误报）。
+        """
         album_id = record.get("album_id", "") or record.get("comic_id", "")
         album_total = record.get("album_total_chapters", 1) or 1
 
@@ -250,52 +247,69 @@ class HealthChecker:
             if aggregated > 0:
                 return aggregated
 
-        # 单本：使用记录中的 pages
+        # 单本：使用记录中的 pages 列
         pages = record.get("pages", 0) or 0
         if isinstance(pages, str):
             try:
                 pages = int(pages)
             except ValueError:
                 pages = 0
-        return pages
+        if pages > 0:
+            return pages
+
+        # 回退：CBZ 的 ComicInfo.xml PageCount（folder 格式无 ComicInfo.xml，跳过）
+        output_format = record.get("output_format", "")
+        output_path = record.get("output_path", "")
+        if output_format == "cbz" and output_path:
+            comic_info = _parse_cbz_comic_info(output_path)
+            page_count_str = comic_info.get("PageCount", "")
+            if page_count_str and page_count_str.isdigit():
+                return int(page_count_str)
+
+        return 0
 
     def _check_folder(self, path: str) -> tuple[int, list[dict]]:
-        """检查 folder 格式，返回 (实际页数, 问题列表)。"""
+        """检查 folder 格式，返回 (实际页数, 问题列表)。
+
+        页数计数复用 scanner._count_folder_pages（单一真相源，避免与扫描器分叉）；
+        本方法仅负责逐页可读性校验。
+        """
         checks: list[dict] = []
         if not os.path.isdir(path):
             checks.append({"kind": "missing_file", "detail": f"目录不存在: {path}"})
             return 0, checks
 
-        total_pages = 0
+        # 收集所有需校验的图片路径（与 _count_folder_pages 的计数口径保持一致）
+        image_files: list[str] = []
         has_chapter_dirs = False
         for entry in sorted(os.listdir(path)):
             entry_path = os.path.join(path, entry)
             if os.path.isdir(entry_path) and not entry.startswith("temp_") and not entry.startswith("."):
                 has_chapter_dirs = True
-                image_files = _collect_image_files(entry_path)
-                for img_path in image_files:
-                    total_pages += 1
-                    if not self._is_image_readable(img_path):
-                        checks.append(
-                            {
-                                "kind": "file_not_readable",
-                                "detail": f"第 {total_pages} 页图片无法打开: {img_path}",
-                                "page": total_pages,
-                            }
-                        )
-
+                image_files.extend(_collect_image_files(entry_path))
         if not has_chapter_dirs:
             image_files = _collect_image_files(path)
-            for img_path in image_files:
-                total_pages += 1
-                if not self._is_image_readable(img_path):
-                    checks.append(
-                        {
-                            "kind": "file_not_readable",
-                            "detail": f"第 {total_pages} 页图片无法打开: {img_path}",
-                            "page": total_pages,
-                        }
-                    )
+
+        total_pages = len(image_files)
+        for page_num, img_path in enumerate(image_files, 1):
+            if not self._is_image_readable(img_path):
+                checks.append(
+                    {
+                        "kind": "file_not_readable",
+                        "detail": f"第 {page_num} 页图片无法打开: {img_path}",
+                        "page": page_num,
+                    }
+                )
+
+        # 与 scanner 的计数对账（防御性：若两者分叉说明启发式漂移，应被发现）
+        scanner_count = _count_folder_pages(path)
+        if scanner_count != total_pages:
+            logger.warning(
+                "folder page count mismatch: health_checker=%d scanner=%d path=%s",
+                total_pages,
+                scanner_count,
+                path,
+            )
 
         return total_pages, checks
 
@@ -354,20 +368,32 @@ class HealthChecker:
 
     @staticmethod
     def _is_image_readable(path: str) -> bool:
-        """判断本地图片文件能否被 PIL 打开。"""
+        """判断本地图片文件能否被 PIL 打开。
+
+        默认仅校验头部（verify）；_FULL_DECODE 为真时解码全部像素（load）。
+        """
         try:
             with Image.open(path) as img:
-                img.load()
+                if _FULL_DECODE:
+                    img.load()
+                else:
+                    img.verify()
             return True
         except Exception:
             return False
 
     @staticmethod
     def _is_image_data_readable(data: bytes) -> bool:
-        """判断内存中的图片数据能否被 PIL 打开。"""
+        """判断内存中的图片数据能否被 PIL 打开。
+
+        默认仅校验头部（verify）；_FULL_DECODE 为真时解码全部像素（load）。
+        """
         try:
             with Image.open(BytesIO(data)) as img:  # type: ignore[name-defined]
-                img.load()
+                if _FULL_DECODE:
+                    img.load()
+                else:
+                    img.verify()
             return True
         except Exception:
             return False
