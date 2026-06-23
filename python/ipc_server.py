@@ -49,6 +49,7 @@ from ipc.cover_mixin import CoverMixin  # noqa: E402
 from ipc.download_mixin import DownloadMixin  # noqa: E402
 from ipc.favourite_tags_mixin import FavouriteTagsMixin  # noqa: E402
 from ipc.history_mixin import HistoryMixin  # noqa: E402
+from ipc.maintenance_mixin import MaintenanceMixin  # noqa: E402
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
 from ipc.search_mixin import SearchMixin  # noqa: E402
@@ -75,6 +76,7 @@ class IPCServer(
     HistoryMixin,
     FavouriteTagsMixin,
     TagListMixin,
+    MaintenanceMixin,
 ):
     def __init__(self):
         from cbz_builder import CBZBuilder
@@ -303,6 +305,10 @@ class IPCServer(
         "resume_album": "handle_resume_album",
         "cancel_album": "handle_cancel_album",
         "download_batch_as_album": "handle_download_batch_as_album",
+        "run_health_check": "handle_run_health_check",
+        "scan_orphan_temps": "handle_scan_orphan_temps",
+        "cleanup_orphan_temps": "handle_cleanup_orphan_temps",
+        "get_storage_stats": "handle_get_storage_stats",
     }
 
     async def _dispatch_request(self, request: dict) -> None:

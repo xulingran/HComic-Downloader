@@ -52,6 +52,7 @@ describe('IPC Channel Consistency', () => {
       'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'get_jmcomic_domains',
       'force_pack_album', 'get_album_progress',
       'pause_album', 'resume_album', 'cancel_album',
+      'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',
     ]
 
     for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {

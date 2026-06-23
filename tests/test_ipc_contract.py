@@ -137,6 +137,18 @@ def test_get_config_returns_structure_matching_app_config_type():
 # ── 场景：search 返回结构匹配前端 SearchResult 类型 ──────────────────────
 
 
+def test_maintenance_handlers_are_registered():
+    """维护中心四个 handler 必须在 IPCServer 启动时注册到 _HANDLER_NAMES。"""
+    server = _create_test_server()
+    for method in (
+        "run_health_check",
+        "scan_orphan_temps",
+        "cleanup_orphan_temps",
+        "get_storage_stats",
+    ):
+        assert method in server._HANDLER_NAMES, f"handler {method} 未注册"
+
+
 def test_search_returns_structure_matching_search_result_type():
     """search 必须返回 {comics: [...], pagination: {...}}，结构匹配前端 SearchResult。
 

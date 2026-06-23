@@ -574,6 +574,10 @@ function registerNotificationHandlers(bridge: Bridge) {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.ALBUM_PROGRESS, params)
   })
 
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.MAINTENANCE_PROGRESS, (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MAINTENANCE_PROGRESS, params)
+  })
+
   // 致命错误：后端进程启动失败或重启超限时转发到渲染进程横幅。
   // 复用安全发送模式（检查 mainWindow 存在且未销毁）。
   bridge.onFatal = (payload) => {
@@ -1186,6 +1190,50 @@ function registerAlbumHandlers(bridge: Bridge) {
   registerAlbumTaskAction(IPC_CHANNELS.CANCEL_ALBUM, 'cancel_album', 'cancelAlbum')
 }
 
+function registerMaintenanceHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.RUN_HEALTH_CHECK, async (_, scope?: unknown, comicKeys?: unknown) => {
+    const s = scope ?? 'all'
+    assert(and(string(), oneOf(['all', 'selected'])), s, 'runHealthCheck scope')
+    const params: Record<string, unknown> = { scope: s }
+    if (comicKeys !== undefined && comicKeys !== null) {
+      assert(and(object()), comicKeys, 'runHealthCheck comicKeys')
+      const keys = comicKeys as unknown as unknown[]
+      if (!Array.isArray(keys) || keys.length > 10_000) {
+        throw new ValidationError('comicKeys must be an array')
+      }
+      for (const key of keys) {
+        if (!Array.isArray(key) || key.length < 3 || !key.every((k) => typeof k === 'string')) {
+          throw new ValidationError('Each comicKey must be an array of at least 3 strings')
+        }
+      }
+      params.comic_keys = keys
+    }
+    return bridge.call('run_health_check', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SCAN_ORPHAN_TEMPS, async () => {
+    return bridge.call('scan_orphan_temps')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CLEANUP_ORPHAN_TEMPS, async (_, paths?: unknown) => {
+    const params: Record<string, unknown> = {}
+    if (paths !== undefined && paths !== null) {
+      if (!Array.isArray(paths) || paths.length > 10_000) {
+        throw new ValidationError('paths must be an array')
+      }
+      for (const p of paths) {
+        assert(and(string(), length(1, 1024), absolutePath(), noPathTraversal(), noControlChars()), p, 'cleanupOrphanTemps path')
+      }
+      params.paths = paths
+    }
+    return bridge.call('cleanup_orphan_temps', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_STORAGE_STATS, async () => {
+    return bridge.call('get_storage_stats')
+  })
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
@@ -1203,6 +1251,7 @@ function registerIPCHandlers() {
   registerFavouriteTagHandlers(bridge)
   registerTagListHandlers(bridge)
   registerAlbumHandlers(bridge)
+  registerMaintenanceHandlers(bridge)
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     return checkForUpdates()

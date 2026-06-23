@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
-import type { HcomicAPI, ConfigKey, ConfigValueMap } from '@shared/types'
+import type { HcomicAPI, ConfigKey, ConfigValueMap, MaintenanceProgressEvent } from '@shared/types'
 import { ComicInfo, ACTIVE_DOWNLOAD_STATUSES } from '@shared/types'
 
 declare global {
@@ -329,4 +329,30 @@ export function useAlbumCommands() {
     cancelAlbum: (sourceSite: string, albumId: string) =>
       invoke(() => window.hcomic!.cancelAlbum(sourceSite, albumId)),
   }), [invoke])
+}
+
+export function useMaintenance() {
+  const { invoke } = useIpc()
+  return useMemo(() => ({
+    runHealthCheck: (scope: 'all' | 'selected' = 'all', comicKeys?: string[][]) =>
+      invoke(() => window.hcomic!.runHealthCheck(scope, comicKeys)),
+    scanOrphanTemps: () => invoke(() => window.hcomic!.scanOrphanTemps()),
+    cleanupOrphanTemps: (paths?: string[]) =>
+      invoke(() => window.hcomic!.cleanupOrphanTemps(paths)),
+    getStorageStats: () => invoke(() => window.hcomic!.getStorageStats()),
+  }), [invoke])
+}
+
+export function useMaintenanceProgress() {
+  const [progress, setProgress] = useState<MaintenanceProgressEvent | null>(null)
+
+  useEffect(() => {
+    if (!window.hcomic?.onMaintenanceProgress) return
+    const unsubscribe = window.hcomic.onMaintenanceProgress((data: MaintenanceProgressEvent) => {
+      setProgress(data)
+    })
+    return unsubscribe
+  }, [])
+
+  return { progress }
 }

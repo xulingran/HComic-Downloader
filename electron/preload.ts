@@ -466,4 +466,37 @@ contextBridge.exposeInMainWorld('hcomic', {
   onAlbumProgress: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.ALBUM_PROGRESS, callback)
   },
+
+  runHealthCheck: (scope?: unknown, comicKeys?: unknown) => {
+    if (scope !== undefined && scope !== null && scope !== 'all' && scope !== 'selected') {
+      throw new Error('Invalid scope')
+    }
+    if (comicKeys !== undefined && comicKeys !== null) {
+      if (!Array.isArray(comicKeys) || comicKeys.length > 10_000) throw new Error('Invalid comicKeys')
+      for (const key of comicKeys) {
+        if (!Array.isArray(key) || key.length < 3 || !key.every((k) => typeof k === 'string')) {
+          throw new Error('Invalid comicKey')
+        }
+      }
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.RUN_HEALTH_CHECK, scope ?? 'all', comicKeys ?? undefined)
+  },
+
+  scanOrphanTemps: () => ipcRenderer.invoke(IPC_CHANNELS.SCAN_ORPHAN_TEMPS),
+
+  cleanupOrphanTemps: (paths?: unknown) => {
+    if (paths !== undefined && paths !== null) {
+      if (!Array.isArray(paths) || paths.length > 10_000) throw new Error('Invalid paths')
+      for (const p of paths) {
+        if (typeof p !== 'string' || p.length === 0 || p.length > 1024) throw new Error('Invalid path')
+      }
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.CLEANUP_ORPHAN_TEMPS, paths ?? undefined)
+  },
+
+  getStorageStats: () => ipcRenderer.invoke(IPC_CHANNELS.GET_STORAGE_STATS),
+
+  onMaintenanceProgress: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.MAINTENANCE_PROGRESS, callback)
+  },
 })

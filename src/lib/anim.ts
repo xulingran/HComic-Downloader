@@ -296,6 +296,7 @@ export const TAB_ORDER = [
   'favourites',
   'history',
   'toolbox',
+  'maintenance',
   'settings',
   'about',
 ] as const

@@ -9,6 +9,7 @@ const menuItems = [
   { id: 'favourites', label: '收藏夹', icon: '⭐' },
   { id: 'history', label: '历史记录', icon: '🕐' },
   { id: 'toolbox', label: '工具箱', icon: '🧰' },
+  { id: 'maintenance', label: '维护', icon: '🧹' },
   { id: 'settings', label: '设置', icon: '⚙️' },
   { id: 'about', label: '关于', icon: 'ℹ️' }
 ]

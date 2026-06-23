@@ -59,6 +59,7 @@
 ### 其他功能
 
 - 工具箱标签页（标签过滤、推荐标签管理、重复漫画检测）
+- 维护中心：下载健康检查、孤儿临时目录清理、存储空间分析
 - 亮色 / 暗色 / 跟随系统 三种主题
 - 自定义字体（跨平台 CJK 字体自动检测）与字号（12-20）
 - 代理设置（HTTP / HTTPS / NO_PROXY 系统代理）
@@ -133,9 +134,11 @@ hcomic_downloader/
 │   │   ├── FavouritesPage.tsx
 │   │   ├── HistoryPage.tsx
 │   │   ├── ToolboxPage.tsx    # 工具箱（标签过滤 / 推荐标签 / 重复检测）
+│   │   ├── MaintenancePage.tsx # 维护中心（健康检查 / 孤儿清理 / 存储分析）
 │   │   └── SettingsPage.tsx
 │   ├── components/            # 业务组件（Reader / Drawer / Sidebar / ChapterPicker 等）
 │   ├── components/common/     # 通用组件（Toast / Pagination / ProgressBar 等）
+│   ├── components/maintenance/# 维护中心面板（HealthCheckPanel / OrphanCleanupPanel / StorageStatsPanel）
 │   ├── components/settings/   # 设置面板分组（外观 / 下载 / 认证 / 通知 / 代理 / 缓存 / 标签过滤 / 推荐标签 / 迁移）
 │   ├── components/tools/      # 工具箱组件（DuplicateDetector 等）
 │   ├── hooks/                 # React hooks（useIpc / useTheme / useComicReader / useMigration 等）
@@ -145,6 +148,7 @@ hcomic_downloader/
 ├── python/                    # Python 后端
 │   ├── ipc_server.py          # JSON-RPC 2.0 服务器入口
 │   ├── hcomic_backend.spec    # PyInstaller 打包配置
+│   ├── maintenance/           # 维护中心模块（scanner / health_checker / orphan_cleaner / storage_analyzer）
 │   └── ipc/                   # IPC 功能模块（mixin 拆分）
 │       ├── search_mixin.py
 │       ├── cover_mixin.py
@@ -153,6 +157,7 @@ hcomic_downloader/
 │       ├── config_mixin.py
 │       ├── auth_mixin.py
 │       ├── migration_mixin.py
+│       ├── maintenance_mixin.py # 维护中心（健康检查 / 孤儿清理 / 存储分析）
 │       ├── history_mixin.py
 │       ├── favourite_tags_mixin.py  # 收藏标签推荐
 │       ├── cover_cache.py     # 封面缓存（SQLite）
@@ -194,8 +199,8 @@ hcomic_downloader/
 │   └── generate-icons.mjs     # 图标生成
 │
 ├── tests/                     # 测试
-│   ├── test_*.py              # Python 单元测试（32 个文件）
-│   └── unit/                  # TypeScript/React 单元测试（46 个文件）
+│   ├── test_*.py              # Python 单元测试（48 个文件）
+│   └── unit/                  # TypeScript/React 单元测试（73 个文件）
 │
 ├── config.py                  # 配置管理（dataclass + JSON 持久化）
 ├── downloader.py              # 多线程下载器（断点续传 + 重试）

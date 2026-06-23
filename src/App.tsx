@@ -23,6 +23,7 @@ const FavouritesPage = lazy(() => import('./pages/FavouritesPage').then(m => ({ 
 const HistoryPage = lazy(() => import('./pages/HistoryPage').then(m => ({ default: m.HistoryPage })))
 const SettingsPage = lazy(() => import('./pages/SettingsPage').then(m => ({ default: m.SettingsPage })))
 const ToolboxPage = lazy(() => import('./pages/ToolboxPage').then(m => ({ default: m.ToolboxPage })))
+const MaintenancePage = lazy(() => import('./pages/MaintenancePage').then(m => ({ default: m.MaintenancePage })))
 const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
 const ComicInfoDrawer = lazy(() => import('./components/ComicInfoDrawer').then(m => ({ default: m.ComicInfoDrawer })))
 const ComicReaderModal = lazy(() => import('./components/ComicReaderModal').then(m => ({ default: m.ComicReaderModal })))
@@ -123,6 +124,8 @@ function App() {
         return <Suspense fallback={<PageSkeleton />}><SettingsPage scrollTarget={scrollTarget} onScrollDone={() => setScrollTarget(null)} /></Suspense>
       case 'toolbox':
         return <Suspense fallback={<PageSkeleton />}><ToolboxPage /></Suspense>
+      case 'maintenance':
+        return <Suspense fallback={<PageSkeleton />}><MaintenancePage /></Suspense>
       case 'about':
         return <Suspense fallback={<PageSkeleton />}><AboutPage /></Suspense>
       default:

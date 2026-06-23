@@ -10,6 +10,7 @@ describe('Sidebar', () => {
     { id: 'favourites', label: '收藏夹', icon: '⭐' },
     { id: 'history', label: '历史记录', icon: '🕐' },
     { id: 'toolbox', label: '工具箱', icon: '🧰' },
+    { id: 'maintenance', label: '维护', icon: '🧹' },
     { id: 'settings', label: '设置', icon: '⚙️' },
     { id: 'about', label: '关于', icon: 'ℹ️' }
   ]
@@ -18,7 +19,7 @@ describe('Sidebar', () => {
     render(<Sidebar activePage="search" onPageChange={vi.fn()} />)
 
     const buttons = screen.getAllByRole('button')
-    expect(buttons).toHaveLength(7)
+    expect(buttons).toHaveLength(8)
 
     for (const item of menuItems) {
       const button = screen.getByTitle(item.label)

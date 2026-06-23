@@ -230,6 +230,71 @@ export interface MigrationStatusResponse {
   target_dir: string
 }
 
+export interface HealthCheckIssue {
+  kind: string
+  detail: string
+  page?: number
+}
+
+export interface HealthCheckResultItem {
+  key: string[]
+  title: string
+  outputPath: string
+  outputFormat: string
+  expectedPages: number
+  actualPages: number
+  checks: HealthCheckIssue[]
+}
+
+export interface HealthCheckResponse {
+  scanned: number
+  issues: HealthCheckResultItem[]
+}
+
+export interface OrphanTempItem {
+  path: string
+  sizeBytes: number
+  modifiedAt: number
+}
+
+export interface CleanupOrphanResult {
+  removed: number
+  freedBytes: number
+  failed: Array<{ path: string; reason: string }>
+}
+
+export interface StorageDistribution {
+  name: string
+  sizeBytes: number
+  itemCount: number
+}
+
+export interface StorageTopItem {
+  path: string
+  title: string | null
+  author: string | null
+  sourceSite: string | null
+  sizeBytes: number
+  pageCount: number | null
+}
+
+export interface StorageStats {
+  totalSizeBytes: number
+  totalFiles: number
+  bySource: Record<string, number>
+  byFormat: { folder: number; cbz: number; zip: number }
+  byAuthor: StorageDistribution[]
+  topItems: StorageTopItem[]
+  orphanFiles: { count: number; sizeBytes: number }
+}
+
+export interface MaintenanceProgressEvent {
+  phase: string
+  current: number
+  total: number
+  label: string
+}
+
 export interface UpdateInfo {
   latestVersion: string
   changelog: string
@@ -620,6 +685,22 @@ export interface IPCMethods {
     params: { source_site: string; album_id: string }
     result: { success: boolean; affected: number; skipped: number; notFound: boolean }
   }
+  run_health_check: {
+    params: { scope?: 'all' | 'selected'; comic_keys?: string[][] }
+    result: HealthCheckResponse
+  }
+  scan_orphan_temps: {
+    params: Record<string, never>
+    result: { orphans: OrphanTempItem[]; totalSizeBytes: number }
+  }
+  cleanup_orphan_temps: {
+    params: { paths?: string[] }
+    result: CleanupOrphanResult
+  }
+  get_storage_stats: {
+    params: Record<string, never>
+    result: StorageStats
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -684,6 +765,10 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:pause-album': 'pause_album',
   'python:resume-album': 'resume_album',
   'python:cancel-album': 'cancel_album',
+  'python:run-health-check': 'run_health_check',
+  'python:scan-orphan-temps': 'scan_orphan_temps',
+  'python:cleanup-orphan-temps': 'cleanup_orphan_temps',
+  'python:get-storage-stats': 'get_storage_stats',
 } as const
 
 /** Validated notification event for download progress (Python -> Main -> Renderer) */
@@ -780,6 +865,11 @@ export interface HcomicAPI {
   resumeAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
   cancelAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
   onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
+  runHealthCheck(scope?: 'all' | 'selected', comicKeys?: string[][]): Promise<HealthCheckResponse>
+  scanOrphanTemps(): Promise<{ orphans: OrphanTempItem[]; totalSizeBytes: number }>
+  cleanupOrphanTemps(paths?: string[]): Promise<CleanupOrphanResult>
+  getStorageStats(): Promise<StorageStats>
+  onMaintenanceProgress(callback: (data: MaintenanceProgressEvent) => void): () => void
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   onFatalError(callback: (data: FatalErrorEvent) => void): () => void
   /** 订阅启动进度事件（Python __init__ 各阶段经 stderr → PythonBridge → 渲染进程） */
@@ -925,6 +1015,10 @@ export const IPC_CHANNELS = {
   PAUSE_ALBUM: 'python:pause-album',
   RESUME_ALBUM: 'python:resume-album',
   CANCEL_ALBUM: 'python:cancel-album',
+  RUN_HEALTH_CHECK: 'python:run-health-check',
+  SCAN_ORPHAN_TEMPS: 'python:scan-orphan-temps',
+  CLEANUP_ORPHAN_TEMPS: 'python:cleanup-orphan-temps',
+  GET_STORAGE_STATS: 'python:get-storage-stats',
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
   GET_PREVIEW_URLS: 'python:get-preview-urls',
@@ -963,6 +1057,7 @@ export const NOTIFICATION_CHANNELS = {
   MIGRATION_ERROR: 'migration:error',
   UPDATE_CHECK_RESULT: 'update:check-result',
   ALBUM_PROGRESS: 'album:progress',
+  MAINTENANCE_PROGRESS: 'maintenance:progress',
   FATAL_ERROR: 'fatal:error',
   DEEP_LINK: 'app:deep-link',
   STARTUP_PROGRESS: 'startup:progress',
@@ -988,6 +1083,7 @@ export const PYTHON_NOTIFICATION_METHODS = {
   MIGRATION_COMPLETE: 'migration_complete',
   MIGRATION_ERROR: 'migration_error',
   ALBUM_PROGRESS: 'album_progress',
+  MAINTENANCE_PROGRESS: 'maintenance_progress',
 } as const
 
 export const CONFIG_KEYS = [
