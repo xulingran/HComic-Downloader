@@ -1,15 +1,16 @@
 # storage-analytics 规范
 
 ## 目的
-待定 - 由归档变更 maintenance-center 创建。归档后请更新目的。
+扫描下载目录统计存储占用，按来源/格式/作者等维度分组，并区分可清理的 temp_* 孤儿目录与未在历史记录中的合法资产，避免误导用户删除实际需要的文件。
+
 ## 需求
 ### 需求:存储空间分析
 
-系统必须能够扫描下载目录，统计总体空间占用，并按来源、格式、作者等维度分组，同时识别磁盘上的孤儿文件。
+系统必须能够扫描下载目录，统计总体空间占用，并按来源、格式、作者等维度分组。`orphanFiles` 必须仅统计 `temp_*` 目录（与「孤儿临时目录清理」面板的孤儿定义一致）；非 `temp_*` 且不在 `download_history.output_path` 中的资产必须计入新增的 `untrackedFiles` 字段，禁止将其误判为可清理孤儿。
 
 #### 场景:获取总体存储统计
 - **当** 用户进入维护中心的存储分析页
-- **那么** 系统返回 `totalSizeBytes`、`totalFiles` 以及 `orphanFiles` 概览
+- **那么** 系统返回 `totalSizeBytes`、`totalFiles`、`orphanFiles` 以及 `untrackedFiles` 概览
 
 #### 场景:按格式分布
 - **当** 下载目录中包含 `folder`、`cbz`、`zip` 三种格式
@@ -27,7 +28,14 @@
 - **当** 系统完成下载目录扫描
 - **那么** 按单个资产大小排序，返回 Top 20 大文件及其路径、标题、作者、大小和页数
 
-#### 场景:识别孤儿文件
-- **当** 磁盘上存在但 `download_history.db` 中没有对应 `output_path` 记录的漫画资产
-- **那么** 系统将其计入 `orphanFiles`
+#### 场景:orphanFiles 仅计 temp 目录
+- **当** 下载目录中存在 `temp_*` 目录
+- **那么** 系统将其大小与数量计入 `orphanFiles`；非 `temp_*` 的资产禁止计入 `orphanFiles`
 
+#### 场景:untrackedFiles 计未在历史的非临时资产
+- **当** 某个非 `temp_*` 资产（folder / cbz / zip）不在 `download_history.output_path` 中
+- **那么** 系统将其大小与数量计入 `untrackedFiles`，前端展示为"未在历史记录中"并提示"删除请谨慎"，禁止使用"孤儿"措辞
+
+#### 场景:文件名解析剥离括号分组
+- **当** 文件名为 `[Author] Title [1]` 或 `(Author) Title` 等带前导方/圆括号分组的形式
+- **那么** 解析作者时必须先剥离前导 `[...]` / `(...)` 分组，再按 `-` 分隔作者与标题，禁止把整段含括号的字符串作为作者名

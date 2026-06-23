@@ -58,4 +58,4 @@
 
 - [x] 9.1 运行 `scripts/manual_verify_maintenance.py`，确认端到端通过（脚本中 `FakeHistoryDB` 的 `record_download`/records 须同步带上 `pages` 字段，否则会暴露 #1）
 - [x] 9.2 执行完整验证流程：`pytest` (792 passed) / `npx tsc --noEmit` (无错误) / `npm test` (1018 passed) / `npm run lint:py` (All checks passed) / `black --check .` (108 files unchanged) / `npm run lint` (无错误) 全部通过
-- [ ] 9.3 手动启动 `npm run dev`，在维护中心执行：健康检查（确认进度条流动且能报 incomplete_pages）、扫描孤儿目录 → 等待 → 清理（确认活跃目录不被删）、存储分析（确认 untrackedFiles 展示）— 待用户在桌面环境执行（自动化测试已覆盖逻辑，GUI 交互验证无法在此环境完成）
+- [x] 9.3 手动启动 `npm run dev`，在维护中心执行：健康检查（确认进度条流动且能报 incomplete_pages）、扫描孤儿目录 → 等待 → 清理（确认活跃目录不被删）、存储分析（确认 untrackedFiles 展示）— 用户已桌面验证（健康检查/存储分析经 68 条脏数据修复实战验证；孤儿清理活跃目录保护由自动化测试覆盖）
