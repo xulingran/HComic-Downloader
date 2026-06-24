@@ -60,6 +60,9 @@ class SearchMixin:
             "characters": comic.characters if hasattr(comic, "characters") else [],
             "groups": comic.groups if hasattr(comic, "groups") else [],
             "author": comic.author if hasattr(comic, "author") else None,
+            "category": comic.category if hasattr(comic, "category") else None,
+            "language": comic.language if hasattr(comic, "language") else None,
+            "publishDate": comic.publish_date if hasattr(comic, "publish_date") else None,
             "pages": comic.pages if hasattr(comic, "pages") else None,
             "chapters": [
                 {"id": c.id, "name": c.name, "index": c.index, "pages": c.pages}

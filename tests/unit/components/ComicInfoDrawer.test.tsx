@@ -163,3 +163,54 @@ describe('ComicInfoDrawer - 点击 tag 加入搜索', () => {
     expect(closeDrawerSpy).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('ComicInfoDrawer - 元数据信息渲染', () => {
+  it('显示 Category 并可点击触发 category 搜索', async () => {
+    openDrawerWith({
+      ...comicWithTags,
+      category: 'artist cg',
+      publishDate: '2026-06-01',
+      language: 'chinese',
+    })
+    await settle()
+
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    // Category 文案渲染为可点击按钮
+    const categoryBtn = screen.getByText('artist cg')
+    await user.click(categoryBtn)
+
+    expect(setPendingSearchSpy).toHaveBeenCalledWith('artist cg', 'category', false)
+    expect(closeDrawerSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('信息行显示更新时间与语言', async () => {
+    openDrawerWith({
+      ...comicWithTags,
+      publishDate: '2026-06-01',
+      language: 'chinese',
+    })
+    await settle()
+
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.getByText(/更新 2026-06-01/)).toBeInTheDocument()
+    expect(screen.getByText(/chinese/)).toBeInTheDocument()
+  })
+
+  it('元数据缺失时不渲染对应空标签', async () => {
+    // comicWithTags 无 category/publishDate/language
+    openDrawerWith(comicWithTags)
+    await settle()
+
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.queryByText(/更新/)).not.toBeInTheDocument()
+    // category 文案不渲染
+    expect(screen.queryByText('artist cg')).not.toBeInTheDocument()
+  })
+})

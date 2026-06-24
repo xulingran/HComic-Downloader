@@ -395,6 +395,7 @@ def test_get_comic_detail_falls_back_to_html_on_spa_failure(monkeypatch):
     assert comic.title == "HTML标题"
     assert comic.author == "lemon tea"
     assert comic.category == "artist cg"
+    assert comic.language == "chinese"
     assert comic.tags == ["tag1", "tag2"]
     assert comic.pages == 3
     assert comic.source_site == "moeimg"
@@ -437,6 +438,7 @@ def test_get_comic_detail_excludes_language_from_tags(monkeypatch):
 
     comic = parser.get_comic_detail("281587")
     assert comic is not None
+    assert comic.language == "chinese"
     assert comic.tags == ["rough translation", "sex toys"]
     assert "chinese" not in comic.tags
 

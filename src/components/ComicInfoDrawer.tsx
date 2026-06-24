@@ -258,6 +258,12 @@ export function ComicInfoDrawer() {
                 {displayComic?.albumTotalChapters != null && displayComic.albumTotalChapters > 1 && (
                   <> · {displayComic.albumTotalChapters} 章</>
                 )}
+                {displayComic?.publishDate && (
+                  <> · 更新 {displayComic.publishDate}</>
+                )}
+                {displayComic?.language && (
+                  <> · {displayComic.language}</>
+                )}
               </p>
               {displayComic?.url && (
                 <button
@@ -270,6 +276,15 @@ export function ComicInfoDrawer() {
                 </button>
               )}
             </div>
+            {displayComic?.category && (
+              <button
+                onClick={() => handleSearch(displayComic.category!, 'category')}
+                className="block text-sm text-[var(--accent)] mt-1 cursor-pointer
+                           hover:underline select-text text-left"
+              >
+                {displayComic.category}
+              </button>
+            )}
           </div>
 
           {sourceSupportsFavourites(comicSource) && (

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Optional
 from xml.dom import minidom
 from xml.etree.ElementTree import Element, SubElement, tostring
 
+from constants import LANGUAGE_TO_ISO_639_1
 from image_formats import PAGE_FILENAME_FORMAT, SUPPORTED_IMAGE_EXTENSIONS
 from models import ArchiveBuildOptions, ComicInfo
 from utils import sanitize_filename, sanitize_path_chars
@@ -241,6 +242,11 @@ class CBZBuilder:
         if comic.category:
             self._add_element(root, "Genre", comic.category)
 
+        # 语言 -> LanguageISO（ISO 639-1 两字母码，未知语言不写避免非法码）
+        iso_code = self._resolve_language_iso(comic.language)
+        if iso_code:
+            self._add_element(root, "LanguageISO", iso_code)
+
         # 标签
         if comic.tags:
             tags_str = ", ".join(str(tag) for tag in comic.tags if tag)
@@ -300,6 +306,21 @@ class CBZBuilder:
         """添加子元素"""
         elem = SubElement(parent, tag)
         elem.text = self._sanitize_xml_text(text)
+
+    @staticmethod
+    def _resolve_language_iso(language: str | None) -> str | None:
+        """将来源返回的语言英文全称映射为 ISO 639-1 两字母码。
+
+        归一化为小写后查 LANGUAGE_TO_ISO_639_1；未命中返回 None（不写 <LanguageISO>，
+        避免写入非法 ISO 码）。moeimg 的非语言占位值（indefinable/text cleaned 等）
+        经映射表转为 "und"（undetermined）。
+        """
+        if not language:
+            return None
+        normalized = str(language).strip().lower()
+        if not normalized:
+            return None
+        return LANGUAGE_TO_ISO_639_1.get(normalized)
 
     def _parse_date(self, date_str: str) -> tuple[str, str, str]:
         """解析日期字符串
@@ -580,6 +601,7 @@ class CBZBuilder:
                     pages=page_counter,
                     category=comic.category,
                     tags=comic.tags,
+                    language=comic.language,
                     parodies=comic.parodies,
                     characters=comic.characters,
                     groups=comic.groups,

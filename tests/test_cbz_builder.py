@@ -221,6 +221,76 @@ class TestCBZBuilder:
                 download_dir=str(tmp_path),
             )
 
+    def test_resolve_language_iso_known(self):
+        """已知语言英文全称映射为 ISO 639-1 两字母码。"""
+        builder = CBZBuilder()
+        assert builder._resolve_language_iso("chinese") == "zh"
+        assert builder._resolve_language_iso("japanese") == "ja"
+        assert builder._resolve_language_iso("english") == "en"
+        assert builder._resolve_language_iso("korean") == "ko"
+
+    def test_resolve_language_iso_moeimg_placeholders(self):
+        """moeimg 非语言占位值映射为 und（undetermined）。"""
+        builder = CBZBuilder()
+        assert builder._resolve_language_iso("indefinable") == "und"
+        assert builder._resolve_language_iso("text cleaned") == "und"
+        assert builder._resolve_language_iso("rewrite") == "und"
+        assert builder._resolve_language_iso("speechless") == "und"
+        assert builder._resolve_language_iso("other") == "und"
+
+    def test_resolve_language_iso_case_insensitive(self):
+        """查表前归一化为小写。"""
+        builder = CBZBuilder()
+        assert builder._resolve_language_iso("Chinese") == "zh"
+        assert builder._resolve_language_iso("JAPANESE") == "ja"
+
+    def test_resolve_language_iso_unknown_and_none(self):
+        """未知语言与 None/空值返回 None（不写 LanguageISO）。"""
+        builder = CBZBuilder()
+        assert builder._resolve_language_iso("klingon") is None
+        assert builder._resolve_language_iso(None) is None
+        assert builder._resolve_language_iso("") is None
+        assert builder._resolve_language_iso("   ") is None
+
+    def test_comic_info_xml_writes_language_iso_for_chinese(self, sample_images, tmp_path):
+        """language=chinese 时 ComicInfo.xml 含 <LanguageISO>zh</LanguageISO>。"""
+        builder = CBZBuilder()
+        comic = ComicInfo(id="1", title="t", language="chinese", pages=1)
+        output_path = tmp_path / "lang.cbz"
+        builder.build_cbz(sample_images, comic, str(output_path), download_dir=str(tmp_path))
+        with zipfile.ZipFile(output_path, "r") as zf:
+            xml_content = zf.read("ComicInfo.xml").decode("utf-8")
+        assert "<LanguageISO>zh</LanguageISO>" in xml_content
+
+    def test_comic_info_xml_writes_language_iso_und_for_placeholder(self, sample_images, tmp_path):
+        """moeimg 占位值 indeinable 映射为 und。"""
+        builder = CBZBuilder()
+        comic = ComicInfo(id="1", title="t", language="indefinable", pages=1)
+        output_path = tmp_path / "und.cbz"
+        builder.build_cbz(sample_images, comic, str(output_path), download_dir=str(tmp_path))
+        with zipfile.ZipFile(output_path, "r") as zf:
+            xml_content = zf.read("ComicInfo.xml").decode("utf-8")
+        assert "<LanguageISO>und</LanguageISO>" in xml_content
+
+    def test_comic_info_xml_omits_language_iso_when_unknown(self, sample_images, tmp_path):
+        """未知语言与缺失时不写 <LanguageISO>，避免非法 ISO 码。"""
+        builder = CBZBuilder()
+        # 未知语言
+        comic_unknown = ComicInfo(id="1", title="t", language="klingon", pages=1)
+        output_path = tmp_path / "unknown.cbz"
+        builder.build_cbz(sample_images, comic_unknown, str(output_path), download_dir=str(tmp_path))
+        with zipfile.ZipFile(output_path, "r") as zf:
+            xml_content = zf.read("ComicInfo.xml").decode("utf-8")
+        assert "<LanguageISO>" not in xml_content
+
+        # language=None
+        comic_none = ComicInfo(id="2", title="t", pages=1)
+        output_path2 = tmp_path / "none.cbz"
+        builder.build_cbz(sample_images, comic_none, str(output_path2), download_dir=str(tmp_path))
+        with zipfile.ZipFile(output_path2, "r") as zf:
+            xml_content2 = zf.read("ComicInfo.xml").decode("utf-8")
+        assert "<LanguageISO>" not in xml_content2
+
 
 class TestGetOutputPath:
     """测试输出路径与文件夹名生成"""
@@ -355,6 +425,7 @@ class TestAlbumCBZ:
             comic_source="JMCOMIC",
             tags=["tag1"],
             category="cat",
+            language="chinese",
         )
         album_dir = tmp_path / "Auth-Album"
         album_dir.mkdir()
@@ -371,3 +442,5 @@ class TestAlbumCBZ:
             assert "<Title>My Album</Title>" in xml
             assert "<Series>My Album</Series>" in xml
             assert "<Writer>Auth</Writer>" in xml
+            # 专辑打包透传 language，写入 LanguageISO
+            assert "<LanguageISO>zh</LanguageISO>" in xml

@@ -17,6 +17,9 @@ export interface ComicInfo {
   parodies?: string[]
   characters?: string[]
   groups?: string[]
+  category?: string
+  language?: string
+  publishDate?: string
   author?: string
   pages?: number
   chapters?: ChapterInfo[]

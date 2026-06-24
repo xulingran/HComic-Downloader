@@ -50,6 +50,7 @@ class ComicInfo:
         media_id: 媒体 ID (用于图片 URL)
         comic_source: 图源 (MMCG_SHORT, MMCG_LONG, NH)
         source_site: 来源站点标识 (hcomic/moeimg)
+        language: 原始语言文本（如 "chinese"/"japanese"，来源原文，非 ISO 码）
         image_urls: 直接可下载的图片链接列表（可选，优先于 media_id 规则）
     """
 
@@ -68,6 +69,7 @@ class ComicInfo:
     media_id: str = ""
     comic_source: str = ""
     source_site: str = "hcomic"
+    language: str | None = None
     scramble_id: str = ""
     image_urls: list[str] = field(default_factory=list)
     chapters: list[ChapterInfo] = field(default_factory=list)

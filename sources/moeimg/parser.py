@@ -353,6 +353,7 @@ class MoeImgParser(ParserContextMixin):
         authors_data = detail_data.get("authors") or detail.get("authors") or detail_data.get("author") or []
         author = self._extract_first_name(authors_data, "author_name")
         category = (detail.get("category") or "").strip() or None
+        language = (detail.get("language") or "").strip() or None
 
         publish_date = self._format_iso_date(
             chapter_detail.get("chapter_date_published") or detail.get("manga_date_published")
@@ -372,6 +373,7 @@ class MoeImgParser(ParserContextMixin):
             pages=pages,
             category=category,
             tags=tags,
+            language=language,
             publish_date=publish_date,
             cover_url=cover_url,
             preview_url=preview_url,
@@ -414,6 +416,7 @@ class MoeImgParser(ParserContextMixin):
 
         author: str | None = None
         category: str | None = None
+        language: str | None = None
         tags: list[str] = list(fallback_tags) if fallback_tags else []
         cover_url: str | None = None
 
@@ -432,6 +435,9 @@ class MoeImgParser(ParserContextMixin):
             elif md_title == "Author":
                 a = md_content_el.select_one("a")
                 author = (a.get_text(strip=True) if a else md_content_el.get_text(strip=True)) or None
+            elif md_title == "Language":
+                a = md_content_el.select_one("a")
+                language = (a.get_text(strip=True) if a else md_content_el.get_text(strip=True)) or None
             elif md_title == "Tags":
                 if not tags:
                     for a in md_content_el.select("a"):
@@ -459,6 +465,7 @@ class MoeImgParser(ParserContextMixin):
             pages=pages,
             category=category,
             tags=tags,
+            language=language,
             publish_date=publish_date,
             cover_url=cover_url,
             preview_url=url,
