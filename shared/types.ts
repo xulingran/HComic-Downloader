@@ -598,6 +598,14 @@ export interface IPCMethods {
     params: Record<string, never>
     result: CacheStats
   }
+  get_cache_dir: {
+    params: Record<string, never>
+    result: { dir: string }
+  }
+  open_cache_dir: {
+    params: Record<string, never>
+    result: { success: boolean }
+  }
   clear_preview_cache: {
     params: Record<string, never>
     result: { success: boolean }
@@ -754,6 +762,8 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-migration-status': 'get_migration_status',
   'python:resolve-unmatched': 'resolve_unmatched',
   'python:get-cache-stats': 'get_cache_stats',
+  'python:get-cache-dir': 'get_cache_dir',
+  'python:open-cache-dir': 'open_cache_dir',
   'python:clear-preview-cache': 'clear_preview_cache',
   'python:clear-all-cache': 'clear_all_cache',
   'python:get-history': 'get_history',
@@ -839,6 +849,8 @@ export interface HcomicAPI {
   getMigrationStatus(): Promise<MigrationStatusResponse>
   resolveUnmatched(matches: Array<{ dbKey: string[]; file_path: string }>): Promise<{ resolved: number }>
   getCacheStats(): Promise<CacheStats>
+  getCacheDir(): Promise<{ dir: string }>
+  openCacheDir(dirPath: string): Promise<{ success: boolean }>
   clearPreviewCache(): Promise<{ success: boolean }>
   clearAllCache(): Promise<{ success: boolean }>
   getHistory(page?: number): Promise<{ items: HistoryItem[]; pagination: PaginationInfo }>
@@ -1041,6 +1053,8 @@ export const IPC_CHANNELS = {
   GET_MIGRATION_STATUS: 'python:get-migration-status',
   RESOLVE_UNMATCHED: 'python:resolve-unmatched',
   GET_CACHE_STATS: 'python:get-cache-stats',
+  GET_CACHE_DIR: 'python:get-cache-dir',
+  OPEN_CACHE_DIR: 'python:open-cache-dir',
   CLEAR_PREVIEW_CACHE: 'python:clear-preview-cache',
   CLEAR_ALL_CACHE: 'python:clear-all-cache',
   GET_HISTORY: 'python:get-history',

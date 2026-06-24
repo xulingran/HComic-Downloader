@@ -77,6 +77,16 @@ class CoverCacheDB:
 
     # ── public API ──────────────────────────────────────────────────────
 
+    @property
+    def db_dir(self) -> str:
+        """Absolute path of the directory holding the cover cache DB file.
+
+        Normalized via ``os.path.abspath`` so callers always receive a
+        canonical absolute path regardless of how ``db_path`` was constructed.
+        Used by the settings UI to show users where cache files live.
+        """
+        return os.path.abspath(os.path.dirname(self._db_path))
+
     def get(self, url: str) -> str | None:
         """Return cached data URI or *None*."""
         with self._lock:

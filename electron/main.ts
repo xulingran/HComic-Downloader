@@ -262,6 +262,38 @@ function validateTaskId(id: unknown, label = 'taskId'): asserts id is string {
   assert(taskIdValidator, id, label)
 }
 
+/**
+ * 校验目录路径并在系统文件管理器中打开。
+ *
+ * 共享「打开下载目录」与「打开缓存目录」的安全校验：绝对路径、无路径遍历、
+ * 无控制字符、必须是已存在目录。任一校验失败即抛错，绝不调用 openPath。
+ * `label` 仅用于区分错误文案与日志语义（download / cache），二者校验等价。
+ */
+async function openDirectoryInFileManager(dirPath: unknown, label: string): Promise<{ success: boolean }> {
+  assert(downloadDirValidator, dirPath, 'directory path')
+  let stats: fs.Stats
+  try {
+    stats = fs.statSync(dirPath)
+  } catch (err) {
+    // 区分"路径不存在"（高频、可恢复）与其他 stat 失败（权限不足、路径过长），
+    // 给用户可行动的错误提示。
+    // 注意：不用 new Error(msg, { cause }) 第二参数形式——项目 tsconfig lib 是 ES2020，
+    // 缺少 ES2022.Error 库，构造器第二参数会触发 TS2554，直接 .cause 赋值触发 TS2500。
+    // 用 Object.assign 注入 cause，行为等价（Node 运行时原生支持 Error.prototype.cause），
+    // 且不依赖 lib 升级、不需要 cast。
+    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw Object.assign(new Error(`${label} directory does not exist: ${dirPath}`), { cause: err })
+    }
+    throw Object.assign(new Error(`Cannot access directory: ${dirPath}`), { cause: err })
+  }
+  if (!stats.isDirectory()) throw new Error(`Path is not a directory: ${dirPath}`)
+  const errorMsg = await shell.openPath(dirPath)
+  if (errorMsg) {
+    throw new Error(`Failed to open directory: ${errorMsg}`)
+  }
+  return { success: true }
+}
+
 function validateUrlFormat(url: unknown, label = 'URL', maxLength = 2048): asserts url is string {
   if (typeof url !== 'string' || url.length === 0 || url.length > maxLength) {
     throw new Error(`Invalid ${label}`)
@@ -872,28 +904,7 @@ function registerSystemHandlers(bridge: Bridge) {
   })
 
   ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async (_, dirPath: unknown) => {
-    assert(downloadDirValidator, dirPath, 'directory path')
-    let stats: fs.Stats
-    try {
-      stats = fs.statSync(dirPath)
-    } catch (err) {
-      // 区分"路径不存在"（高频、可恢复）与其他 stat 失败（权限不足、路径过长），
-      // 给用户可行动的错误提示。
-      // 注意：不用 new Error(msg, { cause }) 第二参数形式——项目 tsconfig lib 是 ES2020，
-      // 缺少 ES2022.Error 库，构造器第二参数会触发 TS2554，直接 .cause 赋值触发 TS2550。
-      // 用 Object.assign 注入 cause，行为等价（Node 运行时原生支持 Error.prototype.cause），
-      // 且不依赖 lib 升级、不需要 cast。
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-        throw Object.assign(new Error(`Download directory does not exist: ${dirPath}`), { cause: err })
-      }
-      throw Object.assign(new Error(`Cannot access directory: ${dirPath}`), { cause: err })
-    }
-    if (!stats.isDirectory()) throw new Error(`Path is not a directory: ${dirPath}`)
-    const errorMsg = await shell.openPath(dirPath)
-    if (errorMsg) {
-      throw new Error(`Failed to open directory: ${errorMsg}`)
-    }
-    return { success: true }
+    return openDirectoryInFileManager(dirPath, 'Download')
   })
 
   ipcMain.handle(IPC_CHANNELS.SELECT_DIRECTORY, async (_, title: string, defaultPath?: string) => {
@@ -1050,6 +1061,14 @@ function registerMigrationHandlers(bridge: Bridge) {
 function registerCacheHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_CACHE_STATS, async () => {
     return bridge.call('get_cache_stats')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.GET_CACHE_DIR, async () => {
+    return bridge.call('get_cache_dir')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.OPEN_CACHE_DIR, async (_, dirPath: unknown) => {
+    return openDirectoryInFileManager(dirPath, 'Cache')
   })
 
   ipcMain.handle(IPC_CHANNELS.CLEAR_PREVIEW_CACHE, async () => {

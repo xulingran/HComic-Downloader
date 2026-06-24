@@ -43,6 +43,7 @@ export function createMockHcomic(overrides: Partial<Record<keyof HcomicAPI, unkn
     getProxyStatus: vi.fn().mockResolvedValue({ http: '', https: '', noProxy: '' }),
     getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }),
     openDownloadDir: vi.fn().mockResolvedValue({ success: true }),
+    openCacheDir: vi.fn().mockResolvedValue({ success: true }),
     selectDirectory: vi.fn().mockResolvedValue({ canceled: true, filePaths: [] }),
     getDownloadDetail: vi.fn().mockResolvedValue({ taskId: '', tempDir: '', errorMessage: '', outputPath: '' }),
     getPreviewUrls: vi.fn().mockResolvedValue({ imageUrls: [], totalPages: 0 }),

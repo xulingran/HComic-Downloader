@@ -72,7 +72,7 @@ describe('IPC preload→main→python 参数透传契约（H4 类回归防护）
     })
   })
 
-  describe('openDownloadDir: 路径校验契约对称', () => {
+  describe('openDownloadDir / openCacheDir: 路径校验契约对称', () => {
     it('preload 必须做对称的下载目录校验（绝对路径/遍历/控制字符）', () => {
       // H1/H2 修复点：preload 不应再是仅 length>0 的弱校验
       const openDirRe = /openDownloadDir:[\s\S]*?return\s+ipcRenderer\.invoke\(\s*IPC_CHANNELS\.OPEN_DOWNLOAD_DIR/
@@ -82,13 +82,29 @@ describe('IPC preload→main→python 参数透传契约（H4 类回归防护）
       expect(block, 'openDownloadDir 应调用 validateDownloadDir 做对称校验').toContain('validateDownloadDir')
     })
 
-    it('main handler 必须用 downloadDirValidator 做权威校验并校验是目录', () => {
-      const handlerRe = /ipcMain\.handle\(\s*IPC_CHANNELS\.OPEN_DOWNLOAD_DIR[\s\S]*?\)\s*\)/
-      const m = handlerRe.exec(mainSrc)
-      expect(m, '未找到 OPEN_DOWNLOAD_DIR 的 ipcMain.handle').not.toBeNull()
+    it('preload openCacheDir 必须复用同样的对称校验', () => {
+      const openCacheRe = /openCacheDir:[\s\S]*?return\s+ipcRenderer\.invoke\(\s*IPC_CHANNELS\.OPEN_CACHE_DIR/
+      const m = openCacheRe.exec(preloadSrc)
+      expect(m, '未找到 openCacheDir 实现').not.toBeNull()
       const block = m![0]
-      expect(block, 'main handler 应调用 downloadDirValidator').toContain('downloadDirValidator')
-      expect(block, 'main handler 应校验路径是目录（防文件路径被 openPath 当目录打开）').toContain('isDirectory')
+      expect(block, 'openCacheDir 应调用 validateDownloadDir 做对称校验').toContain('validateDownloadDir')
+    })
+
+    it('main 必须用 downloadDirValidator 做权威校验并校验是目录（共享 openDirectoryInFileManager）', () => {
+      // OPEN_DOWNLOAD_DIR 与 OPEN_CACHE_DIR 共用 openDirectoryInFileManager，
+      // 校验逻辑（downloadDirValidator + isDirectory）落在该辅助函数内。
+      const helperRe = /(?:async\s+)?function\s+openDirectoryInFileManager\s*\([^)]*\)\s*(?::[^{]+)?\{[\s\S]*?\n\}/
+      const m = helperRe.exec(mainSrc)
+      expect(m, '未找到 openDirectoryInFileManager 辅助函数').not.toBeNull()
+      const block = m![0]
+      expect(block, '辅助函数应调用 downloadDirValidator 做权威校验').toContain('downloadDirValidator')
+      expect(block, '辅助函数应校验路径是目录（防文件路径被 openPath 当目录打开）').toContain('isDirectory')
+      expect(block, '辅助函数应调用 shell.openPath').toContain('shell.openPath')
+    })
+
+    it('main 应为 OPEN_DOWNLOAD_DIR 与 OPEN_CACHE_DIR 注册独立 handler 并委托给共享辅助函数', () => {
+      expect(mainSrc).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.OPEN_DOWNLOAD_DIR[\s\S]*?openDirectoryInFileManager/)
+      expect(mainSrc).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.OPEN_CACHE_DIR[\s\S]*?openDirectoryInFileManager/)
     })
   })
 

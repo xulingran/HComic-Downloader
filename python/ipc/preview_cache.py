@@ -82,6 +82,17 @@ class PreviewCacheDB:
 
     # ── public API ──────────────────────────────────────────────────────
 
+    @property
+    def db_dir(self) -> str:
+        """Absolute path of the directory holding the preview cache DB file.
+
+        Normalized via ``os.path.abspath`` so callers always receive a
+        canonical absolute path.  Cover and preview caches share the same
+        root directory, so this equals :pyattr:`CoverCacheDB.db_dir` in
+        practice; kept per-class for symmetry and future divergence.
+        """
+        return os.path.abspath(os.path.dirname(self._db_path))
+
     def get(self, url: str) -> str | None:
         """Return absolute file path for cached image, or *None* on miss."""
         with self._lock:

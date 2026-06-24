@@ -287,6 +287,8 @@ class IPCServer(
         "get_migration_status": "handle_get_migration_status",
         "resolve_unmatched": "handle_resolve_unmatched",
         "get_cache_stats": "handle_get_cache_stats",
+        "get_cache_dir": "handle_get_cache_dir",
+        "open_cache_dir": "handle_open_cache_dir",
         "clear_preview_cache": "handle_clear_preview_cache",
         "clear_all_cache": "handle_clear_all_cache",
         "get_history": "handle_get_history",
@@ -558,6 +560,14 @@ class IPCServer(
                 "total_size_bytes": total_size_bytes,
             },
         }
+
+    def handle_get_cache_dir(self) -> dict:
+        """Return the absolute path of the directory holding cache files.
+
+        Cover and preview caches share the same root directory; derived from
+        the live cache instances so injected test paths are honored.
+        """
+        return {"dir": self._cover_cache.db_dir}
 
     def handle_clear_preview_cache(self) -> dict:
         """Clear only the preview image cache (keep cover cache)."""

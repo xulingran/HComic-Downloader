@@ -139,9 +139,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 70 total
+      // 72 total
       const count = handleCalls.length
-      expect(count).toBe(70)
+      expect(count).toBe(72)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -185,6 +185,8 @@ describe('main.ts', () => {
       'python:resolve-unmatched',
       'python:add-to-favourites',
       'python:get-cache-stats',
+      'python:get-cache-dir',
+      'python:open-cache-dir',
       'python:clear-preview-cache',
       'python:clear-all-cache',
       'python:get-favourite-tags',
@@ -250,7 +252,7 @@ describe('main.ts', () => {
         'check_downloaded_status', 'start_migration', 'confirm_migration', 'pause_migration', 'resume_migration',
         'cancel_migration', 'get_migration_status', 'resolve_unmatched',
         'add_to_favourites', 'check_favourite', 'remove_from_favourites',
-        'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
+        'get_cache_stats', 'get_cache_dir', 'open_cache_dir', 'clear_preview_cache', 'clear_all_cache',
         'get_history', 'add_history', 'delete_history', 'clear_history',
         'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
         'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',

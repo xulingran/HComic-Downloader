@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { CacheStats, ConfigKey } from '@shared/types'
+import { useToastStore } from '../../stores/useToastStore'
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -32,6 +33,9 @@ export function CacheSettings({
   const [clearing, setClearing] = useState<'preview' | 'all' | null>(null)
   const [inputValue, setInputValue] = useState(String(sizeLimitMB))
   const [showConfirm, setShowConfirm] = useState<'preview' | 'all' | null>(null)
+  const [cacheDir, setCacheDir] = useState<string | null>(null)
+  const [cacheDirLoading, setCacheDirLoading] = useState(true)
+  const [openingDir, setOpeningDir] = useState(false)
 
   const loadStats = useCallback(async () => {
     try {
@@ -44,10 +48,22 @@ export function CacheSettings({
     }
   }, [])
 
+  const loadCacheDir = useCallback(async () => {
+    try {
+      const result = await window.hcomic!.getCacheDir()
+      setCacheDir(result?.dir ?? null)
+    } catch {
+      setCacheDir(null)
+    } finally {
+      setCacheDirLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadStats()
-  }, [loadStats])
+    loadCacheDir()
+  }, [loadStats, loadCacheDir])
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -68,6 +84,18 @@ export function CacheSettings({
       // silently fail
     } finally {
       setClearing(null)
+    }
+  }
+
+  const handleOpenCacheDir = async () => {
+    if (!cacheDir) return
+    setOpeningDir(true)
+    try {
+      await window.hcomic!.openCacheDir(cacheDir)
+    } catch {
+      useToastStore.getState().error('无法打开缓存目录')
+    } finally {
+      setOpeningDir(false)
     }
   }
 
@@ -129,6 +157,31 @@ export function CacheSettings({
       <h3 className="text-base font-medium text-[var(--text-primary)] border-b border-[var(--border)] pb-3">
         缓存管理
       </h3>
+
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <label className="text-sm font-medium text-[var(--text-primary)]">缓存目录</label>
+          <button
+            onClick={handleOpenCacheDir}
+            disabled={!cacheDir || openingDir}
+            className="px-3 py-1 text-xs rounded-lg border border-[var(--border)]
+              text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors
+              disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+          >
+            {openingDir ? '打开中...' : '打开目录'}
+          </button>
+        </div>
+        <p className="text-xs text-[var(--text-secondary)] break-all">
+          该目录包含封面与预览缓存数据
+        </p>
+        {cacheDirLoading ? (
+          <p className="text-xs text-[var(--text-secondary)]">加载中...</p>
+        ) : cacheDir ? (
+          <p className="text-xs text-[var(--text-primary)] font-mono break-all">{cacheDir}</p>
+        ) : (
+          <p className="text-xs text-[var(--text-secondary)]">无法获取缓存目录</p>
+        )}
+      </div>
 
       {loading ? (
         <p className="text-sm text-[var(--text-secondary)]">加载中...</p>

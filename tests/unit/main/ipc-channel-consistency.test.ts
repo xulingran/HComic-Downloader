@@ -45,7 +45,7 @@ describe('IPC Channel Consistency', () => {
       'check_downloaded_status', 'start_migration', 'confirm_migration',
       'pause_migration', 'resume_migration', 'cancel_migration',
       'get_migration_status', 'resolve_unmatched',
-      'get_cache_stats', 'clear_preview_cache', 'clear_all_cache',
+      'get_cache_stats', 'get_cache_dir', 'open_cache_dir', 'clear_preview_cache', 'clear_all_cache',
       'get_history', 'add_history', 'delete_history', 'clear_history',
       'get_comic_detail',       'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
       'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',

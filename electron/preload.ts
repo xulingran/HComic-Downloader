@@ -310,6 +310,14 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   getCacheStats: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CACHE_STATS),
 
+  getCacheDir: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CACHE_DIR),
+
+  openCacheDir: (dirPath: unknown) => {
+    // 复用下载目录的对称校验：缓存目录同样是绝对路径，且必须无遍历/无控制字符。
+    validateDownloadDir(dirPath)
+    return ipcRenderer.invoke(IPC_CHANNELS.OPEN_CACHE_DIR, dirPath)
+  },
+
   clearPreviewCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_PREVIEW_CACHE),
 
   clearAllCache: () => ipcRenderer.invoke(IPC_CHANNELS.CLEAR_ALL_CACHE),
