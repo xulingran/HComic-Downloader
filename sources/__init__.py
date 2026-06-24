@@ -2,22 +2,70 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 from collections.abc import Callable
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from models import AuthConfig, ComicInfo, PaginationInfo
-from sources.bika.parser import BikaParser
-from sources.copymanga.parser import CopyMangaParser
-from sources.hcomic.parser import HComicParser, ParserResponseError
-from sources.jmcomic.parser import JmParser
-from sources.moeimg.parser import MoeImgParser
 from utils import normalize_source_auth
+
+if TYPE_CHECKING:
+    # Parser classes are imported lazily at first use via importlib (see
+    # _PARSER_MODULES); these imports exist only for static type checking.
+    from sources.bika.parser import BikaParser
+    from sources.copymanga.parser import CopyMangaParser
+    from sources.hcomic.parser import HComicParser, ParserResponseError
+    from sources.jmcomic.parser import JmParser
+    from sources.moeimg.parser import MoeImgParser
 
 logger = logging.getLogger(__name__)
 
 _VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika", "copymanga")
 _SOURCES_WITH_FAVOURITES = ("hcomic", "jmcomic", "moeimg", "bika")
+
+# Map source name -> (module path, class name). Loaded lazily by _load_parser_class
+# so that ``import sources`` does not drag in every parser module (and their
+# heavy deps: requests/urllib3, PIL, lxml). Only the actually-requested source's
+# module is imported, on first access.
+_PARSER_MODULES: dict[str, tuple[str, str]] = {
+    "hcomic": ("sources.hcomic.parser", "HComicParser"),
+    "jmcomic": ("sources.jmcomic.parser", "JmParser"),
+    "moeimg": ("sources.moeimg.parser", "MoeImgParser"),
+    "bika": ("sources.bika.parser", "BikaParser"),
+    "copymanga": ("sources.copymanga.parser", "CopyMangaParser"),
+}
+
+# Cache of already-imported parser classes: source name -> class object.
+_PARSER_CLASSES: dict[str, type] = {}
+
+
+def _load_parser_class(source: str) -> type:
+    """Import (once) and return the parser class for *source*.
+
+    Uses importlib so that modules are pulled in on demand rather than at
+    ``import sources`` time. Results are cached in ``_PARSER_CLASSES``.
+    """
+    cls = _PARSER_CLASSES.get(source)
+    if cls is None:
+        module_path, class_name = _PARSER_MODULES[source]
+        module = importlib.import_module(module_path)
+        cls = getattr(module, class_name)
+        _PARSER_CLASSES[source] = cls
+    return cls
+
+
+# Re-export ParserResponseError for backward compatibility (``from sources
+# import ParserResponseError``). Lazy: import on first attribute access from
+# the lightweight sources.base (where the class is defined) rather than a
+# parser module, so accessing it does NOT drag in requests/lxml/PIL.
+def __getattr__(name: str) -> Any:
+    if name == "ParserResponseError":
+        from sources.base import ParserResponseError as _Err
+
+        return _Err
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 __all__ = ["MultiSourceParser", "ParserResponseError"]
 
@@ -81,28 +129,30 @@ class MultiSourceParser:
 
         self._bika_image_quality = bika_image_quality
 
-        # 工厂函数映射：解析器首次访问时调用对应工厂创建实例
+        # 工厂函数映射：解析器首次访问时调用对应工厂创建实例。
+        # 工厂内部通过 _load_parser_class 按需 import 解析器模块，避免
+        # ``import sources`` 时强制加载全部 5 个来源及其重依赖。
         self._factory: dict[
             str, Callable[[], HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser]
         ] = {
-            "hcomic": lambda: HComicParser(
+            "hcomic": lambda: _load_parser_class("hcomic")(
                 timeout=timeout,
                 cookie=self.source_auth["hcomic"]["cookie"],
                 user_agent=self.source_auth["hcomic"]["user_agent"],
                 bearer_token=self.source_auth["hcomic"]["bearer_token"],
             ),
-            "moeimg": lambda: MoeImgParser(
+            "moeimg": lambda: _load_parser_class("moeimg")(
                 timeout=timeout,
                 cookie=self.source_auth["moeimg"]["cookie"],
                 user_agent=self.source_auth["moeimg"]["user_agent"],
             ),
-            "jmcomic": lambda: JmParser(
+            "jmcomic": lambda: _load_parser_class("jmcomic")(
                 timeout=timeout,
                 cookie=self.source_auth.get("jmcomic", {}).get("cookie", ""),
                 user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
             ),
-            "bika": lambda: BikaParser(timeout=timeout),
-            "copymanga": lambda: CopyMangaParser(timeout=timeout),
+            "bika": lambda: _load_parser_class("bika")(timeout=timeout),
+            "copymanga": lambda: _load_parser_class("copymanga")(timeout=timeout),
         }
 
         # 缓存字典 —— 已创建的解析器实例
@@ -143,14 +193,16 @@ class MultiSourceParser:
         if cookie or user_agent or bearer_token:
             parser.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
         # 为 moeimg 恢复存储的用户名密码（用于懒登录）
-        if name == "moeimg" and isinstance(parser, MoeImgParser):
+        # 注：name 即来源标识，factory 保证 name 与 parser 类型一一对应，
+        # 故无需 isinstance 运行时检查（也避免了强制导入 parser 类）。
+        if name == "moeimg":
             moeimg_auth = self.source_auth.get("moeimg", {})
             parser.set_stored_credentials(
                 moeimg_auth.get("username", ""),
                 moeimg_auth.get("password", ""),
             )
         # 为 bika 恢复存储的用户名密码和图片质量（configure_auth 已由通用逻辑执行）
-        if name == "bika" and isinstance(parser, BikaParser):
+        elif name == "bika":
             bika_auth = self.source_auth.get("bika", {})
             parser.set_stored_credentials(
                 bika_auth.get("username", ""),
@@ -158,7 +210,7 @@ class MultiSourceParser:
             )
             parser.set_image_quality(self._bika_image_quality)
         # 为 hcomic 恢复存储的用户名密码（用于懒登录）
-        if name == "hcomic" and isinstance(parser, HComicParser):
+        elif name == "hcomic":
             hcomic_auth = self.source_auth.get("hcomic", {})
             parser.set_stored_credentials(
                 hcomic_auth.get("username", ""),

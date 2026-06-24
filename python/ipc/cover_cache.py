@@ -1,5 +1,18 @@
-"""SQLite-backed persistent cache for cover image data URIs."""
+"""Hybrid file-system + SQLite persistent cache for cover image data URIs.
 
+Mirrors :mod:`ipc.preview_cache`: raw image bytes live as files on disk, while
+SQLite keeps metadata (url_hash, url, file_path, size, fetched_at, last_access)
+for LRU eviction and statistics.  Startup only scans URL keys to build the LRU
+index — it never reads image bytes, so cold-start cost stays flat regardless of
+cache size.
+
+A one-shot, resumable migration upgrades legacy databases that stored the full
+base64 ``data_uri`` inline.  See :meth:`CoverCacheDB._migrate_legacy`.
+"""
+
+from __future__ import annotations
+
+import base64
 import hashlib
 import logging
 import os
@@ -8,72 +21,197 @@ from collections import OrderedDict
 
 from utils import open_sqlite_db
 
-from .image_utils import _now
+from .image_utils import _now, detect_image_type
 
 logger = logging.getLogger(__name__)
 
 _DEFAULT_DB_DIR = os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
 _DEFAULT_DB_NAME = "cover_cache.db"
+_DEFAULT_FILES_DIR_NAME = "cover_cache"
+
+# Migration writes commit every N rows to bound transaction size / memory.
+_MIGRATE_BATCH_SIZE = 50
 
 
 class CoverCacheDB:
-    """Disk-backed byte-size-limited cache for cover data URIs.
+    """Disk-backed LRU cache for cover image data URIs.
 
-    Stores entries in SQLite and an in-memory OrderedDict.  Eviction is
-    triggered by total data-uri byte size (``max_size_mb``) rather than an
-    entry count, giving the same guarantee as the preview cache.
+    Raw image bytes are stored as files under *files_dir* (file name = url hash).
+    Metadata (url_hash, url, file_path, size, fetched_at, last_access) is kept
+    in SQLite.  An in-memory ``OrderedDict`` tracks LRU order for fast eviction
+    decisions, holding only URL keys — never image bytes.
 
-    An in-memory ``_disk_bytes`` counter tracks total DB size so that
-    ``put()`` and ``update_max_size()`` can avoid a ``SUM(size)`` scan.
+    Thread-safe: all public methods acquire ``self._lock``.
     """
 
     def __init__(
         self,
         db_path: str | None = None,
         max_size_mb: int = 500,
+        files_dir: str | None = None,
     ):
         if db_path is None:
             os.makedirs(_DEFAULT_DB_DIR, exist_ok=True)
             db_path = os.path.join(_DEFAULT_DB_DIR, _DEFAULT_DB_NAME)
+        if files_dir is None:
+            files_dir = os.path.join(_DEFAULT_DB_DIR, _DEFAULT_FILES_DIR_NAME)
+
         self._db_path = db_path
+        self._files_dir = files_dir
         self._max_size_bytes = max_size_mb * 1024 * 1024
         self._lock = threading.Lock()
+
+        os.makedirs(self._files_dir, exist_ok=True)
+
         self._conn = open_sqlite_db(db_path)
+        # Ensure the canonical table exists. On a legacy DB the table already
+        # exists with a `data_uri` column and possibly without the new columns;
+        # _migrate_legacy handles both cases below. Note: indexes are created
+        # AFTER migration, because legacy tables lack the `last_access` column
+        # that idx_cover_last_access depends on.
         self._conn.execute("""CREATE TABLE IF NOT EXISTS cover_cache (
-                url_hash TEXT PRIMARY KEY,
-                url TEXT NOT NULL,
-                data_uri TEXT NOT NULL,
-                size INTEGER NOT NULL DEFAULT 0,
-                fetched_at REAL NOT NULL
+                url_hash   TEXT PRIMARY KEY,
+                url        TEXT NOT NULL,
+                file_path  TEXT,
+                size       INTEGER NOT NULL DEFAULT 0,
+                fetched_at REAL NOT NULL,
+                last_access REAL NOT NULL,
+                data_uri   TEXT
             )""")
-        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_fetched_at ON cover_cache(fetched_at)")
-        ex = self._conn.execute("PRAGMA table_info(cover_cache)").fetchall()
-        cols = {r[1] for r in ex}
-        if "size" not in cols:
-            self._conn.execute("ALTER TABLE cover_cache ADD COLUMN size INTEGER NOT NULL DEFAULT 0")
+
+        # One-shot migration of legacy inline base64 storage, if present.
+        self._migrate_legacy()
+
+        # Indexes now safe to create — migration has normalized all schemas.
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cover_last_access ON cover_cache(last_access)")
+        self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cover_url ON cover_cache(url)")
         self._conn.commit()
 
-        self._memory: OrderedDict[str, tuple[str, int]] = OrderedDict()
-        self._memory_bytes: int = 0
-        rows = self._conn.execute("SELECT url, data_uri, size FROM cover_cache ORDER BY fetched_at DESC").fetchall()
-        for url, data_uri, size in reversed(rows):
-            sz = size if size else len(data_uri)
-            if self._memory_bytes + sz > self._max_size_bytes:
-                break
-            self._memory[url] = (data_uri, sz)
-            self._memory.move_to_end(url)
-            self._memory_bytes += sz
-
-        self._disk_bytes: int = self._conn.execute("SELECT COALESCE(SUM(size), 0) FROM cover_cache").fetchone()[0]
+        # In-memory LRU index: url -> None, insertion order = LRU order
+        self._lru: OrderedDict[str, None] = OrderedDict()
+        rows = self._conn.execute("SELECT url FROM cover_cache ORDER BY last_access ASC").fetchall()
+        for (url,) in rows:
+            self._lru[url] = None
 
         logger.info(
-            "Cover cache DB opened (%s), pre-loaded %d entries (%.1f MB / %d MB), disk %.1f MB",
+            "Cover cache DB opened (%s), %d entries, max %d MB",
             db_path,
-            len(self._memory),
-            self._memory_bytes / 1024 / 1024,
-            self._max_size_bytes // 1024 // 1024,
-            self._disk_bytes / 1024 / 1024,
+            len(self._lru),
+            max_size_mb,
         )
+
+    # ── legacy migration ────────────────────────────────────────────────
+
+    def _migrate_legacy(self) -> None:
+        """Upgrade legacy DBs that stored base64 data URIs inline.
+
+        Idempotent and resumable:
+        - Skips entirely on databases that never had a ``data_uri`` column.
+        - On legacy DBs, adds a ``migrated`` flag column, decodes each row's
+          ``data_uri`` to raw bytes on disk, sets ``file_path``/``last_access``
+          and ``migrated = 1``.  A crash mid-migration leaves the remaining
+          ``migrated = 0`` rows for the next launch to finish.
+        - Once all rows are migrated, drops ``data_uri`` and ``migrated`` and
+          VACUUMs (best-effort) to reclaim the freed space.
+        """
+        cols = {row[1] for row in self._conn.execute("PRAGMA table_info(cover_cache)").fetchall()}
+        if "data_uri" not in cols:
+            # Either a fresh DB or already fully migrated.
+            return
+
+        # Ensure the tracking columns exist (resumability across versions).
+        if "migrated" not in cols:
+            self._conn.execute("ALTER TABLE cover_cache ADD COLUMN migrated INTEGER NOT NULL DEFAULT 0")
+        if "file_path" not in cols:
+            self._conn.execute("ALTER TABLE cover_cache ADD COLUMN file_path TEXT")
+        if "last_access" not in cols:
+            self._conn.execute("ALTER TABLE cover_cache ADD COLUMN last_access REAL NOT NULL DEFAULT 0")
+
+        pending = self._conn.execute(
+            "SELECT COUNT(*) FROM cover_cache WHERE migrated = 0 AND data_uri IS NOT NULL"
+        ).fetchone()[0]
+        if pending == 0:
+            # All rows already migrated on a prior run — finish the cleanup.
+            self._finalize_legacy_migration()
+            return
+
+        logger.info("Cover cache: migrating %d legacy inline entries to file storage", pending)
+        os.makedirs(self._files_dir, exist_ok=True)
+
+        rows = self._conn.execute(
+            "SELECT url_hash, url, data_uri, size, fetched_at FROM cover_cache WHERE migrated = 0 AND data_uri IS NOT NULL"
+        ).fetchall()
+        migrated_count = 0
+        for url_hash, _url, data_uri, _size, fetched_at in rows:
+            file_name = self._write_bytes_for(url_hash, data_uri)
+            # size must reflect true decoded byte count (matches PreviewCacheDB
+            # and get_stats semantics), never the legacy base64 string length.
+            actual_size = len(self._decode_data_uri(data_uri))
+            self._conn.execute(
+                "UPDATE cover_cache SET file_path = ?, size = ?, last_access = ?, migrated = 1 WHERE url_hash = ?",
+                (file_name, actual_size, fetched_at, url_hash),
+            )
+            migrated_count += 1
+            if migrated_count % _MIGRATE_BATCH_SIZE == 0:
+                self._conn.commit()
+        self._conn.commit()
+        logger.info("Cover cache: migrated %d entries to file storage", migrated_count)
+
+        self._finalize_legacy_migration()
+
+    def _finalize_legacy_migration(self) -> None:
+        """Drop legacy columns and reclaim space once all rows are migrated."""
+        # SQLite cannot DROP COLUMN before 3.35; use the rebuild-via-temp-table
+        # approach which works on all supported versions.
+        #
+        # NOTE: do NOT issue a manual ``BEGIN`` here. Under Python's default
+        # ``sqlite3`` isolation level any prior DML has already opened an
+        # implicit transaction, so a second ``BEGIN`` raises
+        # ``cannot start a transaction within a transaction``. The DDL/DML
+        # below run inside that implicit transaction and are committed atomically
+        # via ``commit()`` (or rolled back on error).
+        try:
+            self._conn.execute("""CREATE TABLE cover_cache_new (
+                    url_hash   TEXT PRIMARY KEY,
+                    url        TEXT NOT NULL,
+                    file_path  TEXT,
+                    size       INTEGER NOT NULL DEFAULT 0,
+                    fetched_at REAL NOT NULL,
+                    last_access REAL NOT NULL
+                )""")
+            self._conn.execute("""INSERT INTO cover_cache_new (url_hash, url, file_path, size, fetched_at, last_access)
+                   SELECT url_hash, url, file_path, size, fetched_at, last_access FROM cover_cache""")
+            self._conn.execute("DROP TABLE cover_cache")
+            self._conn.execute("ALTER TABLE cover_cache_new RENAME TO cover_cache")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cover_last_access ON cover_cache(last_access)")
+            self._conn.execute("CREATE INDEX IF NOT EXISTS idx_cover_url ON cover_cache(url)")
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+
+        # VACUUM must run outside a transaction; best-effort.
+        try:
+            self._conn.execute("VACUUM")
+            logger.info("Cover cache: VACUUM succeeded after legacy migration")
+        except Exception as e:  # noqa: BLE001 — disk-space / lock failures are non-fatal
+            logger.warning("Cover cache: VACUUM failed after legacy migration: %s", e)
+
+    def _decode_data_uri(self, data_uri: str) -> bytes:
+        """Decode the base64 payload of a data URI to raw image bytes.
+
+        ``data_uri`` looks like ``"data:image/jpeg;base64,/9j/..."``.
+        """
+        _, _, b64_part = data_uri.partition(",")
+        return base64.b64decode(b64_part)
+
+    def _write_bytes_for(self, url_hash: str, data_uri: str) -> str:
+        """Decode a data URI and persist its raw bytes; return the file name."""
+        raw = self._decode_data_uri(data_uri)
+        file_path = os.path.join(self._files_dir, url_hash)
+        with open(file_path, "wb") as f:
+            f.write(raw)
+        return url_hash
 
     # ── public API ──────────────────────────────────────────────────────
 
@@ -90,34 +228,68 @@ class CoverCacheDB:
     def get(self, url: str) -> str | None:
         """Return cached data URI or *None*."""
         with self._lock:
-            if url in self._memory:
-                self._memory.move_to_end(url)
-                return self._memory[url][0]
-        return None
+            if url not in self._lru:
+                return None
+            row = self._conn.execute("SELECT file_path FROM cover_cache WHERE url = ?", (url,)).fetchone()
+            if row is None:
+                self._lru.pop(url, None)
+                return None
+            file_name = row[0]
+            if not file_name:
+                return None
+            file_path = os.path.join(self._files_dir, file_name)
+            if not os.path.exists(file_path):
+                # File vanished externally — drop the stale record.
+                self._purge_entry(url, file_path)
+                return None
+            with open(file_path, "rb") as f:
+                content = f.read()
+            content_type = detect_image_type(content)
+            if not content_type:
+                # Bytes are not a recognized image (corruption / wrong content) —
+                # treat like a vanished file: purge file + record + LRU so the
+                # bad entry does not linger and fail on every subsequent get.
+                logger.debug("Cover cache hit for %s but bytes are not a recognized image", url)
+                self._purge_entry(url, file_path)
+                return None
+            now = _now()
+            self._conn.execute("UPDATE cover_cache SET last_access = ? WHERE url = ?", (now, url))
+            self._conn.commit()
+            self._lru.move_to_end(url)
+            b64 = base64.b64encode(content).decode("ascii")
+            return f"data:{content_type};base64,{b64}"
 
     def put(self, url: str, data_uri: str) -> None:
-        """Store a data URI in both memory and disk cache."""
+        """Store a data URI in the file + SQLite cache."""
         with self._lock:
-            sz = len(data_uri)
-            self._evict_memory(sz)
-
-            self._memory[url] = (data_uri, sz)
-            self._memory.move_to_end(url)
-            self._memory_bytes += sz
-
             url_hash = hashlib.sha256(url.encode()).hexdigest()
+            file_name = url_hash
+
+            # Decode once and reuse for both the on-disk write and the size
+            # accounting. ``size`` records the *raw decoded byte count* (matching
+            # PreviewCacheDB) so get_stats()/eviction reflect true disk usage,
+            # not the inflated base64 string length.
+            raw = self._decode_data_uri(data_uri)
+            file_path = os.path.join(self._files_dir, file_name)
+            with open(file_path, "wb") as f:
+                f.write(raw)
+            size = len(raw)
             now = _now()
+
             self._conn.execute(
                 """INSERT OR REPLACE INTO cover_cache
-                   (url_hash, url, data_uri, size, fetched_at)
-                   VALUES (?, ?, ?, ?, ?)""",
-                (url_hash, url, data_uri, sz, now),
+                   (url_hash, url, file_path, size, fetched_at, last_access)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (url_hash, url, file_name, size, now, now),
             )
-            self._disk_bytes += sz
-            self._evict_disk()
             self._conn.commit()
 
-    def get_stats(self):
+            self._lru[url] = None
+            self._lru.move_to_end(url)
+
+            self._evict_if_needed()
+
+    def get_stats(self) -> dict:
         """Return ``{file_count, total_size_bytes}`` for this cache."""
         with self._lock:
             row = self._conn.execute("SELECT COUNT(*), COALESCE(SUM(size), 0) FROM cover_cache").fetchone()
@@ -127,21 +299,28 @@ class CoverCacheDB:
             }
 
     def clear_all(self) -> None:
-        """Delete all cached cover entries from memory and disk."""
+        """Delete all cached cover entries from disk and memory."""
         with self._lock:
-            self._memory.clear()
-            self._memory_bytes = 0
+            rows = self._conn.execute("SELECT file_path FROM cover_cache").fetchall()
+            for (file_name,) in rows:
+                if not file_name:
+                    continue
+                file_path = os.path.join(self._files_dir, file_name)
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except OSError as e:
+                    logger.debug("Failed to delete cover cache file %s: %s", file_path, e)
             self._conn.execute("DELETE FROM cover_cache")
             self._conn.commit()
-            self._disk_bytes = 0
+            self._lru.clear()
             logger.info("Cover cache cleared")
 
     def update_max_size(self, max_size_mb: int) -> None:
         """Update byte limit and evict to comply."""
         self._max_size_bytes = max_size_mb * 1024 * 1024
         with self._lock:
-            self._evict_memory_until_below_limit()
-            self._evict_disk()
+            self._evict_if_needed()
             self._conn.commit()
 
     def close(self) -> None:
@@ -149,32 +328,41 @@ class CoverCacheDB:
 
     # ── private helpers ─────────────────────────────────────────────────
 
-    def _evict_memory(self, incoming_sz: int) -> None:
-        """Make room in memory for *incoming_sz* bytes (FIFO eviction)."""
-        while self._memory_bytes + incoming_sz > self._max_size_bytes and self._memory:
-            _, (_, evicted_sz) = self._memory.popitem(last=False)
-            self._memory_bytes -= evicted_sz
+    def _purge_entry(self, url: str, file_path: str) -> None:
+        """Remove a single entry's file, SQLite row, and LRU index entry.
 
-    def _evict_memory_until_below_limit(self) -> None:
-        """Evict memory entries until total is within ``_max_size_bytes``."""
-        while self._memory_bytes > self._max_size_bytes and self._memory:
-            _, (_, evicted_sz) = self._memory.popitem(last=False)
-            self._memory_bytes -= evicted_sz
-
-    def _evict_disk(self) -> None:
-        """Evict oldest disk entries until ``_disk_bytes <= _max_size_bytes``.
-
-        Uses the in-memory ``_disk_bytes`` counter to avoid a ``SUM(size)``
-        query on every write.  Counter is maintained on put / delete.
+        Used when a backing file vanished externally or holds unrecognizable
+        bytes. File deletion is best-effort (logged at debug on failure); the
+        SQLite record and LRU entry are always removed.
         """
-        if self._disk_bytes <= self._max_size_bytes:
-            return
-        excess = self._disk_bytes - self._max_size_bytes
-        rows = self._conn.execute("SELECT url_hash, size FROM cover_cache ORDER BY fetched_at ASC").fetchall()
-        freed = 0
-        for rhash, rsize in rows:
-            self._conn.execute("DELETE FROM cover_cache WHERE url_hash = ?", (rhash,))
-            freed += rsize
-            if freed >= excess:
-                break
-        self._disk_bytes -= freed
+        try:
+            if os.path.exists(file_path):
+                os.remove(file_path)
+        except OSError as e:
+            logger.debug("Failed to delete cover cache file %s: %s", file_path, e)
+        self._conn.execute("DELETE FROM cover_cache WHERE url = ?", (url,))
+        self._conn.commit()
+        self._lru.pop(url, None)
+
+    def _evict_if_needed(self) -> None:
+        """Evict LRU entries until total size is within ``_max_size_bytes``."""
+        row = self._conn.execute("SELECT COALESCE(SUM(size), 0) FROM cover_cache").fetchone()
+        total = row[0]
+        while total > self._max_size_bytes and self._lru:
+            oldest_url = next(iter(self._lru))
+            row = self._conn.execute("SELECT file_path, size FROM cover_cache WHERE url = ?", (oldest_url,)).fetchone()
+            if row is None:
+                self._lru.pop(oldest_url, None)
+                continue
+            file_name, size = row
+            if file_name:
+                file_path = os.path.join(self._files_dir, file_name)
+                try:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                except OSError as e:
+                    logger.debug("Failed to evict cover cache file %s: %s", file_path, e)
+            self._conn.execute("DELETE FROM cover_cache WHERE url = ?", (oldest_url,))
+            self._conn.commit()
+            self._lru.pop(oldest_url, None)
+            total -= size

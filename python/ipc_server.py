@@ -1,4 +1,3 @@
-import asyncio
 import inspect
 import json
 import logging
@@ -8,6 +7,10 @@ import threading
 from concurrent.futures import Future as _ConcurrentFuture
 from concurrent.futures import ThreadPoolExecutor
 from logging.handlers import RotatingFileHandler
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import asyncio
 
 # Add project root to sys.path so we can import existing modules
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -79,11 +82,34 @@ class IPCServer(
     MaintenanceMixin,
 ):
     def __init__(self):
+        import time as _time
+
+        # Startup phase timing. Enabled via HCOMIC_PROFILE_STARTUP=1 so it is
+        # zero-cost in production and available on demand for regression checks.
+        _profile = os.environ.get("HCOMIC_PROFILE_STARTUP") == "1"
+        _t0 = _time.perf_counter()
+        _last = {"t": _t0}  # mutable closure holding the timestamp of the previous mark
+
+        def _mark(label: str) -> None:
+            if _profile:
+                now = _time.perf_counter()
+                logger.info(
+                    "[startup-timing] %-28s %6.1f ms (Δ%6.1f)",
+                    label,
+                    (now - _t0) * 1000,
+                    (now - _last["t"]) * 1000,
+                )
+                _last["t"] = now
+
+        _mark("init-start")
+
         from cbz_builder import CBZBuilder
         from config import Config
         from download_manager import ComicDownloadManager
         from downloader import ComicDownloader
         from sources import MultiSourceParser
+
+        _mark("imports (lazy)")
 
         try:
             self.config = Config.load(_get_config_path())
@@ -91,12 +117,14 @@ class IPCServer(
             logger.warning("Config load failed, using defaults: %s", e)
             self.config = Config()
         self._emit_progress(25, "配置已加载")
+        _mark("config-loaded")
         self.parser = MultiSourceParser(
             default_source=self.config.default_source,
             source_auth=self.config.source_auth,
             bika_image_quality=self.config.bika_image_quality,
         )
         self._emit_progress(35, "解析器已就绪")
+        _mark("parser-ready")
         self.downloader = ComicDownloader(
             concurrent_downloads=self.config.concurrent_downloads,
             timeout=self.config.timeout,
@@ -124,6 +152,7 @@ class IPCServer(
         self._download_manager.set_callbacks(on_task_update=self._on_download_update)
         self._download_manager.start()
         self._emit_progress(50, "下载引擎已就绪")
+        _mark("download-engine-ready")
 
         # Download history database
         from download_history import DownloadHistoryDB
@@ -166,18 +195,21 @@ class IPCServer(
             self._preview_executor.shutdown(cancel_futures=True, wait=False)
             raise
         self._emit_progress(65, "线程池已就绪")
+        _mark("thread-pools-ready")
         self._stdout_lock = threading.Lock()
         # 序列化 config 写入：避免并发 set_config 同时 os.replace 同一文件导致 WinError 5
         self._config_write_lock = threading.Lock()
         self._cover_cache = CoverCacheDB(
             max_size_mb=getattr(self.config, "preview_cache_size_limit_mb", 500),
         )
+        _mark("cover-cache-ready")
 
         from ipc.preview_cache import PreviewCacheDB
 
         self._preview_cache = PreviewCacheDB(
             max_size_mb=getattr(self.config, "preview_cache_size_limit_mb", 500),
         )
+        _mark("preview-cache-ready")
 
         # Migration engine
         self._init_migration()
@@ -191,6 +223,7 @@ class IPCServer(
         # Tag list catalog database
         self._init_tag_list()
         self._emit_progress(85, "数据库已就绪")
+        _mark("all-dbs-ready")
 
         # Pre-compute handler parameter sets for request routing
         self._handler_param_keys: dict[str, set[str] | None] = {}
@@ -200,6 +233,9 @@ class IPCServer(
             has_var_keyword = any(p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values())
             self._handler_param_keys[attr_name] = None if has_var_keyword else set(sig.parameters.keys())
         self._emit_progress(95, "准备就绪")
+        _mark("handler-params-ready")
+        if _profile:
+            logger.info("[startup-timing] init total: %.1f ms", (_time.perf_counter() - _t0) * 1000)
 
     def _emit_progress(self, percent: int, label: str) -> None:
         """向 Electron 主进程输出启动进度信号。
@@ -321,6 +357,8 @@ class IPCServer(
         - For sync handlers, submit to ``_request_executor`` via
           ``loop.run_in_executor`` so the main loop stays responsive.
         """
+        import asyncio  # delayed: only the running server needs it (~58ms saved at import)
+
         method = request.get("method")
         req_id = request.get("id")
         params = request.get("params", {})
@@ -500,13 +538,15 @@ class IPCServer(
         if exc is not None:
             logger.error("dispatch failed: %s", exc, exc_info=exc)
 
-    def _stdin_reader_loop(self, loop: asyncio.AbstractEventLoop) -> None:
+    def _stdin_reader_loop(self, loop: "asyncio.AbstractEventLoop") -> None:
         """Daemon reader thread: pump stdin lines into the event loop.
 
         Uses a blocking ``for raw_line in sys.stdin`` exactly like the old
         synchronous run(); this keeps Windows pipe behaviour identical.
         On EOF the function signals _stop_event so _async_main returns.
         """
+        import asyncio  # delayed: only reached when the server is running
+
         try:
             for raw_line in sys.stdin:
                 line = raw_line.strip()
@@ -521,6 +561,8 @@ class IPCServer(
             loop.call_soon_threadsafe(self._stop_event.set)
 
     async def _async_main(self) -> None:
+        import asyncio  # delayed: only the running server needs it
+
         self._stop_event = asyncio.Event()
         loop = asyncio.get_running_loop()
         reader_thread = threading.Thread(
@@ -581,6 +623,8 @@ class IPCServer(
         return {"success": True}
 
     def run(self):
+        import asyncio  # delayed: only the running server needs it
+
         asyncio.run(self._async_main())
 
 

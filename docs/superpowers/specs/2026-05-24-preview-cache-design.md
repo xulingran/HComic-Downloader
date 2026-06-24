@@ -2,27 +2,43 @@
 
 ## 概述
 
-目前封面图已有基于 SQLite 的持久缓存（`CoverCacheDB`），但漫画预览页面图片（阅读器内显示的大图）没有持久缓存，每次打开漫画都重新从网络获取。本次设计新增预览页面图片的持久缓存，并在设置界面中提供缓存统计、大小限制和清理功能。
+目前封面图已有基于 SQLite + 文件系统的持久缓存（`CoverCacheDB`）与预览缓存（`PreviewCacheDB`）架构一致——SQLite 仅存元数据，图片字节以独立文件存放。封面/预览缓存统一了文件布局、LRU 淘汰策略和启动期行为（见下文文件布局）。设置界面中提供缓存统计、大小限制和清理功能。
 
 ## 存储架构
 
-采用混合存储模式：文件系统存图片二进制 + SQLite 存元数据索引。与封面缓存类似，由 Python 后端统一管理。
+采用混合存储模式：文件系统存图片二进制 + SQLite 存元数据索引。封面缓存与预览缓存共享相同的架构。
 
 ### 文件布局
 
 ```
 ~/.hcomic_downloader/
-├── cover_cache.db          # 已有：封面缓存 SQLite
-├── preview_cache.db        # 新增：预览缓存元数据 SQLite
-├── preview_cache/          # 新增：预览图片二进制文件目录
-│   ├── a1b2c3d4...         # 文件名为 URL 的 SHA256 前 32 位
+├── cover_cache.db          # 封面缓存元数据 SQLite
+├── cover_cache/            # 封面图片二进制文件目录
+│   ├── a1b2c3d4...         # 文件名为 URL 的 SHA256
 │   └── ...
-└── config.json             # 已有：配置（新增 previewCacheSizeLimitMB 字段）
+├── preview_cache.db        # 预览缓存元数据 SQLite
+├── preview_cache/          # 预览图片二进制文件目录
+│   ├── e5f6g7h8...         # 文件名为 URL 的 SHA256
+│   └── ...
+└── config.json             # 配置
 ```
+
+> **注意**：早期版本中 CoverCacheDB 将 base64 data URI 直接存储在 SQLite 的 `data_uri` 列中，导致启动时全量加载至内存。自 `startup-optimization-v3` 起，CoverCacheDB 已迁移至与 PreviewCacheDB 一致的文件存储架构。
 
 ### SQLite 表结构
 
 ```sql
+CREATE TABLE cover_cache (
+    url_hash    TEXT PRIMARY KEY,   -- SHA256(url) 前 32 位
+    url         TEXT NOT NULL,      -- 原始图片 URL
+    file_path   TEXT,               -- cover_cache/ 下的相对文件名
+    size        INTEGER NOT NULL,   -- 文件字节数
+    fetched_at  REAL NOT NULL,      -- 首次获取时间戳
+    last_access REAL NOT NULL       -- 最后访问时间戳（LRU 驱逐依据）
+);
+CREATE INDEX idx_cover_last_access ON cover_cache(last_access);
+CREATE INDEX idx_cover_url ON cover_cache(url);
+
 CREATE TABLE preview_cache (
     url_hash    TEXT PRIMARY KEY,   -- SHA256(url) 前 32 位
     url         TEXT NOT NULL,      -- 原始图片 URL
