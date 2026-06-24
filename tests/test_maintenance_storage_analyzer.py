@@ -93,6 +93,81 @@ def test_analyze_by_author(tmp_path: Path):
     assert authors["A"]["itemCount"] == 1
 
 
+def test_analyze_album_root_source_not_unknown(tmp_path: Path):
+    """契约：多章节专辑根目录的来源应归入正确来源，不计入 unknown。
+
+    覆盖 spec「多章节专辑根目录继承子章节来源」场景在 storage_analyzer 层的
+    端到端表现：DB 记录章节子目录路径，专辑根目录经父目录回填后，
+    bySource 应含正确来源键，unknown 不应包含该专辑大小。
+    """
+    album_root = tmp_path / "bika-album"
+    ch1 = album_root / "第1話"
+    ch2 = album_root / "第2話"
+    _make_image(ch1 / "001.jpg")
+    _make_image(ch1 / "002.jpg")
+    _make_image(ch2 / "001.jpg")
+
+    chapter_records = [
+        {
+            "source_site": "bika",
+            "comic_id": "ch1",
+            "comic_source": "BIKA",
+            "title": "Album - 第1話",
+            "author": "Author",
+            "output_path": str(ch1),
+            "output_format": "folder",
+            "downloaded_at": 0,
+            "album_id": "album-1",
+            "album_total_chapters": 2,
+        },
+        {
+            "source_site": "bika",
+            "comic_id": "ch2",
+            "comic_source": "BIKA",
+            "title": "Album - 第2話",
+            "author": "Author",
+            "output_path": str(ch2),
+            "output_format": "folder",
+            "downloaded_at": 0,
+            "album_id": "album-1",
+            "album_total_chapters": 2,
+        },
+    ]
+
+    db = MagicMock()
+    db.get_all_records_with_album.return_value = chapter_records
+    # _collect_history_output_paths 用 get_all_records 判定 tracked；专辑根目录不在
+    # output_path 集合中（其子目录在），但来源回填由 get_all_records_with_album 负责
+    db.get_all_records.return_value = chapter_records
+
+    result = analyze_storage(str(tmp_path), history_db=db)
+    assert "bika" in result["bySource"], "专辑根目录应继承 bika 来源"
+    assert result["bySource"]["bika"] > 0
+    # 关键断言：专辑大小不应被错误计入 unknown
+    assert "unknown" not in result["bySource"], "多章节专辑根目录禁止归入 unknown"
+
+
+def test_analyze_true_orphan_remains_unknown(tmp_path: Path):
+    """DB 完全无记录的真孤儿资产仍归入 unknown（本次改动不误伤孤儿判定）。
+
+    覆盖 spec「来源回退优先级」末段：无记录、启发式失败的资产归入 unknown
+    是符合预期的诚实行为，不应被本次父目录回填逻辑误判为已知来源。
+    """
+    # 孤儿资产：标准模板文件名，启发式无法识别，DB 无记录
+    orphan = tmp_path / "unknownauthor-unknown title"
+    _make_image(orphan / "001.jpg")
+    _make_image(orphan / "002.jpg")
+
+    db = MagicMock()
+    db.get_all_records_with_album.return_value = []
+    db.get_all_records.return_value = []
+
+    result = analyze_storage(str(tmp_path), history_db=db)
+    # 真孤儿来源仍为 unknown（诚实表现，由「未在历史记录中」面板承接）
+    assert result["bySource"].get("unknown", 0) > 0
+    assert result["untrackedFiles"]["count"] == 1
+
+
 def test_analyze_orphan_files_counts_temp_dirs_only(tmp_path: Path):
     """Critical #4 回归：orphanFiles 仅统计 temp_* 目录，非 temp 资产计入 untrackedFiles。"""
     # temp 目录（应计入 orphanFiles）

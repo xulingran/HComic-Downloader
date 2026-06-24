@@ -199,6 +199,13 @@ def scan_download_dir(download_dir: str, history_db: DownloadHistoryDB | None = 
                 out_path = rec.get("output_path", "")
                 if out_path:
                     path_to_meta[out_path] = rec
+                    # 父目录回填：专辑打包为 folder 时，DB 记录的 output_path 指向章节
+                    # 子目录，专辑根目录本身无记录。额外以父目录为 key，使扫描器在扫到
+                    # 专辑根目录时能命中其下任一章节记录，从而继承正确的来源/专辑元数据。
+                    # 同一专辑所有章节记录的来源一致，取首条即可（首个非空记录覆盖语义）。
+                    parent_path = os.path.dirname(out_path)
+                    if parent_path and parent_path not in path_to_meta:
+                        path_to_meta[parent_path] = rec
         except Exception as e:
             logger.warning("Failed to load history metadata for scanning: %s", e)
 

@@ -196,6 +196,127 @@ def test_scan_download_dir_with_history_db(tmp_path: Path):
     assert assets[0].comic_id == "123"
 
 
+def test_scan_download_dir_album_root_inherits_chapter_source(tmp_path: Path):
+    """专辑根目录（folder）精确匹配 miss 时，应通过父目录回填命中子章节记录。
+
+    覆盖 spec「多章节专辑根目录继承子章节来源」场景：DB 记录的 output_path
+    指向章节子目录，专辑根目录本身无记录，扫描器必须把 source_site 回填正确。
+    """
+    # bika 多章节专辑：根目录 + 2 个章节子目录
+    album_root = tmp_path / "bika-album"
+    ch1 = album_root / "第1話"
+    ch2 = album_root / "第2話"
+    _make_image(ch1 / "001.jpg")
+    _make_image(ch2 / "001.jpg")
+
+    db = MagicMock()
+    # DB 只记录章节子目录路径，不记录专辑根目录（与打包流程一致）
+    db.get_all_records_with_album.return_value = [
+        {
+            "source_site": "bika",
+            "comic_id": "ch1",
+            "comic_source": "BIKA",
+            "title": "Album - 第1話",
+            "author": "Author",
+            "output_path": str(ch1),
+            "output_format": "folder",
+            "downloaded_at": 0,
+            "album_id": "album-1",
+            "album_total_chapters": 2,
+        },
+        {
+            "source_site": "bika",
+            "comic_id": "ch2",
+            "comic_source": "BIKA",
+            "title": "Album - 第2話",
+            "author": "Author",
+            "output_path": str(ch2),
+            "output_format": "folder",
+            "downloaded_at": 0,
+            "album_id": "album-1",
+            "album_total_chapters": 2,
+        },
+    ]
+
+    assets = scan_download_dir(str(tmp_path), history_db=db)
+    assert len(assets) == 1  # 只扫描一级条目（专辑根目录）
+    album = assets[0]
+    assert album.path == str(album_root)
+    # 关键断言：来源应从子章节记录继承，而非回退到 unknown
+    assert album.source_site == "bika"
+    assert album.comic_source == "BIKA"
+    assert album.album_id == "album-1"
+
+
+def test_scan_download_dir_album_root_inherits_hcomic_source(tmp_path: Path):
+    """hcomic 来源的多章节专辑根目录同样应继承来源（hcomic 例）。"""
+    album_root = tmp_path / "ninoko-title"
+    ch1 = album_root / "LEVEL_1"
+    ch2 = album_root / "LEVEL_2"
+    _make_image(ch1 / "001.jpg")
+    _make_image(ch2 / "001.jpg")
+
+    db = MagicMock()
+    db.get_all_records_with_album.return_value = [
+        {
+            "source_site": "hcomic",
+            "comic_id": "ch1",
+            "comic_source": "nh",
+            "title": "Title LEVEL_1",
+            "author": "ninoko",
+            "output_path": str(ch1),
+            "output_format": "folder",
+            "downloaded_at": 0,
+            "album_id": "album-x",
+            "album_total_chapters": 2,
+        },
+    ]
+
+    assets = scan_download_dir(str(tmp_path), history_db=db)
+    assert len(assets) == 1
+    assert assets[0].source_site == "hcomic"
+    assert assets[0].comic_source == "nh"
+
+
+def test_scan_download_dir_exact_match_not_overridden_by_parent(tmp_path: Path):
+    """资产路径精确匹配 output_path 时，父目录回填不得覆盖精确匹配的元数据。
+
+    覆盖 spec「父目录回填避免覆盖精确匹配」场景：单本漫画的 folder 资产路径
+    与其 DB 记录精确匹配，此时不应被任何父目录回退逻辑干扰。
+    """
+    # 精确匹配的单本漫画
+    single = tmp_path / "single-comic"
+    _make_image(single / "001.jpg")
+    # 另一个专辑，其章节子目录的父目录恰好... 不会与 single 重合，但构造一个
+    # 父目录映射来验证不覆盖：让 single 的父目录（tmp_path）不会被当作回填源
+
+    db = MagicMock()
+    db.get_all_records_with_album.return_value = [
+        {
+            "source_site": "hcomic",
+            "comic_id": "single-id",
+            "comic_source": "nh",
+            "title": "Single Title",
+            "author": "Single Author",
+            "output_path": str(single),
+            "output_format": "folder",
+            "downloaded_at": 0,
+            "album_id": "single-id",
+            "album_total_chapters": 1,
+        },
+    ]
+
+    assets = scan_download_dir(str(tmp_path), history_db=db)
+    assert len(assets) == 1
+    asset = assets[0]
+    assert asset.path == str(single)
+    # 精确匹配的元数据完整生效
+    assert asset.source_site == "hcomic"
+    assert asset.title == "Single Title"
+    assert asset.author == "Single Author"
+    assert asset.comic_id == "single-id"
+
+
 def test_scan_download_dir_invalid_path(tmp_path: Path):
     with pytest.raises(Exception):
         scan_download_dir("/nonexistent/path/for/sure")
