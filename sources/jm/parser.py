@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
+from http.cookies import CookieError, SimpleCookie
 from urllib.parse import quote
 
 import requests
@@ -54,6 +55,7 @@ class JmParser(ParserContextMixin):
         self._domain: str | None = None
         self._cdn_domain: str | None = None
         self._username: str | None = None  # 从收藏夹页面发现，用于构造规范 URL
+        self._known_favourite_ids: set[str] = set()
         self._cookie_synced = False
         self.session = create_session()
         self.session.headers.update(HEADERS)
@@ -70,6 +72,38 @@ class JmParser(ParserContextMixin):
             self._domain = DEFAULT_DOMAIN
         self._sync_cookies_to_jar()
         return self._domain
+
+    def _iter_cookie_pairs(self) -> list[tuple[str, str]]:
+        """Parse the stored Cookie header into name/value pairs."""
+        raw_cookie = getattr(self, "_cookie", "") or ""
+        if not raw_cookie.strip():
+            return []
+        try:
+            parsed = SimpleCookie()
+            parsed.load(raw_cookie)
+            pairs = [(name, morsel.value) for name, morsel in parsed.items()]
+            if pairs:
+                return pairs
+        except CookieError:
+            logger.debug("SimpleCookie failed to parse jm cookie header; falling back to split parser", exc_info=True)
+
+        pairs = []
+        for part in raw_cookie.split(";"):
+            part = part.strip()
+            if "=" not in part:
+                continue
+            name, value = part.split("=", 1)
+            name = name.strip()
+            if name:
+                pairs.append((name, value.strip()))
+        return pairs
+
+    def _auth_headers(self, headers: dict[str, str] | None = None) -> dict[str, str]:
+        """Build per-request headers with an explicit Cookie fallback."""
+        merged = dict(headers or {})
+        if self._cookie:
+            merged["Cookie"] = self._cookie
+        return merged
 
     def _sync_cookies_to_jar(self):
         """将 self._cookie 中的 cookies 设置到 session cookie jar 中。
@@ -95,37 +129,41 @@ class JmParser(ParserContextMixin):
                 raise AttributeError("session.cookies 不支持 set_cookie，无法同步认证 cookie")
 
             count = 0
-            for part in self._cookie.split(";"):
-                part = part.strip()
-                if "=" not in part:
-                    continue
-                name, value = part.split("=", 1)
-                cookie = Cookie(
-                    version=0,
-                    name=name.strip(),
-                    value=value.strip(),
-                    port=None,
-                    port_specified=False,
-                    domain=self._domain,
-                    domain_specified=True,
-                    domain_initial_dot=False,
-                    path="/",
-                    path_specified=True,
-                    secure=True,
-                    expires=None,
-                    discard=False,
-                    comment=None,
-                    comment_url=None,
-                    rest={},
-                    rfc2109=False,
-                )
-                jar.set_cookie(cookie)
+            jar_entries = 0
+            domains = [
+                (self._domain, False, False),
+                (f".{self._domain}", True, True),
+            ]
+            for name, value in self._iter_cookie_pairs():
                 count += 1
+                for domain, domain_specified, domain_initial_dot in domains:
+                    cookie = Cookie(
+                        version=0,
+                        name=name,
+                        value=value,
+                        port=None,
+                        port_specified=False,
+                        domain=domain,
+                        domain_specified=domain_specified,
+                        domain_initial_dot=domain_initial_dot,
+                        path="/",
+                        path_specified=True,
+                        secure=True,
+                        expires=None,
+                        discard=False,
+                        comment=None,
+                        comment_url=None,
+                        rest={},
+                        rfc2109=False,
+                    )
+                    jar.set_cookie(cookie)
+                    jar_entries += 1
             self._cookie_synced = True
             logger.info(
-                "Synced %d cookies to jar for domain %s",
+                "Synced %d cookies to jar for domain %s (%d jar entries)",
                 count,
                 self._domain,
+                jar_entries,
             )
         except Exception:
             logger.warning("Failed to sync cookies to jar", exc_info=True)
@@ -175,7 +213,7 @@ class JmParser(ParserContextMixin):
                 url,
                 timeout=self.timeout,
                 allow_redirects=True,
-                headers={"Referer": f"https://{domain}/"},
+                headers=self._auth_headers({"Referer": f"https://{domain}/"}),
             )
             # 检测 Cloudflare 拦截
             if resp.status_code == 403 and "Just a moment" in resp.text[:200]:
@@ -258,10 +296,12 @@ class JmParser(ParserContextMixin):
                 url,
                 data={"aid": comic_id},
                 timeout=self.timeout,
-                headers={
-                    "Referer": f"https://{domain}/album/{comic_id}",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+                headers=self._auth_headers(
+                    {
+                        "Referer": f"https://{domain}/album/{comic_id}",
+                        "X-Requested-With": "XMLHttpRequest",
+                    }
+                ),
             )
             resp.raise_for_status()
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
@@ -285,6 +325,8 @@ class JmParser(ParserContextMixin):
         Raises:
             RuntimeError: 请求失败或认证失效
         """
+        if comic_id in self._known_favourite_ids:
+            return True
         domain = self._ensure_domain()
         url = f"https://{domain}/ajax/favorite/check"
         try:
@@ -292,11 +334,16 @@ class JmParser(ParserContextMixin):
                 url,
                 params={"aid": comic_id},
                 timeout=self.timeout,
-                headers={
-                    "Referer": f"https://{domain}/",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+                headers=self._auth_headers(
+                    {
+                        "Referer": f"https://{domain}/",
+                        "X-Requested-With": "XMLHttpRequest",
+                    }
+                ),
             )
+            if resp.status_code == 404:
+                logger.warning("jm check_favourite endpoint returned 404; falling back to not favourited")
+                return False
             resp.raise_for_status()
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
             return bool(result.get("favorited") or result.get("is_favorite") or result.get("status") == "ok")
@@ -323,10 +370,12 @@ class JmParser(ParserContextMixin):
                 url,
                 data={"aid": comic_id},
                 timeout=self.timeout,
-                headers={
-                    "Referer": f"https://{domain}/album/{comic_id}",
-                    "X-Requested-With": "XMLHttpRequest",
-                },
+                headers=self._auth_headers(
+                    {
+                        "Referer": f"https://{domain}/album/{comic_id}",
+                        "X-Requested-With": "XMLHttpRequest",
+                    }
+                ),
             )
             resp.raise_for_status()
             return True
@@ -425,7 +474,7 @@ class JmParser(ParserContextMixin):
                 f"https://{domain}/",
                 timeout=self.timeout,
                 allow_redirects=True,
-                headers={"Referer": f"https://{domain}/"},
+                headers=self._auth_headers({"Referer": f"https://{domain}/"}),
             )
             if resp.status_code != 200:
                 logger.warning(
@@ -499,7 +548,7 @@ class JmParser(ParserContextMixin):
                 url,
                 timeout=self.timeout,
                 allow_redirects=True,
-                headers={"Referer": f"https://{domain}/"},
+                headers=self._auth_headers({"Referer": f"https://{domain}/"}),
             )
             # 检查是否重定向到登录页面
             if resp.url and "/login" in str(resp.url):
@@ -527,6 +576,7 @@ class JmParser(ParserContextMixin):
                 return [], None, True
             try:
                 comics = self._parse_favourites_items(doc, domain=domain)
+                self._known_favourite_ids.update(comic.id for comic in comics if comic.id)
             except Exception:
                 comics = []
                 logger.warning("Failed to parse favourites items", exc_info=True)
@@ -655,7 +705,7 @@ class JmParser(ParserContextMixin):
 
     def _request_text(self, url: str) -> str:
         domain = self._ensure_domain()
-        headers = {"Referer": f"https://{domain}/"}
+        headers = self._auth_headers({"Referer": f"https://{domain}/"})
         resp = self.session.get(url, timeout=self.timeout, allow_redirects=True, headers=headers)
         resp.raise_for_status()
         self._fix_encoding(resp)

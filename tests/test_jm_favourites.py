@@ -1,6 +1,7 @@
 """jm 收藏夹解析测试"""
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import requests
@@ -195,6 +196,44 @@ class TestJmFavourites(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.parser._build_favourites_url("18comic.vip", 1)
 
+    def test_favourites_sends_explicit_cookie_header(self):
+        """Electron 导入的 jm Cookie 应作为显式请求头发送。"""
+        cookie = "remember=abc; remember_id=42; cf_clearance=token"
+        self.parser.configure_auth(cookie=cookie, user_agent="UA/1.0")
+        self.parser._domain = "18comic.vip"
+        self.parser._username = "testuser"
+        self.parser.session.get = MagicMock(return_value=_make_fav_resp())
+
+        self.parser.favourites(page=1)
+
+        headers = self.parser.session.get.call_args.kwargs["headers"]
+        self.assertEqual(headers["Cookie"], cookie)
+        self.assertEqual(headers["Referer"], "https://18comic.vip/")
+
+    def test_sync_cookies_to_jar_sets_host_and_domain_entries(self):
+        """Cookie jar 同步同时写入 host-only 与 domain cookie。"""
+
+        class FakeJar:
+            def __init__(self):
+                self.cookies = []
+
+            def set_cookie(self, cookie):
+                self.cookies.append(cookie)
+
+        jar = FakeJar()
+        self.parser.configure_auth(cookie="remember=abc; cf_clearance=token", user_agent="UA/1.0")
+        self.parser.session = SimpleNamespace(cookies=jar)
+        self.parser._domain = "18comic.vip"
+
+        self.parser._sync_cookies_to_jar()
+
+        domains = {(cookie.name, cookie.domain, cookie.domain_specified) for cookie in jar.cookies}
+        self.assertIn(("remember", "18comic.vip", False), domains)
+        self.assertIn(("remember", ".18comic.vip", True), domains)
+        self.assertIn(("cf_clearance", "18comic.vip", False), domains)
+        self.assertIn(("cf_clearance", ".18comic.vip", True), domains)
+        self.assertTrue(self.parser._cookie_synced)
+
 
 class TestJmAddToFavourites(unittest.TestCase):
     """测试 jm 加入收藏夹 API"""
@@ -246,6 +285,7 @@ class TestJmCheckFavourite(unittest.TestCase):
     def test_check_favourite_favourited(self):
         """测试漫画已收藏"""
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         mock_response.headers = {"content-type": "application/json"}
         mock_response.json.return_value = {"favorited": True}
@@ -258,6 +298,7 @@ class TestJmCheckFavourite(unittest.TestCase):
     def test_check_favourite_not_favourited(self):
         """测试漫画未收藏"""
         mock_response = MagicMock()
+        mock_response.status_code = 200
         mock_response.raise_for_status.return_value = None
         mock_response.headers = {"content-type": "application/json"}
         mock_response.json.return_value = {"favorited": False}
@@ -266,6 +307,28 @@ class TestJmCheckFavourite(unittest.TestCase):
         result = self.parser.check_favourite("12345")
 
         self.assertFalse(result)
+
+    def test_check_favourite_uses_known_favourites_cache(self):
+        """收藏夹页已解析到的 ID 应直接视为已收藏。"""
+        self.parser._known_favourite_ids.add("12345")
+        self.parser.session.get = MagicMock()
+
+        result = self.parser.check_favourite("12345")
+
+        self.assertTrue(result)
+        self.parser.session.get.assert_not_called()
+
+    def test_check_favourite_404_returns_false(self):
+        """jm 旧 check API 不存在时不应阻断详情抽屉。"""
+        mock_response = MagicMock()
+        mock_response.status_code = 404
+        mock_response.headers = {}
+        self.parser.session.get = MagicMock(return_value=mock_response)
+
+        result = self.parser.check_favourite("12345")
+
+        self.assertFalse(result)
+        mock_response.raise_for_status.assert_not_called()
 
     def test_check_favourite_network_error(self):
         """测试网络错误"""
