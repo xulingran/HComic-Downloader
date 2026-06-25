@@ -1073,6 +1073,9 @@ export const IPC_CHANNELS = {
   UPDATE_CHECK: 'update:check',
   GET_DIAGNOSTICS: 'log:get-diagnostics',
   WRITE_CLIPBOARD: 'system:write-clipboard',
+  // 登录弹窗叠层专用通道（仅服务于 login-preload，不进主窗口 window.hcomic API）
+  LOGIN_EXTRACT: 'login-extract',
+  LOGIN_FINISH: 'login-finish',
 } as const
 
 export const NOTIFICATION_CHANNELS = {
@@ -1086,6 +1089,8 @@ export const NOTIFICATION_CHANNELS = {
   FATAL_ERROR: 'fatal:error',
   DEEP_LINK: 'app:deep-link',
   STARTUP_PROGRESS: 'startup:progress',
+  // 登录弹窗叠层提取结果回推（主进程 → 登录窗定向 send，不广播）
+  LOGIN_EXTRACT_RESULT: 'login-extract-result',
 } as const
 
 /**

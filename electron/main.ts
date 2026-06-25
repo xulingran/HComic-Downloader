@@ -470,7 +470,7 @@ function getAppIconPath(): string {
 }
 
 function createWindow() {
-  const preloadPath = path.join(__dirname, '../preload/preload.js')
+  const preloadPath = path.join(__dirname, '../preload/preload.cjs')
 
   mainWindow = new BrowserWindow({
     width: 1200,

@@ -270,7 +270,14 @@ describe('main.ts', () => {
 
     it('every IPC_CHANNELS value (including OPEN_EXTERNAL) must be registered', () => {
       const registeredSet = new Set(handleCalls.map(h => h.channel))
+      // 登录弹窗叠层专用通道：在 login-window.ts 的 openLoginWindow 内按需注册
+      // （模态、单窗口、随窗口生命周期反注册），不在 main.ts 的 registerIPCHandlers。
+      const loginOverlayChannels = new Set<string>([
+        IPC_CHANNELS.LOGIN_EXTRACT,
+        IPC_CHANNELS.LOGIN_FINISH,
+      ])
       for (const ch of Object.values(IPC_CHANNELS)) {
+        if (loginOverlayChannels.has(ch)) continue
         expect(registeredSet.has(ch),
           `IPC_CHANNELS.${Object.keys(IPC_CHANNELS).find(k => IPC_CHANNELS[k as keyof typeof IPC_CHANNELS] === ch)} = "${ch}" not registered`
         ).toBe(true)

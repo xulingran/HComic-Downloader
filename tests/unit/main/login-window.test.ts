@@ -7,12 +7,14 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // ── Mock 依赖：electron / python-bridge / fs / os ──────────────────────────
 
-const { mockBridgeCall, mockAppendFile, loginWinEvents, webContentsEvents, capturedInstances } = vi.hoisted(() => ({
+const { mockBridgeCall, mockAppendFile, loginWinEvents, webContentsEvents, capturedInstances, ipcHandlers } = vi.hoisted(() => ({
   mockBridgeCall: vi.fn(),
   mockAppendFile: vi.fn().mockResolvedValue(undefined),
   loginWinEvents: {} as Record<string, ((...args: unknown[]) => void)[]>,
   webContentsEvents: {} as Record<string, ((...args: unknown[]) => void)[]>,
   capturedInstances: [] as Array<Record<string, unknown>>,
+  // 捕获 ipcMain.handle 注册的 channel→handler，供叠层测试调用
+  ipcHandlers: {} as Record<string, ((...args: unknown[]) => unknown)>,
 }))
 
 vi.mock('electron', () => {
@@ -52,6 +54,14 @@ vi.mock('electron', () => {
   }
   return {
     BrowserWindow: MockBrowserWindow,
+    ipcMain: {
+      handle: vi.fn((channel: string, handler: (...args: unknown[]) => unknown) => {
+        ipcHandlers[channel] = handler
+      }),
+      removeHandler: vi.fn((channel: string) => {
+        delete ipcHandlers[channel]
+      }),
+    },
     session: {
       defaultSession: {
         cookies: { get: vi.fn().mockResolvedValue([]) },
@@ -81,6 +91,7 @@ vi.mock('fs', () => ({
 
 import { openLoginWindow, shellQuoteForShlex, resolveLoginTarget, extractCookiesForSource, verifyLoginCookies } from '../../../electron/login-window'
 import { session as electronSession } from 'electron'
+import { IPC_CHANNELS, NOTIFICATION_CHANNELS } from '../../../shared/types'
 
 // 辅助：构造 mainWindow 占位
 function makeMainWindow() {
@@ -253,6 +264,7 @@ describe('login-window: openLoginWindow', () => {
     // 清空事件捕获
     for (const k of Object.keys(loginWinEvents)) delete loginWinEvents[k]
     for (const k of Object.keys(webContentsEvents)) delete webContentsEvents[k]
+    for (const k of Object.keys(ipcHandlers)) delete ipcHandlers[k]
     capturedInstances.length = 0
     mockBridgeCall.mockReset()
     mockBridgeCall.mockResolvedValue({ valid: true, message: 'ok' })
@@ -278,7 +290,7 @@ describe('login-window: openLoginWindow', () => {
     void openLoginWindow(makeMainWindow(), 'jm')
     await Promise.resolve()
     const win = capturedInstances[0] as { options: { webPreferences: { preload: string } } }
-    expect(win.options.webPreferences.preload.replaceAll('\\', '/')).toMatch(/\/preload\/login-preload\.js$/)
+    expect(win.options.webPreferences.preload.replaceAll('\\', '/')).toMatch(/\/preload\/login-preload\.cjs$/)
   })
 
   it('uses jm default domain when resolvedDomain not provided', async () => {
@@ -507,3 +519,186 @@ describe('login-window: openLoginWindow', () => {
     vi.useRealTimers()
   })
 })
+
+// ── 叠层触发路径（LOGIN_EXTRACT / LOGIN_FINISH handler）─────────────────────
+
+describe('login-window: overlay IPC handlers', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    for (const k of Object.keys(loginWinEvents)) delete loginWinEvents[k]
+    for (const k of Object.keys(webContentsEvents)) delete webContentsEvents[k]
+    for (const k of Object.keys(ipcHandlers)) delete ipcHandlers[k]
+    capturedInstances.length = 0
+    mockBridgeCall.mockReset()
+    mockBridgeCall.mockResolvedValue({ valid: true, message: 'verify ok' })
+  })
+
+  // 辅助：开窗 + 触发 did-finish-load 以填充 savedUserAgent，返回捕获的 loginWin
+  async function setup(source = 'hcomic') {
+    const promise = openLoginWindow(makeMainWindow(), source)
+    await Promise.resolve()
+    const win = capturedInstances[0] as {
+      webContents: { send: ReturnType<typeof vi.fn>; session: { cookies: { get: ReturnType<typeof vi.fn> } }; userAgent: string }
+    }
+    // 填充 savedUserAgent（triggerExtraction 依赖）
+    if (webContentsEvents['did-finish-load']) webContentsEvents['did-finish-load'][0]()
+    return { promise, win }
+  }
+
+  it('registers LOGIN_EXTRACT and LOGIN_FINISH handlers', async () => {
+    await setup('hcomic')
+    expect(ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]).toBeDefined()
+    expect(ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]).toBeDefined()
+  })
+
+  it('LOGIN_EXTRACT handler returns { accepted: true } immediately (fast response)', async () => {
+    vi.useFakeTimers()
+    const { win } = await setup('hcomic')
+    // mock 返回有效 cookie，使提取链不短路
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValueOnce([
+      cookie('sessionid', 'abc'),
+    ])
+    const result = await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    expect(result).toEqual({ accepted: true })
+    vi.useRealTimers()
+  })
+
+  it('LOGIN_EXTRACT rejects re-entry while extraction in progress', async () => {
+    vi.useFakeTimers()
+    const { win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([])
+    // 第一次触发（cookies 空 → notLoggedIn，但 mock 异步未 resolve）
+    const r1 = await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    expect(r1).toEqual({ accepted: true })
+    // 紧随其后的第二次：extractInProgress=true → 拒绝
+    const r2 = await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    expect(r2).toEqual({ accepted: false })
+    await vi.runAllTimersAsync()
+    vi.useRealTimers()
+  })
+
+  it('extraction result is pushed back via loginWin.webContents.send (not mainWindow)', async () => {
+    vi.useFakeTimers()
+    const { win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('sessionid', 'abc'),
+    ])
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    await vi.runAllTimersAsync()
+    // 结果定向 send 到登录窗
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+      expect.objectContaining({ success: true }),
+    )
+    vi.useRealTimers()
+  })
+
+  it('notLoggedIn result is pushed back without success', async () => {
+    vi.useFakeTimers()
+    const { win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([])
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    await vi.runAllTimersAsync()
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+      expect.objectContaining({ success: false, notLoggedIn: true }),
+    )
+    vi.useRealTimers()
+  })
+
+  it('overlay success sets alreadySucceeded → subsequent close does not re-extract', async () => {
+    vi.useFakeTimers()
+    const { win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('sessionid', 'abc'),
+    ])
+    // 叠层触发提取（成功）
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    await vi.runAllTimersAsync()
+    const callsAfterOverlay = mockBridgeCall.mock.calls.filter(c => c[0] === 'apply_auth').length
+
+    // 随后用户关窗 → 触发 close 事件
+    const closeHandlers = loginWinEvents['close']
+    const fakeEvent = { preventDefault: vi.fn() }
+    await closeHandlers![0](fakeEvent)
+    await vi.runAllTimersAsync()
+
+    // apply_auth 调用次数不应增加（alreadySucceeded 短路）
+    const callsAfterClose = mockBridgeCall.mock.calls.filter(c => c[0] === 'apply_auth').length
+    expect(callsAfterClose).toBe(callsAfterOverlay)
+    vi.useRealTimers()
+  })
+
+  it('LOGIN_FINISH calls ctx.done and closes the window', async () => {
+    vi.useFakeTimers()
+    const { promise, win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('sessionid', 'abc'),
+    ])
+    // 叠层成功提取（启动 finishFallbackTimer）
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    // flush 提取链的微任务，但不推进 timer（避免兜底 timer 误触发）
+    await vi.waitFor(() => {
+      expect(win.webContents.send).toHaveBeenCalled()
+    })
+    // 渲染端倒数到 0 → LOGIN_FINISH
+    await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
+    const result = await promise
+    expect(result.success).toBe(true)
+    // 窗口应被 destroy
+    expect((capturedInstances[0] as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('finish fallback timer fires ctx.done when renderer never sends LOGIN_FINISH', async () => {
+    vi.useFakeTimers()
+    const { promise, win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('sessionid', 'abc'),
+    ])
+    // 叠层成功提取（启动 10s 兜底 timer）
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    await vi.waitFor(() => {
+      expect(win.webContents.send).toHaveBeenCalled()
+    })
+    // 不调 LOGIN_FINISH，推进 10s 兜底超时
+    await vi.advanceTimersByTimeAsync(10_000)
+    const result = await promise
+    expect(result.success).toBe(true)
+    vi.useRealTimers()
+  })
+
+  it('normal LOGIN_FINISH within 5s prevents fallback timer from firing', async () => {
+    vi.useFakeTimers()
+    const { promise, win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('sessionid', 'abc'),
+    ])
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'hcomic')
+    await vi.waitFor(() => {
+      expect(win.webContents.send).toHaveBeenCalled()
+    })
+    // 5s 内正常 LOGIN_FINISH（渲染端倒数到 0）
+    await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
+    const result = await promise
+    expect(result.success).toBe(true)
+    // 再推进 10s，不应二次 done（settled 守卫）—— destroy 仅调用一次
+    expect((capturedInstances[0] as { destroy: ReturnType<typeof vi.fn> }).destroy).toHaveBeenCalledTimes(1)
+    vi.useRealTimers()
+  })
+
+  it('handlers are unregistered when done is called (no leak)', async () => {
+    vi.useFakeTimers()
+    const { win } = await setup('hcomic')
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('sessionid', 'abc'),
+    ])
+    expect(ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]).toBeDefined()
+    // done 触发 → done 闭包经 removeOverlayHandlers 反注册 ipcMain handler
+    await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
+    expect(ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]).toBeUndefined()
+    expect(ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]).toBeUndefined()
+    vi.useRealTimers()
+  })
+})
+

@@ -1,4 +1,4 @@
-import { BrowserWindow, session, type Session } from 'electron'
+import { BrowserWindow, ipcMain, session, type Session } from 'electron'
 import { promises as fsPromises } from 'fs'
 import { tmpdir } from 'os'
 import { join } from 'path'
@@ -7,8 +7,13 @@ import {
   registerRelaxedCspWebContents,
   unregisterRelaxedCspWebContents,
 } from './csp-relaxed-registry'
+import { IPC_CHANNELS, NOTIFICATION_CHANNELS } from '../shared/types'
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
+/** 叠层成功后，主进程等待渲染端 LOGIN_FINISH 的兜底超时。
+ *  渲染端倒数默认 5s；此值取 10s 留足余量，避免正常倒数路径误触发。
+ *  渲染进程崩溃 / 导航丢失状态 / 用户拖很久不放手时由它收尾。 */
+const LOGIN_FINISH_FALLBACK_MS = 10_000
 const JM_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
 const JM_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
 
@@ -118,10 +123,23 @@ interface LoginWindowContext {
   savedUserAgent: string
   /** 防止用户连点 ✕ 或 close/done 重入导致重复提取 */
   extractInProgress: boolean
+  /**
+   * 叠层触发提取成功后置 true。关窗路径首判此标志：为 true 时直接 done，
+   * 不再二次提取（用户叠层已成功后随手关窗）。
+   */
+  alreadySucceeded: boolean
   done: (result: { success: boolean; message?: string }) => void
   clearTimeout: () => void
   removeCspHandler: (() => void) | null
   removePermissionHandlers: (() => void) | null
+  /** 叠层 IPC handler 反注册（窗口关闭时调用，避免 ipcMain 泄漏） */
+  removeOverlayHandlers: (() => void) | null
+  /**
+   * 叠层成功后的兜底关窗 timer（10s）。若渲染端倒数因任何原因未发出 LOGIN_FINISH
+   * （渲染进程崩溃、导航后 preload 重注入丢失状态），主进程侧兜底关窗。
+   * LOGIN_FINISH 到达时清除。
+   */
+  finishFallbackTimer: NodeJS.Timeout | null
 }
 
 // ── Cookie 提取与登录态校验（extractAndApplyCookies 的子组件）─────────────
@@ -271,6 +289,47 @@ async function extractAndApplyCookies(
 }
 
 /**
+ * 可复用的 cookie 提取编排（叠层触发路径与关窗触发路径共用）。
+ *
+ * 封装：jm 用户名提取（DOM）+ extractAndApplyCookies（session）。
+ * 成功时置 ctx.alreadySucceeded = true，使后续关窗路径短路（不二次提取）。
+ *
+ * @returns ExtractionResult（success/message/notLoggedIn）
+ */
+async function triggerExtraction(
+  ctx: LoginWindowContext,
+  loginWin: BrowserWindow,
+  source: string,
+  domain: string,
+): Promise<ExtractionResult> {
+  const userAgent = ctx.savedUserAgent || (!loginWin.isDestroyed() ? loginWin.webContents.userAgent : '')
+  if (!userAgent) {
+    return { success: false, message: '登录窗口尚未就绪，请稍候重试' }
+  }
+  const cookieSession = loginWin.webContents.session
+  diag(`triggerExtraction: source=${source} domain=${domain}`)
+
+  // jm: 从 DOM 提取用户名（窗口存活）。Python 后端因 Cloudflare 403 无法
+  // 从首页发现用户名，必须在窗口销毁前从浏览器 DOM 获取。
+  const usernamePromise = source === 'jm'
+    ? extractJmUsername(loginWin)
+    : Promise.resolve('')
+
+  const username = await usernamePromise
+  diag(`extract phase done: username=${username || '(empty)'}`)
+  if (username) diag(`extracted jm username: ${username}`)
+
+  const result = await extractAndApplyCookies(userAgent, source, domain, cookieSession, username)
+  diag(`triggerExtraction result: success=${result.success} notLoggedIn=${result.notLoggedIn}`)
+
+  // 成功后置标志，后续关窗路径命中即直接 done，不二次提取
+  if (result.success) {
+    ctx.alreadySucceeded = true
+  }
+  return result
+}
+
+/**
  * jm 登录窗口 DOM 提取用户名的脚本：从导航栏 /user/{name}/favorite 链接提取，
  * 次级从任意 /user/{name} 链接提取（排除 profile/favorites/setting 等通用项）。
  *
@@ -402,7 +461,7 @@ function setupLoginContentIsolation(
 
 function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
   diag('createLoginBrowserWindow: start')
-  const preloadPath = join(__dirname, '../preload/login-preload.js')
+  const preloadPath = join(__dirname, '../preload/login-preload.cjs')
   // Use default session to avoid session.fromPartition side effects.
   // CSP 放宽通过共享 registry（csp-relaxed-registry）而非独立 webRequest 监听器
   // 实现，因此不会与主窗口的 setupCSP 监听器冲突（Electron 同一 session 的同一
@@ -450,6 +509,12 @@ function bindManualCloseExtraction(
   loginWin.on('close', (event) => {
     // 已 settle（超时/崩溃/提取完成后的二次进入）→ 放行关闭
     if (ctx.settled) return
+    // 叠层已成功提取（用户随后关窗）→ 直接 done 已知成功结果，不二次提取
+    if (ctx.alreadySucceeded) {
+      diag('close after overlay success: short-circuit done')
+      ctx.done({ success: true, message: '登录成功' })
+      return
+    }
     // 挡住关闭，确保异步提取期间窗口存活
     event.preventDefault()
     // 提取进行中（用户连点 ✕）→ 仅保持窗口存活，不重复触发提取
@@ -464,24 +529,9 @@ function bindManualCloseExtraction(
       return
     }
 
-    const cookieSession = loginWin.webContents.session
     diag(`manual close extraction: source=${source} domain=${domain}`)
-
-    // jm: 关窗前从 DOM 提取用户名（窗口仍存活）。
-    // Python 后端因 Cloudflare 403 无法从首页发现用户名，
-    // 必须在窗口销毁前从浏览器 DOM 获取。
-    const usernamePromise = source === 'jm'
-      ? extractJmUsername(loginWin)
-      : Promise.resolve('')
-
-    usernamePromise
-      .then((username) => {
-        diag(`extract phase done: username=${username || '(empty)'}`)
-        if (username) diag(`extracted jm username: ${username}`)
-        return extractAndApplyCookies(userAgent, source, domain, cookieSession, username)
-      })
+    triggerExtraction(ctx, loginWin, source, domain)
       .then((result) => {
-        diag(`extractAndApplyCookies done: success=${result.success} notLoggedIn=${result.notLoggedIn}`)
         // 未登录即关窗 → 静默取消（选项 A）
         if (!result.success && result.notLoggedIn) {
           ctx.done({ success: false, message: '已取消' })
@@ -501,10 +551,113 @@ function bindManualCloseExtraction(
   loginWin.on('closed', () => {
     diag('login window closed event')
     ctx.clearTimeout()
+    if (ctx.finishFallbackTimer) {
+      clearTimeout(ctx.finishFallbackTimer)
+      ctx.finishFallbackTimer = null
+    }
     if (!ctx.settled) {
       ctx.done({ success: false, message: '已取消' })
     }
   })
+}
+
+// ── 叠层触发路径：IPC handler 工厂 ────────────────────────────────────────
+
+/**
+ * 叠层触发提取的 handler 工厂。
+ *
+ * 设计：invoke 立即返回 { accepted } 快响应（不阻塞渲染端切到 extracting 态）；
+ * 提取链在后台跑，结果通过 loginWin.webContents.send(LOGIN_EXTRACT_RESULT) 定向回推。
+ *
+ * 提取成功 → 置 alreadySucceeded、启动 finishFallbackTimer（10s 兜底关窗）。
+ * 提取中重入（叠层在等待结果时再次点击）→ 直接返回 accepted: false。
+ */
+function createLoginExtractHandler(
+  loginWin: BrowserWindow,
+  ctx: LoginWindowContext,
+  source: string,
+  domain: string,
+) {
+  return async (_event: unknown, requestedSource?: string): Promise<{ accepted: boolean }> => {
+    // 提取进行中 / 已 settle → 拒绝重入
+    if (ctx.extractInProgress || ctx.settled) {
+      return { accepted: false }
+    }
+    ctx.extractInProgress = true
+    ctx.clearTimeout()
+
+    // 后台跑提取链，立即返回已受理
+    const targetSource = typeof requestedSource === 'string' ? requestedSource : source
+    void triggerExtraction(ctx, loginWin, targetSource, domain)
+      .then((result) => {
+        ctx.extractInProgress = false
+        // 成功 → 置标志 + 启动兜底关窗 timer（渲染端倒数到 0 会调 LOGIN_FINISH 清除它）
+        if (result.success && !ctx.finishFallbackTimer) {
+          ctx.finishFallbackTimer = setTimeout(() => {
+            diag('login finish fallback timer fired (renderer did not LOGIN_FINISH in time)')
+            ctx.done({ success: true, message: result.message || '登录成功' })
+          }, LOGIN_FINISH_FALLBACK_MS)
+        }
+        // 定向回推到登录窗（不广播到 mainWindow，避免多窗口串扰）
+        if (!loginWin.isDestroyed()) {
+          loginWin.webContents.send(NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT, {
+            success: result.success,
+            message: result.message,
+            notLoggedIn: result.notLoggedIn,
+          })
+        }
+      })
+      .catch((err) => {
+        ctx.extractInProgress = false
+        diag(`login extract chain error: ${err instanceof Error ? err.message : String(err)}`)
+        if (!loginWin.isDestroyed()) {
+          loginWin.webContents.send(NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT, {
+            success: false,
+            message: '登录处理失败',
+          })
+        }
+      })
+
+    return { accepted: true }
+  }
+}
+
+/**
+ * 渲染端倒数到 0 后请求关窗的 handler 工厂。
+ * 清除 finishFallbackTimer（渲染端主动收尾），调 ctx.done 关窗。
+ */
+function createLoginFinishHandler(ctx: LoginWindowContext) {
+  return async (): Promise<{ ok: true }> => {
+    diag('login finish requested by overlay')
+    if (ctx.finishFallbackTimer) {
+      clearTimeout(ctx.finishFallbackTimer)
+      ctx.finishFallbackTimer = null
+    }
+    ctx.done({ success: true, message: '登录成功' })
+    return { ok: true }
+  }
+}
+
+/**
+ * 在 openLoginWindow 编排中注册叠层 IPC handler，返回反注册函数。
+ *
+ * 用全局 ipcMain.handle（登录窗模态、一次一个，channel 全局唯一安全）。
+ * closed 兜底清理时调用返回的 cleanup 反注册，避免泄漏。
+ */
+function bindOverlayIpcHandlers(
+  loginWin: BrowserWindow,
+  ctx: LoginWindowContext,
+  source: string,
+  domain: string,
+): () => void {
+  const extractHandler = createLoginExtractHandler(loginWin, ctx, source, domain)
+  const finishHandler = createLoginFinishHandler(ctx)
+  ipcMain.handle(IPC_CHANNELS.LOGIN_EXTRACT, extractHandler)
+  ipcMain.handle(IPC_CHANNELS.LOGIN_FINISH, finishHandler)
+  return () => {
+    ipcMain.removeHandler(IPC_CHANNELS.LOGIN_EXTRACT)
+    ipcMain.removeHandler(IPC_CHANNELS.LOGIN_FINISH)
+  }
 }
 
 // ── openLoginWindow 子组件 ──────────────────────────────────────────────
@@ -548,14 +701,21 @@ function createLoginContext(
     settled: false,
     savedUserAgent: '',
     extractInProgress: false,
+    alreadySucceeded: false,
     clearTimeout: () => {},
     removeCspHandler,
     removePermissionHandlers: null,
+    removeOverlayHandlers: null,
+    finishFallbackTimer: null,
     done: (result) => {
       diag(`done called: settled=${ctx.settled} success=${result.success}`)
       if (ctx.settled) return
       ctx.settled = true
       ctx.clearTimeout()
+      if (ctx.finishFallbackTimer) {
+        clearTimeout(ctx.finishFallbackTimer)
+        ctx.finishFallbackTimer = null
+      }
       if (ctx.removeCspHandler) {
         ctx.removeCspHandler()
         ctx.removeCspHandler = null
@@ -563,6 +723,10 @@ function createLoginContext(
       if (ctx.removePermissionHandlers) {
         ctx.removePermissionHandlers()
         ctx.removePermissionHandlers = null
+      }
+      if (ctx.removeOverlayHandlers) {
+        ctx.removeOverlayHandlers()
+        ctx.removeOverlayHandlers = null
       }
       // 用 destroy() 而非 close()：close 已被 preventDefault，且 destroy 不再
       // 触发 close 事件，避免重入。destroy 后由 'closed' 兜底清理。
@@ -661,6 +825,9 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
     ctx.removePermissionHandlers = setupLoginContentIsolation(loginWin, allowedDomains)
 
     bindManualCloseExtraction(loginWin, ctx, source, target.domain)
+
+    // 叠层触发路径：注册 LOGIN_EXTRACT / LOGIN_FINISH handler（窗口关闭时由 done/closed 反注册）
+    ctx.removeOverlayHandlers = bindOverlayIpcHandlers(loginWin, ctx, source, target.domain)
 
     loadLoginUrl(loginWin, target.url)
     diag('openLoginWindow: loadURL called')
