@@ -14,12 +14,12 @@
 | --------- | ------------ | --- | --- | -------------------------- |
 | hcomic    | h-comic.com  | ✅   | ✅   | curl 导入 / 应用内用户名密码 / 内嵌浏览器 |
 | moeimg    | moeimg.fan   | ✅   | ✅   | curl 导入 / 应用内用户名密码         |
-| jmcomic   | jmcomic（含镜像） | ✅   | ✅   | curl 导入 / 内嵌浏览器            |
+| jm   | jm（含镜像） | ✅   | ✅   | curl 导入 / 内嵌浏览器            |
 | bika      | 哔咔           | ✅   | ✅   | 应用内用户名密码（API 登录）           |
 | copymanga | 拷贝漫画         | —   | —   | curl 导入                    |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
-- **随机推荐**：hcomic、jmcomic 支持
+- **随机推荐**：hcomic、jm 支持
 - **漫画详情**：封面预览、标签、作者、章节列表（含 `album` 多章节本）
 
 ### 搜索与浏览
@@ -51,7 +51,7 @@
 
 ### 收藏与历史
 
-- 收藏夹（hcomic / jmcomic / moeimg / bika）
+- 收藏夹（hcomic / jm / moeimg / bika）
 - 阅读历史记录（最近阅读、章节定位）
 - 收藏标签推荐与高亮（从收藏夹提取标签，搜索结果中高亮推荐标签）
 - 批量选择 + 批量下载
@@ -107,7 +107,7 @@
 - **渲染隔离**：Context Isolation + Sandbox + `webviewTag: false`
 - **CSP**：根据开发/生产环境分别下发内容安全策略
 - **输入校验**：所有 IPC 通道参数严格校验（类型、长度、范围、路径遍历防护、控制字符过滤）
-- **域名白名单**：外部链接、封面图、预览图均使用白名单（`h-comic.com` / `moeimg.fan` / `18comic.vip` 等 + jmcomic 镜像动态注入）
+- **域名白名单**：外部链接、封面图、预览图均使用白名单（`h-comic.com` / `moeimg.fan` / `18comic.vip` 等 + jm 镜像动态注入）
 - **防盗链**：对 `h-comic.link` / `moeimg.fan` 等图片域注入对应 Referer
 - **配置文件权限**：仅当前用户可读写（0o600）
 - **原子写入**：配置文件使用 `temp + rename` 防止损坏
@@ -121,7 +121,7 @@ hcomic_downloader/
 │   ├── main.ts                # 入口：窗口、CSP、单实例、IPC 路由、协议注册
 │   ├── preload.ts             # 预加载脚本（contextBridge + 参数校验）
 │   ├── python-bridge.ts       # Python 子进程桥接（stdin/stdout + 重启）
-│   ├── login-window.ts        # 内嵌登录窗口（hcomic / jmcomic）
+│   ├── login-window.ts        # 内嵌登录窗口（hcomic / jm）
 │   ├── notification-manager.ts# 系统通知
 │   └── validators.ts          # IPC 参数验证器（组合式）
 │
@@ -169,7 +169,7 @@ hcomic_downloader/
 │   ├── base.py                # 解析器基类（ParserContextMixin）
 │   ├── hcomic/                # h-comic 解析器
 │   ├── moeimg/                # moeimg 解析器
-│   ├── jmcomic/               # jmcomic 解析器（含反混淆）
+│   ├── jm/               # jm 解析器（含反混淆）
 │   │   ├── parser.py
 │   │   ├── descrambler.py     # 图片反混淆
 │   │   ├── session.py         # 认证与请求
@@ -323,13 +323,13 @@ venv\Scripts\black.exe .            # 格式化
 | `autoRetryMaxAttempts`    | number  | 失败自动重试次数       | 2                                    | 0-5                                                    |
 | `notifyOnComplete`        | boolean | 下载完成系统通知       | `true`                               | —                                                      |
 | `notifyWhenForeground`    | string  | 通知触发策略         | `inactive`                           | `inactive` / `always`                                  |
-| `defaultSource`           | string  | 默认搜索来源         | `hcomic`                             | `hcomic` / `moeimg` / `jmcomic` / `bika` / `copymanga` |
+| `defaultSource`           | string  | 默认搜索来源         | `hcomic`                             | `hcomic` / `moeimg` / `jm` / `bika` / `copymanga` |
 | `fontName`                | string  | 自定义字体          | `""`（自动检测 CJK）                       | —                                                      |
 | `fontSize`                | number  | 基础字号           | 12                                   | 12-20                                                  |
 | `sfwMode`                 | boolean | SFW 安全模式（隐藏封面） | `true`                               | —                                                      |
-| `tagBlacklist`            | object  | 标签黑名单（按来源）     | `{hcomic:[], moeimg:[], jmcomic:[]}` | 每项 ≤ 64 字符                                             |
+| `tagBlacklist`            | object  | 标签黑名单（按来源）     | `{hcomic:[], moeimg:[], jm:[]}` | 每项 ≤ 64 字符                                             |
 | `previewCacheSizeLimitMB` | number  | 预览缓存上限（MB）     | 500                                  | 100-2048                                               |
-| `jmcomicDomain`           | string  | jmcomic 自定义域名  | `""`（自动）                             | —                                                      |
+| `jmDomain`           | string  | jm 自定义域名  | `""`（自动）                             | —                                                      |
 | `favouriteTagHighlight`   | boolean | 收藏标签推荐高亮       | `false`                              | —                                                      |
 
 ## 致谢

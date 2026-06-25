@@ -30,7 +30,7 @@ vi.mock('@/hooks/useIpc', () => ({
   useAuth: vi.fn().mockReturnValue({ applyAuth: mockApplyAuth, verifyAuth: mockVerifyAuth }),
   useProxyStatus: vi.fn().mockReturnValue({ getProxyStatus: vi.fn().mockResolvedValue({ http: '', https: '', noProxy: '' }) }),
   useAvailableFonts: vi.fn().mockReturnValue({ getAvailableFonts: vi.fn().mockResolvedValue({ fonts: [] }) }),
-  useJmcomicDomains: vi.fn().mockReturnValue({ getJmcomicDomains: vi.fn().mockResolvedValue({ domains: [] }) }),
+  useJmDomains: vi.fn().mockReturnValue({ getJmDomains: vi.fn().mockResolvedValue({ domains: [] }), jmDomains: [] }),
   useFavouriteTags: vi.fn().mockReturnValue({
     getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
     clearFavouriteTags: vi.fn(),
@@ -547,16 +547,16 @@ describe('SettingsPage', () => {
     })
   })
 
-  it('verifies jmcomic auth on load when hasJmcomicAuth is true', async () => {
+  it('verifies jm auth on load when hasJmAuth is true', async () => {
     mockGetConfig.mockResolvedValue({
-      config: { ...defaultConfig, hasJmcomicAuth: true }
+      config: { ...defaultConfig, hasJmAuth: true }
     })
     mockVerifyAuth.mockResolvedValue({ valid: true, message: 'Valid session' })
 
     render(<SettingsPage />)
 
     await waitFor(() => {
-      expect(mockVerifyAuth).toHaveBeenCalledWith('jmcomic')
+      expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
     })
   })
 

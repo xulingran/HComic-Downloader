@@ -11,7 +11,7 @@ import type { DuplicateGroup } from '@/utils/titleSimilarity'
  * 卸载，组件 local state 全部归零。若不持久化，用户每次搜索后回来都要
  * 重新拉取收藏夹（几十秒）并重新聚类，体验不可接受。
  *
- * 按 source 隔离：用户在 hcomic 检测后切到 jmcomic 检测，两来源结果互不
+ * 按 source 隔离：用户在 hcomic 检测后切到 jm 检测，两来源结果互不
  * 覆盖；切回 hcomic 时直接显示缓存结果。
  */
 interface MissingChaptersResult {

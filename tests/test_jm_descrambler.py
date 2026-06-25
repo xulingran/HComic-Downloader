@@ -1,11 +1,11 @@
-"""jmcomic 图片反混淆模块测试。"""
+"""jm 图片反混淆模块测试。"""
 
 import hashlib
 from io import BytesIO
 
 from PIL import Image
 
-from sources.jmcomic.descrambler import (
+from sources.jm.descrambler import (
     _compute_num,
     _extract_eps_id,
     _extract_page_num,

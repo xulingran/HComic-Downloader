@@ -8,7 +8,7 @@
 
 ### 1.1 当前实现
 
-项目已支持多章节来源（jmcomic / bika / copymanga），每章作为独立 `DownloadTask` 加入下载队列：
+项目已支持多章节来源（jm / bika / copymanga），每章作为独立 `DownloadTask` 加入下载队列：
 
 - `python/ipc/download_mixin.py::_download_chapters` 为每个选中章节创建一条 `ComicInfo`，标题为 `"{album_title} - {chap_name}"`，并各自 `add_task`。
 - `ComicInfo` 已包含 `album_id`、`album_total_chapters` 字段（见 `models.py`）。
@@ -55,7 +55,7 @@ download_dir/
     第1話/                                ← 章节子文件夹（最终产物）
       00001.jpg ... 00020.jpg
     第2話/
-    temp_jmcomic_<chap_id>/              ← 进行中：单章临时目录
+    temp_jm_<chap_id>/              ← 进行中：单章临时目录
 ```
 
 ### 2.2 output_format = cbz（多章专辑）
@@ -66,7 +66,7 @@ download_dir/
   {author}-{album_title}/                ← 工作目录（中间态）
     第1話/
     第2話/
-    temp_jmcomic_<chap_id>/
+    temp_jm_<chap_id>/
 ```
 
 **齐套打包后：**
@@ -286,7 +286,7 @@ handle_check_download_conflict: 多章场景下按"专辑工作目录/章节名"
 
 ## 6. 不变范围
 
-- 单本漫画（hcomic / moeimg / 单章 jmcomic 等）行为完全不变
+- 单本漫画（hcomic / moeimg / 单章 jm 等）行为完全不变
 - `downloader.ComicDownloader` 不修改
 - `ImageDownloader`、`UrlValidator`、`image_formats` 不动
 - `OutputStagingManager` 仅用于单本路径，不修改其方法语义
@@ -314,7 +314,7 @@ handle_check_download_conflict: 多章场景下按"专辑工作目录/章节名"
 5. `ComicDownloadManager._handle_album_chapter_success`：staged 到正确路径，触发 coordinator
 6. `handle_force_pack_album`：packed / no_chapters / conflict 三路径
 7. `handle_check_download_conflict`：多章场景下按章子文件夹判定
-8. 集成测试：下载 3 章 jmcomic 专辑（folder + cbz 两种 output_format）端到端
+8. 集成测试：下载 3 章 jm 专辑（folder + cbz 两种 output_format）端到端
 
 ## 9. 实施顺序建议（供后续 plan 参考）
 

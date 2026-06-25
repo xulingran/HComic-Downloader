@@ -73,7 +73,7 @@ describe('MissingChapterDetector', () => {
     storeResultsState = {}
     settingsState = {
       sfwMode: false,
-      missingBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] },
+      missingBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
       addMissingIgnore: mockAddMissingIgnore,
       removeMissingIgnore: mockRemoveMissingIgnore,
       confirmMissingMemberCount: mockConfirmMissingMemberCount,

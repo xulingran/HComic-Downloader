@@ -256,7 +256,7 @@ describe('main.ts', () => {
         'get_history', 'add_history', 'delete_history', 'clear_history',
         'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
         'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
-        'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'get_jmcomic_domains',
+        'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'get_jm_domains',
         'force_pack_album', 'get_album_progress',
         'pause_album', 'resume_album', 'cancel_album',
         'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',
@@ -392,11 +392,11 @@ describe('main.ts', () => {
     it('python:apply-auth forwards source to bridge when provided', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:apply-auth')!
       const curlStr = 'curl -H "Cookie: test=123" https://example.com'
-      await handler.handler({}, curlStr, 'jmcomic')
+      await handler.handler({}, curlStr, 'jm')
 
       expect(mockBridgeCall).toHaveBeenCalledWith('apply_auth', {
         curl_text: curlStr,
-        source: 'jmcomic'
+        source: 'jm'
       })
     })
 
@@ -409,9 +409,9 @@ describe('main.ts', () => {
 
     it('python:verify-auth forwards source to bridge when provided', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:verify-auth')!
-      await handler.handler({}, 'jmcomic')
+      await handler.handler({}, 'jm')
 
-      expect(mockBridgeCall).toHaveBeenCalledWith('verify_auth', { source: 'jmcomic' })
+      expect(mockBridgeCall).toHaveBeenCalledWith('verify_auth', { source: 'jm' })
     })
   })
 

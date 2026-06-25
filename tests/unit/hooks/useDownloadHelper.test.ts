@@ -79,14 +79,14 @@ describe('useDownloadHelper', () => {
     it('upserts each returned task with its matching comic', async () => {
       const comics: ComicInfo[] = [
         { ...mockComic, id: 'comic-a', title: 'Comic A', pages: 12, sourceSite: 'hcomic', source: 'MMCG_SHORT' },
-        { ...mockComic, id: 'comic-b', title: 'Comic B', pages: 34, sourceSite: 'jmcomic', source: 'JMCOMIC' },
+        { ...mockComic, id: 'comic-b', title: 'Comic B', pages: 34, sourceSite: 'jm', source: 'JM' },
       ]
       createMockHcomic({
         downloadBatchAsAlbum: vi.fn().mockResolvedValue({
-          taskIds: ['hcomic_MMCG_SHORT_comic-a', 'jmcomic_JMCOMIC_comic-b'],
+          taskIds: ['hcomic_MMCG_SHORT_comic-a', 'jm_JM_comic-b'],
           queuedTasks: [
             { taskId: 'hcomic_MMCG_SHORT_comic-a', comicId: 'comic-a', sourceSite: 'hcomic', source: 'MMCG_SHORT' },
-            { taskId: 'jmcomic_JMCOMIC_comic-b', comicId: 'comic-b', sourceSite: 'jmcomic', source: 'JMCOMIC' },
+            { taskId: 'jm_JM_comic-b', comicId: 'comic-b', sourceSite: 'jm', source: 'JM' },
           ],
           status: 'queued',
         }),
@@ -106,7 +106,7 @@ describe('useDownloadHelper', () => {
     const multiChapterComic: ComicInfo = {
       ...mockComic,
       id: '999001',
-      source: 'JMCOMIC',
+      source: 'JM',
       pages: 60,
     }
 

@@ -17,7 +17,7 @@ _DEFAULT_IMAGE_URL_SUFFIX = "nh"
 
 @dataclass
 class ChapterInfo:
-    """jmcomic 章节信息。
+    """jm 章节信息。
 
     Attributes:
         id: 章节(photo) id，用于请求 /photo/{id} 及反混淆

@@ -36,8 +36,8 @@ class TestAlbumFolderIntegration:
         comic = ComicInfo(
             id="ch1",
             title="Album - Ch1",
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             album_id="album1",
             album_title="Album",
             album_total_chapters=3,
@@ -47,7 +47,7 @@ class TestAlbumFolderIntegration:
         task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
         manager.tasks[task.task_id] = task
 
-        temp_dir = tmp_path / "temp_jmcomic_ch1"
+        temp_dir = tmp_path / "temp_jm_ch1"
         temp_dir.mkdir()
         (temp_dir / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
         (temp_dir / "002.jpg").write_bytes(b"\xff\xd8\xff\xd9")
@@ -135,8 +135,8 @@ class TestAlbumCbzIntegration:
         manager.set_album_coordinator(coordinator)
 
         base_comic_kwargs = dict(
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             album_id="album1",
             album_title="Album",
             album_total_chapters=2,
@@ -145,7 +145,7 @@ class TestAlbumCbzIntegration:
         )
 
         # 注册专辑任务，使 coordinator 能追踪齐套状态
-        album_key = ("jmcomic", "album1")
+        album_key = ("jm", "album1")
         coordinator.register_album_tasks(album_key, ["ch1", "ch2"], album_total_chapters=2)
 
         for chap_num, chap_name in [(1, "Ch1"), (2, "Ch2")]:
@@ -157,7 +157,7 @@ class TestAlbumCbzIntegration:
             task = DownloadTask(comic=comic, status=DownloadStatus.DOWNLOADING)
             manager.tasks[task.task_id] = task
 
-            temp_dir = tmp_path / f"temp_jmcomic_ch{chap_num}"
+            temp_dir = tmp_path / f"temp_jm_ch{chap_num}"
             temp_dir.mkdir()
             (temp_dir / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
 

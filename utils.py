@@ -116,6 +116,22 @@ def sanitize_path_chars(name: str) -> str:
     return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)
 
 
+def normalize_source_key(source: str) -> str:
+    """Normalize persisted source identifiers to current canonical keys."""
+    key = str(source or "").strip()
+    if key == "jmcomic":
+        return "jm"
+    return key
+
+
+def normalize_comic_source_key(source: str) -> str:
+    """Normalize persisted comic_source identifiers to current canonical keys."""
+    key = str(source or "").strip()
+    if key == "JMCOMIC":
+        return "JM"
+    return key
+
+
 def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
     """规范化多来源认证字典。
 
@@ -123,26 +139,36 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         source_auth: 原始来源认证字典，可能为 None 或包含部分条目
 
     Returns:
-        规范化的认证字典，至少包含 hcomic、moeimg 和 jmcomic 的默认条目
+        规范化的认证字典，至少包含 hcomic、moeimg 和 jm 的默认条目
     """
     normalized: dict[str, dict[str, str]] = {
         "hcomic": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "moeimg": {"cookie": "", "user_agent": "", "bearer_token": ""},
-        "jmcomic": {"cookie": "", "user_agent": "", "bearer_token": ""},
+        "jm": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "bika": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "copymanga": {"cookie": "", "user_agent": "", "bearer_token": ""},
     }
     if not isinstance(source_auth, dict):
         return normalized
-    for source, auth in source_auth.items():
+    for raw_source, auth in source_auth.items():
+        source = normalize_source_key(raw_source)
         if source not in normalized or not isinstance(auth, dict):
             continue
-        normalized[source]["cookie"] = str(auth.get("cookie", "") or "").strip()
-        normalized[source]["user_agent"] = str(auth.get("user_agent", auth.get("ua", "")) or "").strip()
-        normalized[source]["bearer_token"] = str(auth.get("bearer_token", "") or "").strip()
+        values = {
+            "cookie": str(auth.get("cookie", "") or "").strip(),
+            "user_agent": str(auth.get("user_agent", auth.get("ua", "")) or "").strip(),
+            "bearer_token": str(auth.get("bearer_token", "") or "").strip(),
+        }
+        for key, value in values.items():
+            if value or not normalized[source].get(key):
+                normalized[source][key] = value
         if source in ("moeimg", "bika", "hcomic"):
-            normalized[source]["username"] = str(auth.get("username", "") or "").strip()
-            normalized[source]["password"] = str(auth.get("password", "") or "").strip()
+            username = str(auth.get("username", "") or "").strip()
+            password = str(auth.get("password", "") or "").strip()
+            if username or not normalized[source].get("username"):
+                normalized[source]["username"] = username
+            if password or not normalized[source].get("password"):
+                normalized[source]["password"] = password
     return normalized
 
 

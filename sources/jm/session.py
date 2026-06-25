@@ -1,4 +1,4 @@
-"""jmcomic 共享会话工厂。"""
+"""jm 共享会话工厂。"""
 
 from __future__ import annotations
 

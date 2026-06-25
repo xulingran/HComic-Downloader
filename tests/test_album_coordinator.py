@@ -12,8 +12,8 @@ def _make_task(chap_id: str, album_id: str = "100", total: int = 3, title: str =
     comic = ComicInfo(
         id=chap_id,
         title=f"{title} - Ch{chap_id}",
-        source_site="jmcomic",
-        comic_source="JMCOMIC",
+        source_site="jm",
+        comic_source="JM",
         album_id=album_id,
         album_total_chapters=total,
         album_title=title,
@@ -43,7 +43,7 @@ class TestAlbumStagingCoordinator:
 
     def test_register_and_get_progress(self, tmp_path):
         coord, events, dd = self._make_coordinator(tmp_path)
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         coord.register_album_tasks(key, ["t1", "t2", "t3"], album_total_chapters=3)
 
         prog = coord.get_progress(key)
@@ -52,12 +52,12 @@ class TestAlbumStagingCoordinator:
 
     def test_get_progress_unknown_album(self, tmp_path):
         coord, _, _ = self._make_coordinator(tmp_path)
-        prog = coord.get_progress(("jmcomic", "999"))
+        prog = coord.get_progress(("jm", "999"))
         assert prog.total_chapters == 0
 
     def test_on_chapter_complete_notifies_event(self, tmp_path):
         coord, events, dd = self._make_coordinator(tmp_path)
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         coord.register_album_tasks(key, ["t1"], album_total_chapters=1)
 
         album_dir = os.path.join(dd, "Author-Album")
@@ -73,7 +73,7 @@ class TestAlbumStagingCoordinator:
 
     def test_force_pack_no_chapters(self, tmp_path):
         coord, events, dd = self._make_coordinator(tmp_path)
-        result = coord.force_pack_album(("jmcomic", "100"))
+        result = coord.force_pack_album(("jm", "100"))
         assert result.status == "no_chapters"
 
     def test_force_pack_conflict_when_exists(self, tmp_path):
@@ -89,8 +89,8 @@ class TestAlbumStagingCoordinator:
         comic = ComicInfo(
             id="100",
             title="Album - Ch1",
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             album_id="100",
             album_title="Album",
             album_total_chapters=1,
@@ -98,7 +98,7 @@ class TestAlbumStagingCoordinator:
             pages=1,
         )
 
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         result = coord.force_pack_album(key, overwrite=False, comic=comic)
         assert result.status == "conflict"
         assert result.existing_path == existing
@@ -113,8 +113,8 @@ class TestAlbumStagingCoordinator:
         comic = ComicInfo(
             id="100",
             title="Album - Ch1",
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             album_id="100",
             album_title="Album",
             album_total_chapters=1,
@@ -122,7 +122,7 @@ class TestAlbumStagingCoordinator:
             pages=1,
         )
 
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         coord.register_album_tasks(key, ["t1"], album_total_chapters=1)
         result = coord.force_pack_album(key, overwrite=False, comic=comic)
 
@@ -141,8 +141,8 @@ class TestAlbumStagingCoordinator:
         comic = ComicInfo(
             id="100",
             title="Album - Ch1",
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             album_id="100",
             album_title="Album",
             album_total_chapters=1,
@@ -150,7 +150,7 @@ class TestAlbumStagingCoordinator:
             pages=1,
         )
 
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         coord.register_album_tasks(key, ["t1"], album_total_chapters=1)
         result = coord.force_pack_album(key, overwrite=False, comic=comic)
 
@@ -168,7 +168,7 @@ class TestAlbumCoordinatorQueries:
 
     def test_get_task_ids_returns_registered_set(self, tmp_path):
         coord, _ = self._make_coordinator(tmp_path)
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         coord.register_album_tasks(key, ["t1", "t2", "t3"], album_total_chapters=3)
 
         ids = coord.get_task_ids(key)
@@ -176,12 +176,12 @@ class TestAlbumCoordinatorQueries:
 
     def test_get_task_ids_unknown_album_returns_empty(self, tmp_path):
         coord, _ = self._make_coordinator(tmp_path)
-        assert coord.get_task_ids(("jmcomic", "unknown")) == set()
+        assert coord.get_task_ids(("jm", "unknown")) == set()
 
     def test_get_task_ids_returns_copy(self, tmp_path):
         """返回的集合修改不应影响 coordinator 内部状态。"""
         coord, _ = self._make_coordinator(tmp_path)
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         coord.register_album_tasks(key, ["t1"], album_total_chapters=1)
 
         ids = coord.get_task_ids(key)
@@ -190,10 +190,10 @@ class TestAlbumCoordinatorQueries:
 
     def test_is_tracked_true_after_register(self, tmp_path):
         coord, _ = self._make_coordinator(tmp_path)
-        key: AlbumKey = ("jmcomic", "100")
+        key: AlbumKey = ("jm", "100")
         coord.register_album_tasks(key, ["t1"], album_total_chapters=1)
         assert coord.is_tracked(key) is True
 
     def test_is_tracked_false_for_unknown(self, tmp_path):
         coord, _ = self._make_coordinator(tmp_path)
-        assert coord.is_tracked(("jmcomic", "unknown")) is False
+        assert coord.is_tracked(("jm", "unknown")) is False

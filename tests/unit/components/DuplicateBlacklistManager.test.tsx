@@ -19,7 +19,7 @@ const emptyFpMap = new Map<string, number>()
 describe('DuplicateBlacklistManager', () => {
   beforeEach(() => {
     storeState = {
-      duplicateBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] },
+      duplicateBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
       removeDuplicateIgnore: vi.fn(),
       confirmMemberCount: vi.fn(),
     }
@@ -52,13 +52,13 @@ describe('DuplicateBlacklistManager', () => {
     storeState.duplicateBlacklist = {
       ...storeState.duplicateBlacklist,
       hcomic: [{ fingerprint: 'hcomic条目', memberCount: 1 }],
-      jmcomic: [{ fingerprint: 'jmcomic条目', memberCount: 1 }],
+      jm: [{ fingerprint: 'jm条目', memberCount: 1 }],
     }
     render(<DuplicateBlacklistManager defaultSource="hcomic" fingerprintToSize={emptyFpMap} onClose={vi.fn()} />)
     expect(screen.getByText('hcomic条目')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByRole('button', { name: /jmcomic/i }))
-    expect(screen.getByText('jmcomic条目')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /jm/i }))
+    expect(screen.getByText('jm条目')).toBeInTheDocument()
     expect(screen.queryByText('hcomic条目')).not.toBeInTheDocument()
   })
 

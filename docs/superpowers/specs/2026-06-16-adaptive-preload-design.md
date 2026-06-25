@@ -207,7 +207,7 @@ usePreloadManager(..., forward, backward, concurrency, adaptive?)
 
 **明确排除（避免过度设计）：**
 - 不做网络质量探测（弱网时不自动调大并发——那是另一个 feature）。
-- 不对单个来源（hcomic/moeimg/jmcomic/bika）做差异化——自适应是通用的。
+- 不对单个来源（hcomic/moeimg/jm/bika）做差异化——自适应是通用的。
 
 ## 8. 测试策略
 

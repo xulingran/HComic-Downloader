@@ -1,4 +1,4 @@
-"""jmcomic 标题补全模块 — 并发获取专辑详情页标题。"""
+"""jm 标题补全模块 — 并发获取专辑详情页标题。"""
 
 from __future__ import annotations
 

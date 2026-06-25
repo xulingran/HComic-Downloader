@@ -8,7 +8,7 @@ import threading
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from utils import open_sqlite_db
+from utils import normalize_comic_source_key, normalize_source_key, open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,89 @@ class ReadingHistoryDB:
                     raise ValueError(f"Unknown migration column: {col}")
                 self._conn.execute(f"ALTER TABLE reading_history ADD COLUMN {col} TEXT DEFAULT ''")
         self._conn.commit()
+        self._migrate_source_ids()
+
+    def _migrate_source_ids(self) -> None:
+        """迁移旧阅读历史来源标识 jmcomic/JMCOMIC 到 jm/JM。"""
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT id, comic_id, title, cover_url, source, source_site, media_id, source_url,
+                       last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at
+                FROM reading_history
+                WHERE source = 'JMCOMIC' OR source_site = 'jmcomic'
+                """
+            ).fetchall()
+            if not rows:
+                return
+            canonical_keys = {(row["comic_id"], normalize_comic_source_key(row["source"])) for row in rows}
+            placeholders = ",".join(["(?, ?)"] * len(canonical_keys))
+            flat_keys: list[str] = []
+            for key in canonical_keys:
+                flat_keys.extend(key)
+            all_rows = self._conn.execute(
+                """
+                SELECT id, comic_id, title, cover_url, source, source_site, media_id, source_url,
+                       last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at
+                FROM reading_history
+                """
+                f"WHERE (comic_id, source) IN ({placeholders}) OR source = 'JMCOMIC' OR source_site = 'jmcomic'",
+                flat_keys,
+            ).fetchall()
+
+            merged: dict[tuple[str, str], dict] = {}
+            ids_to_delete: set[int] = set()
+            for row in all_rows:
+                canonical_key = (row["comic_id"], normalize_comic_source_key(row["source"]))
+                ids_to_delete.add(int(row["id"]))
+                item = dict(row)
+                item["source"] = canonical_key[1]
+                item["source_site"] = normalize_source_key(row["source_site"] or "")
+                current = merged.get(canonical_key)
+                if current is None:
+                    merged[canonical_key] = item
+                    continue
+                if str(item["last_read_at"] or "") >= str(current["last_read_at"] or ""):
+                    preferred = item
+                    older = current
+                else:
+                    preferred = current
+                    older = item
+                preferred["created_at"] = min(str(preferred["created_at"] or ""), str(older["created_at"] or ""))
+                merged[canonical_key] = preferred
+
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                for row_id in ids_to_delete:
+                    self._conn.execute("DELETE FROM reading_history WHERE id = ?", (row_id,))
+                for item in merged.values():
+                    self._conn.execute(
+                        """
+                        INSERT INTO reading_history
+                            (comic_id, title, cover_url, source, source_site, media_id, source_url,
+                             last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            item["comic_id"],
+                            item["title"] or "",
+                            item["cover_url"] or "",
+                            item["source"],
+                            item["source_site"] or "",
+                            item["media_id"] or "",
+                            item["source_url"] or "",
+                            item["last_page"] or 0,
+                            item["total_pages"] or 0,
+                            item["last_chapter_id"] or "",
+                            item["last_chapter_name"] or "",
+                            item["last_read_at"],
+                            item["created_at"],
+                        ),
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def upsert(self, entry: ReadingHistoryEntry) -> None:
         now = datetime.now(timezone.utc).isoformat()  # noqa: UP017

@@ -15,8 +15,8 @@ def _make_album_chapter_comic(chap_id: str, album_id: str = "100", total: int = 
     return ComicInfo(
         id=chap_id,
         title=f"Album - {chap_id}",
-        source_site="jmcomic",
-        comic_source="JMCOMIC",
+        source_site="jm",
+        comic_source="JM",
         album_id=album_id,
         album_total_chapters=total,
         album_title="Album",
@@ -60,7 +60,7 @@ def _setup_album_dm(
         dm.tasks[tid].status = statuses[i]
     # 阻止 worker 启动，纯状态机测试
     dm.is_running = True
-    coord = FakeCoordinator({("jmcomic", album_id): set(task_ids)})
+    coord = FakeCoordinator({("jm", album_id): set(task_ids)})
     dm._album_coordinator = coord
     return dm, task_ids, coord
 
@@ -70,7 +70,7 @@ class TestPauseAlbumTasks:
         dm, task_ids, _ = _setup_album_dm(
             statuses=[DownloadStatus.QUEUED, DownloadStatus.DOWNLOADING, DownloadStatus.PAUSED]
         )
-        result = dm.pause_album_tasks(("jmcomic", "100"))
+        result = dm.pause_album_tasks(("jm", "100"))
 
         assert result["affected"] == 2  # queued + downloading
         assert result["skipped"] == 1  # paused 不可再暂停
@@ -83,7 +83,7 @@ class TestPauseAlbumTasks:
 
     def test_unknown_album_returns_not_found(self):
         dm, _, _ = _setup_album_dm()
-        result = dm.pause_album_tasks(("jmcomic", "nonexistent"))
+        result = dm.pause_album_tasks(("jm", "nonexistent"))
         assert result["notFound"] is True
         assert result["affected"] == 0
 
@@ -93,7 +93,7 @@ class TestResumeAlbumTasks:
         dm, task_ids, _ = _setup_album_dm(
             statuses=[DownloadStatus.PAUSED, DownloadStatus.PAUSING, DownloadStatus.QUEUED]
         )
-        result = dm.resume_album_tasks(("jmcomic", "100"))
+        result = dm.resume_album_tasks(("jm", "100"))
 
         assert result["affected"] == 2  # paused + pausing
         assert result["skipped"] == 1  # queued 不可恢复
@@ -103,7 +103,7 @@ class TestResumeAlbumTasks:
 
     def test_unknown_album_returns_not_found(self):
         dm, _, _ = _setup_album_dm()
-        result = dm.resume_album_tasks(("jmcomic", "nonexistent"))
+        result = dm.resume_album_tasks(("jm", "nonexistent"))
         assert result["notFound"] is True
 
 
@@ -113,7 +113,7 @@ class TestCancelAlbumTasks:
         dm, task_ids, _ = _setup_album_dm(
             statuses=[DownloadStatus.DOWNLOADING, DownloadStatus.COMPLETED, DownloadStatus.QUEUED]
         )
-        result = dm.cancel_album_tasks(("jmcomic", "100"))
+        result = dm.cancel_album_tasks(("jm", "100"))
 
         assert result["affected"] == 2  # downloading + queued
         assert result["skipped"] == 1  # completed 被跳过（保留）
@@ -125,7 +125,7 @@ class TestCancelAlbumTasks:
 
     def test_unknown_album_returns_not_found(self):
         dm, _, _ = _setup_album_dm()
-        result = dm.cancel_album_tasks(("jmcomic", "nonexistent"))
+        result = dm.cancel_album_tasks(("jm", "nonexistent"))
         assert result["notFound"] is True
 
     def test_all_completed_returns_zero_affected(self):
@@ -133,7 +133,7 @@ class TestCancelAlbumTasks:
         dm, task_ids, _ = _setup_album_dm(
             statuses=[DownloadStatus.COMPLETED, DownloadStatus.COMPLETED, DownloadStatus.COMPLETED]
         )
-        result = dm.cancel_album_tasks(("jmcomic", "100"))
+        result = dm.cancel_album_tasks(("jm", "100"))
         assert result["affected"] == 0
         assert result["skipped"] == 3
         for tid in task_ids:
@@ -148,7 +148,7 @@ class TestFallbackWithoutCoordinator:
         # 注入一个不跟踪该专辑的 coordinator（模拟跨进程重启后状态丢失）
         dm._album_coordinator = FakeCoordinator({})
 
-        result = dm.cancel_album_tasks(("jmcomic", "100"))
+        result = dm.cancel_album_tasks(("jm", "100"))
         assert result["notFound"] is False
         assert result["affected"] == 2
         for tid in task_ids:
@@ -159,7 +159,7 @@ class TestFallbackWithoutCoordinator:
         # 无 coordinator（基类 DownloadManager 默认无 _album_coordinator）
         del dm._album_coordinator
 
-        result = dm.pause_album_tasks(("jmcomic", "100"))
+        result = dm.pause_album_tasks(("jm", "100"))
         assert result["affected"] == 2
         assert dm.tasks[task_ids[0]].status == DownloadStatus.PAUSING
         assert dm.tasks[task_ids[1]].status == DownloadStatus.PAUSED

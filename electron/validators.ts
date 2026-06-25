@@ -197,13 +197,13 @@ export function absolutePath(): Validator<string> {
 
 // ── Tag blacklist validator ──────────────────────────────────────────────
 
-export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] }> {
-  return (value): value is { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] } => {
+export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] }> {
+  return (value): value is { hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] } => {
     if (typeof value !== 'object' || value === null) {
       throw new ValidationError('tagBlacklist must be an object')
     }
     const obj = value as Record<string, unknown>
-    for (const key of ['hcomic', 'moeimg', 'jmcomic', 'bika', 'copymanga']) {
+    for (const key of ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga']) {
       const arr = obj[key]
       if (!Array.isArray(arr)) {
         throw new ValidationError(`tagBlacklist.${key} must be an array`)

@@ -19,7 +19,7 @@
 | 9 | `src/hooks/useInitConfig.ts` | 26-31 | `normalized` 对象字面量 |
 | 10 | `src/utils/source.ts` | 11-15 | `normalizeSourceKey()` if/else 链 |
 | 11 | `src/utils/auth.ts` | 4 | `AUTH_REQUIRED_SOURCES` Set |
-| 12 | `src/pages/SearchPage.tsx` | 349 | `source === 'hcomic' \|\| source === 'jmcomic'` |
+| 12 | `src/pages/SearchPage.tsx` | 349 | `source === 'hcomic' \|\| source === 'jm'` |
 | 13 | `shared/types.ts` | 80, 197 | `tagBlacklist` 类型定义 |
 | 14 | `electron/validators.ts` | 198-226 | `tagBlacklist()` 验证器 |
 
@@ -67,8 +67,8 @@ export const SOURCE_META = {
     supportsFavourites: true,
     requiresAuth: false,
   },
-  jmcomic: {
-    label: 'jmcomic',
+  jm: {
+    label: 'jm',
     supportsRandom: true,
     supportsFavourites: true,
     requiresAuth: true,
@@ -112,7 +112,7 @@ export const AUTH_REQUIRED_SOURCES = COMIC_SOURCES.filter(
 同时，将 `tagBlacklist` 类型改为基于 `ComicSource`：
 
 ```typescript
-// 替代原来的 { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] }
+// 替代原来的 { hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] }
 export type TagBlacklist = Record<ComicSource, string[]>
 ```
 
@@ -225,7 +225,7 @@ export function isAuthError(err: unknown): boolean {
 -const sources = [
 -  { value: 'hcomic', label: 'HComic' },
 -  { value: 'moeimg', label: 'Moeimg' },
--  { value: 'jmcomic', label: 'jmcomic' },
+-  { value: 'jm', label: 'jm' },
 -  { value: 'bika', label: '哔咔' },
 -  { value: 'copymanga', label: '拷贝漫画' }
 -]
@@ -239,7 +239,7 @@ export function isAuthError(err: unknown): boolean {
 
 同时更新 `showRandom` 条件：
 ```diff
--showRandom={source === 'hcomic' || source === 'jmcomic'}
+-showRandom={source === 'hcomic' || source === 'jm'}
 +import { sourceSupportsRandom } from '../utils/source'
 +showRandom={sourceSupportsRandom(source)}
 ```
@@ -289,7 +289,7 @@ export function isAuthError(err: unknown): boolean {
 
 #### ComicInfoDrawer.tsx
 ```diff
--const sourceKeyMap: Record<string, keyof TagBlacklist> = { moeimg: 'moeimg', jmcomic: 'jmcomic', bika: 'bika', copymanga: 'copymanga' }
+-const sourceKeyMap: Record<string, keyof TagBlacklist> = { moeimg: 'moeimg', jm: 'jm', bika: 'bika', copymanga: 'copymanga' }
 +import { normalizeSourceKey } from '@/utils/source'
 -const key = sourceKeyMap[comicSource] ?? 'hcomic'
 +const key = normalizeSourceKey(comicSource)
@@ -297,7 +297,7 @@ export function isAuthError(err: unknown): boolean {
 
 #### useSettingsStore.ts
 ```diff
--const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] }
+-const DEFAULT_TAG_BLACKLIST: TagBlacklist = { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] }
 +import { COMIC_SOURCES, type TagBlacklist } from '@shared/types'
 +const DEFAULT_TAG_BLACKLIST: TagBlacklist = Object.fromEntries(
 +  COMIC_SOURCES.map(s => [s, []])
@@ -306,10 +306,10 @@ export function isAuthError(err: unknown): boolean {
 
 #### useInitConfig.ts
 ```diff
--const normalized: { hcomic: string[]; moeimg: string[]; jmcomic: string[]; bika: string[]; copymanga: string[] } = {
+-const normalized: { hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] } = {
 -  hcomic: Array.isArray(raw.hcomic) ? raw.hcomic as string[] : [],
 -  moeimg: Array.isArray(raw.moeimg) ? raw.moeimg as string[] : [],
--  jmcomic: Array.isArray(raw.jmcomic) ? raw.jmcomic as string[] : [],
+-  jm: Array.isArray(raw.jmcomic) ? raw.jmcomic as string[] : [],
 -  bika: Array.isArray(raw.bika) ? raw.bika as string[] : [],
 -  copymanga: Array.isArray(raw.copymanga) ? raw.copymanga as string[] : [],
 -}

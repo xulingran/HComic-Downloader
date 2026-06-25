@@ -52,7 +52,7 @@ function getSourceSiteLabel(sourceSite: string): string {
   const labels: Record<string, string> = {
     hcomic: 'HComic',
     moeimg: 'Moeimg',
-    jmcomic: 'JMComic',
+    jm: 'JM',
   }
 
   return labels[sourceSite] ?? sourceSite

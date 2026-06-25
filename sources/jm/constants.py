@@ -1,4 +1,4 @@
-"""jmcomic 常量定义。"""
+"""jm 常量定义。"""
 
 DEFAULT_DOMAIN = "18comic.vip"
 

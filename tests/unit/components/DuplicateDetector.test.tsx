@@ -47,7 +47,7 @@ describe('DuplicateDetector', () => {
       needsLogin: false,
     })
     storeState = {
-      duplicateBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] },
+      duplicateBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
       sfwMode: false,
       addDuplicateIgnore: vi.fn(),
       removeDuplicateIgnore: vi.fn(),

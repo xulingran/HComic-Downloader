@@ -21,7 +21,7 @@ vi.mock('@/utils/source', () => ({
 }))
 vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: () => ({
-    tagBlacklist: { hcomic: [], moeimg: [], jmcomic: [], bika: [], copymanga: [] },
+    tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
     favouriteTagHighlight: false,
     addTag: () => {},
     removeTag: () => {},

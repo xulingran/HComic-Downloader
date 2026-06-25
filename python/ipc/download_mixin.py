@@ -266,16 +266,16 @@ class DownloadMixin:
                         album_title=raw_album_title,
                     )
                 else:
-                    jm = self.parser.parsers.get("jmcomic")
+                    jm = self.parser.parsers.get("jm")
                     if jm is None:
-                        raise ValueError("jmcomic source unavailable")
+                        raise ValueError("jm source unavailable")
                     image_urls, scramble_id = jm.get_chapter_images(chap_id)
                     comic = ComicInfo(
                         id=chap_id,
                         title=f"{album_title} - {chap_name}",
                         author=comic_author,
-                        source_site="jmcomic",
-                        comic_source="JMCOMIC",
+                        source_site="jm",
+                        comic_source="JM",
                         media_id=chap_id,
                         image_urls=image_urls,
                         pages=len(image_urls),

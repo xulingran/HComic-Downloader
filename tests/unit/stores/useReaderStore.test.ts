@@ -3,7 +3,7 @@ import { useReaderStore } from '@/stores/useReaderStore'
 import type { ComicInfo } from '@shared/types'
 
 const comic: ComicInfo = {
-  id: '999001', title: 'Multi', url: 'https://x/1', coverUrl: '', source: 'JMCOMIC', sourceSite: 'jmcomic',
+  id: '999001', title: 'Multi', url: 'https://x/1', coverUrl: '', source: 'JM', sourceSite: 'jm',
 }
 
 describe('useReaderStore', () => {

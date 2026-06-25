@@ -7,11 +7,44 @@ from dataclasses import dataclass, field
 from dataclasses import fields as dc_fields
 from pathlib import Path
 
-from utils import normalize_source_auth
+from utils import normalize_source_auth, normalize_source_key
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_FORMAT = "folder"
+VALID_SOURCE_KEYS = ("hcomic", "moeimg", "jm", "bika", "copymanga")
+
+
+def _default_source_list_map() -> dict[str, list]:
+    return {source: [] for source in VALID_SOURCE_KEYS}
+
+
+def _migrate_blacklist_entries(entries: list) -> list[dict]:
+    migrated = []
+    for entry in entries:
+        if isinstance(entry, str):
+            migrated.append({"fingerprint": entry, "memberCount": None})
+        elif isinstance(entry, dict) and "fingerprint" in entry:
+            migrated.append(
+                {
+                    "fingerprint": str(entry["fingerprint"]),
+                    "memberCount": entry.get("memberCount"),
+                }
+            )
+    return migrated
+
+
+def _normalize_source_list_map(value: dict | None, *, structured_entries: bool = False) -> dict[str, list]:
+    normalized = _default_source_list_map()
+    if not isinstance(value, dict):
+        return normalized
+    for raw_source, entries in value.items():
+        source = normalize_source_key(raw_source)
+        if source not in normalized or not isinstance(entries, list):
+            continue
+        migrated_entries = _migrate_blacklist_entries(entries) if structured_entries else list(entries)
+        normalized[source].extend(migrated_entries)
+    return normalized
 
 
 @dataclass
@@ -47,7 +80,7 @@ class Config:
     auth_cookie: str = ""  # 从 curl 提取的 Cookie
     auth_user_agent: str = ""  # 从 curl 提取的 User-Agent
     # 默认来源
-    default_source: str = "hcomic"  # "hcomic" | "moeimg"
+    default_source: str = "hcomic"
     # 多来源认证信息
     source_auth: dict[str, dict[str, str]] = field(default_factory=dict)
     # 批量下载延迟（秒）
@@ -61,18 +94,14 @@ class Config:
     notify_when_foreground: str = "inactive"  # "inactive" | "always"
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
     card_style: str = "cover"  # 卡片样式："cover"（封面+标题）| "detailed"（详细列表）
-    tag_blacklist: dict[str, list[str]] = field(default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []})
+    tag_blacklist: dict[str, list[str]] = field(default_factory=_default_source_list_map)
     # 重复检测已忽略的组（按来源隔离，每项为 {fingerprint, memberCount}）
-    duplicate_blacklist: dict[str, list[dict]] = field(
-        default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []}
-    )
+    duplicate_blacklist: dict[str, list[dict]] = field(default_factory=_default_source_list_map)
     # 查缺补漏已忽略的组（按来源隔离，每项为 {fingerprint, memberCount}）
     # 与 duplicate_blacklist 同构但独立存储，两个功能的忽略状态互不影响
-    missing_blacklist: dict[str, list[dict]] = field(
-        default_factory=lambda: {"hcomic": [], "moeimg": [], "jmcomic": []}
-    )
-    # jmcomic 自定义域名（空字符串表示自动选择）
-    jmcomic_domain: str = ""
+    missing_blacklist: dict[str, list[dict]] = field(default_factory=_default_source_list_map)
+    # jm 自定义域名（空字符串表示自动选择）
+    jm_domain: str = ""
     # 预览页面缓存大小上限（MB）
     preview_cache_size_limit_mb: int = 500
     # 推荐标签高亮开关
@@ -92,8 +121,12 @@ class Config:
 
     def __post_init__(self):
         self.source_auth = self._normalize_source_auth(self.source_auth)
-        if self.default_source not in ("hcomic", "moeimg", "jmcomic"):
+        self.default_source = normalize_source_key(self.default_source)
+        if self.default_source not in VALID_SOURCE_KEYS:
             self.default_source = "hcomic"
+        self.tag_blacklist = _normalize_source_list_map(self.tag_blacklist)
+        self.duplicate_blacklist = _normalize_source_list_map(self.duplicate_blacklist, structured_entries=True)
+        self.missing_blacklist = _normalize_source_list_map(self.missing_blacklist, structured_entries=True)
         # 验证输出格式
         if self.output_format not in ("folder", "zip", "cbz"):
             self.output_format = DEFAULT_OUTPUT_FORMAT
@@ -241,42 +274,15 @@ class Config:
             # 兼容旧配置：通知配置
             if "notify_when_foreground" not in data:
                 data["notify_when_foreground"] = "inactive"
-            # 迁移 duplicate_blacklist：旧版纯字符串列表 -> 结构化对象列表
-            dup_bl = data.get("duplicate_blacklist")
-            if isinstance(dup_bl, dict):
-                for source_key, entries in dup_bl.items():
-                    if not isinstance(entries, list):
-                        continue
-                    migrated = []
-                    for entry in entries:
-                        if isinstance(entry, str):
-                            migrated.append({"fingerprint": entry, "memberCount": None})
-                        elif isinstance(entry, dict) and "fingerprint" in entry:
-                            migrated.append(
-                                {
-                                    "fingerprint": str(entry["fingerprint"]),
-                                    "memberCount": entry.get("memberCount"),
-                                }
-                            )
-                    dup_bl[source_key] = migrated
-            # 迁移 missing_blacklist：与 duplicate_blacklist 同构迁移逻辑
-            miss_bl = data.get("missing_blacklist")
-            if isinstance(miss_bl, dict):
-                for source_key, entries in miss_bl.items():
-                    if not isinstance(entries, list):
-                        continue
-                    migrated = []
-                    for entry in entries:
-                        if isinstance(entry, str):
-                            migrated.append({"fingerprint": entry, "memberCount": None})
-                        elif isinstance(entry, dict) and "fingerprint" in entry:
-                            migrated.append(
-                                {
-                                    "fingerprint": str(entry["fingerprint"]),
-                                    "memberCount": entry.get("memberCount"),
-                                }
-                            )
-                    miss_bl[source_key] = migrated
+            # 迁移 duplicate_blacklist / missing_blacklist：旧版纯字符串列表 -> 结构化对象列表，旧来源 jmcomic -> jm
+            data["tag_blacklist"] = _normalize_source_list_map(data.get("tag_blacklist"))
+            data["duplicate_blacklist"] = _normalize_source_list_map(
+                data.get("duplicate_blacklist"), structured_entries=True
+            )
+            data["missing_blacklist"] = _normalize_source_list_map(data.get("missing_blacklist"), structured_entries=True)
+            # 迁移旧配置：jmcomic_domain -> jm_domain（旧键名本身保留为向后兼容）
+            if "jmcomic_domain" in data and "jm_domain" not in data:
+                data["jm_domain"] = data.pop("jmcomic_domain")
             # 只保留 Config 已知字段，忽略未知 key
             known_fields = {f.name for f in dc_fields(cls)}
             unknown = [k for k in data if k not in known_fields]

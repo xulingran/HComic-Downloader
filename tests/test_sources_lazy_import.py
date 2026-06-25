@@ -52,7 +52,7 @@ def test_default_source_parser_loaded_on_instance():
     assert "sources.hcomic.parser" in sys.modules, "hcomic.parser should be loaded (default)"
     for banned in (
         "sources.bika.parser",
-        "sources.jmcomic.parser",
+        "sources.jm.parser",
         "sources.moeimg.parser",
         "sources.copymanga.parser",
     ):
@@ -60,14 +60,14 @@ def test_default_source_parser_loaded_on_instance():
 
 
 def test_unused_source_stays_lazy():
-    """Accessing only jmcomic should not load bika/moeimg/hcomic/copymanga parsers."""
+    """Accessing only jm should not load bika/moeimg/hcomic/copymanga parsers."""
     _clean()
     import sources
 
     sources._PARSER_CLASSES.clear()
-    _ = sources.MultiSourceParser(default_source="jmcomic")
+    _ = sources.MultiSourceParser(default_source="jm")
     parser_mods = {m for m in sys.modules if m.endswith(".parser") and m.startswith("sources.")}
-    assert "sources.jmcomic.parser" in sys.modules, "jmcomic should be loaded"
+    assert "sources.jm.parser" in sys.modules, "jm should be loaded"
     for banned in ("sources.bika.parser", "sources.moeimg.parser", "sources.copymanga.parser"):
         assert banned not in parser_mods, f"{banned} should NOT be loaded"
 
@@ -82,7 +82,7 @@ def test_lazy_source_loaded_on_first_access():
 
     _ = p._get_parser("bika")
     assert "sources.bika.parser" in sys.modules, "bika.parser should be loaded after first access"
-    for still_lazy in ("sources.jmcomic.parser", "sources.moeimg.parser", "sources.copymanga.parser"):
+    for still_lazy in ("sources.jm.parser", "sources.moeimg.parser", "sources.copymanga.parser"):
         assert still_lazy not in sys.modules, f"{still_lazy} should still be lazy"
 
 

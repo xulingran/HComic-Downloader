@@ -21,14 +21,14 @@ for line in sys.stdin:
 
 设置页加载时前端会连发：
 
-- 1 个 `get_jmcomic_domains`（探测多个镜像，HTTP 请求）
+- 1 个 `get_jm_domains`（探测多个镜像，HTTP 请求）
 - N 个 `verify_auth`（每个 source 各一次 HTTP 请求）
 
 这些方法都未在线程池白名单中，于是在主循环里**严格串行**执行，UI 等待时间是各请求 RTT 之和。
 
 ## 2. 目标
 
-1. **设置页场景下**多个 `verify_auth` + `get_jmcomic_domains` 并发执行，等待时间从 Σ(RTT) 降为 max(RTT)
+1. **设置页场景下**多个 `verify_auth` + `get_jm_domains` 并发执行，等待时间从 Σ(RTT) 降为 max(RTT)
 2. **不改动 parser、downloader、所有 mixin、所有 handler 函数体**——改动面控制在主循环与执行器层
 3. 为阶段 B（部分 handler 升级为 `async def` + aiohttp）预留**零成本升级路径**
 
@@ -308,10 +308,10 @@ self._request_executor.shutdown(cancel_futures=True, wait=False)
 ### 5.1 设置页加载（目标场景）
 
 ```
-T=0ms   reader → run_coroutine_threadsafe (req1: get_jmcomic_domains)
+T=0ms   reader → run_coroutine_threadsafe (req1: get_jm_domains)
 T=0ms   _handle_line → run_in_executor → thread1 (request pool)
 T=1ms   reader → req2: verify_auth(hcomic) → thread2
-T=2ms   reader → req3: verify_auth(jmcomic) → thread3
+T=2ms   reader → req3: verify_auth(jm) → thread3
 T=3ms   reader → req4..req6 → thread4..thread6
 ...
 T=600ms thread4 完成（最快） → _write_response（持锁）

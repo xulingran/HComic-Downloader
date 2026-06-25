@@ -331,8 +331,8 @@ class TestAlbumCBZ:
             album_id="100",
             album_title="Test Album",
             album_total_chapters=3,
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
         )
 
     def test_get_album_folder_name(self, album_comic):
@@ -387,8 +387,8 @@ class TestAlbumCBZ:
             album_id="100",
             album_title="Album",
             album_total_chapters=2,
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             pages=2,
         )
         album_dir = tmp_path / "Auth-Album"
@@ -421,8 +421,8 @@ class TestAlbumCBZ:
             album_id="100",
             album_title="My Album",
             album_total_chapters=2,
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             tags=["tag1"],
             category="cat",
             language="chinese",

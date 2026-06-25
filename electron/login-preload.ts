@@ -28,8 +28,8 @@ contextBridge.executeInMainWorld({
       }
     }
 
-    // jmcomic 的 jquery.avs 初始化异常会连带使底部“我的”入口失去响应。
-    // 捕获期只兜底文字精确为“我的”的同源入口，其他按钮和站点行为不受影响。
+    // jm 的 jquery.avs 初始化异常会连带使底部"我的"入口失去响应。
+    // 捕获期只兜底文字精确为"我的"的同源入口，其他按钮和站点行为不受影响。
     document.addEventListener('click', (event) => {
       if (!/(?:^|\.)18comic\.|(?:^|\.)jmcomic/i.test(location.hostname)) return
       const target = event.target

@@ -30,7 +30,7 @@ class CoverMixin:
     def _build_cover_session(self, referer_domain: str = ""):
         """Create a thread-safe requests session with auth, cookies, and TLS fingerprinting.
 
-        Uses curl_cffi for TLS fingerprint impersonation (required by jmcomic CDN),
+        Uses curl_cffi for TLS fingerprint impersonation (required by jm CDN),
         copies cookies from all parser sessions, and sets a Referer header for
         hotlinking protection bypass.
         """
@@ -57,7 +57,7 @@ class CoverMixin:
         if src_headers:
             session.headers.update(src_headers)
 
-        # Copy cookies from all parser sessions — critical for jmcomic
+        # Copy cookies from all parser sessions — critical for jm
         # which relies on cookie jar (not Cookie header) for auth.
         try:
             for ps in self.parser.get_sessions():
@@ -66,7 +66,7 @@ class CoverMixin:
         except (AttributeError, KeyError):
             pass
 
-        # Set Referer for hotlinking protection bypass (jmcomic CDN requires this)
+        # Set Referer for hotlinking protection bypass (jm CDN requires this)
         if referer_domain:
             session.headers["Referer"] = f"https://{referer_domain}/"
 
@@ -90,7 +90,7 @@ class CoverMixin:
         except (AttributeError, KeyError):
             pass
 
-        # Extract domain from cover URL for Referer header (required by jmcomic CDN)
+        # Extract domain from cover URL for Referer header (required by jm CDN)
         referer_domain = urlparse(url).hostname or ""
 
         session = self._build_cover_session(referer_domain=referer_domain)

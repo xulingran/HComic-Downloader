@@ -151,14 +151,14 @@ export function useAvailableFonts() {
   return { getAvailableFonts }
 }
 
-export function useJmcomicDomains() {
+export function useJmDomains() {
   const { invoke } = useIpc()
 
-  const getJmcomicDomains = useCallback(async () => {
-    return invoke(() => window.hcomic!.getJmcomicDomains())
+  const getJmDomains = useCallback(async () => {
+    return invoke(() => window.hcomic!.getJmDomains())
   }, [invoke])
 
-  return { getJmcomicDomains }
+  return { getJmDomains }
 }
 
 export function useAuth() {

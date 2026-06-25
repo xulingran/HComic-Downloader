@@ -49,7 +49,7 @@ describe('useFavouritesStore', () => {
       downloadedStatus: {},
     })
 
-    expect(useFavouritesStore.getState().getPage('jmcomic', 1)).toBeUndefined()
+    expect(useFavouritesStore.getState().getPage('jm', 1)).toBeUndefined()
   })
 
   it('clears one source cache', () => {
@@ -59,7 +59,7 @@ describe('useFavouritesStore', () => {
       currentPage: 1,
       downloadedStatus: {},
     })
-    useFavouritesStore.getState().setPage('jmcomic', 1, {
+    useFavouritesStore.getState().setPage('jm', 1, {
       comics: [comic],
       pagination: { ...pagination, currentPage: 1 },
       currentPage: 1,
@@ -69,7 +69,7 @@ describe('useFavouritesStore', () => {
     useFavouritesStore.getState().clearCache('hcomic')
 
     expect(useFavouritesStore.getState().getPage('hcomic', 1)).toBeUndefined()
-    expect(useFavouritesStore.getState().getPage('jmcomic', 1)).toBeDefined()
+    expect(useFavouritesStore.getState().getPage('jm', 1)).toBeDefined()
   })
 
   it('does not clobber currentPage/currentSource when preloading (setCurrent=false)', () => {

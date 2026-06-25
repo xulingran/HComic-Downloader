@@ -223,7 +223,7 @@ describe('validators.ts', () => {
 
   describe('tagBlacklist()', () => {
     const valid4 = (overrides: Record<string, string[]> = {}) => ({
-      hcomic: [] as string[], moeimg: [] as string[], jmcomic: [] as string[], bika: [] as string[], copymanga: [] as string[],
+      hcomic: [] as string[], moeimg: [] as string[], jm: [] as string[], bika: [] as string[], copymanga: [] as string[],
       ...overrides,
     })
 
@@ -264,9 +264,9 @@ describe('validators.ts', () => {
     })
 
     it('validates all four source keys', () => {
-      expect(() => tagBlacklist()(valid4({ jmcomic: 'bad' as unknown as string[] }))).toThrow(ValidationError)
+      expect(() => tagBlacklist()(valid4({ jm: 'bad' as unknown as string[] }))).toThrow(ValidationError)
       expect(() => tagBlacklist()(valid4({ bika: [''] }))).toThrow(ValidationError)
-      expect(tagBlacklist()(valid4({ jmcomic: ['tag'], bika: ['tag'] }))).toBe(true)
+      expect(tagBlacklist()(valid4({ jm: ['tag'], bika: ['tag'] }))).toBe(true)
     })
   })
 
@@ -433,12 +433,12 @@ describe('validators.ts', () => {
 
     it('injects valid ComicSource into params.source', () => {
       const params: Record<string, unknown> = { foo: 1 }
-      withOptionalSource(params, 'jmcomic', 'search')
-      expect(params.source).toBe('jmcomic')
+      withOptionalSource(params, 'jm', 'search')
+      expect(params.source).toBe('jm')
     })
 
     it('accepts all five COMIC_SOURCES values', () => {
-      for (const src of ['hcomic', 'moeimg', 'jmcomic', 'bika', 'copymanga']) {
+      for (const src of ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga']) {
         const params: Record<string, unknown> = {}
         expect(() => withOptionalSource(params, src, 'test')).not.toThrow()
         expect(params.source).toBe(src)

@@ -1,9 +1,9 @@
-"""jmcomic parser 单元测试。"""
+"""jm parser 单元测试。"""
 
 from pathlib import Path
 
-from sources.jmcomic.constants import RANKING_MAPPINGS
-from sources.jmcomic.parser import JmParser
+from sources.jm.constants import RANKING_MAPPINGS
+from sources.jm.parser import JmParser
 
 FIXTURES = Path(__file__).parent / "fixtures" / "html"
 
@@ -63,8 +63,8 @@ def test_parse_detail_extracts_metadata():
     assert comic.pages == 31
     assert comic.scramble_id == "220980"
     assert comic.media_id == "430371"
-    assert comic.source_site == "jmcomic"
-    assert comic.comic_source == "JMCOMIC"
+    assert comic.source_site == "jm"
+    assert comic.comic_source == "JM"
     # 上架日期优先于更新日期
     assert comic.publish_date == "2023-03-08"
     # 作品 → category
@@ -155,8 +155,8 @@ def test_parse_search_results_extracts_cards():
     assert first.author == "xieehajimi"
     assert first.tags == ["AI绘图", "百合", "全彩"]
     assert first.category == "同人 汉化"
-    assert first.source_site == "jmcomic"
-    assert first.comic_source == "JMCOMIC"
+    assert first.source_site == "jm"
+    assert first.comic_source == "JM"
     assert first.cover_url == "https://cdn-msp2.test.one/media/albums/1442910.jpg"
 
     second = comics[1]
@@ -589,7 +589,7 @@ def test_search_keyword_end_to_end(monkeypatch):
 
     assert len(comics) == 2
     assert comics[0].id == "1442910"
-    assert comics[0].source_site == "jmcomic"
+    assert comics[0].source_site == "jm"
     assert pagination is not None
     assert pagination.total_pages == 3
 

@@ -1,12 +1,12 @@
-# jmcomic 章节适配设计
+# jm 章节适配设计
 
 - 日期：2026-05-30
 - 状态：已批准，待实现
-- 范围：为 jmcomic 来源增加章节（episode）概念，覆盖预览、下载、收藏已下载标记、阅读历史四条链路。
+- 范围：为 jm 来源增加章节（episode）概念，覆盖预览、下载、收藏已下载标记、阅读历史四条链路。
 
 ## 1. 背景与目标
 
-部分 jmcomic 专辑包含多个章节（参考项目 ComicGUISpider 的 episode 概念）。当前本项目把每个专辑当作单本处理，多章节专辑无法正确浏览或下载各章。
+部分 jm 专辑包含多个章节（参考项目 ComicGUISpider 的 episode 概念）。当前本项目把每个专辑当作单本处理，多章节专辑无法正确浏览或下载各章。
 
 目标：
 
@@ -56,7 +56,7 @@ export interface ChapterInfo { id: string; name: string; index: number; pages?: 
 // ComicInfo 增加：chapters?: ChapterInfo[]
 ```
 
-## 4. 解析层（`sources/jmcomic/parser.py`）
+## 4. 解析层（`sources/jm/parser.py`）
 
 - `_parse_detail` 扩展：解析 `//div[@class="episode"]//ul/a`（参考项目用 `(//div[@class="episode"])[last()]/ul/a`），每节点取 `data-album`=章节 id、`data-index`（0-based，+1 得 index）、`.//h3` 文本=章节名，填充 `chapters`。
 - 无 episode 块 → 单章节：保持现状，`image_urls` 直接从专辑页提取，`chapters` 留空。
@@ -106,7 +106,7 @@ export interface ChapterInfo { id: string; name: string; index: number; pages?: 
 
 - 阅读语境：选章首屏单选，进入该章阅读。
 - 下载语境（点下载按钮）：弹同样的章节列表但**支持多选**，勾选的每章 → 一个独立下载任务。
-- 每个章节任务的 `ComicInfo`：`id = 章节id`、`title` 沿用专辑名、`comic_source = "JMCOMIC"`、`source_site = "jmcomic"`、携带 `album_id` 与 `album_total_chapters`、`image_urls` 来自 `/photo/{章节id}`、`scramble_id` 来自该章。
+- 每个章节任务的 `ComicInfo`：`id = 章节id`、`title` 沿用专辑名、`comic_source = "JMCOMIC"`、`source_site = "jm"`、携带 `album_id` 与 `album_total_chapters`、`image_urls` 来自 `/photo/{章节id}`、`scramble_id` 来自该章。
 - 输出路径：每专辑一个文件夹，章节为子项。
   - folder：`{专辑名}/{章节名}/`。
   - zip/cbz：`{专辑名} - {章节名}.{ext}`。

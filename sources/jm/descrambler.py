@@ -1,6 +1,6 @@
-"""jmcomic 图片反混淆模块。
+"""jm 图片反混淆模块。
 
-jmcomic 的图片会根据漫画 ID 和页码进行分块打乱。
+jm 的图片会根据漫画 ID 和页码进行分块打乱。
 本模块实现逆变换算法，将打乱的图片还原为正确排列。
 """
 
@@ -33,7 +33,7 @@ def _compute_num(eps_id: int, page_num: str) -> int:
 
 
 def _extract_page_num(image_url: str) -> str:
-    """从 jmcomic 图片 URL 中提取页码。
+    """从 jm 图片 URL 中提取页码。
 
     URL 格式: https://cdn.xxx/media/photos/{album_id}/{page_num}.{ext}
     例如: https://cdn.xxx/media/photos/12345/00001.webp → "00001"
@@ -43,7 +43,7 @@ def _extract_page_num(image_url: str) -> str:
 
 
 def _extract_eps_id(image_url: str) -> int:
-    """从 jmcomic 图片 URL 路径提取章节(photo) id。
+    """从 jm 图片 URL 路径提取章节(photo) id。
 
     URL 格式: https://cdn.xxx/media/photos/{eps_id}/{page_num}.{ext}
     多章节专辑每章有独立 eps_id；这是反混淆所需的正确 id（而非专辑 id）。
@@ -83,7 +83,7 @@ def descramble_image(
     *,
     image_url: str = "",
 ) -> bytes:
-    """对 jmcomic 图片进行反混淆。
+    """对 jm 图片进行反混淆。
 
     Args:
         image_bytes: 原始图片数据

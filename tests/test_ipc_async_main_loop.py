@@ -197,7 +197,7 @@ def test_concurrent_responses_are_written_atomically():
         "get_available_fonts",
         "get_cache_stats",
         "get_history",
-        "get_jmcomic_domains",
+        "get_jm_domains",
         "get_favourite_tags",
     ]
     for m in methods:

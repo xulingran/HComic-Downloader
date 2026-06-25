@@ -256,20 +256,20 @@ def test_prepare_for_download_bika_multi_chapter(monkeypatch):
     assert images_called == []  # 不应调用 get_chapter_images
 
 
-def test_prepare_for_download_jmcomic(monkeypatch):
-    """jmcomic 通过详情接口补齐图片地址。"""
-    parser = MultiSourceParser(timeout=5, default_source="jmcomic")
-    source_comic = ComicInfo(id="jm1", title="JM Comic", source_site="jmcomic", pages=0, image_urls=[])
+def test_prepare_for_download_jm(monkeypatch):
+    """jm 通过详情接口补齐图片地址。"""
+    parser = MultiSourceParser(timeout=5, default_source="jm")
+    source_comic = ComicInfo(id="jm1", title="JM Comic", source_site="jm", pages=0, image_urls=[])
     resolved = ComicInfo(
         id="jm1",
         title="JM Comic",
-        source_site="jmcomic",
+        source_site="jm",
         pages=5,
         image_urls=["https://jm/img/1.jpg"],
     )
 
     monkeypatch.setattr(
-        parser.parsers["jmcomic"],
+        parser.parsers["jm"],
         "get_comic_detail",
         lambda comic_id, slug="": resolved,
     )
@@ -281,7 +281,7 @@ def test_prepare_for_download_jmcomic(monkeypatch):
 
 
 def test_random_delegates_to_supported_source(monkeypatch):
-    """random() 应分发给 hcomic 和 jmcomic。"""
+    """random() 应分发给 hcomic 和 jm。"""
     parser = MultiSourceParser(timeout=5, default_source="hcomic")
 
     called = []
@@ -291,15 +291,15 @@ def test_random_delegates_to_supported_source(monkeypatch):
         lambda: called.append("hcomic") or ([], None),
     )
     monkeypatch.setattr(
-        parser.parsers["jmcomic"],
+        parser.parsers["jm"],
         "random",
-        lambda: called.append("jmcomic") or ([], None),
+        lambda: called.append("jm") or ([], None),
     )
 
     parser.random(source="hcomic")
-    parser.random(source="jmcomic")
+    parser.random(source="jm")
 
-    assert called == ["hcomic", "jmcomic"]
+    assert called == ["hcomic", "jm"]
 
 
 def test_random_raises_for_unsupported_source():
@@ -350,3 +350,44 @@ def test_favourites_routes_to_bika(monkeypatch):
     parser.favourites(source="bika", page=2)
 
     assert called == [("bika", 2)]
+
+
+
+def test_legacy_jmcomic_source_auth_maps_to_jm():
+    parser = MultiSourceParser(
+        timeout=5,
+        default_source="hcomic",
+        source_auth={"jmcomic": {"cookie": "j=1", "user_agent": "J-UA"}},
+    )
+    assert parser.get_auth("jm") == ("j=1", "J-UA")
+
+
+def test_jm_domain_applies_after_lazy_parser_creation(monkeypatch):
+    applied = []
+
+    class FakeHComicParser:
+        def __init__(self, **kwargs):
+            self.session = object()
+
+        def configure_auth(self, **kwargs):
+            pass
+
+        def set_stored_credentials(self, username, password):
+            pass
+
+    class FakeJmParser:
+        def __init__(self, **kwargs):
+            self.session = object()
+
+        def configure_auth(self, **kwargs):
+            pass
+
+        def set_custom_domain(self, domain):
+            applied.append(domain)
+
+    import sources
+
+    monkeypatch.setattr(sources, "_load_parser_class", lambda source: FakeJmParser if source == "jm" else FakeHComicParser)
+    parser = MultiSourceParser(timeout=5, default_source="hcomic", jm_domain="18comic.vip")
+    parser.set_source("jm")
+    assert applied == ["18comic.vip"]

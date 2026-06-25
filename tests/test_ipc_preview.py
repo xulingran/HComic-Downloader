@@ -181,8 +181,8 @@ def test_get_preview_urls_returns_chapters(monkeypatch):
     comic = ComicInfo(
         id="999001",
         title="多章",
-        source_site="jmcomic",
-        comic_source="JMCOMIC",
+        source_site="jm",
+        comic_source="JM",
         album_id="999001",
         album_total_chapters=2,
         chapters=[
@@ -191,7 +191,7 @@ def test_get_preview_urls_returns_chapters(monkeypatch):
         ],
     )
     monkeypatch.setattr(server, "_build_and_prepare_comic", lambda d, comic_id=None: comic)
-    result = server.handle_get_preview_urls({"id": "999001", "sourceSite": "jmcomic"})
+    result = server.handle_get_preview_urls({"id": "999001", "sourceSite": "jm"})
     assert result["imageUrls"] == []
     assert len(result["chapters"]) == 2
     assert result["chapters"][0]["id"] == "999001"
@@ -209,7 +209,7 @@ def test_get_chapter_preview_urls(monkeypatch):
             "220980",
         )
     )
-    server.parser.parsers = {"jmcomic": fake_jm}
+    server.parser.parsers = {"jm": fake_jm}
     result = server.handle_get_chapter_preview_urls(chapter_id="999002", album_id="999001")
     assert result["imageUrls"][0].endswith("00001.webp")
     assert result["scrambleId"] == "220980"

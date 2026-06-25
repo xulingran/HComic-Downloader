@@ -27,7 +27,7 @@ def _resolve_eps_id(image_url: str, comic_id: str = "") -> int:
     优先从图片 URL 路径提取（多章节专辑每章有独立 eps_id，这是正确值），
     URL 无法提取时回退到传入的 comic_id。两者皆无则返回 0。
     """
-    from sources.jmcomic.descrambler import _extract_eps_id
+    from sources.jm.descrambler import _extract_eps_id
 
     eps_id = _extract_eps_id(image_url)
     if eps_id:
@@ -45,7 +45,7 @@ class PreviewMixin:
     parser: MultiSourceParser
     _write_response: Callable[[dict], None]
 
-    # 静态基础白名单，jmcomic 动态域名在校验时从 parser 实时获取
+    # 静态基础白名单，jm 动态域名在校验时从 parser 实时获取
     _BASE_PREVIEW_IMAGE_DOMAINS = frozenset(
         {
             "h-comic.com",
@@ -59,17 +59,17 @@ class PreviewMixin:
     )
 
     def _get_allowed_preview_domains(self) -> set[str]:
-        """合并静态白名单与 jmcomic 动态域名（主域名 + CDN 域名）。
+        """合并静态白名单与 jm 动态域名（主域名 + CDN 域名）。
 
-        jmcomic 镜像域名频繁变更，CDN 子域名在解析漫画详情时才被
+        jm 镜像域名频繁变更，CDN 子域名在解析漫画详情时才被
         发现（如 cdn-msp.18comic.vip），硬编码无法覆盖所有情况。
         """
         domains = set(self._BASE_PREVIEW_IMAGE_DOMAINS)
         # 默认域名始终允许
-        from sources.jmcomic.constants import DEFAULT_DOMAIN
+        from sources.jm.constants import DEFAULT_DOMAIN
 
         domains.add(DEFAULT_DOMAIN)
-        jm = self.parser.parsers.get("jmcomic")
+        jm = self.parser.parsers.get("jm")
         if jm:
             domain = getattr(jm, "_domain", None)
             if isinstance(domain, str):
@@ -169,13 +169,13 @@ class PreviewMixin:
         return None
 
     def _apply_descramble(self, data_uri: str, url: str, comic_id: str) -> str:
-        """Apply jmcomic descrambling to a data-URI, returning the result."""
+        """Apply jm descrambling to a data-URI, returning the result."""
         import base64 as _base64
 
         from .image_utils import detect_image_type as _detect
 
         try:
-            from sources.jmcomic.descrambler import descramble_image
+            from sources.jm.descrambler import descramble_image
 
             b64_part = data_uri.split(",", 1)[1]
             raw_bytes = _base64.b64decode(b64_part)
@@ -213,7 +213,7 @@ class PreviewMixin:
     ) -> str:
         """Fetch a preview page image, using cache when available.
 
-        When *scramble_id* and *comic_id* are provided (jmcomic source),
+        When *scramble_id* and *comic_id* are provided (jm source),
         the fetched image is descrambled before caching.
         """
         self._validate_preview_image_url(url)

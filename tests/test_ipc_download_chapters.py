@@ -38,7 +38,7 @@ def test_download_with_chapter_ids_creates_task_per_chapter(monkeypatch):
             "220980",
         )
     )
-    server.parser.parsers = {"jmcomic": fake_jm}
+    server.parser.parsers = {"jm": fake_jm}
 
     created = []
 
@@ -51,8 +51,8 @@ def test_download_with_chapter_ids_creates_task_per_chapter(monkeypatch):
     comic_data = {
         "id": "999001",
         "title": "多章漫画",
-        "sourceSite": "jmcomic",
-        "source": "JMCOMIC",
+        "sourceSite": "jm",
+        "source": "JM",
         "albumTotalChapters": 2,
         "chapters": [
             {"id": "999001", "name": "第 1 話", "index": 1},
@@ -80,7 +80,7 @@ def test_download_chapters_partial_failure_returns_created_and_failed(monkeypatc
         return ([f"https://cdn/media/photos/{cid}/00001.webp"], "220980")
 
     server = _create_test_server()
-    server.parser.parsers = {"jmcomic": SimpleNamespace(get_chapter_images=flaky_get_chapter_images)}
+    server.parser.parsers = {"jm": SimpleNamespace(get_chapter_images=flaky_get_chapter_images)}
 
     created = []
 
@@ -93,8 +93,8 @@ def test_download_chapters_partial_failure_returns_created_and_failed(monkeypatc
     comic_data = {
         "id": "999001",
         "title": "多章漫画",
-        "sourceSite": "jmcomic",
-        "source": "JMCOMIC",
+        "sourceSite": "jm",
+        "source": "JM",
         "albumTotalChapters": 3,
         "chapters": [
             {"id": "999001", "name": "第 1 話", "index": 1},
@@ -115,15 +115,15 @@ def test_download_chapters_all_failed_reports_error(monkeypatch):
     """所有章节都失败时，taskIds 为空且 status 为 error。"""
     server = _create_test_server()
     server.parser.parsers = {
-        "jmcomic": SimpleNamespace(get_chapter_images=lambda cid: (_ for _ in ()).throw(RuntimeError("boom")))
+        "jm": SimpleNamespace(get_chapter_images=lambda cid: (_ for _ in ()).throw(RuntimeError("boom")))
     }
     server._download_manager = SimpleNamespace(add_task=lambda comic, overwrite=False: comic.id, tasks={})
 
     comic_data = {
         "id": "999001",
         "title": "多章漫画",
-        "sourceSite": "jmcomic",
-        "source": "JMCOMIC",
+        "sourceSite": "jm",
+        "source": "JM",
         "albumTotalChapters": 1,
         "chapters": [{"id": "999001", "name": "第 1 話", "index": 1}],
     }
@@ -143,7 +143,7 @@ def test_download_chapters_sets_album_title(monkeypatch):
             "220980",
         )
     )
-    server.parser.parsers = {"jmcomic": fake_jm}
+    server.parser.parsers = {"jm": fake_jm}
 
     created = []
 
@@ -156,8 +156,8 @@ def test_download_chapters_sets_album_title(monkeypatch):
     comic_data = {
         "id": "999001",
         "title": "多章漫画",
-        "sourceSite": "jmcomic",
-        "source": "JMCOMIC",
+        "sourceSite": "jm",
+        "source": "JM",
         "albumTotalChapters": 2,
         "chapters": [
             {"id": "999001", "name": "第 1 話", "index": 1},
@@ -168,7 +168,7 @@ def test_download_chapters_sets_album_title(monkeypatch):
 
     assert created[0].album_title == "多章漫画"
     assert created[1].album_title == "多章漫画"
-    assert result.get("albumKey") == {"sourceSite": "jmcomic", "albumId": "999001"}
+    assert result.get("albumKey") == {"sourceSite": "jm", "albumId": "999001"}
 
 
 def test_handle_force_pack_album_no_coordinator():
@@ -176,7 +176,7 @@ def test_handle_force_pack_album_no_coordinator():
     server = _create_test_server()
     # 删除 coordinator 模拟不可用场景
     del server._album_coordinator
-    result = server.handle_force_pack_album("jmcomic", "999001")
+    result = server.handle_force_pack_album("jm", "999001")
     assert result["status"] == "error"
 
 
@@ -204,8 +204,8 @@ def test_download_batch_as_album_preserves_source_site_and_returns_task_mapping(
             {
                 "id": "a",
                 "title": "A",
-                "sourceSite": "jmcomic",
-                "source": "JMCOMIC",
+                "sourceSite": "jm",
+                "source": "JM",
                 "mediaId": "ma",
                 "pages": 1,
             },
@@ -221,14 +221,14 @@ def test_download_batch_as_album_preserves_source_site_and_returns_task_mapping(
         "自定义专辑",
     )
 
-    assert [comic.source_site for comic in created] == ["jmcomic", "bika"]
-    assert result["taskIds"] == ["jmcomic_JMCOMIC_a", "bika_BIKA_b"]
+    assert [comic.source_site for comic in created] == ["jm", "bika"]
+    assert result["taskIds"] == ["jm_JM_a", "bika_BIKA_b"]
     assert result["queuedTasks"] == [
-        {"taskId": "jmcomic_JMCOMIC_a", "comicId": "a", "sourceSite": "jmcomic", "source": "JMCOMIC"},
+        {"taskId": "jm_JM_a", "comicId": "a", "sourceSite": "jm", "source": "JM"},
         {"taskId": "bika_BIKA_b", "comicId": "b", "sourceSite": "bika", "source": "BIKA"},
     ]
     assert registered == [
-        (("jmcomic", result["albumKey"]["albumId"]), ["jmcomic_JMCOMIC_a"], 2),
+        (("jm", result["albumKey"]["albumId"]), ["jm_JM_a"], 2),
         (("bika", result["albumKey"]["albumId"]), ["bika_BIKA_b"], 2),
     ]
 

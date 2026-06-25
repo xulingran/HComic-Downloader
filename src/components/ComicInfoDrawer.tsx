@@ -62,7 +62,7 @@ export function ComicInfoDrawer() {
   }, [isOpen, favouriteTagHighlight, comicSource, getFavouriteTags])
 
   // Fetch full detail for sources where search results lack complete metadata.
-  // moeimg/jmcomic search cards omit some fields (full tag set, page count,
+  // moeimg/jm search cards omit some fields (full tag set, page count,
   // works/characters), so enrich from the detail page when the drawer opens.
   // Also enrich when comic data lacks tags (e.g. from history records) regardless of source.
   useEffect(() => {

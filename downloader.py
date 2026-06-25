@@ -174,7 +174,7 @@ class ComicDownloader:
         site = self.url_validator.safe_source_site(getattr(comic, "source_site", "hcomic"))
         if site == "moeimg":
             return "https://moeimg.fan/"
-        if site == "jmcomic":
+        if site == "jm":
             return "https://18comic.vip/"
         if site == "bika":
             return "https://picaapi.picacomic.com/"
@@ -182,13 +182,13 @@ class ComicDownloader:
 
     @staticmethod
     def _maybe_postprocess_images(comic: ComicInfo, temp_dir: Path) -> None:
-        """下载完成后对图片进行后处理（如 jmcomic 反混淆）。"""
-        if comic.source_site != "jmcomic" or not comic.scramble_id:
+        """下载完成后对图片进行后处理（如 jm 反混淆）。"""
+        if comic.source_site != "jm" or not comic.scramble_id:
             return
         try:
-            from sources.jmcomic.descrambler import descramble_image
+            from sources.jm.descrambler import descramble_image
         except ImportError:
-            logger.warning("jmcomic descrambler not available, skipping postprocess")
+            logger.warning("jm descrambler not available, skipping postprocess")
             return
         try:
             eps_id = int(comic.id)

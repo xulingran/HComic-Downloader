@@ -118,7 +118,7 @@ def test_parse_filename_author_title():
 
 def test_infer_source_site():
     assert _infer_source_site("temp_hcomic_123") == "hcomic"
-    assert _infer_source_site("temp_jmcomic_123") == "jmcomic"
+    assert _infer_source_site("temp_jm_123") == "jm"
     assert _infer_source_site("temp_moeimg_123") == "moeimg"
     assert _infer_source_site("temp_bika_123") == "bika"
     assert _infer_source_site("temp_copymanga_123") == "copymanga"

@@ -134,7 +134,7 @@ class CopyMangaParser(ParserContextMixin):
 在 `MultiSourceParser.prepare_for_download` 中增加 `copymanga` 分支：
 
 - 单章节：直接 `get_chapter_images` 填充 `image_urls`
-- 多章节：保留章节列表，前端选章后通过 `handle_get_chapter_preview_urls` 按章加载（与 jmcomic/bika 模式一致）
+- 多章节：保留章节列表，前端选章后通过 `handle_get_chapter_preview_urls` 按章加载（与 jm/bika 模式一致）
 
 ## 系统集成点
 
@@ -162,7 +162,7 @@ class CopyMangaParser(ParserContextMixin):
 
 ### 前端
 
-前端来源选择器从 `IPC.getSourceOptions()` 自动获取新来源，无需后端额外适配。章节选择 UI 复用 jmcomic/bika 已有的多章节弹窗。
+前端来源选择器从 `IPC.getSourceOptions()` 自动获取新来源，无需后端额外适配。章节选择 UI 复用 jm/bika 已有的多章节弹窗。
 
 ### 依赖
 

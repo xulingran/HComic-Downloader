@@ -77,13 +77,13 @@ def test_get_tags_sorted_by_count_desc(tmp_path):
 def test_different_sources_isolated(tmp_path):
     db = _make_db(tmp_path)
     db.upsert_comic("c1", "hcomic", ["tag:A"])
-    db.upsert_comic("c1", "jmcomic", ["tag:X"])
+    db.upsert_comic("c1", "jm", ["tag:X"])
     hcomic_tags = db.get_tags("hcomic")
-    jmcomic_tags = db.get_tags("jmcomic")
+    jm_tags = db.get_tags("jm")
     assert len(hcomic_tags) == 1
-    assert len(jmcomic_tags) == 1
+    assert len(jm_tags) == 1
     assert hcomic_tags[0]["tag"] == "tag:A"
-    assert jmcomic_tags[0]["tag"] == "tag:X"
+    assert jm_tags[0]["tag"] == "tag:X"
 
 
 def test_clear_all(tmp_path):
@@ -112,16 +112,16 @@ def test_bika_source_isolated(tmp_path):
     """Bika tag data is isolated from other sources."""
     db = _make_db(tmp_path)
     db.upsert_comic("c1", "hcomic", ["tag:A"])
-    db.upsert_comic("c1", "jmcomic", ["tag:X"])
+    db.upsert_comic("c1", "jm", ["tag:X"])
     db.upsert_comic("c1", "bika", ["全彩", "紳士"])
     hcomic_tags = db.get_tags("hcomic")
-    jmcomic_tags = db.get_tags("jmcomic")
+    jm_tags = db.get_tags("jm")
     bika_tags = db.get_tags("bika")
     assert len(hcomic_tags) == 1
-    assert len(jmcomic_tags) == 1
+    assert len(jm_tags) == 1
     assert len(bika_tags) == 2
     assert hcomic_tags[0]["tag"] == "tag:A"
-    assert jmcomic_tags[0]["tag"] == "tag:X"
+    assert jm_tags[0]["tag"] == "tag:X"
     bika_tag_names = {t["tag"] for t in bika_tags}
     assert bika_tag_names == {"全彩", "紳士"}
 
@@ -186,3 +186,40 @@ def test_moeimg_upsert_and_get_tags(tmp_path):
     # Clear
     db.clear("moeimg")
     assert db.get_tags("moeimg") == []
+
+
+
+def test_legacy_jmcomic_favourite_tags_migrate_to_jm(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy_ft.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE favourite_tag_index (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
+    conn.execute("CREATE TABLE favourite_tag_comics (id INTEGER PRIMARY KEY AUTOINCREMENT, comic_id TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', tags TEXT NOT NULL DEFAULT '[]', UNIQUE(comic_id, source))")
+    conn.execute("INSERT INTO favourite_tag_index (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 1))
+    conn.execute("INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jmcomic", '["tag:A"]'))
+    conn.commit()
+    conn.close()
+
+    db = FavouriteTagsDB(str(db_path))
+    assert db.get_tags("jm") == [{"tag": "tag:A", "count": 1}]
+    assert db.get_comic_tags("100", "jm") == ["tag:A"]
+
+
+def test_legacy_jmcomic_favourite_tags_conflict_merges_without_duplicate_comic(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy_ft_conflict.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE favourite_tag_index (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
+    conn.execute("CREATE TABLE favourite_tag_comics (id INTEGER PRIMARY KEY AUTOINCREMENT, comic_id TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', tags TEXT NOT NULL DEFAULT '[]', UNIQUE(comic_id, source))")
+    conn.execute("INSERT INTO favourite_tag_index (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 1))
+    conn.execute("INSERT INTO favourite_tag_index (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jm", 2))
+    conn.execute("INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jmcomic", '["tag:A"]'))
+    conn.execute("INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jm", '["tag:B"]'))
+    conn.commit()
+    conn.close()
+
+    db = FavouriteTagsDB(str(db_path))
+    assert db.get_tags("jm") == [{"tag": "tag:A", "count": 3}]
+    assert db.get_comic_tags("100", "jm") == ["tag:A", "tag:B"]

@@ -178,12 +178,66 @@ class TestMultiSourceConfig(unittest.TestCase):
             os.unlink(config_path)
 
 
+    def test_legacy_jmcomic_default_source_migrates_to_jm(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump({"default_source": "jmcomic"}, f)
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.default_source, "jm")
+        finally:
+            os.unlink(config_path)
+
+    def test_legacy_jmcomic_source_auth_migrates_to_jm(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump(
+                {
+                    "source_auth": {
+                        "jmcomic": {"cookie": "j=1", "user_agent": "J-UA"},
+                    }
+                },
+                f,
+            )
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.get_source_auth("jm")["cookie"], "j=1")
+            self.assertEqual(loaded.get_source_auth("jm")["user_agent"], "J-UA")
+        finally:
+            os.unlink(config_path)
+
+    def test_legacy_jmcomic_tag_blacklist_migrates_to_jm(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump({"tag_blacklist": {"jmcomic": ["tagA"], "jm": ["tagB"]}}, f)
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.tag_blacklist["jm"], ["tagA", "tagB"])
+        finally:
+            os.unlink(config_path)
+
+    def test_legacy_jmcomic_domain_migrates_to_jm_domain(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump({"jmcomic_domain": "18comic.vip"}, f)
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.jm_domain, "18comic.vip")
+        finally:
+            os.unlink(config_path)
+
+
+
 class TestDuplicateBlacklistMigration(unittest.TestCase):
     """测试 duplicate_blacklist 数据结构迁移：纯字符串 → {fingerprint, memberCount}"""
 
     def test_default_duplicate_blacklist_empty(self):
         config = Config()
-        self.assertEqual(config.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jmcomic": []})
+        self.assertEqual(config.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []})
 
     def test_legacy_string_entries_migrate_to_objects(self):
         """旧版纯字符串列表迁移为 {fingerprint, memberCount: None}"""
@@ -192,7 +246,7 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
             json.dump(
                 {
                     "download_dir": "/tmp/test",
-                    "duplicate_blacklist": {"hcomic": ["指纹A", "指纹B"], "jmcomic": ["指纹C"]},
+                    "duplicate_blacklist": {"hcomic": ["指纹A", "指纹B"], "jm": ["指纹C"]},
                 },
                 f,
             )
@@ -204,7 +258,7 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
                 [{"fingerprint": "指纹A", "memberCount": None}, {"fingerprint": "指纹B", "memberCount": None}],
             )
             self.assertEqual(
-                loaded.duplicate_blacklist["jmcomic"],
+                loaded.duplicate_blacklist["jm"],
                 [{"fingerprint": "指纹C", "memberCount": None}],
             )
         finally:
@@ -239,7 +293,7 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
 
         try:
             loaded = Config.load(config_path)
-            self.assertEqual(loaded.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jmcomic": []})
+            self.assertEqual(loaded.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []})
         finally:
             os.unlink(config_path)
 
@@ -266,6 +320,36 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
             )
         finally:
             os.unlink(config_path)
+
+
+    def test_legacy_jmcomic_duplicate_blacklist_migrates_to_jm(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump({"duplicate_blacklist": {"jmcomic": ["旧指纹"], "jm": [{"fingerprint": "新指纹", "memberCount": 2}]}}, f)
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(
+                loaded.duplicate_blacklist["jm"],
+                [
+                    {"fingerprint": "旧指纹", "memberCount": None},
+                    {"fingerprint": "新指纹", "memberCount": 2},
+                ],
+            )
+        finally:
+            os.unlink(config_path)
+
+    def test_legacy_jmcomic_missing_blacklist_migrates_to_jm(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+            json.dump({"missing_blacklist": {"jmcomic": ["缺失指纹"]}}, f)
+
+        try:
+            loaded = Config.load(config_path)
+            self.assertEqual(loaded.missing_blacklist["jm"], [{"fingerprint": "缺失指纹", "memberCount": None}])
+        finally:
+            os.unlink(config_path)
+
 
 
 class TestConfigConstructorNoSideEffects(unittest.TestCase):

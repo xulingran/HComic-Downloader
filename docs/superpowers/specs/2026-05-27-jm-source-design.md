@@ -1,8 +1,8 @@
-# jmcomic 来源集成设计
+# jm 来源集成设计
 
 ## 概述
 
-为 hcomic_downloader 添加 jmcomic 作为第三个漫画来源，支持登录、搜索、排行、标签搜索、随机浏览和图片反混淆。采用独立模块架构（`jmcomic/`），通过 `MultiSourceParser` 统一调度。
+为 hcomic_downloader 添加 jm 作为第三个漫画来源，支持登录、搜索、排行、标签搜索、随机浏览和图片反混淆。采用独立模块架构（`jm/`），通过 `MultiSourceParser` 统一调度。
 
 参考实现：`E:\Developing\ComicGUISpider` 中的 `ComicSpider\spiders\jm.py` 和 `utils\website\providers\jm.py`。
 
@@ -10,24 +10,24 @@
 
 ### 包含
 
-- jmcomic 搜索（关键词、标签、排行）
-- jmcomic 随机浏览
-- jmcomic 漫画详情获取
-- jmcomic 图片反混淆（descramble）
-- jmcomic 弹窗登录 + 手动 Cookie 粘贴
-- jmcomic 域名动态发现
+- jm 搜索（关键词、标签、排行）
+- jm 随机浏览
+- jm 漫画详情获取
+- jm 图片反混淆（descramble）
+- jm 弹窗登录 + 手动 Cookie 粘贴
+- jm 域名动态发现
 - 前端来源选择器扩展
 - 前端排行模式 UI
 
 ### 不包含
 
-- jmcomic 收藏夹（后续实现）
-- jmcomic 批量收藏夹导入
+- jm 收藏夹（后续实现）
+- jm 批量收藏夹导入
 
 ## 目录结构
 
 ```
-jmcomic/
+jm/
 ├── __init__.py
 ├── parser.py          # JmParser — 搜索、详情、排行、标签解析
 ├── domain.py          # 域名发布页发现 + 本地缓存
@@ -37,7 +37,7 @@ jmcomic/
 
 ## 模块设计
 
-### 1. 域名发现 — `jmcomic/domain.py`
+### 1. 域名发现 — `jm/domain.py`
 
 **流程：**
 
@@ -62,7 +62,7 @@ class JmDomainResolver:
         """返回当前可用域名，如 '18comic.vip'"""
 ```
 
-### 2. 搜索与内容解析 — `jmcomic/parser.py`
+### 2. 搜索与内容解析 — `jm/parser.py`
 
 **JmParser 实现与 HComicParser 相同的接口：**
 
@@ -77,7 +77,7 @@ class JmDomainResolver:
 **搜索 URL 构建：**
 
 - `mode="keyword"` → `https://{domain}/search/photos?main_tag=0&search_query={keyword}`
-- `mode="tag"` → `https://{domain}/search/photos?main_tag=0&search_query={keyword}`（jmcomic 自动匹配标签）
+- `mode="tag"` → `https://{domain}/search/photos?main_tag=0&search_query={keyword}`（jm 自动匹配标签）
 - `mode="ranking"` → 排行榜 URL，通过中文关键词映射：
 
 **排行关键词映射（`constants.py`）：**
@@ -96,7 +96,7 @@ RANKING_MAPPINGS = {
 
 排行 URL 格式：`https://{domain}/albums?t={time}&o={order}`
 
-**排行预处理：** `MultiSourceParser.search()` 中对 `source="jmcomic"` 检查 query 是否匹配排行关键词，匹配则切换 `mode="ranking"` 并清空 query。
+**排行预处理：** `MultiSourceParser.search()` 中对 `source="jm"` 检查 query 是否匹配排行关键词，匹配则切换 `mode="ranking"` 并清空 query。
 
 **HTML 解析：** 使用 `lxml` + `requests`（与 HComicParser 一致），从搜索结果页面提取：
 - 漫画 ID、标题、封面 URL、预览 URL
@@ -116,11 +116,11 @@ ComicInfo(
     preview_url=详情页URL,
     media_id=漫画ID,
     comic_source="JMCOMIC",
-    source_site="jmcomic",
+    source_site="jm",
 )
 ```
 
-### 3. 图片反混淆 — `jmcomic/descrambler.py`
+### 3. 图片反混淆 — `jm/descrambler.py`
 
 **算法（来自参考项目）：**
 
@@ -142,7 +142,7 @@ ComicInfo(
 
 ```python
 def descramble_image(image_bytes: bytes, eps_id: int, scramble_id: str) -> bytes:
-    """对 jmcomic 图片进行反混淆，返回处理后的图片 bytes。
+    """对 jm 图片进行反混淆，返回处理后的图片 bytes。
     如果无需反混淆（num == 0），返回原始 bytes。
     """
 ```
@@ -154,8 +154,8 @@ def descramble_image(image_bytes: bytes, eps_id: int, scramble_id: str) -> bytes
 **集成点：** 在 `downloader.py` 的图片下载完成后：
 
 ```python
-if comic.source_site == "jmcomic" and comic.scramble_id:
-    from jmcomic.descrambler import descramble_image
+if comic.source_site == "jm" and comic.scramble_id:
+    from jm.descrambler import descramble_image
     image_data = descramble_image(image_data, int(comic.id), comic.scramble_id)
 ```
 
@@ -169,17 +169,17 @@ if comic.source_site == "jmcomic" and comic.scramble_id:
 electron/main.ts:
   openLoginWindow(source) 中根据 source 参数决定：
     "hcomic"  → loadURL('https://h-comic.com')，监测 auth0.com 回调
-    "jmcomic" → loadURL('https://{domain}')，监测 Cookie 中出现 session 字段
+    "jm" → loadURL('https://{domain}')，监测 Cookie 中出现 session 字段
 ```
 
-**jmcomic 登录成功检测：**
+**jm 登录成功检测：**
 1. 监测 `did-navigate` 事件
 2. 从登录页跳转到首页（URL 不再包含 `login`）→ 登录成功
 3. 提取 session cookies，通过 `apply_auth` IPC 传给 Python 后端
 
 #### 模式 2 — 手动粘贴 Cookie
 
-设置页面来源配置区域提供文本框，用户粘贴 Cookie 字符串后解析存入 `config.source_auth.jmcomic.cookie`。
+设置页面来源配置区域提供文本框，用户粘贴 Cookie 字符串后解析存入 `config.source_auth.jm.cookie`。
 
 #### IPC 层改动
 
@@ -193,13 +193,13 @@ electron/main.ts:
 
 | 组件 | 改动 |
 |------|------|
-| `shared/types.ts` | `COMIC_SOURCES` 加入 `'jmcomic'` |
-| `shared/types.ts` | `AppConfig.tagBlacklist` 扩展 `jmcomic` 键 |
-| 来源选择器 | 显示名"jmcomic" |
-| 搜索模式选择器 | 切换到 jmcomic 时增加"排行"选项 |
+| `shared/types.ts` | `COMIC_SOURCES` 加入 `'jm'` |
+| `shared/types.ts` | `AppConfig.tagBlacklist` 扩展 `jm` 键 |
+| 来源选择器 | 显示名"jm" |
+| 搜索模式选择器 | 切换到 jm 时增加"排行"选项 |
 | 排行模式 UI | 选择排行时，搜索框变为下拉选择器（16 种排行组合） |
-| 设置页 | 新增 jmcomic 认证区域（Cookie 输入框 + 弹窗登录按钮） |
-| 随机按钮 | 切换到 jmcomic 时可用 |
+| 设置页 | 新增 jm 认证区域（Cookie 输入框 + 弹窗登录按钮） |
+| 随机按钮 | 切换到 jm 时可用 |
 
 **排行下拉选项：**
 
@@ -233,19 +233,19 @@ Pillow>=10.0.0
 
 ### 新增文件
 
-- `jmcomic/__init__.py`
-- `jmcomic/parser.py`
-- `jmcomic/domain.py`
-- `jmcomic/descrambler.py`
-- `jmcomic/constants.py`
+- `jm/__init__.py`
+- `jm/parser.py`
+- `jm/domain.py`
+- `jm/descrambler.py`
+- `jm/constants.py`
 
 ### 修改文件
 
-- `parser.py` — MultiSourceParser 注册 jmcomic，排行关键词预处理
+- `parser.py` — MultiSourceParser 注册 jm，排行关键词预处理
 - `models.py` — ComicInfo 新增 `scramble_id` 字段
 - `downloader.py` — 下载后根据 source_site 调用反混淆
 - `shared/types.ts` — COMIC_SOURCES、tagBlacklist、IPC 接口
 - `electron/main.ts` — 登录弹窗支持 source 参数、域名白名单
-- `electron/preload.ts` — 新增 jmcomic 相关 API
+- `electron/preload.ts` — 新增 jm 相关 API
 - `src/` — 来源选择器、搜索模式、设置页 UI
 - `requirements.txt` — 新增 Pillow

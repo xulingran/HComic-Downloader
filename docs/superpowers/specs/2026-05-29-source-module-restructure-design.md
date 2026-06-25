@@ -4,7 +4,7 @@
 
 当前项目中三个漫画来源的组织方式不一致：
 - `parser.py`（49KB，约1307行）一个大文件包含 `HComicParser`、`MoeImgParser`、`MultiSourceParser` 三个类
-- `jmcomic/` 文件夹是独立的模块化结构
+- `jm/` 文件夹是独立的模块化结构
 
 目标：将三个来源统一为相同的目录组织方式，各自拥有独立文件夹，放在 `sources/` 父目录下。
 
@@ -19,7 +19,7 @@ sources/
   moeimg/
     __init__.py            # re-export MoeImgParser
     parser.py              # MoeImgParser 类（从 parser.py 搬入）
-  jmcomic/
+  jm/
     __init__.py            # 保持现有内容
     parser.py              # 保持现有内容
     constants.py           # 保持现有内容
@@ -34,7 +34,7 @@ sources/
 - `sources/hcomic/__init__.py`：单行 re-export `from .parser import HComicParser`
 - `sources/moeimg/__init__.py`：单行 re-export `from .parser import MoeImgParser`
 - 各来源的 `parser.py`：代码内容基本原样搬运，只调整内部 import 路径
-- `sources/jmcomic/` 目录整体从根目录移入，内部互相引用改为相对引用（引用根目录共享模块的路径不变）
+- `sources/jm/` 目录整体从根目录移入，内部互相引用改为相对引用（引用根目录共享模块的路径不变）
 
 ## Import 路径变更
 
@@ -46,17 +46,17 @@ sources/
 | `from parser import MoeImgParser` | `from sources.moeimg import MoeImgParser` |
 | `from parser import MultiSourceParser` | `from sources import MultiSourceParser` |
 | `from parser import ParserResponseError` | `from sources import ParserResponseError` |
-| `from jmcomic.parser import JmParser` | `from sources.jmcomic.parser import JmParser` |
-| `from jmcomic.descrambler import descramble_image` | `from sources.jmcomic.descrambler import descramble_image` |
-| `from jmcomic.constants import ...` | `from sources.jmcomic.constants import ...` |
-| `from jmcomic.domain import ...` | `from sources.jmcomic.domain import ...` |
+| `from jm.parser import JmParser` | `from sources.jm.parser import JmParser` |
+| `from jm.descrambler import descramble_image` | `from sources.jm.descrambler import descramble_image` |
+| `from jm.constants import ...` | `from sources.jm.constants import ...` |
+| `from jm.domain import ...` | `from sources.jm.domain import ...` |
 
-### jmcomic 内部互相引用
+### jm 内部互相引用
 
-jmcomic 目录移入 `sources/` 后，内部统一改为**相对引用**：
-- `from jmcomic.constants import ...` → `from .constants import ...`
-- `from jmcomic.domain import ...` → `from .domain import ...`
-- `from jmcomic.session import ...` → `from .session import ...`
+jm 目录移入 `sources/` 后，内部统一改为**相对引用**：
+- `from jm.constants import ...` → `from .constants import ...`
+- `from jm.domain import ...` → `from .domain import ...`
+- `from jm.session import ...` → `from .session import ...`
 
 这样做的好处是 sources 目录整体改名或移动时，内部引用不会断。
 
@@ -81,9 +81,9 @@ jmcomic 目录移入 `sources/` 后，内部统一改为**相对引用**：
 - `tests/test_parser_pagination.py`
 - `tests/test_multi_source_parser.py`
 - `tests/test_auth_application.py`
-- `tests/test_jmcomic_parser.py`
-- `tests/test_jmcomic_descrambler.py`
-- `tests/test_jmcomic_domain.py`
+- `tests/test_jm_parser.py`
+- `tests/test_jm_descrambler.py`
+- `tests/test_jm_domain.py`
 
 ## 迁移执行顺序
 
@@ -92,7 +92,7 @@ jmcomic 目录移入 `sources/` 后，内部统一改为**相对引用**：
 1. 创建 `sources/` 目录，写入 `sources/__init__.py`（包含 MultiSourceParser 和 ParserResponseError）
 2. 创建 `sources/hcomic/`，将 HComicParser 写入 `parser.py`，创建 `__init__.py`
 3. 创建 `sources/moeimg/`，将 MoeImgParser 写入 `parser.py`，创建 `__init__.py`
-4. 将 `jmcomic/` 整体移入 `sources/jmcomic/`，内部引用改为相对引用
+4. 将 `jm/` 整体移入 `sources/jm/`，内部引用改为相对引用
 5. 更新 `sources/__init__.py` 中 MultiSourceParser 的 import，从三个子模块引入
 6. 批量更新所有外部文件的 import 路径
 7. 删除根目录 `parser.py`
@@ -102,5 +102,5 @@ jmcomic 目录移入 `sources/` 后，内部统一改为**相对引用**：
 
 - 纯结构搬迁，不做任何功能变更
 - 不修改 `models.py`、`utils.py`、`constants.py` 等根目录共享模块
-- 旧 `jmcomic/__pycache__/` 在迁移后需要清理
+- 旧 `jm/__pycache__/` 在迁移后需要清理
 - 消除了 `parser.py` 与 Python 标准库 `parser` 模块的命名冲突风险

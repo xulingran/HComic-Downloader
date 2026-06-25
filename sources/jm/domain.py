@@ -1,4 +1,4 @@
-"""jmcomic 域名发现模块。"""
+"""jm 域名发现模块。"""
 
 from __future__ import annotations
 
@@ -96,7 +96,7 @@ class JmDomainResolver:
         return result
 
 
-def get_jmcomic_domain_list() -> list[str]:
-    """获取 jmcomic 可用域名列表，供设置页展示。"""
+def get_jm_domain_list() -> list[str]:
+    """获取 jm 可用域名列表，供设置页展示。"""
     resolver = JmDomainResolver()
     return resolver.fetch_available_domains()

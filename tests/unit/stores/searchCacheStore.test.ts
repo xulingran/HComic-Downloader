@@ -54,7 +54,7 @@ describe('useSearchCacheStore', () => {
 
   it('keeps pages isolated by context', () => {
     const firstKey = createSearchContextKey({ query: 'first', mode: 'keyword', source: 'hcomic', searchTags: '' })
-    const secondKey = createSearchContextKey({ query: 'first', mode: 'keyword', source: 'jmcomic', searchTags: '' })
+    const secondKey = createSearchContextKey({ query: 'first', mode: 'keyword', source: 'jm', searchTags: '' })
 
     useSearchCacheStore.getState().setPage(firstKey, 1, {
       query: 'first',

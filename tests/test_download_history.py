@@ -248,8 +248,8 @@ def _jm_chapter(chap_id, album_id, total):
     return ComicInfo(
         id=chap_id,
         title="多章漫画",
-        source_site="jmcomic",
-        comic_source="JMCOMIC",
+        source_site="jm",
+        comic_source="JM",
         album_id=album_id,
         album_total_chapters=total,
     )
@@ -261,7 +261,7 @@ def test_multi_chapter_partial_not_downloaded(db, tmp_path):
     out.mkdir()
     db.record_download(_jm_chapter("999001", "999001", 2), str(out), "folder")
 
-    key = ("jmcomic", "999001", "JMCOMIC")
+    key = ("jm", "999001", "JM")
     result = db.check_downloaded_batch([key], str(tmp_path), "folder", "{title}")
     assert result[key] == "unknown"
 
@@ -275,7 +275,7 @@ def test_multi_chapter_complete_downloaded(db, tmp_path):
     db.record_download(_jm_chapter("999001", "999001", 2), str(o1), "folder")
     db.record_download(_jm_chapter("999002", "999001", 2), str(o2), "folder")
 
-    key = ("jmcomic", "999001", "JMCOMIC")
+    key = ("jm", "999001", "JM")
     result = db.check_downloaded_batch([key], str(tmp_path), "folder", "{title}")
     assert result[key] == "downloaded"
 
@@ -307,8 +307,8 @@ def test_update_output_path_by_album(tmp_path):
         comic = ComicInfo(
             id=f"chap{i}",
             title=f"Album - Ch{i}",
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             album_id="album1",
             album_total_chapters=3,
         )
@@ -316,8 +316,8 @@ def test_update_output_path_by_album(tmp_path):
 
     # 批量更新为 cbz 路径
     count = db.update_output_path_by_album(
-        source_site="jmcomic",
-        comic_source="JMCOMIC",
+        source_site="jm",
+        comic_source="JM",
         album_id="album1",
         new_path="/downloads/Album.cbz",
     )
@@ -336,8 +336,8 @@ def test_update_output_path_by_album_no_match(tmp_path):
 
     db = DownloadHistoryDB(str(tmp_path / "test.db"))
     count = db.update_output_path_by_album(
-        source_site="jmcomic",
-        comic_source="JMCOMIC",
+        source_site="jm",
+        comic_source="JM",
         album_id="nonexistent",
         new_path="/x.cbz",
     )
@@ -480,3 +480,92 @@ def test_check_batch_fallback_primary_key_mixed_hit_and_miss(db, tmp_path):
     result = db.check_downloaded_batch(keys, str(tmp_path), "folder", "{title}")
     assert result[("hcomic", "chap001", "MMCG_SHORT")] == "downloaded"
     assert result[("hcomic", "chap999", "MMCG_SHORT")] == "unknown"
+
+
+def test_legacy_jmcomic_history_row_migrates_to_jm(tmp_path):
+    import sqlite3
+
+    from download_history import DownloadHistoryDB
+
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE download_history (
+            source_site TEXT NOT NULL,
+            comic_id TEXT NOT NULL,
+            comic_source TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            author TEXT NOT NULL DEFAULT '',
+            output_path TEXT NOT NULL DEFAULT '',
+            output_format TEXT NOT NULL DEFAULT '',
+            downloaded_at INTEGER NOT NULL,
+            pages INTEGER NOT NULL DEFAULT 0,
+            album_id TEXT NOT NULL DEFAULT '',
+            album_total_chapters INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (source_site, comic_id, comic_source)
+        )
+        """
+    )
+    out = tmp_path / "legacy.cbz"
+    out.write_text("fake")
+    conn.execute(
+        "INSERT INTO download_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("jmcomic", "100", "JMCOMIC", "Legacy", "Author", str(out), "cbz", 10, 24, "100", 1),
+    )
+    conn.commit()
+    conn.close()
+
+    db = DownloadHistoryDB(str(db_path))
+    result = db.check_downloaded_batch([("jm", "100", "JM")], str(tmp_path), "cbz", "{title}.cbz")
+    assert result[("jm", "100", "JM")] == "downloaded"
+    records = db.get_all_records_with_album()
+    assert [(r["source_site"], r["comic_source"]) for r in records] == [("jm", "JM")]
+    db.close()
+
+
+def test_legacy_jmcomic_history_conflict_merges_into_canonical(tmp_path):
+    import sqlite3
+
+    from download_history import DownloadHistoryDB
+
+    db_path = tmp_path / "legacy_conflict.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE download_history (
+            source_site TEXT NOT NULL,
+            comic_id TEXT NOT NULL,
+            comic_source TEXT NOT NULL,
+            title TEXT NOT NULL DEFAULT '',
+            author TEXT NOT NULL DEFAULT '',
+            output_path TEXT NOT NULL DEFAULT '',
+            output_format TEXT NOT NULL DEFAULT '',
+            downloaded_at INTEGER NOT NULL,
+            pages INTEGER NOT NULL DEFAULT 0,
+            album_id TEXT NOT NULL DEFAULT '',
+            album_total_chapters INTEGER NOT NULL DEFAULT 1,
+            PRIMARY KEY (source_site, comic_id, comic_source)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO download_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("jmcomic", "100", "JMCOMIC", "Legacy", "", "/legacy", "folder", 10, 12, "100", 1),
+    )
+    conn.execute(
+        "INSERT INTO download_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        ("jm", "100", "JM", "Canonical", "A", "", "cbz", 20, 8, "100", 2),
+    )
+    conn.commit()
+    conn.close()
+
+    db = DownloadHistoryDB(str(db_path))
+    records = db.get_all_records_with_album()
+    assert len(records) == 1
+    rec = records[0]
+    assert (rec["source_site"], rec["comic_source"]) == ("jm", "JM")
+    assert rec["title"] == "Canonical"
+    assert rec["pages"] == 12
+    assert rec["album_total_chapters"] == 2
+    db.close()

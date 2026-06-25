@@ -118,14 +118,14 @@ class SearchMixin:
 
     def _check_source_auth(self, source: str) -> None:
         """Raise AuthRequiredError if source credentials are not configured."""
-        if source == "jmcomic" and not self.config.source_auth.get("jmcomic", {}).get("cookie"):
-            raise AuthRequiredError("jmcomic 未登录，请前往设置页面配置登录凭证")
+        if source == "jm" and not self.config.source_auth.get("jm", {}).get("cookie"):
+            raise AuthRequiredError("jm 未登录，请前往设置页面配置登录凭证")
         if source == "copymanga" and not self.config.source_auth.get("copymanga", {}).get("cookie"):
             raise AuthRequiredError("拷贝漫画未登录，请前往设置页面登录拷贝漫画")
 
     def _is_source_auth_error(self, source: str, error: Exception) -> bool:
         """Check if an exception indicates auth failure for the given source."""
-        if source not in ("jmcomic", "copymanga", "hcomic"):
+        if source not in ("jm", "copymanga", "hcomic"):
             return False
         msg = str(error).lower()
         return any(kw in msg for kw in _AUTH_KEYWORDS)
@@ -178,7 +178,7 @@ class SearchMixin:
         elif effective_source == "moeimg" and mode in ("author", "tag"):
             effective_query = f"{mode}:{query}"
             effective_tag = ""
-        elif effective_source == "jmcomic" and mode == "ranking":
+        elif effective_source == "jm" and mode == "ranking":
             effective_tag = ""
         elif effective_source == "copymanga" and mode == "ranking":
             effective_tag = query
@@ -242,7 +242,7 @@ class SearchMixin:
         }
 
     def handle_random(self, source: str | None = None) -> dict:
-        effective_source = source if source in ("hcomic", "jmcomic", "bika") else _DEFAULT_SOURCE
+        effective_source = source if source in ("hcomic", "jm", "bika") else _DEFAULT_SOURCE
         self._check_source_auth(effective_source)
         try:
             comics, pagination = self.parser.random(source=effective_source)
@@ -336,7 +336,7 @@ class SearchMixin:
         comic = self._build_and_prepare_comic(comic_data, comic_id=comic_id)
 
         # 多章节专辑：不预取图片，返回章节列表供前端选章。
-        if comic.source_site in ("jmcomic", "bika", "copymanga") and len(getattr(comic, "chapters", None) or []) > 1:
+        if comic.source_site in ("jm", "bika", "copymanga") and len(getattr(comic, "chapters", None) or []) > 1:
             return {
                 "imageUrls": [],
                 "totalPages": comic.pages or 0,
@@ -360,21 +360,21 @@ class SearchMixin:
             "imageUrls": image_urls,
             "totalPages": total_pages,
         }
-        # jmcomic 反混淆需要 scrambleId 和 comicId
-        if comic.source_site == "jmcomic" and comic.scramble_id:
+        # jm 反混淆需要 scrambleId 和 comicId
+        if comic.source_site == "jm" and comic.scramble_id:
             result["scrambleId"] = comic.scramble_id
             result["comicId"] = comic.id
         return result
 
     def handle_get_chapter_preview_urls(self, chapter_id: str, album_id: str = "", source_site: str = "") -> dict:
-        """获取单个章节的图片 URL 列表（支持 jmcomic 和 bika）。"""
+        """获取单个章节的图片 URL 列表（支持 jm 和 bika）。"""
         import requests
 
         from sources import ParserResponseError
 
         if not chapter_id or not isinstance(chapter_id, str):
             raise ValueError("Missing chapter id")
-        site = source_site or "jmcomic"
+        site = source_site or "jm"
         if site == "bika":
             parser = self.parser.parsers.get("bika")
             if parser is None:
@@ -407,9 +407,9 @@ class SearchMixin:
                 "totalPages": len(image_urls),
                 "comicId": chapter_id,
             }
-        jm = self.parser.parsers.get("jmcomic")
+        jm = self.parser.parsers.get("jm")
         if jm is None:
-            raise ValueError("jmcomic source unavailable")
+            raise ValueError("jm source unavailable")
         image_urls, scramble_id = jm.get_chapter_images(chapter_id)
         result = {
             "imageUrls": image_urls,

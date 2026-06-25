@@ -1,11 +1,11 @@
-"""jmcomic 收藏夹解析测试"""
+"""jm 收藏夹解析测试"""
 
 import unittest
 from unittest.mock import MagicMock, patch
 
 import requests
 
-from sources.jmcomic.parser import JmParser
+from sources.jm.parser import JmParser
 
 
 def _make_homepage_resp(username: str = "testuser", status: int = 200) -> MagicMock:
@@ -34,8 +34,8 @@ def _make_fav_resp(
     return resp
 
 
-class TestJmcomicFavourites(unittest.TestCase):
-    """测试 jmcomic 收藏夹解析流程"""
+class TestJmFavourites(unittest.TestCase):
+    """测试 jm 收藏夹解析流程"""
 
     def setUp(self):
         self.parser = JmParser(timeout=5)
@@ -43,7 +43,7 @@ class TestJmcomicFavourites(unittest.TestCase):
 
     # ── 基本功能 ──────────────────────────────────────────────────────────────
 
-    @patch("sources.jmcomic.parser.etree.HTML")
+    @patch("sources.jm.parser.etree.HTML")
     def test_favourites_returns_comics_and_pagination(self, mock_html):
         """已知用户名时成功获取收藏夹漫画列表"""
         self.parser._username = "testuser"
@@ -69,7 +69,7 @@ class TestJmcomicFavourites(unittest.TestCase):
         self.assertEqual(len(comics), 1)
         self.assertEqual(comics[0].id, "12345")
         self.assertEqual(comics[0].title, "测试漫画")
-        self.assertEqual(comics[0].source_site, "jmcomic")
+        self.assertEqual(comics[0].source_site, "jm")
 
     # ── 登录检测 ─────────────────────────────────────────────────────────────
 
@@ -196,8 +196,8 @@ class TestJmcomicFavourites(unittest.TestCase):
             self.parser._build_favourites_url("18comic.vip", 1)
 
 
-class TestJmcomicAddToFavourites(unittest.TestCase):
-    """测试 jmcomic 加入收藏夹 API"""
+class TestJmAddToFavourites(unittest.TestCase):
+    """测试 jm 加入收藏夹 API"""
 
     def setUp(self):
         self.parser = JmParser(timeout=5)
@@ -236,8 +236,8 @@ class TestJmcomicAddToFavourites(unittest.TestCase):
         self.assertIn("加入收藏夹失败", str(ctx.exception))
 
 
-class TestJmcomicCheckFavourite(unittest.TestCase):
-    """测试 jmcomic 检查收藏状态 API"""
+class TestJmCheckFavourite(unittest.TestCase):
+    """测试 jm 检查收藏状态 API"""
 
     def setUp(self):
         self.parser = JmParser(timeout=5)
@@ -276,8 +276,8 @@ class TestJmcomicCheckFavourite(unittest.TestCase):
         self.assertIn("检查收藏状态失败", str(ctx.exception))
 
 
-class TestJmcomicRemoveFromFavourites(unittest.TestCase):
-    """测试 jmcomic 移除收藏夹 API"""
+class TestJmRemoveFromFavourites(unittest.TestCase):
+    """测试 jm 移除收藏夹 API"""
 
     def setUp(self):
         self.parser = JmParser(timeout=5)
@@ -333,8 +333,8 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(id="1", title="Title A", source_site="jmcomic", comic_source="JMCOMIC"),
-            ComicInfo(id="2", title="Title B", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="1", title="Title A", source_site="jm", comic_source="JM"),
+            ComicInfo(id="2", title="Title B", source_site="jm", comic_source="JM"),
         ]
         # _serialize_cookies_for_title_fetch 不应被调用（所有标题已存在）
 
@@ -351,8 +351,8 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(id="1", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"),
-            ComicInfo(id="2", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="1", title="已有标题", source_site="jm", comic_source="JM"),
+            ComicInfo(id="2", title="未知标题", source_site="jm", comic_source="JM"),
         ]
 
         detail_html = '<html><body><h1 id="book-name">补全的标题</h1></body></html>'
@@ -368,11 +368,11 @@ class TestFillMissingTitles(unittest.TestCase):
         with (
             patch("time.sleep", lambda x: None),
             patch(
-                "sources.jmcomic.title_resolver._create_thread_session",
+                "sources.jm.title_resolver._create_thread_session",
                 return_value=mock_thread_session,
             ),
             patch(
-                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                "sources.jm.title_resolver.apply_system_proxy_to_session",
                 lambda s: None,
             ),
             patch.object(
@@ -393,7 +393,7 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(id="3", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="3", title="未知标题", source_site="jm", comic_source="JM"),
         ]
 
         mock_thread_session = MagicMock()
@@ -407,11 +407,11 @@ class TestFillMissingTitles(unittest.TestCase):
         with (
             patch("time.sleep", lambda x: None),
             patch(
-                "sources.jmcomic.title_resolver._create_thread_session",
+                "sources.jm.title_resolver._create_thread_session",
                 return_value=mock_thread_session,
             ),
             patch(
-                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                "sources.jm.title_resolver.apply_system_proxy_to_session",
                 lambda s: None,
             ),
             patch.object(
@@ -432,7 +432,7 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(id="4", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="4", title="未知标题", source_site="jm", comic_source="JM"),
         ]
 
         mock_thread_session = MagicMock()
@@ -446,11 +446,11 @@ class TestFillMissingTitles(unittest.TestCase):
         with (
             patch("time.sleep", lambda x: None),
             patch(
-                "sources.jmcomic.title_resolver._create_thread_session",
+                "sources.jm.title_resolver._create_thread_session",
                 return_value=mock_thread_session,
             ),
             patch(
-                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                "sources.jm.title_resolver.apply_system_proxy_to_session",
                 lambda s: None,
             ),
             patch.object(
@@ -470,7 +470,7 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(id="5", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="5", title="未知标题", source_site="jm", comic_source="JM"),
         ]
 
         detail_html = (
@@ -493,11 +493,11 @@ class TestFillMissingTitles(unittest.TestCase):
         with (
             patch("time.sleep", lambda x: None),
             patch(
-                "sources.jmcomic.title_resolver._create_thread_session",
+                "sources.jm.title_resolver._create_thread_session",
                 return_value=mock_thread_session,
             ),
             patch(
-                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                "sources.jm.title_resolver.apply_system_proxy_to_session",
                 lambda s: None,
             ),
             patch.object(
@@ -517,8 +517,8 @@ class TestFillMissingTitles(unittest.TestCase):
         from models import ComicInfo
 
         comics = [
-            ComicInfo(id="6", title="未知标题", source_site="jmcomic", comic_source="JMCOMIC"),
-            ComicInfo(id="7", title="已有标题", source_site="jmcomic", comic_source="JMCOMIC"),
+            ComicInfo(id="6", title="未知标题", source_site="jm", comic_source="JM"),
+            ComicInfo(id="7", title="已有标题", source_site="jm", comic_source="JM"),
         ]
 
         mock_thread_session = MagicMock()
@@ -527,11 +527,11 @@ class TestFillMissingTitles(unittest.TestCase):
         with (
             patch("time.sleep", lambda x: None),
             patch(
-                "sources.jmcomic.title_resolver._create_thread_session",
+                "sources.jm.title_resolver._create_thread_session",
                 return_value=mock_thread_session,
             ),
             patch(
-                "sources.jmcomic.title_resolver.apply_system_proxy_to_session",
+                "sources.jm.title_resolver.apply_system_proxy_to_session",
                 lambda s: None,
             ),
             patch.object(

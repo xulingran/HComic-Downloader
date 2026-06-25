@@ -34,7 +34,7 @@ CONFIG_KEY_MAP = {
     "duplicateBlacklist": "duplicate_blacklist",
     "missingBlacklist": "missing_blacklist",
     "previewCacheSizeLimitMB": "preview_cache_size_limit_mb",
-    "jmcomicDomain": "jmcomic_domain",
+    "jmDomain": "jm_domain",
     "favouriteTagHighlight": "favourite_tag_highlight",
     "favouriteTagMinMatches": "favourite_tag_min_matches",
     "checkUpdateOnStart": "check_update_on_start",

@@ -1,4 +1,4 @@
-"""jmcomic 页面解析模块。"""
+"""jm 页面解析模块。"""
 
 from __future__ import annotations
 
@@ -45,7 +45,7 @@ _CHALLENGE_KEYWORDS = ("cloudflare", "just a moment", "captcha", "cf-")
 
 
 class JmParser(ParserContextMixin):
-    """jmcomic 解析器，实现与 HComicParser 相同的接口。"""
+    """jm 解析器，实现与 HComicParser 相同的接口。"""
 
     def __init__(self, timeout: int = 30, cookie: str = "", user_agent: str = ""):
         self.timeout = timeout
@@ -63,7 +63,7 @@ class JmParser(ParserContextMixin):
         self.configure_auth(cookie=cookie, user_agent=user_agent)
 
     def _ensure_domain(self) -> str:
-        # jmcomic 始终使用 18comic.vip 作为默认域名（DEFAULT_DOMAIN）。
+        # jm 始终使用 18comic.vip 作为默认域名（DEFAULT_DOMAIN）。
         # 发布页自动发现的镜像域名仅用于设置页的手动切换选项，
         # 不自动替换默认值，避免解析到不可达域名导致请求失败。
         if not self._domain:
@@ -182,13 +182,13 @@ class JmParser(ParserContextMixin):
                 return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
             if resp.status_code == 200 and self._is_challenge_page(resp.text):
                 logger.debug(
-                    "jmcomic verify_login: challenge page detected at status 200 (first 500 chars): %s",
+                    "jm verify_login: challenge page detected at status 200 (first 500 chars): %s",
                     resp.text[:500],
                 )
                 return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
             if resp.status_code != 200:
                 logger.warning(
-                    "jmcomic verify_login: unexpected status=%d url=%s",
+                    "jm verify_login: unexpected status=%d url=%s",
                     resp.status_code,
                     resp.url,
                 )
@@ -204,7 +204,7 @@ class JmParser(ParserContextMixin):
                     username = m.group(1)
                     if self._username != username:
                         self._username = username
-                        logger.info("Discovered jmcomic username from navbar: %s", username)
+                        logger.info("Discovered jm username from navbar: %s", username)
                     return True, "登录校验通过"
             # 次级检测：导航栏含登出链接也表示已登录
             logout_links = doc.xpath('//a[contains(@href,"logout") or contains(@href,"sign_out")]')
@@ -223,11 +223,11 @@ class JmParser(ParserContextMixin):
             if login_links:
                 return False, "登录已失效，请重新登录"
             logger.debug(
-                "jmcomic verify_login response HTML (first 500 chars): %s",
+                "jm verify_login response HTML (first 500 chars): %s",
                 html[:500],
             )
             logger.warning(
-                "jmcomic verify_login: cannot determine login state (status=%d, fav_links=%d, login_links=%d)",
+                "jm verify_login: cannot determine login state (status=%d, fav_links=%d, login_links=%d)",
                 resp.status_code,
                 len(fav_links),
                 len(login_links),
@@ -236,7 +236,7 @@ class JmParser(ParserContextMixin):
         except Exception as e:
             # curl_cffi 的网络异常不继承 requests.RequestException，
             # 需用 Exception 基类捕获（如 DNS 解析失败、连接超时等）
-            logger.warning("jmcomic verify_login request failed: %s", e)
+            logger.warning("jm verify_login request failed: %s", e)
             return False, f"登录校验失败: {e}"
 
     def add_to_favourites(self, comic_id: str) -> bool:
@@ -270,7 +270,7 @@ class JmParser(ParserContextMixin):
             # 如果返回了结果但不是明确的失败，也认为成功（某些站点返回空对象）
             return True
         except requests.RequestException as e:
-            logger.error("jmcomic add_to_favourites failed: %s", e, exc_info=True)
+            logger.error("jm add_to_favourites failed: %s", e, exc_info=True)
             raise RuntimeError(f"加入收藏夹失败: {e}") from e
 
     def check_favourite(self, comic_id: str) -> bool:
@@ -301,7 +301,7 @@ class JmParser(ParserContextMixin):
             result = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
             return bool(result.get("favorited") or result.get("is_favorite") or result.get("status") == "ok")
         except requests.RequestException as e:
-            logger.error("jmcomic check_favourite failed: %s", e, exc_info=True)
+            logger.error("jm check_favourite failed: %s", e, exc_info=True)
             raise RuntimeError(f"检查收藏状态失败: {e}") from e
 
     def remove_from_favourites(self, comic_id: str) -> bool:
@@ -331,7 +331,7 @@ class JmParser(ParserContextMixin):
             resp.raise_for_status()
             return True
         except requests.RequestException as e:
-            logger.error("jmcomic remove_from_favourites failed: %s", e, exc_info=True)
+            logger.error("jm remove_from_favourites failed: %s", e, exc_info=True)
             raise RuntimeError(f"移除收藏夹失败: {e}") from e
 
     def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
@@ -349,7 +349,7 @@ class JmParser(ParserContextMixin):
             except ParserResponseError:
                 raise
             except Exception as e:
-                logger.warning("jmcomic id search fallback to keyword search: %s", e)
+                logger.warning("jm id search fallback to keyword search: %s", e)
 
         url = self._build_search_url(keyword, page=page)
         try:
@@ -358,7 +358,7 @@ class JmParser(ParserContextMixin):
         except ParserResponseError:
             raise
         except Exception as e:
-            logger.error("jmcomic search failed: %s", e, exc_info=True)
+            logger.error("jm search failed: %s", e, exc_info=True)
             return [], None
 
     def random(self) -> tuple[list[ComicInfo], PaginationInfo | None]:
@@ -371,7 +371,7 @@ class JmParser(ParserContextMixin):
         except ParserResponseError:
             raise
         except Exception as e:
-            logger.error("jmcomic random failed: %s", e, exc_info=True)
+            logger.error("jm random failed: %s", e, exc_info=True)
             return [], None
 
     def get_comic_detail(self, comic_id: str, slug: str = "") -> ComicInfo | None:
@@ -382,7 +382,7 @@ class JmParser(ParserContextMixin):
             html = self._request_text(url)
             return self._parse_detail(html, comic_id=comic_id, domain=domain)
         except Exception as e:
-            logger.error("jmcomic get_comic_detail failed: %s", e, exc_info=True)
+            logger.error("jm get_comic_detail failed: %s", e, exc_info=True)
             return None
 
     def get_chapter_images(self, chapter_id: str) -> tuple[list[str], str]:
@@ -400,7 +400,7 @@ class JmParser(ParserContextMixin):
     def _build_favourites_url(self, domain: str, page: int) -> str:
         """构造收藏夹请求 URL。
 
-        jmcomic 真实收藏夹 URL 格式为：
+        jm 真实收藏夹 URL 格式为：
             https://{domain}/user/{username}/favorite/albums?page=N
 
         /user/favorites 旧路径已被服务端废弃，直接返回 403，不再使用。
@@ -408,8 +408,7 @@ class JmParser(ParserContextMixin):
         """
         if not self._username:
             raise RuntimeError(
-                "jmcomic 用户名未知，无法构造收藏夹 URL。"
-                "请先确保 verify_login_status() 或 _ensure_username() 已被调用。"
+                "jm 用户名未知，无法构造收藏夹 URL。" "请先确保 verify_login_status() 或 _ensure_username() 已被调用。"
             )
         base = f"https://{domain}/user/{self._username}/favorite/albums"
         return base if page <= 1 else f"{base}?page={page}"
@@ -450,7 +449,7 @@ class JmParser(ParserContextMixin):
                 if m:
                     self._username = m.group(1)
                     logger.info(
-                        "Discovered jmcomic username from homepage navbar: %s",
+                        "Discovered jm username from homepage navbar: %s",
                         self._username,
                     )
                     return True
@@ -460,12 +459,12 @@ class JmParser(ParserContextMixin):
                 if m and m.group(1) not in _GENERIC:
                     self._username = m.group(1)
                     logger.info(
-                        "Discovered jmcomic username from user link: %s",
+                        "Discovered jm username from user link: %s",
                         self._username,
                     )
                     return True
             logger.warning(
-                "Could not discover jmcomic username from homepage "
+                "Could not discover jm username from homepage "
                 "(not logged in or navbar structure changed). "
                 "Response URL: %s, HTML length: %d, first 200 chars: %s",
                 resp.url,
@@ -480,7 +479,7 @@ class JmParser(ParserContextMixin):
     def favourites(
         self, page: int = 1, raise_errors: bool = False
     ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
-        """获取 jmcomic 收藏夹漫画。
+        """获取 jm 收藏夹漫画。
 
         Args:
             page: 页码
@@ -492,7 +491,7 @@ class JmParser(ParserContextMixin):
         domain = self._ensure_domain()
         # 用户名未知时，先从首页导航栏发现（verify_login_status 通常已完成此步骤）
         if not self._username and not self._ensure_username(domain):
-            logger.warning("jmcomic favourites: username unknown and homepage discovery failed (not logged in?)")
+            logger.warning("jm favourites: username unknown and homepage discovery failed (not logged in?)")
             return [], None, True
         try:
             url = self._build_favourites_url(domain, page)
@@ -510,14 +509,14 @@ class JmParser(ParserContextMixin):
             html = resp.text
             if not html or not html.strip():
                 logger.warning(
-                    "jmcomic favourites returned empty response (status=%d)",
+                    "jm favourites returned empty response (status=%d)",
                     resp.status_code,
                 )
                 return [], None, False
             # 检测 Cloudflare / 反爬页面
             if self._is_challenge_page(html):
                 logger.warning(
-                    "jmcomic favourites page looks like a challenge page (%d bytes)",
+                    "jm favourites page looks like a challenge page (%d bytes)",
                     len(html),
                 )
                 return [], None, False
@@ -541,7 +540,7 @@ class JmParser(ParserContextMixin):
             self._fill_missing_titles(comics, domain)
             return comics, pagination, False
         except Exception as e:
-            logger.error("jmcomic favourites failed: %s", e, exc_info=True)
+            logger.error("jm favourites failed: %s", e, exc_info=True)
             if raise_errors:
                 raise
             return [], None, False
@@ -616,7 +615,7 @@ class JmParser(ParserContextMixin):
             html = self._request_text(url)
             return self._parse_search_results(html, domain=domain)
         except Exception as e:
-            logger.error("jmcomic ranking search failed: %s", e, exc_info=True)
+            logger.error("jm ranking search failed: %s", e, exc_info=True)
             return [], None
 
     @staticmethod
@@ -673,7 +672,7 @@ class JmParser(ParserContextMixin):
                     comic = self._parse_detail(html, comic_id=comic_id, domain=domain)
                     return [comic], PaginationInfo(current_page=1, total_pages=1, total_items=1)
                 except Exception as e:
-                    logger.warning("jmcomic parse detail page from search response failed: %s", e)
+                    logger.warning("jm parse detail page from search response failed: %s", e)
 
         doc = etree.HTML(html)
         items = doc.xpath('//div[contains(@class,"thumb-overlay")]')
@@ -708,7 +707,7 @@ class JmParser(ParserContextMixin):
             return None
         comic_id = id_match.group(1)
 
-        # Preferred: jmcomic favourites uses <div class="image-item-text">
+        # Preferred: jm favourites uses <div class="image-item-text">
         text_div = item.xpath('.//div[contains(@class,"image-item-text")]/text()')
         title = text_div[0].strip() if text_div else ""
         if not title:
@@ -766,14 +765,14 @@ class JmParser(ParserContextMixin):
             cover_url=cover_url,
             preview_url=f"https://{domain}/album/{comic_id}",
             media_id=comic_id,
-            comic_source="JMCOMIC",
-            source_site="jmcomic",
+            comic_source="JM",
+            source_site="jm",
         )
 
     def _parse_pagination(self, doc) -> PaginationInfo | None:
         """解析分页信息。
 
-        jmcomic 分页结构（实测）：
+        jm 分页结构（实测）：
           <ul class="pagination">
             <li><a href="...?page=1">«</a></li>   <!-- 上一页 -->
             <li class=""><a href="...?page=1">1</a></li>
@@ -847,8 +846,8 @@ class JmParser(ParserContextMixin):
             cover_url=cover_url,
             preview_url=f"https://{domain}/album/{comic_id}",
             media_id=comic_id,
-            comic_source="JMCOMIC",
-            source_site="jmcomic",
+            comic_source="JM",
+            source_site="jm",
             scramble_id=scramble_id,
             image_urls=image_urls,
             chapters=chapters,
@@ -876,9 +875,9 @@ class JmParser(ParserContextMixin):
                     if sep in raw:
                         raw = raw.split(sep, 1)[0].strip()
                 if raw and raw.lower() not in (
-                    "jmcomic",
+                    "jm",
                     "18comic",
-                    "jmcomic",
+                    "jm",
                     "18comic.vip",
                     "jmcomic-zzz.one",
                 ):

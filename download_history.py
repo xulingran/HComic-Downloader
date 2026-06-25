@@ -8,7 +8,7 @@ import threading
 import time
 
 from models import ComicInfo
-from utils import open_sqlite_db
+from utils import normalize_comic_source_key, normalize_source_key, open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
@@ -50,7 +50,108 @@ class DownloadHistoryDB:
         if "pages" not in existing:
             self._conn.execute("ALTER TABLE download_history ADD COLUMN pages INTEGER NOT NULL DEFAULT 0")
         self._conn.commit()
+        self._migrate_source_ids()
         self._migrate_album_ids()
+
+    def _migrate_source_ids(self):
+        """迁移旧来源标识 jmcomic/JMCOMIC 到 jm/JM，并合并冲突行。"""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT source_site, comic_id, comic_source, title, author, output_path, output_format, "
+                "downloaded_at, pages, album_id, album_total_chapters FROM download_history "
+                "WHERE source_site = 'jmcomic' OR comic_source = 'JMCOMIC'"
+            ).fetchall()
+            if not rows:
+                return
+
+            canonical_keys = {
+                (normalize_source_key(row[0]), row[1], normalize_comic_source_key(row[2])) for row in rows
+            }
+            placeholders = ",".join(["(?, ?, ?)"] * len(canonical_keys))
+            flat_keys: list[str] = []
+            for key in canonical_keys:
+                flat_keys.extend(key)
+            all_rows = self._conn.execute(
+                "SELECT source_site, comic_id, comic_source, title, author, output_path, output_format, "
+                "downloaded_at, pages, album_id, album_total_chapters FROM download_history "
+                f"WHERE (source_site, comic_id, comic_source) IN ({placeholders}) "
+                "OR source_site = 'jmcomic' OR comic_source = 'JMCOMIC'",
+                flat_keys,
+            ).fetchall()
+
+            merged: dict[tuple[str, str, str], dict] = {}
+            keys_to_delete: set[tuple[str, str, str]] = set()
+            for row in all_rows:
+                original_key = (row[0], row[1], row[2])
+                canonical_key = (normalize_source_key(row[0]), row[1], normalize_comic_source_key(row[2]))
+                keys_to_delete.add(original_key)
+                item = {
+                    "source_site": canonical_key[0],
+                    "comic_id": canonical_key[1],
+                    "comic_source": canonical_key[2],
+                    "title": row[3] or "",
+                    "author": row[4] or "",
+                    "output_path": row[5] or "",
+                    "output_format": row[6] or "",
+                    "downloaded_at": int(row[7] or 0),
+                    "pages": int(row[8] or 0),
+                    "album_id": row[9] or row[1],
+                    "album_total_chapters": int(row[10] or 1),
+                }
+                current = merged.get(canonical_key)
+                if current is None:
+                    merged[canonical_key] = item
+                    continue
+                if item["downloaded_at"] >= current["downloaded_at"]:
+                    preferred = item
+                    older = current
+                else:
+                    preferred = current
+                    older = item
+                preferred["output_path"] = preferred["output_path"] or older["output_path"]
+                preferred["output_format"] = preferred["output_format"] or older["output_format"]
+                preferred["title"] = preferred["title"] or older["title"]
+                preferred["author"] = preferred["author"] or older["author"]
+                preferred["album_id"] = preferred["album_id"] or older["album_id"]
+                preferred["pages"] = max(preferred["pages"], older["pages"])
+                preferred["album_total_chapters"] = max(
+                    preferred["album_total_chapters"], older["album_total_chapters"]
+                )
+                merged[canonical_key] = preferred
+
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                for key in keys_to_delete:
+                    self._conn.execute(
+                        "DELETE FROM download_history WHERE source_site = ? AND comic_id = ? AND comic_source = ?",
+                        key,
+                    )
+                for item in merged.values():
+                    self._conn.execute(
+                        """
+                        INSERT OR REPLACE INTO download_history
+                            (source_site, comic_id, comic_source, title, author, output_path, output_format,
+                             downloaded_at, pages, album_id, album_total_chapters)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            item["source_site"],
+                            item["comic_id"],
+                            item["comic_source"],
+                            item["title"],
+                            item["author"],
+                            item["output_path"],
+                            item["output_format"],
+                            item["downloaded_at"],
+                            item["pages"],
+                            item["album_id"],
+                            item["album_total_chapters"],
+                        ),
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def _migrate_album_ids(self):
         """旧记录 album_id 为空时回填为 comic_id，使其按单本专辑(1/1)正确判定。"""

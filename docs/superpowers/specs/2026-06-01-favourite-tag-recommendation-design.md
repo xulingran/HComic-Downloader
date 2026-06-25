@@ -2,7 +2,7 @@
 
 ## 概述
 
-基于收藏夹中漫画的 tag 数据，统计用户偏好的 tag，在搜索页面中对包含这些 tag 的搜索结果进行高亮标记。功能默认关闭，可在设置中开启。首期仅支持 hcomic 源，jmcomic 留作 TODO。
+基于收藏夹中漫画的 tag 数据，统计用户偏好的 tag，在搜索页面中对包含这些 tag 的搜索结果进行高亮标记。功能默认关闭，可在设置中开启。首期仅支持 hcomic 源，jm 留作 TODO。
 
 ## 方案选择
 
@@ -211,4 +211,4 @@ const filteredComics = useMemo(() => {
 ## 范围与 TODO
 
 - **本期**：hcomic 源完整实现
-- **TODO**：jmcomic 源支持（后端已通过 source 参数预留，前端需在 `FavouriteTagSettings` 和 `SearchPage` 中添加 jmcomic 逻辑）
+- **TODO**：jm 源支持（后端已通过 source 参数预留，前端需在 `FavouriteTagSettings` 和 `SearchPage` 中添加 jm 逻辑）

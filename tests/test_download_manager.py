@@ -629,7 +629,7 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
         success=True,
         completed_pages=[1],
         failed_pages=[],
-        temp_dir=str(tmp_path / "temp_jmcomic_100"),
+        temp_dir=str(tmp_path / "temp_jm_100"),
     )
     downloader.cleanup_temp_dir = MagicMock()
 
@@ -656,8 +656,8 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
     comic = ComicInfo(
         id="100",
         title="Album - Ch1",
-        source_site="jmcomic",
-        comic_source="JMCOMIC",
+        source_site="jm",
+        comic_source="JM",
         album_id="100",
         album_title="Album",
         album_total_chapters=3,
@@ -668,7 +668,7 @@ def test_handle_album_chapter_success_moves_to_album_folder(tmp_path):
     manager.tasks[task.task_id] = task
 
     # 创建 temp 目录
-    temp_dir = tmp_path / "temp_jmcomic_100"
+    temp_dir = tmp_path / "temp_jm_100"
     temp_dir.mkdir()
     (temp_dir / "001.jpg").write_bytes(b"\xff\xd8\xff\xd9")
     (temp_dir / "002.jpg").write_bytes(b"\xff\xd8\xff\xd9")

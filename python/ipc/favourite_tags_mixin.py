@@ -8,11 +8,11 @@ import os
 import threading
 from typing import Any
 
-from utils import open_sqlite_db
+from utils import normalize_source_key, open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
-_TAG_RECOMMENDATION_SOURCES = ("hcomic", "jmcomic", "bika", "moeimg")
+_TAG_RECOMMENDATION_SOURCES = ("hcomic", "jm", "bika", "moeimg")
 
 
 class FavouriteTagsDB:
@@ -44,6 +44,71 @@ class FavouriteTagsDB:
             )
         """)
         self._conn.commit()
+        self._migrate_source_ids()
+
+    def _migrate_source_ids(self) -> None:
+        """迁移旧推荐标签来源标识 jmcomic 到 jm。"""
+        with self._lock:
+            has_legacy = self._conn.execute(
+                """
+                SELECT 1 FROM favourite_tag_comics WHERE source = 'jmcomic'
+                UNION ALL
+                SELECT 1 FROM favourite_tag_index WHERE source = 'jmcomic'
+                LIMIT 1
+                """
+            ).fetchone()
+            if not has_legacy:
+                return
+
+            comic_rows = self._conn.execute(
+                "SELECT comic_id, source, tags FROM favourite_tag_comics WHERE source IN ('jmcomic', 'jm')"
+            ).fetchall()
+            index_rows = self._conn.execute(
+                "SELECT tag, source, count FROM favourite_tag_index WHERE source IN ('jmcomic', 'jm')"
+            ).fetchall()
+
+            comics: dict[str, set[str]] = {}
+            for row in comic_rows:
+                comic_id = row["comic_id"]
+                source = normalize_source_key(row["source"])
+                if source != "jm":
+                    continue
+                try:
+                    tags = set(json.loads(row["tags"]))
+                except (TypeError, ValueError):
+                    tags = set()
+                comics.setdefault(comic_id, set()).update(str(tag) for tag in tags)
+
+            tag_counts: dict[str, int] = {}
+            for row in index_rows:
+                source = normalize_source_key(row["source"])
+                if source != "jm":
+                    continue
+                tag = str(row["tag"] or "")
+                if not tag:
+                    continue
+                tag_counts[tag] = tag_counts.get(tag, 0) + int(row["count"] or 0)
+
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._conn.execute("DELETE FROM favourite_tag_comics WHERE source IN ('jmcomic', 'jm')")
+                self._conn.execute("DELETE FROM favourite_tag_index WHERE source IN ('jmcomic', 'jm')")
+                for comic_id, tags in comics.items():
+                    self._conn.execute(
+                        "INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)",
+                        (comic_id, "jm", json.dumps(sorted(tags))),
+                    )
+                for tag, count in tag_counts.items():
+                    if count <= 0:
+                        continue
+                    self._conn.execute(
+                        "INSERT INTO favourite_tag_index (tag, source, count) VALUES (?, ?, ?)",
+                        (tag, "jm", count),
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def upsert_comic(self, comic_id: str, source: str, tags: list[str]) -> None:
         """Add or update a comic's tag snapshot, adjusting counts incrementally."""

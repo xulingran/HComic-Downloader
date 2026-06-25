@@ -22,7 +22,7 @@ class AuthMixin:
     parser: MultiSourceParser
     downloader: ComicDownloader
 
-    def handle_apply_auth(self, curl_text: str, source: str = "hcomic", jmcomic_username: str = "") -> dict:
+    def handle_apply_auth(self, curl_text: str, source: str = "hcomic", jm_username: str = "") -> dict:
         if not curl_text or not curl_text.strip():
             raise ValueError("\u8bf7\u7c98\u8d34 curl \u547d\u4ee4")
 
@@ -43,17 +43,17 @@ class AuthMixin:
             source=source,
         )
 
-        # jmcomic 使用多镜像域名，必须将 parser 域名锁定为登录时获取 cookie 的域名，
+        # jm 使用多镜像域名，必须将 parser 域名锁定为登录时获取 cookie 的域名，
         # 否则 JmDomainResolver 自动解析可能返回不同域名，导致 cookie 不匹配。
-        if source == "jmcomic" and domain:
-            self.parser.set_jmcomic_domain(domain)
+        if source == "jm" and domain:
+            self.parser.set_jm_domain(domain)
 
         # Electron 登录窗口从 DOM 提取的用户名，直接设置到 parser。
         # 避免 Python 后端因 Cloudflare 403 无法从首页发现用户名。
-        if source == "jmcomic" and jmcomic_username:
-            jm_parser = self.parser.parsers.get("jmcomic")
+        if source == "jm" and jm_username:
+            jm_parser = self.parser.parsers.get("jm")
             if jm_parser and hasattr(jm_parser, "set_username"):
-                jm_parser.set_username(jmcomic_username)
+                jm_parser.set_username(jm_username)
 
         if source == "hcomic":
             self.downloader.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)

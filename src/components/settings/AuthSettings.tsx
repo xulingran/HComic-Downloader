@@ -5,8 +5,8 @@ interface AuthSettingsProps {
   loginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   loginMessage: string
   hcomicSavedUsername: string
-  jmcomicLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
-  jmcomicLoginMessage: string
+  jmLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
+  jmLoginMessage: string
   moeimgLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   moeimgLoginMessage: string
   moeimgSavedUsername: string
@@ -30,8 +30,8 @@ export function AuthSettings({
   loginStatus,
   loginMessage,
   hcomicSavedUsername,
-  jmcomicLoginStatus,
-  jmcomicLoginMessage,
+  jmLoginStatus,
+  jmLoginMessage,
   moeimgLoginStatus,
   moeimgLoginMessage,
   moeimgSavedUsername,
@@ -51,7 +51,7 @@ export function AuthSettings({
   const [hcomicUsername, setHcomicUsername] = useState(hcomicSavedUsername || '')
   const [hcomicPassword, setHcomicPassword] = useState('')
   const [showHcomicPassword, setShowHcomicPassword] = useState(false)
-  const [jmcomicCurlText, setJmcomicCurlText] = useState('')
+  const [jmCurlText, setJmCurlText] = useState('')
   const [moeimgUsername, setMoeimgUsername] = useState(moeimgSavedUsername || '')
   const [moeimgPassword, setMoeimgPassword] = useState('')
   const [moeimgCurlText, setMoeimgCurlText] = useState('')
@@ -187,27 +187,27 @@ export function AuthSettings({
       </AuthSourceCard>
 
       <AuthSourceCard
-        label="jmcomic"
-        status={jmcomicLoginStatus}
-        message={jmcomicLoginMessage}
+        label="jm"
+        status={jmLoginStatus}
+        message={jmLoginMessage}
       >
         <div className="flex items-center gap-3">
           <button
-            onClick={() => onOpenLoginWindow('jmcomic')}
-            disabled={jmcomicLoginStatus === 'verifying'}
+            onClick={() => onOpenLoginWindow('jm')}
+            disabled={jmLoginStatus === 'verifying'}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                        bg-[var(--accent)] text-white hover:opacity-90
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {jmcomicLoginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
+            {jmLoginStatus === 'verifying' ? '登录中...' : '弹窗登录'}
           </button>
-          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 jmcomic 账号</span>
+          <span className="text-xs text-[var(--text-secondary)]">在弹窗中登录 jm 账号</span>
         </div>
 
         <textarea
-          value={jmcomicCurlText}
-          onChange={(e) => setJmcomicCurlText(e.target.value)}
-          placeholder="粘贴 jmcomic 的 Cookie 字符串或 curl 命令"
+          value={jmCurlText}
+          onChange={(e) => setJmCurlText(e.target.value)}
+          placeholder="粘贴 jm 的 Cookie 字符串或 curl 命令"
           rows={3}
           className="w-full px-3 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)]
                      text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]
@@ -216,8 +216,8 @@ export function AuthSettings({
 
         <div className="flex gap-3">
           <button
-            onClick={() => onApplyAuth(jmcomicCurlText, 'jmcomic')}
-            disabled={!jmcomicCurlText.trim() || jmcomicLoginStatus === 'verifying'}
+            onClick={() => onApplyAuth(jmCurlText, 'jm')}
+            disabled={!jmCurlText.trim() || jmLoginStatus === 'verifying'}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                        bg-[var(--accent)] text-white hover:opacity-90
                        disabled:opacity-50 disabled:cursor-not-allowed"
@@ -225,13 +225,13 @@ export function AuthSettings({
             应用登录信息
           </button>
           <button
-            onClick={() => onTestAuth('jmcomic')}
-            disabled={jmcomicLoginStatus === 'verifying'}
+            onClick={() => onTestAuth('jm')}
+            disabled={jmLoginStatus === 'verifying'}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                        bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {jmcomicLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
+            {jmLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
           </button>
         </div>
       </AuthSourceCard>

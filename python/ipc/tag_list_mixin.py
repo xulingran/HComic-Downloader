@@ -9,7 +9,7 @@ import threading
 import time
 from typing import Any
 
-from utils import open_sqlite_db
+from utils import normalize_source_key, open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +37,35 @@ class TagListDB:
         """)
         self._conn.execute("CREATE INDEX IF NOT EXISTS idx_tag_list_source ON tag_list(source)")
         self._conn.commit()
+        self._migrate_source_ids()
+
+    def _migrate_source_ids(self) -> None:
+        """迁移旧标签目录来源标识 jmcomic 到 jm。"""
+        with self._lock:
+            rows = self._conn.execute("SELECT tag, source, count FROM tag_list WHERE source IN ('jmcomic', 'jm')").fetchall()
+            if not any(row["source"] == "jmcomic" for row in rows):
+                return
+            counts: dict[str, int] = {}
+            for row in rows:
+                source = normalize_source_key(row["source"])
+                if source != "jm":
+                    continue
+                tag = str(row["tag"] or "")
+                if not tag:
+                    continue
+                counts[tag] = counts.get(tag, 0) + int(row["count"] or 0)
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._conn.execute("DELETE FROM tag_list WHERE source IN ('jmcomic', 'jm')")
+                for tag, count in counts.items():
+                    self._conn.execute(
+                        "INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)",
+                        (tag, "jm", count),
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     def upsert_tags(self, tags: list[str], source: str) -> None:
         """Incrementally upsert tags from a search result page.

@@ -40,8 +40,8 @@ def test_history_stores_chapter_fields(tmp_path):
             comic_id="999001",
             title="多章",
             cover_url="",
-            source="JMCOMIC",
-            source_site="jmcomic",
+            source="JM",
+            source_site="jm",
             media_id="",
             source_url="",
             last_page=5,
@@ -74,3 +74,85 @@ def test_chapter_fields_default_empty(tmp_path):
     items, _ = db.get_history(page=1, page_size=20)
     assert items[0]["lastChapterId"] == ""
     assert items[0]["lastChapterName"] == ""
+
+
+
+def test_legacy_jmcomic_reading_history_migrates_to_jm(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reading_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            comic_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            cover_url TEXT,
+            source TEXT NOT NULL,
+            source_site TEXT DEFAULT '',
+            media_id TEXT DEFAULT '',
+            source_url TEXT,
+            last_page INTEGER DEFAULT 0,
+            total_pages INTEGER DEFAULT 0,
+            last_read_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(comic_id, source)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO reading_history (comic_id, title, source, source_site, last_page, total_pages, last_read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("100", "Legacy", "JMCOMIC", "jmcomic", 5, 20, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    db = ReadingHistoryDB(str(db_path))
+    items, total = db.get_history()
+    assert total == 1
+    assert items[0]["source"] == "JM"
+    assert items[0]["sourceSite"] == "jm"
+
+
+def test_legacy_jmcomic_reading_history_conflict_newest_wins(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy_conflict.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE reading_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            comic_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            cover_url TEXT,
+            source TEXT NOT NULL,
+            source_site TEXT DEFAULT '',
+            media_id TEXT DEFAULT '',
+            source_url TEXT,
+            last_page INTEGER DEFAULT 0,
+            total_pages INTEGER DEFAULT 0,
+            last_read_at TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            UNIQUE(comic_id, source)
+        )
+        """
+    )
+    conn.execute(
+        "INSERT INTO reading_history (comic_id, title, source, source_site, last_page, total_pages, last_read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("100", "Old", "JMCOMIC", "jmcomic", 5, 20, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
+    )
+    conn.execute(
+        "INSERT INTO reading_history (comic_id, title, source, source_site, last_page, total_pages, last_read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        ("100", "New", "JM", "jm", 9, 30, "2026-01-02T00:00:00+00:00", "2026-01-02T00:00:00+00:00"),
+    )
+    conn.commit()
+    conn.close()
+
+    db = ReadingHistoryDB(str(db_path))
+    items, total = db.get_history()
+    assert total == 1
+    assert items[0]["title"] == "New"
+    assert items[0]["lastPage"] == 9
+    assert items[0]["createdAt"] == "2026-01-01T00:00:00+00:00"

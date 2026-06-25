@@ -1,4 +1,4 @@
-"""jmcomic 来源模块。"""
+"""jm 来源模块。"""
 
 from .parser import JmParser
 

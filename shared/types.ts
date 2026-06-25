@@ -124,11 +124,12 @@ export interface AppConfig {
   cookie?: string
   userAgent?: string
   hasAuth?: boolean
-  hasJmcomicAuth?: boolean
+  hasJmAuth?: boolean
   hasMoeimgAuth?: boolean
   hasBikaAuth?: boolean
   hasCopymangaAuth?: boolean
-  jmcomicDomain?: string
+  jmDomain?: string
+  jmCdnDomain?: string
   moeimgUsername?: string
   bikaUsername?: string
   hcomicUsername?: string
@@ -323,7 +324,7 @@ export interface FatalErrorEvent {
  * 深度链接（hcomic://）解析后的结构化导航目标。
  *
  * 解析自 `hcomic://<action>?<params>`，例如：
- *   - `hcomic://comic?id=12345&source=jmcomic` → 打开/聚焦某漫画详情
+ *   - `hcomic://comic?id=12345&source=jm` → 打开/聚焦某漫画详情
  *   - `hcomic://search?keyword=...&source=hcomic` → 执行搜索
  *   - `hcomic://bring-to-front` → 仅前置主窗口（无导航意图）
  *
@@ -346,7 +347,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
   | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'duplicateBlacklist' | 'missingBlacklist' | 'previewCacheSizeLimitMB'
-  | 'jmcomicDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
+  | 'jmDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
   | 'bikaImageQuality'
   | 'previewPreloadForward' | 'previewPreloadBackward' | 'previewPreloadConcurrency'
   | 'previewPreloadAdaptive'
@@ -372,7 +373,7 @@ export type ConfigValueMap = {
   duplicateBlacklist: DuplicateBlacklist
   missingBlacklist: MissingBlacklist
   previewCacheSizeLimitMB: number
-  jmcomicDomain: string
+  jmDomain: string
   favouriteTagHighlight: boolean
   favouriteTagMinMatches: number
   checkUpdateOnStart: boolean
@@ -655,7 +656,7 @@ export interface IPCMethods {
       skippedPages: number
     }
   }
-  get_jmcomic_domains: {
+  get_jm_domains: {
     params: Record<string, never>
     result: { domains: string[] }
   }
@@ -777,7 +778,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:clear-favourite-tags': 'clear_favourite_tags',
   'python:remove-favourite-tag': 'remove_favourite_tag',
   'python:sync-favourite-tags': 'sync_favourite_tags',
-  'python:get-jmcomic-domains': 'get_jmcomic_domains',
+  'python:get-jm-domains': 'get_jm_domains',
   'python:get-tag-list': 'get_tag_list',
   'python:refresh-tag-list': 'refresh_tag_list',
   'python:force-pack-album': 'force_pack_album',
@@ -833,7 +834,7 @@ export interface HcomicAPI {
   toggleGlobalPause(): Promise<{ isPaused: boolean }>
   getProxyStatus(): Promise<ProxyStatus>
   getAvailableFonts(): Promise<{ fonts: FontInfo[] }>
-  getJmcomicDomains(): Promise<{ domains: string[] }>
+  getJmDomains(): Promise<{ domains: string[] }>
   getTagList(source?: string, keyword?: string, page?: number, limit?: number): Promise<{ tags: Array<{ tag: string; count: number }>; total: number }>
   refreshTagList(source?: string): Promise<{ totalTags: number; totalComics: number; totalPages: number }>
   openDownloadDir(dirPath: string): Promise<{ success: boolean }>
@@ -908,7 +909,7 @@ export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking', 'category'] 
 export type SearchMode = typeof SEARCH_MODES[number]
 
 /** Valid comic sources — shared between preload and main */
-export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jmcomic', 'bika', 'copymanga'] as const
+export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
 /** Set 形式，供 main/preload 的运行时 oneOf 校验复用，避免每处 `new Set(COMIC_SOURCES)` 重复构造 */
 export const SOURCE_VALUES: ReadonlySet<string> = new Set(COMIC_SOURCES)
@@ -935,8 +936,8 @@ export const SOURCE_META = {
     supportsTagRecommendation: true,
     supportsTagList: true,
   },
-  jmcomic: {
-    label: 'jmcomic',
+  jm: {
+    label: 'JM',
     supportsRandom: true,
     supportsFavourites: true,
     requiresAuth: true,
@@ -1029,7 +1030,7 @@ export const IPC_CHANNELS = {
   TOGGLE_GLOBAL_PAUSE: 'python:toggle-global-pause',
   GET_PROXY_STATUS: 'python:get-proxy-status',
   GET_AVAILABLE_FONTS: 'python:get-available-fonts',
-  GET_JMCOMIC_DOMAINS: 'python:get-jmcomic-domains',
+  GET_JM_DOMAINS: 'python:get-jm-domains',
   GET_TAG_LIST: 'python:get-tag-list',
   REFRESH_TAG_LIST: 'python:refresh-tag-list',
   FORCE_PACK_ALBUM: 'python:force-pack-album',
@@ -1115,7 +1116,7 @@ export const CONFIG_KEYS = [
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
   'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'duplicateBlacklist', 'missingBlacklist', 'previewCacheSizeLimitMB',
-  'jmcomicDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
+  'jmDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
   'bikaImageQuality',
   'previewPreloadForward', 'previewPreloadBackward', 'previewPreloadConcurrency',
   'previewPreloadAdaptive',

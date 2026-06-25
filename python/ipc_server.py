@@ -122,6 +122,7 @@ class IPCServer(
             default_source=self.config.default_source,
             source_auth=self.config.source_auth,
             bika_image_quality=self.config.bika_image_quality,
+            jm_domain=self.config.jm_domain,
         )
         self._emit_progress(35, "解析器已就绪")
         _mark("parser-ready")
@@ -307,7 +308,7 @@ class IPCServer(
         "toggle_global_pause": "handle_toggle_global_pause",
         "get_proxy_status": "handle_get_proxy_status",
         "get_available_fonts": "handle_get_available_fonts",
-        "get_jmcomic_domains": "handle_get_jmcomic_domains",
+        "get_jm_domains": "handle_get_jm_domains",
         "open_download_dir": "handle_open_download_dir",
         "get_download_detail": "handle_get_download_detail",
         "get_preview_urls": "handle_get_preview_urls",

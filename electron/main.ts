@@ -95,7 +95,7 @@ const ALLOWED_EXTERNAL_DOMAINS = [
   '18comic.vip',
   '18comic.org',
   'jmcomic.me',
-  // jmcomic mirror domains — need periodic maintenance as mirrors change frequently
+  // jm mirror domains — need periodic maintenance as mirrors change frequently
   'jmcomic-zzz.one',
   'jmcomic-zzz.xyz',
   'jmcomic-ne.net',
@@ -109,10 +109,10 @@ const REFERER_OVERRIDES: Record<string, string> = {
   'moeimg.fan': 'https://moeimg.fan/',
 }
 
-/** Dynamic jmcomic CDN domain, updated from Python backend config. */
-let jmcomicCdnDomain: string | null = null
-/** Dynamic jmcomic main domain, updated from Python backend config. */
-let jmcomicMainDomain: string | null = null
+/** Dynamic jm CDN domain, updated from Python backend config. */
+let jmCdnDomain: string | null = null
+/** Dynamic jm main domain, updated from Python backend config. */
+let jmMainDomain: string | null = null
 
 const DOMAIN_RE = /^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}$/
 
@@ -243,7 +243,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   duplicateBlacklist: duplicateBlacklistValidator(),
   missingBlacklist: missingBlacklistValidator(),
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),
-  jmcomicDomain: and(string(), maxLength(256)),
+  jmDomain: and(string(), maxLength(256)),
   favouriteTagHighlight: boolean(),
   favouriteTagMinMatches: and(number(), integer(), range(1, 10)),
   checkUpdateOnStart: boolean(),
@@ -343,7 +343,7 @@ function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
 
 /**
  * 需要宽松 CSP（含 'unsafe-eval'）的 webContents 集合 —— 登录窗口加载的第三方
- * SPA（Auth0 / h-comic / jmcomic 镜像）需要在 script-src 中放宽 'unsafe-eval'。
+ * SPA（Auth0 / h-comic / jm 镜像）需要在 script-src 中放宽 'unsafe-eval'。
  *
  * 关键约束：Electron 的 session.webRequest 对同一事件只保留**单个监听器**，
  * 后注册的会覆盖先注册的（见 electron/electron#18301）。登录窗口与主窗口共用
@@ -732,21 +732,21 @@ function registerDownloadHandlers(bridge: Bridge) {
 
 function registerConfigHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.GET_CONFIG, async () => {
-    const result = await bridge.call('get_config') as { config?: { jmcomicCdnDomain?: string; jmcomicDomain?: string } }
-    if (result?.config?.jmcomicCdnDomain) {
-      const domain = result.config.jmcomicCdnDomain
+    const result = await bridge.call('get_config') as { config?: { jmCdnDomain?: string; jmDomain?: string } }
+    if (result?.config?.jmCdnDomain) {
+      const domain = result.config.jmCdnDomain
       if (DOMAIN_RE.test(domain)) {
-        jmcomicCdnDomain = domain
+        jmCdnDomain = domain
       } else {
-        console.warn('Invalid jmcomic CDN domain from backend, ignoring:', domain)
+        console.warn('Invalid jm CDN domain from backend, ignoring:', domain)
       }
     }
-    if (result?.config?.jmcomicDomain) {
-      const domain = result.config.jmcomicDomain
+    if (result?.config?.jmDomain) {
+      const domain = result.config.jmDomain
       if (DOMAIN_RE.test(domain)) {
-        jmcomicMainDomain = domain
+        jmMainDomain = domain
       } else {
-        console.warn('Invalid jmcomic main domain from backend, ignoring:', domain)
+        console.warn('Invalid jm main domain from backend, ignoring:', domain)
       }
     }
     return result
@@ -782,9 +782,9 @@ function registerConfigHandlers(bridge: Bridge) {
         notificationManager.updateSettings(prevNotifyOnComplete, value)
       }
       const result = await bridge.call('set_config', { key, value })
-      // jmcomicDomain 设置成功后，更新主进程域名白名单
-      if (key === 'jmcomicDomain' && typeof value === 'string' && value && DOMAIN_RE.test(value)) {
-        jmcomicMainDomain = value
+      // jmDomain 设置成功后，更新主进程域名白名单
+      if (key === 'jmDomain' && typeof value === 'string' && value && DOMAIN_RE.test(value)) {
+        jmMainDomain = value
       }
       return result
     } catch (err) {
@@ -849,18 +849,18 @@ function registerAuthHandlers(bridge: Bridge) {
   })
 
   ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
-    // 对 jmcomic，先获取配置以更新域名
-    if (source === 'jmcomic' && !jmcomicMainDomain) {
+    // 对 jm，先获取配置以更新域名
+    if (source === 'jm' && !jmMainDomain) {
       try {
-        const result = await bridge.call('get_config') as { config?: { jmcomicDomain?: string } }
-        if (result?.config?.jmcomicDomain && DOMAIN_RE.test(result.config.jmcomicDomain)) {
-          jmcomicMainDomain = result.config.jmcomicDomain
+        const result = await bridge.call('get_config') as { config?: { jmDomain?: string } }
+        if (result?.config?.jmDomain && DOMAIN_RE.test(result.config.jmDomain)) {
+          jmMainDomain = result.config.jmDomain
         }
       } catch (e) {
-        console.warn('Failed to get jmcomic domain:', e)
+        console.warn('Failed to get jm domain:', e)
       }
     }
-    return openLoginWindow(mainWindow, source || 'hcomic', jmcomicMainDomain || undefined)
+    return openLoginWindow(mainWindow, source || 'hcomic', jmMainDomain || undefined)
   })
 
   ipcMain.handle(IPC_CHANNELS.SHUTDOWN, async () => {
@@ -870,13 +870,13 @@ function registerAuthHandlers(bridge: Bridge) {
 
 function registerSystemHandlers(bridge: Bridge) {
   ipcMain.handle(IPC_CHANNELS.OPEN_EXTERNAL, async (_, url: string) => {
-    // 动态添加 jmcomic CDN 域名
+    // 动态添加 jm CDN 域名
     const allowedDomains = [...ALLOWED_EXTERNAL_DOMAINS]
-    if (jmcomicCdnDomain && !allowedDomains.includes(jmcomicCdnDomain)) {
-      allowedDomains.push(jmcomicCdnDomain)
+    if (jmCdnDomain && !allowedDomains.includes(jmCdnDomain)) {
+      allowedDomains.push(jmCdnDomain)
     }
-    if (jmcomicMainDomain && !allowedDomains.includes(jmcomicMainDomain)) {
-      allowedDomains.push(jmcomicMainDomain)
+    if (jmMainDomain && !allowedDomains.includes(jmMainDomain)) {
+      allowedDomains.push(jmMainDomain)
     }
     validateHttpsUrlWithDomains(url, allowedDomains, 'URL')
     await shell.openExternal(url)
@@ -890,8 +890,8 @@ function registerSystemHandlers(bridge: Bridge) {
     return bridge.call('get_available_fonts')
   })
 
-  ipcMain.handle(IPC_CHANNELS.GET_JMCOMIC_DOMAINS, async () => {
-    return bridge.call('get_jmcomic_domains')
+  ipcMain.handle(IPC_CHANNELS.GET_JM_DOMAINS, async () => {
+    return bridge.call('get_jm_domains')
   })
 
   ipcMain.handle(IPC_CHANNELS.OPEN_DOWNLOAD_DIR, async (_, dirPath: unknown) => {

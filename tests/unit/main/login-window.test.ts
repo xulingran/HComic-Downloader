@@ -101,16 +101,16 @@ describe('login-window: shellQuoteForShlex (smoke)', () => {
 })
 
 describe('login-window: resolveLoginTarget', () => {
-  it('jmcomic uses default domain when resolvedDomain not provided', () => {
-    const t = resolveLoginTarget('jmcomic')
-    expect(t).toEqual({ url: 'https://18comic.vip', title: '登录 jmcomic', domain: '18comic.vip' })
+  it('jm uses default domain when resolvedDomain not provided', () => {
+    const t = resolveLoginTarget('jm')
+    expect(t).toEqual({ url: 'https://18comic.vip', title: '登录 JM', domain: '18comic.vip' })
   })
 
-  it('jmcomic uses custom resolvedDomain when provided', () => {
-    const t = resolveLoginTarget('jmcomic', 'custom.example.com')
+  it('jm uses custom resolvedDomain when provided', () => {
+    const t = resolveLoginTarget('jm', 'custom.example.com')
     expect(t.url).toBe('https://custom.example.com')
     expect(t.domain).toBe('custom.example.com')
-    expect(t.title).toBe('登录 jmcomic')
+    expect(t.title).toBe('登录 JM')
   })
 
   it('copymanga routes to www.2026copy.com', () => {
@@ -126,7 +126,7 @@ describe('login-window: resolveLoginTarget', () => {
 })
 
 describe('login-window: extractCookiesForSource', () => {
-  it('jmcomic returns first mirror with login cookie', async () => {
+  it('jm returns first mirror with login cookie', async () => {
     // 主域名无 cookie，镜像 jmcomic-zzz.one 含 remember → 命中
     vi.mocked(electronSession.defaultSession.cookies.get).mockImplementation(async (opts: { url: string }) => {
       if (opts.url === 'https://jmcomic-zzz.one') {
@@ -134,16 +134,16 @@ describe('login-window: extractCookiesForSource', () => {
       }
       return []
     })
-    const result = await extractCookiesForSource('jmcomic', '18comic.vip', electronSession.defaultSession)
+    const result = await extractCookiesForSource('jm', '18comic.vip', electronSession.defaultSession)
     expect(result.domain).toBe('jmcomic-zzz.one')
     expect(result.cookies).toHaveLength(1)
     expect(result.cookies[0].name).toBe('remember')
     expect(result.notLoggedIn).toBeUndefined()
   })
 
-  it('jmcomic returns notLoggedIn when no mirror has login cookie', async () => {
+  it('jm returns notLoggedIn when no mirror has login cookie', async () => {
     vi.mocked(electronSession.defaultSession.cookies.get).mockResolvedValue([])
-    const result = await extractCookiesForSource('jmcomic', '18comic.vip', electronSession.defaultSession)
+    const result = await extractCookiesForSource('jm', '18comic.vip', electronSession.defaultSession)
     expect(result.notLoggedIn).toBe(true)
     expect(result.cookies).toHaveLength(0)
   })
@@ -185,19 +185,19 @@ describe('login-window: extractCookiesForSource', () => {
 })
 
 describe('login-window: verifyLoginCookies', () => {
-  it('jmcomic fails when remember/remember_id absent', () => {
-    const result = verifyLoginCookies('jmcomic', [cookie('_ga', 'x')])
+  it('jm fails when remember/remember_id absent', () => {
+    const result = verifyLoginCookies('jm', [cookie('_ga', 'x')])
     expect(result).not.toBeNull()
     expect(result!.notLoggedIn).toBe(true)
     expect(result!.message).toContain('未检测到登录状态')
   })
 
-  it('jmcomic passes when remember present', () => {
-    expect(verifyLoginCookies('jmcomic', [cookie('remember', 't')])).toBeNull()
+  it('jm passes when remember present', () => {
+    expect(verifyLoginCookies('jm', [cookie('remember', 't')])).toBeNull()
   })
 
-  it('jmcomic passes when remember_id present (case-insensitive)', () => {
-    expect(verifyLoginCookies('jmcomic', [cookie('Remember_ID', 't')])).toBeNull()
+  it('jm passes when remember_id present (case-insensitive)', () => {
+    expect(verifyLoginCookies('jm', [cookie('Remember_ID', 't')])).toBeNull()
   })
 
   it('copymanga fails when token/sessionid/copymanga_session absent', () => {
@@ -275,21 +275,21 @@ describe('login-window: openLoginWindow', () => {
   })
 
   it('uses the isolated login preload compatibility script', async () => {
-    void openLoginWindow(makeMainWindow(), 'jmcomic')
+    void openLoginWindow(makeMainWindow(), 'jm')
     await Promise.resolve()
     const win = capturedInstances[0] as { options: { webPreferences: { preload: string } } }
     expect(win.options.webPreferences.preload.replaceAll('\\', '/')).toMatch(/\/preload\/login-preload\.js$/)
   })
 
-  it('uses jmcomic default domain when resolvedDomain not provided', async () => {
-    void openLoginWindow(makeMainWindow(), 'jmcomic')
+  it('uses jm default domain when resolvedDomain not provided', async () => {
+    void openLoginWindow(makeMainWindow(), 'jm')
     await Promise.resolve()
     const win = capturedInstances[0] as { loadURL: ReturnType<typeof vi.fn> }
     expect(win.loadURL).toHaveBeenCalledWith('https://18comic.vip')
   })
 
-  it('uses custom resolvedDomain for jmcomic when provided', async () => {
-    void openLoginWindow(makeMainWindow(), 'jmcomic', 'custom.example.com')
+  it('uses custom resolvedDomain for jm when provided', async () => {
+    void openLoginWindow(makeMainWindow(), 'jm', 'custom.example.com')
     await Promise.resolve()
     const win = capturedInstances[0] as { loadURL: ReturnType<typeof vi.fn> }
     expect(win.loadURL).toHaveBeenCalledWith('https://custom.example.com')
@@ -377,8 +377,8 @@ describe('login-window: openLoginWindow', () => {
     expect(fakeEvent.preventDefault).not.toHaveBeenCalled()
   })
 
-  it('will-navigate handler allows the runtime-resolved jmcomic domain', async () => {
-    openLoginWindow(makeMainWindow(), 'jmcomic', 'current-jm.example')
+  it('will-navigate handler allows the runtime-resolved jm domain', async () => {
+    openLoginWindow(makeMainWindow(), 'jm', 'current-jm.example')
     await Promise.resolve()
     const fakeEvent = { preventDefault: vi.fn() }
     webContentsEvents['will-navigate'][0](fakeEvent, 'https://current-jm.example/login')
@@ -394,7 +394,7 @@ describe('login-window: openLoginWindow', () => {
   })
 
   it('opens trusted target=_blank links in the existing login window', async () => {
-    openLoginWindow(makeMainWindow(), 'jmcomic', 'current-jm.example')
+    openLoginWindow(makeMainWindow(), 'jm', 'current-jm.example')
     await Promise.resolve()
     const win = capturedInstances[0] as {
       webContents: {
@@ -411,7 +411,7 @@ describe('login-window: openLoginWindow', () => {
   })
 
   it('keeps untrusted target=_blank links blocked', async () => {
-    openLoginWindow(makeMainWindow(), 'jmcomic')
+    openLoginWindow(makeMainWindow(), 'jm')
     await Promise.resolve()
     const win = capturedInstances[0] as {
       webContents: {
@@ -428,7 +428,7 @@ describe('login-window: openLoginWindow', () => {
   })
 
   it('allows permission requests in the login window', async () => {
-    openLoginWindow(makeMainWindow(), 'jmcomic')
+    openLoginWindow(makeMainWindow(), 'jm')
     await Promise.resolve()
     const win = capturedInstances[0] as {
       webContents: {

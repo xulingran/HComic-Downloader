@@ -16,13 +16,13 @@ if TYPE_CHECKING:
     from sources.bika.parser import BikaParser
     from sources.copymanga.parser import CopyMangaParser
     from sources.hcomic.parser import HComicParser, ParserResponseError
-    from sources.jmcomic.parser import JmParser
+    from sources.jm.parser import JmParser
     from sources.moeimg.parser import MoeImgParser
 
 logger = logging.getLogger(__name__)
 
-_VALID_SOURCES = ("hcomic", "jmcomic", "moeimg", "bika", "copymanga")
-_SOURCES_WITH_FAVOURITES = ("hcomic", "jmcomic", "moeimg", "bika")
+_VALID_SOURCES = ("hcomic", "jm", "moeimg", "bika", "copymanga")
+_SOURCES_WITH_FAVOURITES = ("hcomic", "jm", "moeimg", "bika")
 
 # Map source name -> (module path, class name). Loaded lazily by _load_parser_class
 # so that ``import sources`` does not drag in every parser module (and their
@@ -30,7 +30,7 @@ _SOURCES_WITH_FAVOURITES = ("hcomic", "jmcomic", "moeimg", "bika")
 # module is imported, on first access.
 _PARSER_MODULES: dict[str, tuple[str, str]] = {
     "hcomic": ("sources.hcomic.parser", "HComicParser"),
-    "jmcomic": ("sources.jmcomic.parser", "JmParser"),
+    "jm": ("sources.jm.parser", "JmParser"),
     "moeimg": ("sources.moeimg.parser", "MoeImgParser"),
     "bika": ("sources.bika.parser", "BikaParser"),
     "copymanga": ("sources.copymanga.parser", "CopyMangaParser"),
@@ -114,6 +114,7 @@ class MultiSourceParser:
         source_auth: dict[str, dict[str, str]] | None = None,
         auth: AuthConfig | None = None,
         bika_image_quality: str = "original",
+        jm_domain: str = "",
     ):
         self.timeout = timeout
         self.source_auth: dict[str, dict[str, str]] = self._normalize_source_auth(source_auth)
@@ -128,6 +129,7 @@ class MultiSourceParser:
             }
 
         self._bika_image_quality = bika_image_quality
+        self._jm_custom_domain = (jm_domain or "").strip()
 
         # 工厂函数映射：解析器首次访问时调用对应工厂创建实例。
         # 工厂内部通过 _load_parser_class 按需 import 解析器模块，避免
@@ -146,10 +148,10 @@ class MultiSourceParser:
                 cookie=self.source_auth["moeimg"]["cookie"],
                 user_agent=self.source_auth["moeimg"]["user_agent"],
             ),
-            "jmcomic": lambda: _load_parser_class("jmcomic")(
+            "jm": lambda: _load_parser_class("jm")(
                 timeout=timeout,
-                cookie=self.source_auth.get("jmcomic", {}).get("cookie", ""),
-                user_agent=self.source_auth.get("jmcomic", {}).get("user_agent", ""),
+                cookie=self.source_auth.get("jm", {}).get("cookie", ""),
+                user_agent=self.source_auth.get("jm", {}).get("user_agent", ""),
             ),
             "bika": lambda: _load_parser_class("bika")(timeout=timeout),
             "copymanga": lambda: _load_parser_class("copymanga")(timeout=timeout),
@@ -216,6 +218,8 @@ class MultiSourceParser:
                 hcomic_auth.get("username", ""),
                 hcomic_auth.get("password", ""),
             )
+        elif name == "jm" and self._jm_custom_domain and hasattr(parser, "set_custom_domain"):
+            parser.set_custom_domain(self._jm_custom_domain)
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
@@ -232,18 +236,19 @@ class MultiSourceParser:
     def get_sessions(self) -> list[Any]:
         return [p.session for p in self._parsers.values()]
 
-    def get_jmcomic_cdn_domain(self) -> str | None:
-        """返回 jmcomic 当前解析到的 CDN 域名。"""
-        jm_parser = self._parsers.get("jmcomic")
+    def get_jm_cdn_domain(self) -> str | None:
+        """返回 jm 当前解析到的 CDN 域名。"""
+        jm_parser = self._parsers.get("jm")
         if jm_parser and hasattr(jm_parser, "cdn_domain"):
             return jm_parser.cdn_domain  # type: ignore[union-attr]
         return None
 
-    def set_jmcomic_domain(self, domain: str) -> None:
-        """设置 jmcomic 自定义域名。传空字符串则恢复自动选择。"""
-        jm = self._parsers.get("jmcomic")
+    def set_jm_domain(self, domain: str) -> None:
+        """设置 jm 自定义域名。传空字符串则恢复自动选择。"""
+        self._jm_custom_domain = (domain or "").strip()
+        jm = self._parsers.get("jm")
         if jm and hasattr(jm, "set_custom_domain"):
-            jm.set_custom_domain(domain)  # type: ignore[union-attr]
+            jm.set_custom_domain(self._jm_custom_domain)  # type: ignore[union-attr]
 
     def set_source(self, source: str):
         if source in self._factory:
@@ -298,7 +303,7 @@ class MultiSourceParser:
         if src == "bika":
             comics = self._get_parser("bika").get_random_comics()
             return comics, None
-        if src not in ("hcomic", "jmcomic"):
+        if src not in ("hcomic", "jm"):
             raise ValueError(f"Random is not supported for source: {src}")
         return self._get_parser(src).random()  # type: ignore[union-attr]
 
@@ -355,7 +360,7 @@ class MultiSourceParser:
             detail = parser.get_comic_detail(comic.id)
             return detail or comic
 
-        # moeimg 和 jmcomic 需要通过详情接口补齐图片地址。
+        # moeimg 和 jm 需要通过详情接口补齐图片地址。
         # bika 也需要通过详情接口补齐章节和图片地址。
         if source == "bika":
             detail = parser.get_comic_detail(comic.id)

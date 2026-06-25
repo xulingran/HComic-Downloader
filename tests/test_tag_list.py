@@ -88,13 +88,13 @@ def test_get_tag_count(tmp_path):
 def test_different_sources_isolated(tmp_path):
     db = _make_db(tmp_path)
     db.upsert_tags(["tag:A"], "hcomic")
-    db.upsert_tags(["tag:X"], "jmcomic")
+    db.upsert_tags(["tag:X"], "jm")
     hcomic_tags, hcomic_total = db.get_tags("hcomic")
-    jmcomic_tags, jmcomic_total = db.get_tags("jmcomic")
+    jm_tags, jm_total = db.get_tags("jm")
     assert hcomic_total == 1
-    assert jmcomic_total == 1
+    assert jm_total == 1
     assert hcomic_tags[0]["tag"] == "tag:A"
-    assert jmcomic_tags[0]["tag"] == "tag:X"
+    assert jm_tags[0]["tag"] == "tag:X"
 
 
 def test_clear(tmp_path):
@@ -109,10 +109,10 @@ def test_clear(tmp_path):
 def test_clear_only_affects_target_source(tmp_path):
     db = _make_db(tmp_path)
     db.upsert_tags(["tag:A"], "hcomic")
-    db.upsert_tags(["tag:X"], "jmcomic")
+    db.upsert_tags(["tag:X"], "jm")
     db.clear("hcomic")
     assert db.get_tag_count("hcomic") == 0
-    assert db.get_tag_count("jmcomic") == 1
+    assert db.get_tag_count("jm") == 1
 
 
 def test_get_tags_empty_db(tmp_path):
@@ -336,3 +336,37 @@ def test_refresh_concurrent_rejected(tmp_path):
     result = fake.handle_refresh_tag_list("hcomic")
     assert "error" in result
     t1.join()
+
+
+
+def test_legacy_jmcomic_tag_list_migrates_to_jm(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy_tag_list.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE tag_list (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
+    conn.execute("INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 2))
+    conn.commit()
+    conn.close()
+
+    db = TagListDB(str(db_path))
+    tags, total = db.get_tags("jm")
+    assert total == 1
+    assert tags == [{"tag": "tag:A", "count": 2}]
+
+
+def test_legacy_jmcomic_tag_list_conflict_sums_counts(tmp_path):
+    import sqlite3
+
+    db_path = tmp_path / "legacy_tag_list_conflict.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute("CREATE TABLE tag_list (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
+    conn.execute("INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 2))
+    conn.execute("INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jm", 3))
+    conn.commit()
+    conn.close()
+
+    db = TagListDB(str(db_path))
+    tags, total = db.get_tags("jm")
+    assert total == 1
+    assert tags == [{"tag": "tag:A", "count": 5}]

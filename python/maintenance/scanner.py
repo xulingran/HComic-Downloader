@@ -167,8 +167,8 @@ def _infer_source_site(path: str) -> str:
         return "hcomic"
     if lower.startswith("temp_moeimg_") or "moeimg" in lower:
         return "moeimg"
-    if lower.startswith("temp_jmcomic_") or "18comic" in lower:
-        return "jmcomic"
+    if lower.startswith("temp_jm_") or lower.startswith("temp_jmcomic_") or "18comic" in lower:
+        return "jm"
     if lower.startswith("temp_bika_") or "pica" in lower:
         return "bika"
     if lower.startswith("temp_copymanga_") or "copymanga" in lower:

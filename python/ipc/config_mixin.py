@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import logging
 import threading
 from collections.abc import Callable
@@ -99,8 +98,8 @@ class ConfigMixin:
         self.downloader.image_downloader.retry_times = v
         self.downloader.rebuild_session()
 
-    def _apply_jmcomic_domain(self, v: str) -> None:
-        """Apply jmcomic custom domain with availability test."""
+    def _apply_jm_domain(self, v: str) -> None:
+        """Apply jm custom domain with availability test."""
         v = v.strip()
         if v:
             # Format validation
@@ -108,7 +107,7 @@ class ConfigMixin:
                 raise ValueError(f"域名格式不正确: {v}")
             # Availability test
             try:
-                from sources.jmcomic.domain import JmDomainResolver
+                from sources.jm.domain import JmDomainResolver
 
                 resolver = JmDomainResolver()
                 if not resolver._test_domain(v):
@@ -117,7 +116,7 @@ class ConfigMixin:
                 raise
             except Exception as e:
                 raise ValueError(f"测试域名 {v} 失败: {e}") from e
-        self.parser.set_jmcomic_domain(v)
+        self.parser.set_jm_domain(v)
 
     def _apply_runtime(self, key: str, value: Any) -> dict | None:
         """Apply a config value to the live runtime objects.
@@ -135,7 +134,7 @@ class ConfigMixin:
             "retryTimes": self._apply_retry_times,
             "cbzFilenameTemplate": lambda v: setattr(self.cbz_builder, "filename_template", v),
             "defaultSource": lambda v: self.parser.set_source(v),
-            "jmcomicDomain": self._apply_jmcomic_domain,
+            "jmDomain": self._apply_jm_domain,
             "bikaImageQuality": lambda v: (
                 self.parser.parsers["bika"].set_image_quality(v)
                 if hasattr(self.parser.parsers.get("bika"), "set_image_quality")
@@ -171,14 +170,12 @@ class ConfigMixin:
             "sfw_mode": getattr(self.config, "sfw_mode", True),
             "card_style": getattr(self.config, "card_style", "cover"),
             "tag_blacklist": getattr(self.config, "tag_blacklist", {"hcomic": [], "moeimg": []}),
-            "duplicate_blacklist": getattr(
-                self.config, "duplicate_blacklist", {"hcomic": [], "moeimg": [], "jmcomic": []}
-            ),
+            "duplicate_blacklist": getattr(self.config, "duplicate_blacklist", {"hcomic": [], "moeimg": [], "jm": []}),
             # 与 duplicate_blacklist 同构但独立存储：查缺补漏的忽略黑名单。
             # 读路径必须返回，否则前端 useInitConfig 拿不到值，重启后忽略列表全部丢失。
-            "missing_blacklist": getattr(self.config, "missing_blacklist", {"hcomic": [], "moeimg": [], "jmcomic": []}),
+            "missing_blacklist": getattr(self.config, "missing_blacklist", {"hcomic": [], "moeimg": [], "jm": []}),
             "preview_cache_size_limit_mb": getattr(self.config, "preview_cache_size_limit_mb", 500),
-            "jmcomic_domain": getattr(self.config, "jmcomic_domain", ""),
+            "jm_domain": getattr(self.config, "jm_domain", ""),
             "favourite_tag_highlight": getattr(self.config, "favourite_tag_highlight", False),
             "favourite_tag_min_matches": getattr(self.config, "favourite_tag_min_matches", 1),
             "check_update_on_start": getattr(self.config, "check_update_on_start", True),
@@ -195,7 +192,7 @@ class ConfigMixin:
         hcomic_auth = self.config.source_auth.get("hcomic", {})
         config["hasAuth"] = bool(hcomic_auth.get("cookie") or hcomic_auth.get("bearer_token"))
         config["hcomicUsername"] = hcomic_auth.get("username", "")
-        config["hasJmcomicAuth"] = bool(self.config.source_auth.get("jmcomic", {}).get("cookie"))
+        config["hasJmAuth"] = bool(self.config.source_auth.get("jm", {}).get("cookie"))
         config["hasMoeimgAuth"] = bool(self.config.source_auth.get("moeimg", {}).get("cookie"))
         config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get("username", "")
         bika_auth = self.config.source_auth.get("bika", {})
@@ -204,15 +201,10 @@ class ConfigMixin:
         )
         config["bikaUsername"] = self.config.source_auth.get("bika", {}).get("username", "")
         config["hasCopymangaAuth"] = bool(self.config.source_auth.get("copymanga", {}).get("cookie"))
-        # 返回 jmcomic CDN 域名，供前端动态更新白名单
-        jmcomic_cdn = self.parser.get_jmcomic_cdn_domain()
-        if jmcomic_cdn:
-            config["jmcomicCdnDomain"] = jmcomic_cdn
-        # 返回 jmcomic 主域名，供弹窗登录使用
-        jm = self.parser.parsers.get("jmcomic")
-        if jm and hasattr(jm, "_ensure_domain"):
-            with contextlib.suppress(Exception):
-                config["jmcomicDomain"] = jm._ensure_domain()
+        # 返回 jm CDN 域名，供前端动态更新白名单
+        jm_cdn = self.parser.get_jm_cdn_domain()
+        if jm_cdn:
+            config["jmCdnDomain"] = jm_cdn
         return {"config": config}
 
     def handle_set_config(self, key: str, value: Any) -> dict:
@@ -267,15 +259,15 @@ class ConfigMixin:
             logger.error("Get proxy status error: %s", e)
             return {"http": "", "https": "", "noProxy": ""}
 
-    def handle_get_jmcomic_domains(self) -> dict:
-        """从发布页获取 jmcomic 可用域名列表，供设置页展示。"""
+    def handle_get_jm_domains(self) -> dict:
+        """从发布页获取 jm 可用域名列表，供设置页展示。"""
         try:
-            from sources.jmcomic.domain import get_jmcomic_domain_list
+            from sources.jm.domain import get_jm_domain_list
 
-            domains = get_jmcomic_domain_list()
+            domains = get_jm_domain_list()
             return {"domains": domains}
         except Exception as e:
-            logger.error("Get jmcomic domains error: %s", e)
+            logger.error("Get jm domains error: %s", e)
             return {"domains": ["18comic.vip"]}
 
     def handle_get_available_fonts(self) -> dict:

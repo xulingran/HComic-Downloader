@@ -18,7 +18,7 @@
 
 ### 需求:黑名单条目结构
 
-系统必须将已忽略的重复组以结构化条目持久化到配置字段 `duplicate_blacklist`，结构为 `dict[str, list[dict]]`，其中外层 key 为来源标识（hcomic / moeimg / jmcomic / bika），内层列表的每项为对象 `{"fingerprint": str, "memberCount": int | null}`。`fingerprint` 为组指纹（`normalizeTitle` 结果），`memberCount` 为该组被忽略时的成员数量（首次忽略时记录实际值；从旧版纯字符串数据迁移而来的条目为 null，表示基线未知）。黑名单必须按来源隔离，禁止跨来源共享。该字段必须通过 `CONFIG_KEY_MAP` 与前端 camelCase 键 `duplicateBlacklist` 双向映射，并在 `AppConfig` / `ConfigKey` / `CONFIG_KEYS` 三处保持一致。
+系统必须将已忽略的重复组以结构化条目持久化到配置字段 `duplicate_blacklist`，结构为 `dict[str, list[dict]]`，其中外层 key 为来源标识（hcomic / moeimg / jm / bika），内层列表的每项为对象 `{"fingerprint": str, "memberCount": int | null}`。`fingerprint` 为组指纹（`normalizeTitle` 结果），`memberCount` 为该组被忽略时的成员数量（首次忽略时记录实际值；从旧版纯字符串数据迁移而来的条目为 null，表示基线未知）。黑名单必须按来源隔离，禁止跨来源共享。该字段必须通过 `CONFIG_KEY_MAP` 与前端 camelCase 键 `duplicateBlacklist` 双向映射，并在 `AppConfig` / `ConfigKey` / `CONFIG_KEYS` 三处保持一致。
 
 #### 场景:新字段默认值为空
 - **当** 加载一个不含 `duplicate_blacklist` 字段的老配置文件

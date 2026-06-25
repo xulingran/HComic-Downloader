@@ -15,9 +15,9 @@
 
 #### 场景:resolveLoginTarget 派发登录 URL
 
-- **当** 调用 `resolveLoginTarget('jmcomic')` 不传 domain
-- **那么** 返回 `{ url: 'https://18comic.vip', title: '登录 jmcomic', domain: '18comic.vip' }`
-- **当** 调用 `resolveLoginTarget('jmcomic', 'custom.example.com')`
+- **当** 调用 `resolveLoginTarget('jm')` 不传 domain
+- **那么** 返回 `{ url: 'https://18comic.vip', title: '登录 JM', domain: '18comic.vip' }`
+- **当** 调用 `resolveLoginTarget('jm', 'custom.example.com')`
 - **那么** 返回 domain 为 `custom.example.com` 的目标
 - **当** 调用 `resolveLoginTarget('copymanga')`
 - **那么** 返回 domain 为 `www.2026copy.com` 的目标
@@ -38,8 +38,8 @@
 
 #### 场景:extractCookiesForSource 按 source 分派提取
 
-- **当** 调用 `extractCookiesForSource('jmcomic', domain, session)` 且 jmcomic 主域名无登录 cookie 但镜像域名有
-- **那么** 必须遍历 JMCOMIC_MIRROR_DOMAINS，返回首个含 JMCOMIC_LOGIN_COOKIE_NAMES 的镜像域名对应的 cookies
+- **当** 调用 `extractCookiesForSource('jm', domain, session)` 且 jm 主域名无登录 cookie 但镜像域名有
+- **那么** 必须遍历 JM_MIRROR_DOMAINS，返回首个含 JM_LOGIN_COOKIE_NAMES 的镜像域名对应的 cookies
 - **当** 调用 `extractCookiesForSource('copymanga', domain, session)`
 - **那么** 必须只从传入 domain 提取，并过滤 COPYMANGA_LOGIN_COOKIE_NAMES
 - **当** 调用 `extractCookiesForSource('hcomic', domain, session)` 且无任何 cookie
@@ -47,7 +47,7 @@
 
 #### 场景:verifyLoginCookies 校验登录态标志
 
-- **当** 调用 `verifyLoginCookies('jmcomic', cookies)` 且 cookies 不含 JMCOMIC_LOGIN_COOKIE_NAMES 任一
+- **当** 调用 `verifyLoginCookies('jm', cookies)` 且 cookies 不含 JM_LOGIN_COOKIE_NAMES 任一
 - **那么** 返回 `{ success: false, notLoggedIn: true, message: '未检测到登录状态...' }`
 - **当** 调用 `verifyLoginCookies('copymanga', cookies)` 且 cookies 不含 COPYMANGA_LOGIN_COOKIE_NAMES 任一
 - **那么** 返回失败结果
@@ -61,14 +61,14 @@
 - **且** 任一前置步骤返回 notLoggedIn 时短路后续步骤
 - **且** 用 try/catch 包裹全部逻辑，错误转为 `{ success: false, message }`
 
-### 需求:jmcomic 用户名提取脚本必须抽为模块级常量
+### 需求:jm 用户名提取脚本必须抽为模块级常量
 
-DOM 提取用户名的 JavaScript 脚本必须定义为模块级 `EXTRACT_JMCOMIC_USERNAME_SCRIPT` 常量，不得作为模板字符串内联在函数体内。`extractJmcomicUsername` 通过该常量调用 `executeJavaScript`。
+DOM 提取用户名的 JavaScript 脚本必须定义为模块级 `EXTRACT_JM_USERNAME_SCRIPT` 常量，不得作为模板字符串内联在函数体内。`extractJmUsername` 通过该常量调用 `executeJavaScript`。
 
 #### 场景:脚本作为常量被引用
 
-- **当** 调用 `extractJmcomicUsername(loginWin)`
-- **那么** `executeJavaScript` 的入参必须是 `EXTRACT_JMCOMIC_USERNAME_SCRIPT` 常量
+- **当** 调用 `extractJmUsername(loginWin)`
+- **那么** `executeJavaScript` 的入参必须是 `EXTRACT_JM_USERNAME_SCRIPT` 常量
 - **且** 该常量定义在模块顶层，可被静态审阅
 
 ### 需求:登录窗口诊断日志必须异步批量写入
@@ -93,7 +93,7 @@ DOM 提取用户名的 JavaScript 脚本必须定义为模块级 `EXTRACT_JMCOMI
 #### 场景:resolveLoginTarget 三 source 覆盖
 
 - **当** 运行 login-window 测试
-- **那么** `resolveLoginTarget` 必须有至少 4 个用例：jmcomic 默认域名、jmcomic 自定义域名、copymanga、hcomic
+- **那么** `resolveLoginTarget` 必须有至少 4 个用例：jm 默认域名、jm 自定义域名、copymanga、hcomic
 
 #### 场景:openLoginWindow 事件时序覆盖
 
@@ -104,11 +104,11 @@ DOM 提取用户名的 JavaScript 脚本必须定义为模块级 `EXTRACT_JMCOMI
 
 登录窗口承载的 `BrowserWindow` 必须使用足够现代的 Chromium 内核，确保其 TLS 指纹（JA3/JA4）、`sec-ch-ua` Client Hints 头、V8 引擎行为指纹能被 Cloudflare 等人机验证服务识别为"受支持的现代浏览器"，从而允许用户完成验证并继续登录。
 
-此项约束针对所有通过登录弹窗进行登录的来源（jmcomic 受影响最直接，hcomic/copymanga/bika/moeimg 被动受益）。单纯修改 `userAgent` 字符串不满足此需求——Cloudflare 会综合网络层与 JS 引擎指纹进行校验。
+此项约束针对所有通过登录弹窗进行登录的来源（jm 受影响最直接，hcomic/copymanga/bika/moeimg 被动受益）。单纯修改 `userAgent` 字符串不满足此需求——Cloudflare 会综合网络层与 JS 引擎指纹进行校验。
 
-#### 场景:jmcomic 登录通过 Cloudflare 人机验证
+#### 场景:jm 登录通过 Cloudflare 人机验证
 
-- **当** 用户在 jmcomic 登录弹窗中触发 Cloudflare 人机验证
+- **当** 用户在 jm 登录弹窗中触发 Cloudflare 人机验证
 - **那么** 验证页面不再显示"浏览器版本过旧"或同类不兼容提示
 - **且** 用户能正常完成人机验证（勾选/等待自动通过）
 - **且** 验证通过后能继续输入账号密码并完成登录

@@ -103,11 +103,11 @@ class TestChapterInfo:
         assert comic.album_total_chapters == 1
 
     def test_comic_info_chapters_not_in_hash(self):
-        a = ComicInfo(id="1", source_site="jmcomic", comic_source="JMCOMIC")
+        a = ComicInfo(id="1", source_site="jm", comic_source="JM")
         b = ComicInfo(
             id="1",
-            source_site="jmcomic",
-            comic_source="JMCOMIC",
+            source_site="jm",
+            comic_source="JM",
             chapters=[ChapterInfo(id="2", name="x", index=1)],
         )
         assert hash(a) == hash(b)

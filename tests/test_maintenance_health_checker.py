@@ -232,9 +232,9 @@ def test_folder_with_chapters(checker: HealthChecker, tmp_path: Path):
     _make_image(folder / "第2話" / "003.jpg")
     checker.history_db.get_all_records_with_album.return_value = [
         {
-            "source_site": "jmcomic",
+            "source_site": "jm",
             "comic_id": "c1",
-            "comic_source": "JMCOMIC",
+            "comic_source": "JM",
             "title": "Album - 第1話",
             "author": "",
             "output_path": str(folder),
@@ -245,9 +245,9 @@ def test_folder_with_chapters(checker: HealthChecker, tmp_path: Path):
             "pages": 2,
         },
         {
-            "source_site": "jmcomic",
+            "source_site": "jm",
             "comic_id": "c2",
-            "comic_source": "JMCOMIC",
+            "comic_source": "JM",
             "title": "Album - 第2話",
             "author": "",
             "output_path": str(folder),

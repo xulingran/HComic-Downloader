@@ -219,7 +219,7 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   getAvailableFonts: () => ipcRenderer.invoke(IPC_CHANNELS.GET_AVAILABLE_FONTS),
 
-  getJmcomicDomains: () => ipcRenderer.invoke(IPC_CHANNELS.GET_JMCOMIC_DOMAINS),
+  getJmDomains: () => ipcRenderer.invoke(IPC_CHANNELS.GET_JM_DOMAINS),
 
   openDownloadDir: (dirPath: unknown) => {
     validateDownloadDir(dirPath)

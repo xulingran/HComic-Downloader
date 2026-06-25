@@ -9,18 +9,18 @@ import {
 } from './csp-relaxed-registry'
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
-const JMCOMIC_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
-const JMCOMIC_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
+const JM_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
+const JM_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
 
 const COPYMANGA_LOGIN_COOKIE_NAMES = ['token', 'sessionid', 'copymanga_session']
 const COPYMANGA_DOMAIN = 'www.2026copy.com'
 const HCOMIC_DOMAIN = 'h-comic.com'
-const JMCOMIC_DEFAULT_DOMAIN = '18comic.vip'
+const JM_DEFAULT_DOMAIN = '18comic.vip'
 
 /**
  * 登录窗口允许导航到的域名白名单：
  * - h-comic + www 前缀（含 Auth0 登录回调）
- * - jmcomic 全部镜像域名（登录流程在镜像间跳转）
+ * - jm 全部镜像域名（登录流程在镜像间跳转）
  * - copymanga
  * 其他域名的导航（如 h-comic 的广告脚本 juicyads 重定向）会被 will-navigate 拦截。
  *
@@ -30,15 +30,15 @@ const ALLOWED_NAV_DOMAINS: readonly string[] = [
   HCOMIC_DOMAIN,
   `www.${HCOMIC_DOMAIN}`,
   'auth0.com',
-  ...JMCOMIC_MIRROR_DOMAINS,
+  ...JM_MIRROR_DOMAINS,
   COPYMANGA_DOMAIN,
 ]
 
 function buildAllowedNavigationDomains(source: string, domain: string): ReadonlySet<string> {
   const domains = new Set(ALLOWED_NAV_DOMAINS)
   domains.add(domain)
-  if (source === 'jmcomic') {
-    for (const mirror of JMCOMIC_MIRROR_DOMAINS) domains.add(mirror)
+  if (source === 'jm') {
+    for (const mirror of JM_MIRROR_DOMAINS) domains.add(mirror)
   }
   return domains
 }
@@ -128,7 +128,7 @@ interface LoginWindowContext {
 
 interface CookieExtraction {
   cookies: Electron.Cookie[]
-  /** 实际命中域名：jmcomic 多镜像时可能与传入 domain 不同 */
+  /** 实际命中域名：jm 多镜像时可能与传入 domain 不同 */
   domain: string
   notLoggedIn?: boolean
   message?: string
@@ -136,7 +136,7 @@ interface CookieExtraction {
 
 /**
  * 按 source 从 session 提取 cookie。
- * - jmcomic：遍历主域名 + JMCOMIC_MIRROR_DOMAINS，返回首个含登录 cookie 的镜像
+ * - jm：遍历主域名 + JM_MIRROR_DOMAINS，返回首个含登录 cookie 的镜像
  * - copymanga：仅从传入 domain 提取，过滤 COPYMANGA_LOGIN_COOKIE_NAMES
  * - 默认（hcomic 等）：直接 get
  *
@@ -147,13 +147,13 @@ export async function extractCookiesForSource(
   domain: string,
   cookieSession: Session,
 ): Promise<CookieExtraction> {
-  if (source === 'jmcomic') {
-    const candidateDomains = [domain, ...JMCOMIC_MIRROR_DOMAINS]
+  if (source === 'jm') {
+    const candidateDomains = [domain, ...JM_MIRROR_DOMAINS]
     for (const d of candidateDomains) {
       const domainCookies = await cookieSession.cookies.get({ url: `https://${d}` })
       if (domainCookies.length === 0) continue
       const cookieNames = domainCookies.map(c => c.name.toLowerCase())
-      if (JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+      if (JM_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
         return { cookies: domainCookies, domain: d }
       }
     }
@@ -187,8 +187,8 @@ export async function extractCookiesForSource(
  */
 export function verifyLoginCookies(source: string, cookies: Electron.Cookie[]): ExtractionResult | null {
   const cookieNames = cookies.map(c => c.name.toLowerCase())
-  if (source === 'jmcomic') {
-    if (!JMCOMIC_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
+  if (source === 'jm') {
+    if (!JM_LOGIN_COOKIE_NAMES.some(name => cookieNames.includes(name))) {
       return { success: false, message: '未检测到登录状态，请确认已成功登录后重试', notLoggedIn: true }
     }
   }
@@ -212,7 +212,7 @@ async function applyAndVerifyAuth(
   cookies: Electron.Cookie[],
   domain: string,
   userAgent: string,
-  jmcomicUsername: string,
+  jmUsername: string,
 ): Promise<ExtractionResult> {
   // 构造原始 cookie 字符串（不预转义每个 value），然后用 shellQuoteForShlex 把
   // 整个字符串作为一个 POSIX shell token 包装。模板里 -b 与 -H 后**不加外层单引号**——
@@ -226,9 +226,9 @@ async function applyAndVerifyAuth(
   await bridge.call('apply_auth', {
     curl_text: `curl 'https://${domain}' -b ${shellQuoteForShlex(rawCookieStr)} -H ${shellQuoteForShlex(rawUaHeader)}`,
     source,
-    // jmcomic 用户名由 Electron 从登录窗口 DOM 提取，避免 Python 后端
+    // jm 用户名由 Electron 从登录窗口 DOM 提取，避免 Python 后端
     // 因 Cloudflare 403 无法从首页发现用户名
-    ...(source === 'jmcomic' && jmcomicUsername ? { jmcomic_username: jmcomicUsername } : {}),
+    ...(source === 'jm' && jmUsername ? { jm_username: jmUsername } : {}),
   })
   diag(`applyAndVerifyAuth: apply_auth returned, calling verify_auth`)
 
@@ -255,7 +255,7 @@ async function extractAndApplyCookies(
   source: string = 'hcomic',
   domain: string = HCOMIC_DOMAIN,
   cookieSession: Session = session.defaultSession,
-  jmcomicUsername: string = '',
+  jmUsername: string = '',
 ): Promise<ExtractionResult> {
   try {
     const extraction = await extractCookiesForSource(source, domain, cookieSession)
@@ -264,20 +264,20 @@ async function extractAndApplyCookies(
     }
     const verifyFail = verifyLoginCookies(source, extraction.cookies)
     if (verifyFail) return verifyFail
-    return await applyAndVerifyAuth(source, extraction.cookies, extraction.domain, userAgent, jmcomicUsername)
+    return await applyAndVerifyAuth(source, extraction.cookies, extraction.domain, userAgent, jmUsername)
   } catch (err: unknown) {
     return { success: false, message: err instanceof Error ? err.message : '登录处理失败' }
   }
 }
 
 /**
- * jmcomic 登录窗口 DOM 提取用户名的脚本：从导航栏 /user/{name}/favorite 链接提取，
+ * jm 登录窗口 DOM 提取用户名的脚本：从导航栏 /user/{name}/favorite 链接提取，
  * 次级从任意 /user/{name} 链接提取（排除 profile/favorites/setting 等通用项）。
  *
  * 抽为模块级常量便于：(1) 静态审阅脚本逻辑；(2) 单元测试断言 executeJavaScript 入参；
  * (3) 避免 TS 模板字符串中转义正则反斜杠导致的可读性问题。
  */
-const EXTRACT_JMCOMIC_USERNAME_SCRIPT = `(() => {
+const EXTRACT_JM_USERNAME_SCRIPT = `(() => {
   const links = document.querySelectorAll('a[href*="/favorite"]');
   for (const link of links) {
     const m = (link.getAttribute('href') || '').match(/\\/user\\/([^/?#]+)\\/favorite/);
@@ -293,26 +293,26 @@ const EXTRACT_JMCOMIC_USERNAME_SCRIPT = `(() => {
   return '';
 })()`
 
-/** 从 jmcomic 登录窗口 DOM 中提取用户名（导航栏 /user/{name}/favorite 链接）。
+/** 从 jm 登录窗口 DOM 中提取用户名（导航栏 /user/{name}/favorite 链接）。
  *
  * Electron 42 起，当渲染帧已 dispose（如 Cloudflare 挑战页导航导致帧重建）时，
  * `executeJavaScript` 可能既不 resolve 也不 reject，造成 close 提取链永久挂起、
  * 窗口无法关闭。此处用 Promise.race 加超时兜底：超时或异常均返回空串，
  * 让提取链退化为纯 cookie 提取（apply_auth 不依赖用户名也能工作）。
  */
-async function extractJmcomicUsername(loginWin: BrowserWindow): Promise<string> {
+async function extractJmUsername(loginWin: BrowserWindow): Promise<string> {
   if (loginWin.isDestroyed()) return ''
   const EXEC_JS_TIMEOUT_MS = 3_000
   try {
     const result = await Promise.race([
-      loginWin.webContents.executeJavaScript(EXTRACT_JMCOMIC_USERNAME_SCRIPT),
+      loginWin.webContents.executeJavaScript(EXTRACT_JM_USERNAME_SCRIPT),
       new Promise<string>((_, reject) =>
         setTimeout(() => reject(new Error('executeJavaScript timed out')), EXEC_JS_TIMEOUT_MS),
       ),
     ])
     return (result || '').trim()
   } catch (err) {
-    diag(`extractJmcomicUsername failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
+    diag(`extractJmUsername failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
     return ''
   }
 }
@@ -433,7 +433,7 @@ function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录
  * 绑定手动关窗提取逻辑。
  *
  * 设计要点（参见 docs/superpowers/specs/2026-06-13-login-manual-close-design.md）：
- * - 用 `close` 事件而非 `closed`：close 触发时窗口尚未销毁，DOM（jmcomic 用户名）
+ * - 用 `close` 事件而非 `closed`：close 触发时窗口尚未销毁，DOM（jm 用户名）
  *   与 session（cookie）均存活，可确定性提取。
  * - `event.preventDefault()` 挡住关闭，保证异步提取期间窗口存活；提取完成后由
  *   `ctx.done()` 调用 `loginWin.destroy()` 真正关闭（destroy 不再触发 close，无重入）。
@@ -467,17 +467,17 @@ function bindManualCloseExtraction(
     const cookieSession = loginWin.webContents.session
     diag(`manual close extraction: source=${source} domain=${domain}`)
 
-    // jmcomic: 关窗前从 DOM 提取用户名（窗口仍存活）。
+    // jm: 关窗前从 DOM 提取用户名（窗口仍存活）。
     // Python 后端因 Cloudflare 403 无法从首页发现用户名，
     // 必须在窗口销毁前从浏览器 DOM 获取。
-    const usernamePromise = source === 'jmcomic'
-      ? extractJmcomicUsername(loginWin)
+    const usernamePromise = source === 'jm'
+      ? extractJmUsername(loginWin)
       : Promise.resolve('')
 
     usernamePromise
       .then((username) => {
         diag(`extract phase done: username=${username || '(empty)'}`)
-        if (username) diag(`extracted jmcomic username: ${username}`)
+        if (username) diag(`extracted jm username: ${username}`)
         return extractAndApplyCookies(userAgent, source, domain, cookieSession, username)
       })
       .then((result) => {
@@ -517,14 +517,14 @@ interface LoginTarget {
 
 /**
  * 按 source 派发登录 URL/title/domain。纯函数，便于单测。
- * - jmcomic：resolvedDomain 优先，否则用 JMCOMIC_DEFAULT_DOMAIN
+ * - jm：resolvedDomain 优先，否则用 JM_DEFAULT_DOMAIN
  * - copymanga：固定 COPYMANGA_DOMAIN
  * - 其他（hcomic/未知）：HCOMIC_DOMAIN
  */
 export function resolveLoginTarget(source: string, resolvedDomain?: string): LoginTarget {
-  if (source === 'jmcomic') {
-    const domain = resolvedDomain || JMCOMIC_DEFAULT_DOMAIN
-    return { url: `https://${domain}`, title: '登录 jmcomic', domain }
+  if (source === 'jm') {
+    const domain = resolvedDomain || JM_DEFAULT_DOMAIN
+    return { url: `https://${domain}`, title: '登录 JM', domain }
   }
   if (source === 'copymanga') {
     return { url: `https://${COPYMANGA_DOMAIN}`, title: '登录拷贝漫画', domain: COPYMANGA_DOMAIN }

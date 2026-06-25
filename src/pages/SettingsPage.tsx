@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useToastStore } from '../stores/useToastStore'
-import { useConfig, useProxyStatus, useAvailableFonts, useJmcomicDomains } from '../hooks/useIpc'
+import { useConfig, useProxyStatus, useAvailableFonts, useJmDomains } from '../hooks/useIpc'
 import { useOptimisticConfig } from '../hooks/useOptimisticConfig'
 import { useAuthState } from '../hooks/useAuthState'
 import { COMIC_SOURCES, SOURCE_LABELS, type ConfigKey, type ConfigValueMap, type FontInfo, type ProxyStatus } from '@shared/types'
@@ -32,7 +32,7 @@ interface ConfigState {
   checkUpdateOnStart: boolean
   defaultSource: string
   previewCacheSizeLimitMB: number
-  jmcomicDomain: string
+  jmDomain: string
   moeimgUsername: string
   bikaUsername?: string
   hcomicUsername?: string
@@ -52,13 +52,13 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const loginSectionRef = useRef<HTMLDivElement>(null!)
   const { getConfig, setConfig, openDownloadDir, selectDirectory } = useConfig()
   const hcomicAuth = useAuthState('hcomic')
-  const jmcomicAuth = useAuthState('jmcomic')
+  const jmAuth = useAuthState('jm')
   const moeimgAuth = useAuthState('moeimg')
   const bikaAuth = useAuthState('bika')
     const copymangaAuth = useAuthState('copymanga')
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
-  const { getJmcomicDomains } = useJmcomicDomains()
+  const { getJmDomains } = useJmDomains()
   const [outputFormat, setOutputFormat] = useState<OutputFormat>('folder')
   const [config, setConfigState] = useState<ConfigState>({
     downloadDir: '',
@@ -73,7 +73,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     checkUpdateOnStart: true,
     defaultSource: 'hcomic',
     previewCacheSizeLimitMB: 500,
-    jmcomicDomain: '',
+    jmDomain: '',
     moeimgUsername: '',
     bikaUsername: '',
     hcomicUsername: '',
@@ -85,7 +85,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [availableFonts, setAvailableFonts] = useState<FontInfo[]>([])
-  const [jmcomicDomains, setJmcomicDomains] = useState<string[]>([])
+  const [jmDomains, setJmDomains] = useState<string[]>([])
   const [fontName, setFontName] = useState('')
   const [fontSize, setFontSize] = useState(14)
   const [proxyStatus, setProxyStatus] = useState<ProxyStatus | null>(null)
@@ -99,8 +99,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     totalItems: number
     newDir: string
   } | null>(null)
-  const [jmcomicDomainInput, setJmcomicDomainInput] = useState('')
-  const [jmcomicDomainMode, setJmcomicDomainMode] = useState<'auto' | 'custom'>('auto')
+  const [jmDomainInput, setJmDomainInput] = useState('')
+  const [jmDomainMode, setJmDomainMode] = useState<'auto' | 'custom'>('auto')
 
   const SECTIONS = [
     { id: 'appearance', label: '外观设置', icon: '🎨' },
@@ -144,7 +144,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           checkUpdateOnStart: result.config.checkUpdateOnStart !== false,
           defaultSource: result.config.defaultSource ?? 'hcomic',
           previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
-          jmcomicDomain: result.config.jmcomicDomain ?? '',
+          jmDomain: result.config.jmDomain ?? '',
           moeimgUsername: result.config.moeimgUsername ?? '',
           bikaUsername: result.config.bikaUsername ?? '',
           hcomicUsername: result.config.hcomicUsername ?? '',
@@ -153,8 +153,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           previewPreloadConcurrency: result.config.previewPreloadConcurrency ?? 3,
           previewPreloadAdaptive: result.config.previewPreloadAdaptive ?? false,
         })
-        setJmcomicDomainInput(result.config.jmcomicDomain ?? '')
-        setJmcomicDomainMode(result.config.jmcomicDomain ? 'custom' : 'auto')
+        setJmDomainInput(result.config.jmDomain ?? '')
+        setJmDomainMode(result.config.jmDomain ? 'custom' : 'auto')
         if (result.config.outputFormat) {
           setOutputFormat(result.config.outputFormat as OutputFormat)
         }
@@ -164,8 +164,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         if (result.config.hasAuth) {
           hcomicAuth.verifyFromConfig(true)
         }
-        if (result.config.hasJmcomicAuth) {
-          jmcomicAuth.verifyFromConfig(true)
+        if (result.config.hasJmAuth) {
+          jmAuth.verifyFromConfig(true)
         }
         if (result.config.hasMoeimgAuth) {
           moeimgAuth.verifyFromConfig(true)
@@ -203,10 +203,10 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   useEffect(() => {
     getAvailableFonts().then((result) => setAvailableFonts(result.fonts)).catch(() => {})
-    getJmcomicDomains().then((result) => setJmcomicDomains(result.domains)).catch(() => {})
+    getJmDomains().then((result) => setJmDomains(result.domains)).catch(() => {})
     // eslint-disable-next-line react-hooks/set-state-in-effect
     loadProxyStatus()
-  }, [getAvailableFonts, getJmcomicDomains, loadProxyStatus])
+  }, [getAvailableFonts, getJmDomains, loadProxyStatus])
 
   const handleThemeChange = createHandler('themeMode', () => themeMode, setThemeMode, (prev) => setThemeMode(prev))
 
@@ -275,7 +275,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
 
   const authMap = {
     hcomic: hcomicAuth,
-    jmcomic: jmcomicAuth,
+    jm: jmAuth,
     moeimg: moeimgAuth,
     bika: bikaAuth,
     copymanga: copymangaAuth,
@@ -538,42 +538,42 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">JMComic 域名</label>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">JM 域名</label>
             <p className="text-xs text-[var(--text-secondary)] mb-3">
               默认使用 18comic.vip，以下列表来自发布页，可手动切换
             </p>
             <div className="flex gap-2 items-start">
               <div className="flex-1">
                 <select
-                  value={jmcomicDomainInput || '18comic.vip'}
+                  value={jmDomainInput || '18comic.vip'}
                   onChange={async (e) => {
                     const domain = e.target.value
-                    setJmcomicDomainInput(domain === '18comic.vip' ? '' : domain)
-                    setJmcomicDomainMode(domain === '18comic.vip' ? 'auto' : 'custom')
-                    handleConfigChange('jmcomicDomain', domain === '18comic.vip' ? '' : domain)
+                    setJmDomainInput(domain === '18comic.vip' ? '' : domain)
+                    setJmDomainMode(domain === '18comic.vip' ? 'auto' : 'custom')
+                    handleConfigChange('jmDomain', domain === '18comic.vip' ? '' : domain)
                   }}
                   className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
                 >
                   <option value="18comic.vip">18comic.vip (默认)</option>
-                  {jmcomicDomains.filter(d => d !== '18comic.vip').map((d) => (
+                  {jmDomains.filter(d => d !== '18comic.vip').map((d) => (
                     <option key={d} value={d}>{d}</option>
                   ))}
                   <option value="__custom__">自定义域名…</option>
                 </select>
               </div>
             </div>
-            {jmcomicDomainInput === '__custom__' || (jmcomicDomainMode === 'custom' && !jmcomicDomains.includes(jmcomicDomainInput) && jmcomicDomainInput !== '18comic.vip') ? (
+            {jmDomainInput === '__custom__' || (jmDomainMode === 'custom' && !jmDomains.includes(jmDomainInput) && jmDomainInput !== '18comic.vip') ? (
               <div className="flex gap-2 items-start mt-2">
                 <div className="flex-1">
                   <input
                     type="text"
-                    value={jmcomicDomainInput === '__custom__' ? '' : jmcomicDomainInput}
-                    onChange={(e) => setJmcomicDomainInput(e.target.value)}
+                    value={jmDomainInput === '__custom__' ? '' : jmDomainInput}
+                    onChange={(e) => setJmDomainInput(e.target.value)}
                     onBlur={async () => {
-                      const domain = jmcomicDomainInput.trim()
+                      const domain = jmDomainInput.trim()
                       if (!domain || domain === '__custom__') return
-                      if (domain === config.jmcomicDomain) return
-                      handleConfigChange('jmcomicDomain', domain)
+                      if (domain === config.jmDomain) return
+                      handleConfigChange('jmDomain', domain)
                     }}
                     onKeyDown={async (e) => {
                       if (e.key === 'Enter') e.currentTarget.blur()
@@ -594,8 +594,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           loginStatus={hcomicAuth.status}
           loginMessage={hcomicAuth.message}
           hcomicSavedUsername={config.hcomicUsername || ''}
-          jmcomicLoginStatus={jmcomicAuth.status}
-          jmcomicLoginMessage={jmcomicAuth.message}
+          jmLoginStatus={jmAuth.status}
+          jmLoginMessage={jmAuth.message}
           moeimgLoginStatus={moeimgAuth.status}
           moeimgLoginMessage={moeimgAuth.message}
           moeimgSavedUsername={config.moeimgUsername}

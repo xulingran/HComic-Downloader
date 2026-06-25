@@ -47,14 +47,14 @@ describe('useAuth', () => {
   it('applyAuth 应传递 source 参数', async () => {
     const hcomic = createMockHcomic({ applyAuth: vi.fn().mockResolvedValue({ success: true }) })
     const { result } = renderHook(() => useAuth())
-    await result.current.applyAuth('curl cmd', 'jmcomic')
-    expect(hcomic.applyAuth).toHaveBeenCalledWith('curl cmd', 'jmcomic')
+    await result.current.applyAuth('curl cmd', 'jm')
+    expect(hcomic.applyAuth).toHaveBeenCalledWith('curl cmd', 'jm')
   })
 
   it('verifyAuth 应传递 source 参数', async () => {
     const hcomic = createMockHcomic({ verifyAuth: vi.fn().mockResolvedValue({ valid: true, message: 'ok' }) })
     const { result } = renderHook(() => useAuth())
-    await result.current.verifyAuth('jmcomic')
-    expect(hcomic.verifyAuth).toHaveBeenCalledWith('jmcomic')
+    await result.current.verifyAuth('jm')
+    expect(hcomic.verifyAuth).toHaveBeenCalledWith('jm')
   })
 })

@@ -121,7 +121,7 @@ describe('HistoryPage', () => {
       items: [
         makeHistoryItem({ id: 1, comicId: 'h-1', title: 'HComic Item', sourceSite: 'hcomic' }),
         makeHistoryItem({ id: 2, comicId: 'm-1', title: 'Moeimg Item', sourceSite: 'moeimg' }),
-        makeHistoryItem({ id: 3, comicId: 'j-1', title: 'JMComic Item', sourceSite: 'jmcomic' }),
+        makeHistoryItem({ id: 3, comicId: 'j-1', title: 'JMComic Item', sourceSite: 'jm' }),
       ],
       pagination: { currentPage: 1, totalPages: 1, totalItems: 3 },
     })
@@ -132,7 +132,7 @@ describe('HistoryPage', () => {
 
     expect(screen.getByText('HComic')).toBeInTheDocument()
     expect(screen.getByText('Moeimg')).toBeInTheDocument()
-    expect(screen.getByText('JMComic')).toBeInTheDocument()
+    expect(screen.getByText('JM')).toBeInTheDocument()
   })
 
   it('shows cached history page immediately and refreshes it in background', async () => {

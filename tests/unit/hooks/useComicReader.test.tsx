@@ -4,7 +4,7 @@ import { useComicReader } from '@/hooks/useComicReader'
 import { createMockHcomic } from '../../__mocks__/ipc'
 import type { ComicInfo } from '@shared/types'
 
-const jmComic = { id: '999001', sourceSite: 'jmcomic', source: 'JMCOMIC' } as ComicInfo
+const jmComic = { id: '999001', sourceSite: 'jm', source: 'JM' } as ComicInfo
 
 describe('useComicReader', () => {
   beforeEach(() => {
