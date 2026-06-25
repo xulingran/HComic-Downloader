@@ -315,14 +315,17 @@ class MigrationEngine:
 
         if self._state.started_at == 0.0:
             self._state.started_at = time.time()
-            log_path = self._get_log_path()
+            # 首次执行：关闭旧 handler 释放文件占用后再删除旧日志，
+            # 并以 'w' 模式重建 handler 确保日志被截断清空（而非追加）。
             if self._log_handler:
                 self._migration_logger.removeHandler(self._log_handler)
                 self._log_handler.close()
+                self._log_handler = None
+            log_path = self._get_log_path()
             if os.path.exists(log_path):
                 with contextlib.suppress(OSError):
                     os.unlink(log_path)
-            self._reinit_log_handler()
+            self._reinit_log_handler(truncate=True)
 
         self._save_state_if_needed()
 
@@ -457,12 +460,14 @@ class MigrationEngine:
         log_level = getattr(logging, level.upper(), logging.INFO)
         self._migration_logger.log(log_level, message)
 
-    def _reinit_log_handler(self):
+    def _reinit_log_handler(self, truncate: bool = False):
         if self._log_handler:
             self._migration_logger.removeHandler(self._log_handler)
             self._log_handler.close()
         log_path = self._get_log_path()
-        self._log_handler = logging.FileHandler(log_path, encoding="utf-8")
+        # 首次执行用 'w' 截断旧日志，后续重建（如恢复）用 'a' 追加。
+        mode = "w" if truncate else "a"
+        self._log_handler = logging.FileHandler(log_path, mode=mode, encoding="utf-8")
         self._log_handler.setFormatter(
             logging.Formatter(
                 "[%(asctime)s] [%(levelname)s] %(message)s",
