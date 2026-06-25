@@ -489,8 +489,7 @@ def test_legacy_jmcomic_history_row_migrates_to_jm(tmp_path):
 
     db_path = tmp_path / "legacy.db"
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE download_history (
             source_site TEXT NOT NULL,
             comic_id TEXT NOT NULL,
@@ -505,8 +504,7 @@ def test_legacy_jmcomic_history_row_migrates_to_jm(tmp_path):
             album_total_chapters INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (source_site, comic_id, comic_source)
         )
-        """
-    )
+        """)
     out = tmp_path / "legacy.cbz"
     out.write_text("fake")
     conn.execute(
@@ -531,8 +529,7 @@ def test_legacy_jmcomic_history_conflict_merges_into_canonical(tmp_path):
 
     db_path = tmp_path / "legacy_conflict.db"
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE download_history (
             source_site TEXT NOT NULL,
             comic_id TEXT NOT NULL,
@@ -547,8 +544,7 @@ def test_legacy_jmcomic_history_conflict_merges_into_canonical(tmp_path):
             album_total_chapters INTEGER NOT NULL DEFAULT 1,
             PRIMARY KEY (source_site, comic_id, comic_source)
         )
-        """
-    )
+        """)
     conn.execute(
         "INSERT INTO download_history VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         ("jmcomic", "100", "JMCOMIC", "Legacy", "", "/legacy", "folder", 10, 12, "100", 1),

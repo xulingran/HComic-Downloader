@@ -76,14 +76,12 @@ def test_chapter_fields_default_empty(tmp_path):
     assert items[0]["lastChapterName"] == ""
 
 
-
 def test_legacy_jmcomic_reading_history_migrates_to_jm(tmp_path):
     import sqlite3
 
     db_path = tmp_path / "legacy.db"
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE reading_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             comic_id TEXT NOT NULL,
@@ -99,8 +97,7 @@ def test_legacy_jmcomic_reading_history_migrates_to_jm(tmp_path):
             created_at TEXT NOT NULL,
             UNIQUE(comic_id, source)
         )
-        """
-    )
+        """)
     conn.execute(
         "INSERT INTO reading_history (comic_id, title, source, source_site, last_page, total_pages, last_read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         ("100", "Legacy", "JMCOMIC", "jmcomic", 5, 20, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),
@@ -120,8 +117,7 @@ def test_legacy_jmcomic_reading_history_conflict_newest_wins(tmp_path):
 
     db_path = tmp_path / "legacy_conflict.db"
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
+    conn.execute("""
         CREATE TABLE reading_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             comic_id TEXT NOT NULL,
@@ -137,8 +133,7 @@ def test_legacy_jmcomic_reading_history_conflict_newest_wins(tmp_path):
             created_at TEXT NOT NULL,
             UNIQUE(comic_id, source)
         )
-        """
-    )
+        """)
     conn.execute(
         "INSERT INTO reading_history (comic_id, title, source, source_site, last_page, total_pages, last_read_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         ("100", "Old", "JMCOMIC", "jmcomic", 5, 20, "2026-01-01T00:00:00+00:00", "2026-01-01T00:00:00+00:00"),

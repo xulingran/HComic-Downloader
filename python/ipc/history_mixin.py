@@ -105,14 +105,12 @@ class ReadingHistoryDB:
     def _migrate_source_ids(self) -> None:
         """迁移旧阅读历史来源标识 jmcomic/JMCOMIC 到 jm/JM。"""
         with self._lock:
-            rows = self._conn.execute(
-                """
+            rows = self._conn.execute("""
                 SELECT id, comic_id, title, cover_url, source, source_site, media_id, source_url,
                        last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at
                 FROM reading_history
                 WHERE source = 'JMCOMIC' OR source_site = 'jmcomic'
-                """
-            ).fetchall()
+                """).fetchall()
             if not rows:
                 return
             canonical_keys = {(row["comic_id"], normalize_comic_source_key(row["source"])) for row in rows}
@@ -125,8 +123,7 @@ class ReadingHistoryDB:
                 SELECT id, comic_id, title, cover_url, source, source_site, media_id, source_url,
                        last_page, total_pages, last_chapter_id, last_chapter_name, last_read_at, created_at
                 FROM reading_history
-                """
-                f"WHERE (comic_id, source) IN ({placeholders}) OR source = 'JMCOMIC' OR source_site = 'jmcomic'",
+                """ f"WHERE (comic_id, source) IN ({placeholders}) OR source = 'JMCOMIC' OR source_site = 'jmcomic'",
                 flat_keys,
             ).fetchall()
 

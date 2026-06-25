@@ -42,7 +42,9 @@ class TagListDB:
     def _migrate_source_ids(self) -> None:
         """迁移旧标签目录来源标识 jmcomic 到 jm。"""
         with self._lock:
-            rows = self._conn.execute("SELECT tag, source, count FROM tag_list WHERE source IN ('jmcomic', 'jm')").fetchall()
+            rows = self._conn.execute(
+                "SELECT tag, source, count FROM tag_list WHERE source IN ('jmcomic', 'jm')"
+            ).fetchall()
             if not any(row["source"] == "jmcomic" for row in rows):
                 return
             counts: dict[str, int] = {}

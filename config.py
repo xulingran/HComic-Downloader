@@ -279,7 +279,9 @@ class Config:
             data["duplicate_blacklist"] = _normalize_source_list_map(
                 data.get("duplicate_blacklist"), structured_entries=True
             )
-            data["missing_blacklist"] = _normalize_source_list_map(data.get("missing_blacklist"), structured_entries=True)
+            data["missing_blacklist"] = _normalize_source_list_map(
+                data.get("missing_blacklist"), structured_entries=True
+            )
             # 迁移旧配置：jmcomic_domain -> jm_domain（旧键名本身保留为向后兼容）
             if "jmcomic_domain" in data and "jm_domain" not in data:
                 data["jm_domain"] = data.pop("jmcomic_domain")

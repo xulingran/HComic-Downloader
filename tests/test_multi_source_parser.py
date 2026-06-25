@@ -352,7 +352,6 @@ def test_favourites_routes_to_bika(monkeypatch):
     assert called == [("bika", 2)]
 
 
-
 def test_legacy_jmcomic_source_auth_maps_to_jm():
     parser = MultiSourceParser(
         timeout=5,
@@ -387,7 +386,9 @@ def test_jm_domain_applies_after_lazy_parser_creation(monkeypatch):
 
     import sources
 
-    monkeypatch.setattr(sources, "_load_parser_class", lambda source: FakeJmParser if source == "jm" else FakeHComicParser)
+    monkeypatch.setattr(
+        sources, "_load_parser_class", lambda source: FakeJmParser if source == "jm" else FakeHComicParser
+    )
     parser = MultiSourceParser(timeout=5, default_source="hcomic", jm_domain="18comic.vip")
     parser.set_source("jm")
     assert applied == ["18comic.vip"]

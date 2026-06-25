@@ -338,13 +338,14 @@ def test_refresh_concurrent_rejected(tmp_path):
     t1.join()
 
 
-
 def test_legacy_jmcomic_tag_list_migrates_to_jm(tmp_path):
     import sqlite3
 
     db_path = tmp_path / "legacy_tag_list.db"
     conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE tag_list (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
+    conn.execute(
+        "CREATE TABLE tag_list (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))"
+    )
     conn.execute("INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 2))
     conn.commit()
     conn.close()
@@ -360,7 +361,9 @@ def test_legacy_jmcomic_tag_list_conflict_sums_counts(tmp_path):
 
     db_path = tmp_path / "legacy_tag_list_conflict.db"
     conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE tag_list (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
+    conn.execute(
+        "CREATE TABLE tag_list (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))"
+    )
     conn.execute("INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 2))
     conn.execute("INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jm", 3))
     conn.commit()

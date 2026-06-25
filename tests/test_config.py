@@ -177,7 +177,6 @@ class TestMultiSourceConfig(unittest.TestCase):
         finally:
             os.unlink(config_path)
 
-
     def test_legacy_jmcomic_default_source_migrates_to_jm(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
@@ -231,13 +230,14 @@ class TestMultiSourceConfig(unittest.TestCase):
             os.unlink(config_path)
 
 
-
 class TestDuplicateBlacklistMigration(unittest.TestCase):
     """测试 duplicate_blacklist 数据结构迁移：纯字符串 → {fingerprint, memberCount}"""
 
     def test_default_duplicate_blacklist_empty(self):
         config = Config()
-        self.assertEqual(config.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []})
+        self.assertEqual(
+            config.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []}
+        )
 
     def test_legacy_string_entries_migrate_to_objects(self):
         """旧版纯字符串列表迁移为 {fingerprint, memberCount: None}"""
@@ -293,7 +293,9 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
 
         try:
             loaded = Config.load(config_path)
-            self.assertEqual(loaded.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []})
+            self.assertEqual(
+                loaded.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []}
+            )
         finally:
             os.unlink(config_path)
 
@@ -321,11 +323,12 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
         finally:
             os.unlink(config_path)
 
-
     def test_legacy_jmcomic_duplicate_blacklist_migrates_to_jm(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
-            json.dump({"duplicate_blacklist": {"jmcomic": ["旧指纹"], "jm": [{"fingerprint": "新指纹", "memberCount": 2}]}}, f)
+            json.dump(
+                {"duplicate_blacklist": {"jmcomic": ["旧指纹"], "jm": [{"fingerprint": "新指纹", "memberCount": 2}]}}, f
+            )
 
         try:
             loaded = Config.load(config_path)
@@ -349,7 +352,6 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
             self.assertEqual(loaded.missing_blacklist["jm"], [{"fingerprint": "缺失指纹", "memberCount": None}])
         finally:
             os.unlink(config_path)
-
 
 
 class TestConfigConstructorNoSideEffects(unittest.TestCase):

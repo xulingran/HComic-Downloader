@@ -49,14 +49,12 @@ class FavouriteTagsDB:
     def _migrate_source_ids(self) -> None:
         """迁移旧推荐标签来源标识 jmcomic 到 jm。"""
         with self._lock:
-            has_legacy = self._conn.execute(
-                """
+            has_legacy = self._conn.execute("""
                 SELECT 1 FROM favourite_tag_comics WHERE source = 'jmcomic'
                 UNION ALL
                 SELECT 1 FROM favourite_tag_index WHERE source = 'jmcomic'
                 LIMIT 1
-                """
-            ).fetchone()
+                """).fetchone()
             if not has_legacy:
                 return
 

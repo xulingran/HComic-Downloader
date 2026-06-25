@@ -188,16 +188,21 @@ def test_moeimg_upsert_and_get_tags(tmp_path):
     assert db.get_tags("moeimg") == []
 
 
-
 def test_legacy_jmcomic_favourite_tags_migrate_to_jm(tmp_path):
     import sqlite3
 
     db_path = tmp_path / "legacy_ft.db"
     conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE favourite_tag_index (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
-    conn.execute("CREATE TABLE favourite_tag_comics (id INTEGER PRIMARY KEY AUTOINCREMENT, comic_id TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', tags TEXT NOT NULL DEFAULT '[]', UNIQUE(comic_id, source))")
+    conn.execute(
+        "CREATE TABLE favourite_tag_index (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))"
+    )
+    conn.execute(
+        "CREATE TABLE favourite_tag_comics (id INTEGER PRIMARY KEY AUTOINCREMENT, comic_id TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', tags TEXT NOT NULL DEFAULT '[]', UNIQUE(comic_id, source))"
+    )
     conn.execute("INSERT INTO favourite_tag_index (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 1))
-    conn.execute("INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jmcomic", '["tag:A"]'))
+    conn.execute(
+        "INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jmcomic", '["tag:A"]')
+    )
     conn.commit()
     conn.close()
 
@@ -211,12 +216,20 @@ def test_legacy_jmcomic_favourite_tags_conflict_merges_without_duplicate_comic(t
 
     db_path = tmp_path / "legacy_ft_conflict.db"
     conn = sqlite3.connect(db_path)
-    conn.execute("CREATE TABLE favourite_tag_index (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))")
-    conn.execute("CREATE TABLE favourite_tag_comics (id INTEGER PRIMARY KEY AUTOINCREMENT, comic_id TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', tags TEXT NOT NULL DEFAULT '[]', UNIQUE(comic_id, source))")
+    conn.execute(
+        "CREATE TABLE favourite_tag_index (id INTEGER PRIMARY KEY AUTOINCREMENT, tag TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', count INTEGER NOT NULL DEFAULT 1, UNIQUE(tag, source))"
+    )
+    conn.execute(
+        "CREATE TABLE favourite_tag_comics (id INTEGER PRIMARY KEY AUTOINCREMENT, comic_id TEXT NOT NULL, source TEXT NOT NULL DEFAULT 'hcomic', tags TEXT NOT NULL DEFAULT '[]', UNIQUE(comic_id, source))"
+    )
     conn.execute("INSERT INTO favourite_tag_index (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jmcomic", 1))
     conn.execute("INSERT INTO favourite_tag_index (tag, source, count) VALUES (?, ?, ?)", ("tag:A", "jm", 2))
-    conn.execute("INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jmcomic", '["tag:A"]'))
-    conn.execute("INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jm", '["tag:B"]'))
+    conn.execute(
+        "INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jmcomic", '["tag:A"]')
+    )
+    conn.execute(
+        "INSERT INTO favourite_tag_comics (comic_id, source, tags) VALUES (?, ?, ?)", ("100", "jm", '["tag:B"]')
+    )
     conn.commit()
     conn.close()
 
