@@ -34,6 +34,27 @@ const ALLOWED_NAV_DOMAINS: readonly string[] = [
   COPYMANGA_DOMAIN,
 ]
 
+function buildAllowedNavigationDomains(source: string, domain: string): ReadonlySet<string> {
+  const domains = new Set(ALLOWED_NAV_DOMAINS)
+  domains.add(domain)
+  if (source === 'jmcomic') {
+    for (const mirror of JMCOMIC_MIRROR_DOMAINS) domains.add(mirror)
+  }
+  return domains
+}
+
+function isAllowedLoginUrl(url: string, allowedDomains: ReadonlySet<string>): boolean {
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return false
+    return [...allowedDomains].some(
+      domain => parsed.hostname === domain || parsed.hostname.endsWith(`.${domain}`),
+    )
+  } catch {
+    return false
+  }
+}
+
 const DIAG_LOG = join(tmpdir(), 'hcomic-login-diag.log')
 // diag 批量写入窗口：100ms 内的多次调用合并为一次 appendFile，
 // 避免 close 事件热路径中连续 3-5 条 diag 各自同步写盘阻塞事件循环。
@@ -201,6 +222,7 @@ async function applyAndVerifyAuth(
   const rawUaHeader = `User-Agent: ${userAgent}`
 
   const bridge = getPythonBridge()
+  diag(`applyAndVerifyAuth: calling apply_auth (source=${source})`)
   await bridge.call('apply_auth', {
     curl_text: `curl 'https://${domain}' -b ${shellQuoteForShlex(rawCookieStr)} -H ${shellQuoteForShlex(rawUaHeader)}`,
     source,
@@ -208,9 +230,11 @@ async function applyAndVerifyAuth(
     // 因 Cloudflare 403 无法从首页发现用户名
     ...(source === 'jmcomic' && jmcomicUsername ? { jmcomic_username: jmcomicUsername } : {}),
   })
+  diag(`applyAndVerifyAuth: apply_auth returned, calling verify_auth`)
 
   try {
     const verifyResult = await bridge.call('verify_auth', { source }) as { valid: boolean; message: string }
+    diag(`applyAndVerifyAuth: verify_auth returned valid=${verifyResult.valid}`)
     if (verifyResult.valid) {
       return { success: true, message: verifyResult.message }
     }
@@ -269,13 +293,26 @@ const EXTRACT_JMCOMIC_USERNAME_SCRIPT = `(() => {
   return '';
 })()`
 
-/** 从 jmcomic 登录窗口 DOM 中提取用户名（导航栏 /user/{name}/favorite 链接）。 */
+/** 从 jmcomic 登录窗口 DOM 中提取用户名（导航栏 /user/{name}/favorite 链接）。
+ *
+ * Electron 42 起，当渲染帧已 dispose（如 Cloudflare 挑战页导航导致帧重建）时，
+ * `executeJavaScript` 可能既不 resolve 也不 reject，造成 close 提取链永久挂起、
+ * 窗口无法关闭。此处用 Promise.race 加超时兜底：超时或异常均返回空串，
+ * 让提取链退化为纯 cookie 提取（apply_auth 不依赖用户名也能工作）。
+ */
 async function extractJmcomicUsername(loginWin: BrowserWindow): Promise<string> {
   if (loginWin.isDestroyed()) return ''
+  const EXEC_JS_TIMEOUT_MS = 3_000
   try {
-    const username = await loginWin.webContents.executeJavaScript(EXTRACT_JMCOMIC_USERNAME_SCRIPT)
-    return (username || '').trim()
-  } catch {
+    const result = await Promise.race([
+      loginWin.webContents.executeJavaScript(EXTRACT_JMCOMIC_USERNAME_SCRIPT),
+      new Promise<string>((_, reject) =>
+        setTimeout(() => reject(new Error('executeJavaScript timed out')), EXEC_JS_TIMEOUT_MS),
+      ),
+    ])
+    return (result || '').trim()
+  } catch (err) {
+    diag(`extractJmcomicUsername failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
     return ''
   }
 }
@@ -313,39 +350,44 @@ function setupLoginWindowCSP(win: BrowserWindow): () => void {
  * 1. `setWindowOpenHandler`：拒绝所有 `window.open` / `target=_blank` 弹窗。
  *    登录流程不需要新窗口；第三方广告/重定向脚本可借此绕过 will-navigate
  *    域名白名单创建不受控窗口。
- * 2. 权限处理器：登录页是第三方不可信内容（含广告脚本），通知、地理定位、
- *    摄像头、麦克风、剪贴板读取等权限都不应被授予。
+ * 2. 权限处理器：登录窗口对第三方站点放行所有权限请求。
+ *    历史：曾对登录窗口拒绝 media/geolocation/web-app-installation 等权限，但
+ *    这些来自广告/分析脚本（Google Analytics、Clarity 等）的权限探测会被频繁
+ *    拒绝，产生大量噪音日志，且登录窗口真正的隔离由 contextIsolation +
+ *    nodeIntegration:false + 域名白名单保证，权限放行不构成实质威胁
+ *    （登录场景无摄像头/麦克风敏感数据）。
  *
  * 注意：登录窗口共用 default session（便于提取 cookie），因此权限处理器按
- * webContents 过滤 —— 只对登录窗口拒绝，主窗口保持 Electron 默认行为。
+ * webContents 过滤 —— 只对登录窗口放行，主窗口保持 Electron 默认行为。
  * 窗口销毁后调用返回的清理函数复位处理器，避免 session 上残留无谓拦截。
  */
-function setupLoginContentIsolation(win: BrowserWindow): () => void {
+function setupLoginContentIsolation(
+  win: BrowserWindow,
+  allowedDomains: ReadonlySet<string>,
+): () => void {
   const loginWebContents = win.webContents
   const loginSession = loginWebContents.session
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    let hostname = ''
+    if (isAllowedLoginUrl(url, allowedDomains)) {
+      diag(`redirecting trusted popup in login window: ${url}`)
+      loginWebContents.loadURL(url).catch((err) => {
+        diag(`trusted popup redirect failed (non-fatal): ${err}`)
+      })
+      return { action: 'deny' }
+    }
+
+    let hostname = url
     try { hostname = new URL(url).hostname } catch { /* malformed URL */ }
     diag(`blocked popup open to: ${hostname}`)
     return { action: 'deny' }
   })
 
-  loginSession.setPermissionRequestHandler((wc, permission, callback) => {
-    if (wc === loginWebContents) {
-      diag(`denied permission request from login window: ${permission}`)
-      callback(false)
-      return
-    }
+  // 登录窗口放行所有权限请求（理由见函数注释）；移除历史噪音日志。
+  loginSession.setPermissionRequestHandler((_wc, _permission, callback) => {
     callback(true)
   })
-  loginSession.setPermissionCheckHandler((wc, permission) => {
-    if (wc === loginWebContents) {
-      diag(`denied permission check from login window: ${permission}`)
-      return false
-    }
-    return true
-  })
+  loginSession.setPermissionCheckHandler(() => true)
 
   let removed = false
   return () => {
@@ -360,6 +402,7 @@ function setupLoginContentIsolation(win: BrowserWindow): () => void {
 
 function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
   diag('createLoginBrowserWindow: start')
+  const preloadPath = join(__dirname, '../preload/login-preload.js')
   // Use default session to avoid session.fromPartition side effects.
   // CSP 放宽通过共享 registry（csp-relaxed-registry）而非独立 webRequest 监听器
   // 实现，因此不会与主窗口的 setupCSP 监听器冲突（Electron 同一 session 的同一
@@ -372,6 +415,7 @@ function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录
     parent,
     modal: true,
     webPreferences: {
+      preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
       // TODO: Re-enable sandbox after Electron upgrade — currently disabled because
@@ -432,10 +476,12 @@ function bindManualCloseExtraction(
 
     usernamePromise
       .then((username) => {
+        diag(`extract phase done: username=${username || '(empty)'}`)
         if (username) diag(`extracted jmcomic username: ${username}`)
         return extractAndApplyCookies(userAgent, source, domain, cookieSession, username)
       })
       .then((result) => {
+        diag(`extractAndApplyCookies done: success=${result.success} notLoggedIn=${result.notLoggedIn}`)
         // 未登录即关窗 → 静默取消（选项 A）
         if (!result.success && result.notLoggedIn) {
           ctx.done({ success: false, message: '已取消' })
@@ -443,7 +489,8 @@ function bindManualCloseExtraction(
         }
         ctx.done(result)
       })
-      .catch(() => {
+      .catch((err) => {
+        diag(`close extraction chain error: ${err instanceof Error ? err.message : String(err)}`)
         // 提取链异常（如窗口中途销毁导致 executeJavaScript reject）→ 静默取消
         ctx.done({ success: false, message: '已取消' })
       })
@@ -535,7 +582,11 @@ function createLoginContext(
  *
  * timeout 不在此绑定（需注入 ctx.clearTimeout，由编排层管理 handle）。
  */
-function attachLoginWindowLifecycle(loginWin: BrowserWindow, ctx: LoginWindowContext): void {
+function attachLoginWindowLifecycle(
+  loginWin: BrowserWindow,
+  ctx: LoginWindowContext,
+  allowedDomains: ReadonlySet<string>,
+): void {
   loginWin.webContents.on('render-process-gone', (_event, details) => {
     diag(`render-process-gone: ${details.reason} (exit ${details.exitCode})`)
     console.error(`[LoginWindow] renderer crashed: ${details.reason} (${details.exitCode})`)
@@ -561,12 +612,9 @@ function attachLoginWindowLifecycle(loginWin: BrowserWindow, ctx: LoginWindowCon
   })
 
   loginWin.webContents.on('will-navigate', (event, url) => {
-    let hostname: string
-    try { hostname = new URL(url).hostname } catch { return }
-    const allowed = ALLOWED_NAV_DOMAINS.some(
-      d => hostname === d || hostname.endsWith('.' + d),
-    )
-    if (!allowed) {
+    if (!isAllowedLoginUrl(url, allowedDomains)) {
+      let hostname = url
+      try { hostname = new URL(url).hostname } catch { /* malformed URL */ }
       diag(`blocked navigation to: ${hostname}`)
       event.preventDefault()
     }
@@ -591,6 +639,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
   }
 
   const target = resolveLoginTarget(source, resolvedDomain)
+  const allowedDomains = buildAllowedNavigationDomains(source, target.domain)
 
   return new Promise((resolve) => {
     diag('openLoginWindow: creating window')
@@ -600,7 +649,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
 
     const ctx = createLoginContext(loginWin, resolve, removeCspHandler)
 
-    attachLoginWindowLifecycle(loginWin, ctx)
+    attachLoginWindowLifecycle(loginWin, ctx, allowedDomains)
 
     const timeout = setTimeout(() => {
       diag('login window timed out')
@@ -609,7 +658,7 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
     ctx.clearTimeout = () => clearTimeout(timeout)
 
     // 不可信第三方 SPA 内容隔离（popup 拒绝 + 权限拒绝）
-    ctx.removePermissionHandlers = setupLoginContentIsolation(loginWin)
+    ctx.removePermissionHandlers = setupLoginContentIsolation(loginWin, allowedDomains)
 
     bindManualCloseExtraction(loginWin, ctx, source, target.domain)
 

@@ -274,6 +274,13 @@ describe('login-window: openLoginWindow', () => {
     expect(win.loadURL).toHaveBeenCalledWith('https://h-comic.com')
   })
 
+  it('uses the isolated login preload compatibility script', async () => {
+    void openLoginWindow(makeMainWindow(), 'jmcomic')
+    await Promise.resolve()
+    const win = capturedInstances[0] as { options: { webPreferences: { preload: string } } }
+    expect(win.options.webPreferences.preload.replaceAll('\\', '/')).toMatch(/\/preload\/login-preload\.js$/)
+  })
+
   it('uses jmcomic default domain when resolvedDomain not provided', async () => {
     void openLoginWindow(makeMainWindow(), 'jmcomic')
     await Promise.resolve()
@@ -370,12 +377,78 @@ describe('login-window: openLoginWindow', () => {
     expect(fakeEvent.preventDefault).not.toHaveBeenCalled()
   })
 
+  it('will-navigate handler allows the runtime-resolved jmcomic domain', async () => {
+    openLoginWindow(makeMainWindow(), 'jmcomic', 'current-jm.example')
+    await Promise.resolve()
+    const fakeEvent = { preventDefault: vi.fn() }
+    webContentsEvents['will-navigate'][0](fakeEvent, 'https://current-jm.example/login')
+    expect(fakeEvent.preventDefault).not.toHaveBeenCalled()
+  })
+
   it('will-navigate handler tolerates malformed URLs', async () => {
     openLoginWindow(makeMainWindow(), 'hcomic')
     await Promise.resolve()
     const fakeEvent = { preventDefault: vi.fn() }
     // 畸形 URL 不应抛错，也不应误判
     expect(() => webContentsEvents['will-navigate'][0](fakeEvent, 'not-a-url')).not.toThrow()
+  })
+
+  it('opens trusted target=_blank links in the existing login window', async () => {
+    openLoginWindow(makeMainWindow(), 'jmcomic', 'current-jm.example')
+    await Promise.resolve()
+    const win = capturedInstances[0] as {
+      webContents: {
+        loadURL: ReturnType<typeof vi.fn>
+        setWindowOpenHandler: ReturnType<typeof vi.fn>
+      }
+    }
+    const handler = win.webContents.setWindowOpenHandler.mock.calls[0][0] as (details: { url: string }) => {
+      action: string
+    }
+
+    expect(handler({ url: 'https://current-jm.example/login' })).toEqual({ action: 'deny' })
+    expect(win.webContents.loadURL).toHaveBeenCalledWith('https://current-jm.example/login')
+  })
+
+  it('keeps untrusted target=_blank links blocked', async () => {
+    openLoginWindow(makeMainWindow(), 'jmcomic')
+    await Promise.resolve()
+    const win = capturedInstances[0] as {
+      webContents: {
+        loadURL: ReturnType<typeof vi.fn>
+        setWindowOpenHandler: ReturnType<typeof vi.fn>
+      }
+    }
+    const handler = win.webContents.setWindowOpenHandler.mock.calls[0][0] as (details: { url: string }) => {
+      action: string
+    }
+
+    expect(handler({ url: 'https://ads.example.com/landing' })).toEqual({ action: 'deny' })
+    expect(win.webContents.loadURL).not.toHaveBeenCalled()
+  })
+
+  it('allows permission requests in the login window', async () => {
+    openLoginWindow(makeMainWindow(), 'jmcomic')
+    await Promise.resolve()
+    const win = capturedInstances[0] as {
+      webContents: {
+        session: {
+          setPermissionRequestHandler: ReturnType<typeof vi.fn>
+          setPermissionCheckHandler: ReturnType<typeof vi.fn>
+        }
+      }
+    }
+    const requestHandler = win.webContents.session.setPermissionRequestHandler.mock.calls[0][0] as (
+      webContents: unknown,
+      permission: string,
+      callback: (allowed: boolean) => void,
+    ) => void
+    const checkHandler = win.webContents.session.setPermissionCheckHandler.mock.calls[0][0] as () => boolean
+    const callback = vi.fn()
+
+    requestHandler(win.webContents, 'media', callback)
+    expect(callback).toHaveBeenCalledWith(true)
+    expect(checkHandler()).toBe(true)
   })
 
   it('close event triggers cookie extraction for hcomic with no cookies → notLoggedIn silent cancel', async () => {

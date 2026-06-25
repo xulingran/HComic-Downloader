@@ -21,11 +21,12 @@ export default defineConfig({
     build: {
       rollupOptions: {
         input: {
-          preload: path.resolve(__dirname, 'electron/preload.ts')
+          preload: path.resolve(__dirname, 'electron/preload.ts'),
+          'login-preload': path.resolve(__dirname, 'electron/login-preload.ts')
         },
         output: {
           format: 'cjs',
-          entryFileNames: 'preload.js'
+          entryFileNames: '[name].js'
         }
       }
     }

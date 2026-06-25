@@ -368,19 +368,10 @@ function setupCSP(win: BrowserWindow) {
   ]
 
   win.webContents.session.webRequest.onHeadersReceived((details, callback) => {
-    // 登录窗口 webContents：在 script-src 中追加 'unsafe-eval'（不放宽其他指令）
     if (needsRelaxedCsp(details.webContents)) {
-      const relaxed = baseCspDirectives.map(d =>
-        d.startsWith('script-src ')
-          ? (d.includes("'unsafe-eval'") ? d : `${d} 'unsafe-eval'`)
-          : d
-      )
-      callback({
-        responseHeaders: {
-          ...details.responseHeaders,
-          'Content-Security-Policy': [relaxed.join('; ')],
-        },
-      })
+      // 保留第三方登录站点的原始 CSP。覆盖它可能改变页面资源和 DOM 初始化
+      // 时序，阻断 Cloudflare 动态脚本、iframe、worker，或触发站点脚本空节点异常。
+      callback({ responseHeaders: details.responseHeaders })
       return
     }
     callback({
@@ -1382,8 +1373,12 @@ app.on('render-process-gone', (_event, _webContents, details) => {
 
 // GPU process crash is a common cause of silent native crashes on Windows
 // when loading complex web content (e.g. Auth0). Log it so we can triage.
-app.on('gpu-process-crashed', (_event, killed) => {
-  console.error(`[App] GPU process crashed (killed=${killed})`)
+// 注：Electron 29 移除了 app.on('gpu-process-crashed')，迁移到
+// child-process-gone，用 details.type === 'GPU' 过滤出原 GPU 崩溃事件。
+app.on('child-process-gone', (_event, details) => {
+  if (details.type === 'GPU') {
+    console.error(`[App] GPU process gone: ${details.reason} (exit code ${details.exitCode})`)
+  }
 })
 
 app.whenReady().then(() => {

@@ -1,5 +1,5 @@
 /**
- * 需要宽松 CSP（含 'unsafe-eval'）的 webContents 集合。
+ * 需要保留远端原始 CSP 的 webContents 集合。
  *
  * 背景：Electron 的 session.webRequest 对同一事件只保留**单个监听器**，后注册
  * 的会覆盖先注册的（见 electron/electron#18301）。登录窗口与主窗口共用
@@ -17,7 +17,7 @@
  */
 const relaxedCspWebContents = new WeakSet<Electron.WebContents>()
 
-/** 注册某 webContents 需要宽松 CSP（登录窗口专用）。 */
+/** 注册某 webContents 需要保留远端原始 CSP（登录窗口专用）。 */
 export function registerRelaxedCspWebContents(wc: Electron.WebContents): void {
   relaxedCspWebContents.add(wc)
 }
