@@ -23,6 +23,7 @@ describe('useFavouritesStore', () => {
       currentSource: 'hcomic',
       currentPage: 1,
       hasCache: false,
+      sessionPickerShown: false,
     })
   })
 
@@ -93,5 +94,11 @@ describe('useFavouritesStore', () => {
     expect(useFavouritesStore.getState().currentPage).toBe(3)
     expect(useFavouritesStore.getState().currentSource).toBe('hcomic')
     expect(useFavouritesStore.getState().getPage('hcomic', 4)).toBeDefined()
+  })
+
+  it('sessionPickerShown defaults to false and markPickerShown flips it to true', () => {
+    expect(useFavouritesStore.getState().sessionPickerShown).toBe(false)
+    useFavouritesStore.getState().markPickerShown()
+    expect(useFavouritesStore.getState().sessionPickerShown).toBe(true)
   })
 })

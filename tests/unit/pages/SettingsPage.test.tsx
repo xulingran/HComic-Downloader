@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
 const {
@@ -10,6 +10,7 @@ const {
   mockSetThemeMode,
   mockSetCardStyle,
   mockSetSfwMode,
+  mockSetDefaultFavouriteSource,
   mockConfirmMigration,
   mockCancelMigration
 } = vi.hoisted(() => ({
@@ -20,6 +21,7 @@ const {
   mockSetThemeMode: vi.fn(),
   mockSetCardStyle: vi.fn(),
   mockSetSfwMode: vi.fn(),
+  mockSetDefaultFavouriteSource: vi.fn(),
   mockConfirmMigration: vi.fn().mockResolvedValue({ started: true }),
   mockCancelMigration: vi.fn().mockResolvedValue({ cancelled: true })
 }))
@@ -61,10 +63,12 @@ vi.mock('@/stores/useSettingsStore', () => ({
     themeMode: 'auto',
     cardStyle: 'cover',
     sfwMode: false,
+    defaultFavouriteSource: '',
     tagBlacklist: { hcomic: [], moeimg: [] },
     setThemeMode: mockSetThemeMode,
     setCardStyle: mockSetCardStyle,
     setSfwMode: mockSetSfwMode,
+    setDefaultFavouriteSource: mockSetDefaultFavouriteSource,
     addTag: vi.fn(),
     removeTag: vi.fn(),
     favouriteTagHighlight: false,
@@ -725,6 +729,46 @@ describe('SettingsPage', () => {
       await waitFor(() => {
         expect(mockSetSfwMode).toHaveBeenCalledWith(prevSfwMode)
       })
+    })
+  })
+
+  describe('默认收藏夹来源', () => {
+    it('渲染默认收藏夹来源选项组（含「未设置」与支持收藏的来源，无 copymanga）', async () => {
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('默认收藏夹来源')).toBeInTheDocument()
+      })
+      expect(screen.getByText('未设置（每次询问）')).toBeInTheDocument()
+      // 支持收藏的来源都应出现
+      expect(screen.getAllByText('HComic').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('MoeImg').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('JM').length).toBeGreaterThanOrEqual(1)
+      expect(screen.getAllByText('哔咔').length).toBeGreaterThanOrEqual(1)
+      // copymanga（拷贝漫画）不应出现在此选项组（其他分区可能有，故不强断言 absence）
+    })
+
+    it('点击「未设置」调用 setDefaultFavouriteSource 与 setConfig 持久化', async () => {
+      render(<SettingsPage />)
+
+      await waitFor(() => {
+        expect(screen.getByText('未设置（每次询问）')).toBeInTheDocument()
+      })
+
+      await userEvent.click(screen.getByText('未设置（每次询问）'))
+
+      expect(mockSetDefaultFavouriteSource).toHaveBeenCalledWith('')
+      expect(mockSetConfig).toHaveBeenCalledWith('defaultFavouriteSource', '')
+    })
+
+    it('点击来源按钮（如 JM）持久化对应来源', async () => {
+      render(<SettingsPage />)
+
+      const group = await screen.findByTestId('default-favourite-source-group')
+      await userEvent.click(within(group).getByText('JM'))
+
+      expect(mockSetDefaultFavouriteSource).toHaveBeenCalledWith('jm')
+      expect(mockSetConfig).toHaveBeenCalledWith('defaultFavouriteSource', 'jm')
     })
   })
 

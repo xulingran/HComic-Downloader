@@ -4,7 +4,7 @@ import { useToastStore } from '../stores/useToastStore'
 import { useConfig, useProxyStatus, useAvailableFonts, useJmDomains } from '../hooks/useIpc'
 import { useOptimisticConfig } from '../hooks/useOptimisticConfig'
 import { useAuthState } from '../hooks/useAuthState'
-import { COMIC_SOURCES, SOURCE_LABELS, type ConfigKey, type ConfigValueMap, type FontInfo, type ProxyStatus } from '@shared/types'
+import { COMIC_SOURCES, SOURCE_LABELS, SOURCES_WITH_FAVOURITES, type ConfigKey, type ConfigValueMap, type FontInfo, type ProxyStatus } from '@shared/types'
 import { AppearanceSettings } from '../components/settings/AppearanceSettings'
 import { DownloadSettings } from '../components/settings/DownloadSettings'
 import { AuthSettings } from '../components/settings/AuthSettings'
@@ -31,6 +31,7 @@ interface ConfigState {
   notifyWhenForeground: NotifyWhenForeground
   checkUpdateOnStart: boolean
   defaultSource: string
+  defaultFavouriteSource: string
   previewCacheSizeLimitMB: number
   jmDomain: string
   moeimgUsername: string
@@ -48,7 +49,7 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) {
-  const { themeMode, cardStyle, sfwMode, setThemeMode, setCardStyle, setSfwMode } = useSettingsStore()
+  const { themeMode, cardStyle, sfwMode, defaultFavouriteSource, setThemeMode, setCardStyle, setSfwMode, setDefaultFavouriteSource } = useSettingsStore()
   const loginSectionRef = useRef<HTMLDivElement>(null!)
   const { getConfig, setConfig, openDownloadDir, selectDirectory } = useConfig()
   const hcomicAuth = useAuthState('hcomic')
@@ -72,6 +73,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     notifyWhenForeground: 'inactive',
     checkUpdateOnStart: true,
     defaultSource: 'hcomic',
+    defaultFavouriteSource: '',
     previewCacheSizeLimitMB: 500,
     jmDomain: '',
     moeimgUsername: '',
@@ -143,6 +145,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           notifyWhenForeground: result.config.notifyWhenForeground ?? 'inactive',
           checkUpdateOnStart: result.config.checkUpdateOnStart !== false,
           defaultSource: result.config.defaultSource ?? 'hcomic',
+          defaultFavouriteSource: result.config.defaultFavouriteSource ?? '',
           previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
           jmDomain: result.config.jmDomain ?? '',
           moeimgUsername: result.config.moeimgUsername ?? '',
@@ -211,6 +214,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const handleThemeChange = createHandler('themeMode', () => themeMode, setThemeMode, (prev) => setThemeMode(prev))
 
   const handleCardStyleChange = createHandler('cardStyle', () => cardStyle, setCardStyle, (prev) => setCardStyle(prev))
+
+  const handleDefaultFavouriteSourceChange = createHandler('defaultFavouriteSource', () => defaultFavouriteSource, setDefaultFavouriteSource, (prev) => setDefaultFavouriteSource(prev))
 
   const handleSfwModeChange = createHandler('sfwMode', () => sfwMode, setSfwMode, (prev) => setSfwMode(prev))
 
@@ -527,6 +532,40 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
                   onClick={() => handleConfigChange('defaultSource', source)}
                   className={`px-4 py-2 rounded-lg text-sm transition-colors ${
                     config.defaultSource === source
+                      ? 'bg-[var(--accent)] text-white'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
+                  }`}
+                >
+                  {SOURCE_LABELS[source]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
+              默认收藏夹来源
+            </label>
+            <p className="text-xs text-[var(--text-secondary)] mb-3">
+              设置后进入收藏夹将直接加载该来源；选择「未设置」则每次启动首次进入时询问
+            </p>
+            <div className="flex flex-wrap gap-3" data-testid="default-favourite-source-group">
+              <button
+                onClick={() => handleDefaultFavouriteSourceChange('')}
+                className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                  defaultFavouriteSource === ''
+                    ? 'bg-[var(--accent)] text-white'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
+                }`}
+              >
+                未设置（每次询问）
+              </button>
+              {SOURCES_WITH_FAVOURITES.map((source) => (
+                <button
+                  key={source}
+                  onClick={() => handleDefaultFavouriteSourceChange(source)}
+                  className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+                    defaultFavouriteSource === source
                       ? 'bg-[var(--accent)] text-white'
                       : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]'
                   }`}

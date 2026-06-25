@@ -112,6 +112,7 @@ export interface AppConfig {
   notifyOnComplete: boolean
   notifyWhenForeground: 'inactive' | 'always'
   defaultSource: string
+  defaultFavouriteSource?: string
   fontName: string
   fontSize: number
   sfwMode: boolean
@@ -346,6 +347,7 @@ export type DiagnosticsReport = string
 export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
+  | 'defaultFavouriteSource'
   | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'duplicateBlacklist' | 'missingBlacklist' | 'previewCacheSizeLimitMB'
   | 'jmDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
   | 'bikaImageQuality'
@@ -365,6 +367,7 @@ export type ConfigValueMap = {
   notifyOnComplete: boolean
   notifyWhenForeground: 'inactive' | 'always'
   defaultSource: string
+  defaultFavouriteSource: string
   fontName: string
   fontSize: number
   sfwMode: boolean
@@ -1120,6 +1123,7 @@ export const CONFIG_KEYS = [
   'themeMode', 'outputFormat', 'downloadDir', 'concurrentDownloads',
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
+  'defaultFavouriteSource',
   'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'duplicateBlacklist', 'missingBlacklist', 'previewCacheSizeLimitMB',
   'jmDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
   'bikaImageQuality',

@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
 import { COMIC_SOURCES, type TagBlacklist, type DuplicateBlacklist, type DuplicateBlacklistEntry, type MissingBlacklist } from '@shared/types'
-import { useSettingsStore, subscribeToBlacklistChanges, subscribeToDuplicateBlacklistChanges, subscribeToMissingBlacklistChanges, subscribeToFavouriteTagHighlightChanges, subscribeToFavouriteTagMinMatchesChanges } from '../stores/useSettingsStore'
+import { useSettingsStore, subscribeToBlacklistChanges, subscribeToDuplicateBlacklistChanges, subscribeToMissingBlacklistChanges, subscribeToFavouriteTagHighlightChanges, subscribeToFavouriteTagMinMatchesChanges, subscribeToDefaultFavouriteSourceChanges } from '../stores/useSettingsStore'
 import { useConfig } from './useIpc'
 
 export function useInitConfig() {
   const {
-    setThemeMode, setCardStyle, setSfwMode, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches,
+    setThemeMode, setCardStyle, setSfwMode, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches, setDefaultFavouriteSource,
   } = useSettingsStore()
   const { getConfig, setConfig } = useConfig()
   const subscribedRef = useRef(false)
@@ -91,6 +91,10 @@ export function useInitConfig() {
         setFavouriteTagMinMatches(result.config.favouriteTagMinMatches)
       }
 
+      if (typeof result.config?.defaultFavouriteSource === 'string') {
+        setDefaultFavouriteSource(result.config.defaultFavouriteSource)
+      }
+
       if (!subscribedRef.current) {
         subscribedRef.current = true
         const unsubBlacklist = subscribeToBlacklistChanges(setConfig)
@@ -98,12 +102,14 @@ export function useInitConfig() {
         const unsubMissBlacklist = subscribeToMissingBlacklistChanges(setConfig)
         const unsubHighlight = subscribeToFavouriteTagHighlightChanges(setConfig)
         const unsubMinMatches = subscribeToFavouriteTagMinMatchesChanges(setConfig)
+        const unsubDefaultFav = subscribeToDefaultFavouriteSourceChanges(setConfig)
         unsubRef.current = () => {
           unsubBlacklist()
           unsubDupBlacklist()
           unsubMissBlacklist()
           unsubHighlight()
           unsubMinMatches()
+          unsubDefaultFav()
         }
       }
       // 配置加载完成：标记首屏就绪，触发 StartupScreen 淡出
@@ -119,7 +125,7 @@ export function useInitConfig() {
       unsubRef.current = null
       subscribedRef.current = false
     }
-  }, [setThemeMode, setCardStyle, setSfwMode, setConfig, getConfig, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches])
+  }, [setThemeMode, setCardStyle, setSfwMode, setConfig, getConfig, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches, setDefaultFavouriteSource])
 
   return { setSfwMode, setConfig, configLoaded }
 }

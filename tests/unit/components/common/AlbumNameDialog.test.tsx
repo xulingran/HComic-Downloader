@@ -66,7 +66,7 @@ describe('AlbumNameDialog', () => {
 
   it('取消按钮与背景遮罩点击触发 onCancel', async () => {
     const onCancel = vi.fn()
-    const { container } = render(
+    render(
       <AlbumNameDialog isOpen defaultName="x" comicCount={1} onConfirm={vi.fn()} onCancel={onCancel} />
     )
     // 等待 Modal 完成 mount
@@ -74,9 +74,9 @@ describe('AlbumNameDialog', () => {
     fireEvent.click(screen.getByText('取消'))
     expect(onCancel).toHaveBeenCalledTimes(1)
 
-    // 背景遮罩（外层 div）点击也触发取消。
+    // 背景遮罩（Modal 通过 Portal 渲染到 body，遮罩带 data-testid="modal-overlay"）点击也触发取消。
     // 方案 A：需要 mousedown 与 click 均落在遮罩本身，避免拖选文字逸出误触。
-    const overlay = container.firstElementChild as HTMLElement
+    const overlay = await screen.findByTestId('modal-overlay')
     fireEvent.mouseDown(overlay)
     fireEvent.click(overlay)
     expect(onCancel).toHaveBeenCalledTimes(2)

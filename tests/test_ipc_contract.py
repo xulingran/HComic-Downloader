@@ -38,6 +38,7 @@ APP_CONFIG_REQUIRED_KEYS: dict[str, type] = {
     "notifyOnComplete": bool,
     "notifyWhenForeground": str,
     "defaultSource": str,
+    "defaultFavouriteSource": str,
     "fontName": str,
     "fontSize": int,
     "sfwMode": bool,

@@ -9,7 +9,7 @@ import { needsRelaxedCsp } from './csp-relaxed-registry'
 import { initLogging } from './log-init'
 import { buildDiagnostics } from './diagnostics'
 import {
-  SEARCH_MODES, SOURCE_VALUES,
+  SEARCH_MODES, SOURCE_VALUES, SOURCES_WITH_FAVOURITES,
   DOWNLOAD_STATUSES, ACTIVE_DOWNLOAD_STATUSES, IMAGE_QUALITIES,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
   type DownloadProgressEvent,
@@ -235,6 +235,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   notifyOnComplete: boolean(),
   notifyWhenForeground: and(string(), oneOf(['inactive', 'always'] as const)),
   defaultSource: and(string(), oneOf(Array.from(SOURCE_VALUES) as readonly string[])),
+  defaultFavouriteSource: and(string(), oneOf(['', ...SOURCES_WITH_FAVOURITES] as const)),
   fontName: and(string(), maxLength(128)),
   fontSize: and(number(), integer(), range(12, 20)),
   sfwMode: boolean(),

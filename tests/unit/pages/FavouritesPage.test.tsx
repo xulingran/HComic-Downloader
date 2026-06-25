@@ -44,7 +44,15 @@ vi.mock('@/hooks/useIpc', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), addTag: vi.fn(), removeTag: vi.fn() })
+  useSettingsStore: vi.fn().mockReturnValue({
+    cardStyle: 'cover',
+    defaultFavouriteSource: 'hcomic',
+    tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
+    filterEnabled: true,
+    setFilterEnabled: vi.fn(),
+    addTag: vi.fn(),
+    removeTag: vi.fn(),
+  })
 }))
 
 vi.mock('@/stores/useDownloadStore', () => ({
@@ -57,16 +65,23 @@ const { mockFavouritesStore } = vi.hoisted(() => ({
     currentSource: 'hcomic',
     currentPage: 1,
     hasCache: false,
+    sessionPickerShown: true,
     setPage: vi.fn(),
     getPage: vi.fn(),
     hasPage: vi.fn().mockReturnValue(false),
     clearCache: vi.fn(),
     setCurrentSource: vi.fn(),
+    markPickerShown: vi.fn(),
   },
 }))
 
 vi.mock('@/stores/useFavouritesStore', () => ({
-  useFavouritesStore: vi.fn().mockReturnValue(mockFavouritesStore),
+  // 支持两种调用形式：useFavouritesStore() 返回完整对象；
+  // useFavouritesStore(selector) 返回 selector(完整对象)。
+  useFavouritesStore: vi.fn().mockImplementation((selector?: (s: typeof mockFavouritesStore) => unknown) => {
+    if (typeof selector === 'function') return selector(mockFavouritesStore)
+    return mockFavouritesStore
+  }),
 }))
 
 vi.mock('@/components/common/ComicCard', () => ({
@@ -87,12 +102,14 @@ describe('FavouritesPage', () => {
     mockFavouritesStore.currentSource = 'hcomic'
     mockFavouritesStore.currentPage = 1
     mockFavouritesStore.hasCache = false
+    mockFavouritesStore.sessionPickerShown = true
     mockFavouritesStore.getPage.mockReset()
     mockFavouritesStore.hasPage.mockReset()
     mockFavouritesStore.hasPage.mockReturnValue(false)
     mockFavouritesStore.setPage.mockReset()
     mockFavouritesStore.clearCache.mockReset()
     mockFavouritesStore.setCurrentSource.mockReset()
+    mockFavouritesStore.markPickerShown.mockReset()
   })
 
   it('renders page content with title', async () => {

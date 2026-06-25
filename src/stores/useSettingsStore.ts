@@ -15,6 +15,7 @@ interface SettingsState {
   filterEnabled: boolean
   favouriteTagHighlight: boolean
   favouriteTagMinMatches: number
+  defaultFavouriteSource: string
   setThemeMode: (mode: ThemeMode) => void
   setCardStyle: (style: CardStyle) => void
   setSfwMode: (enabled: boolean) => void
@@ -33,6 +34,7 @@ interface SettingsState {
   setFilterEnabled: (enabled: boolean) => void
   setFavouriteTagHighlight: (enabled: boolean) => void
   setFavouriteTagMinMatches: (n: number) => void
+  setDefaultFavouriteSource: (source: string) => void
 }
 
 const DEFAULT_TAG_BLACKLIST: TagBlacklist = Object.fromEntries(
@@ -58,6 +60,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   filterEnabled: true,
   favouriteTagHighlight: false,
   favouriteTagMinMatches: 1,
+  defaultFavouriteSource: '',
   setThemeMode: (mode) => set({ themeMode: mode }),
   setCardStyle: (style) => set({ cardStyle: style }),
   setSfwMode: (enabled) => set({ sfwMode: enabled }),
@@ -193,6 +196,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   setFilterEnabled: (enabled) => set({ filterEnabled: enabled }),
   setFavouriteTagHighlight: (enabled) => set({ favouriteTagHighlight: enabled }),
   setFavouriteTagMinMatches: (n) => set({ favouriteTagMinMatches: n }),
+  setDefaultFavouriteSource: (source) => set({ defaultFavouriteSource: source }),
 }))
 
 /** Subscribe to tagBlacklist changes and persist via setConfig. */
@@ -246,6 +250,17 @@ export function subscribeToFavouriteTagMinMatchesChanges(setConfig: (key: 'favou
     if (state.favouriteTagMinMatches !== prev) {
       prev = state.favouriteTagMinMatches
       setConfig('favouriteTagMinMatches', state.favouriteTagMinMatches).catch(() => {})
+    }
+  })
+}
+
+/** Subscribe to defaultFavouriteSource changes and persist via setConfig. */
+export function subscribeToDefaultFavouriteSourceChanges(setConfig: (key: 'defaultFavouriteSource', value: string) => Promise<unknown>) {
+  let prev = useSettingsStore.getState().defaultFavouriteSource
+  return useSettingsStore.subscribe((state) => {
+    if (state.defaultFavouriteSource !== prev) {
+      prev = state.defaultFavouriteSource
+      setConfig('defaultFavouriteSource', state.defaultFavouriteSource).catch(() => {})
     }
   })
 }

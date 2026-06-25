@@ -25,6 +25,7 @@ class TestConfigKeyMapping:
             "notifyOnComplete",
             "notifyWhenForeground",
             "defaultSource",
+            "defaultFavouriteSource",
         ]
         for key in frontend_keys:
             assert key in CONFIG_KEY_MAP, f"Missing mapping for frontend key: {key}"

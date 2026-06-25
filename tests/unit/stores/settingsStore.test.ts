@@ -50,4 +50,12 @@ describe('useSettingsStore', () => {
     useSettingsStore.getState().dismissSfwToast()
     expect(useSettingsStore.getState().sfwToastDismissed).toBe(true)
   })
+
+  it('defaultFavouriteSource 默认为空字符串且可设置', () => {
+    expect(useSettingsStore.getState().defaultFavouriteSource).toBe('')
+    useSettingsStore.getState().setDefaultFavouriteSource('jm')
+    expect(useSettingsStore.getState().defaultFavouriteSource).toBe('jm')
+    useSettingsStore.getState().setDefaultFavouriteSource('')
+    expect(useSettingsStore.getState().defaultFavouriteSource).toBe('')
+  })
 })

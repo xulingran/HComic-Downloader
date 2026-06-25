@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_FORMAT = "folder"
 VALID_SOURCE_KEYS = ("hcomic", "moeimg", "jm", "bika", "copymanga")
+# 支持收藏夹的来源子集（与前端 SOURCES_WITH_FAVOURITES 对应，copymanga 不支持收藏）
+SOURCES_WITH_FAVOURITES = ("hcomic", "moeimg", "jm", "bika")
 
 
 def _default_source_list_map() -> dict[str, list]:
@@ -81,6 +83,8 @@ class Config:
     auth_user_agent: str = ""  # 从 curl 提取的 User-Agent
     # 默认来源
     default_source: str = "hcomic"
+    # 默认收藏夹来源（空字符串表示未设置，由前端引导用户选择）
+    default_favourite_source: str = ""
     # 多来源认证信息
     source_auth: dict[str, dict[str, str]] = field(default_factory=dict)
     # 批量下载延迟（秒）
@@ -124,6 +128,10 @@ class Config:
         self.default_source = normalize_source_key(self.default_source)
         if self.default_source not in VALID_SOURCE_KEYS:
             self.default_source = "hcomic"
+        # 归一化默认收藏夹来源：非空值必须在支持收藏的来源集合内，否则回退为未设置
+        self.default_favourite_source = normalize_source_key(self.default_favourite_source)
+        if self.default_favourite_source and self.default_favourite_source not in SOURCES_WITH_FAVOURITES:
+            self.default_favourite_source = ""
         self.tag_blacklist = _normalize_source_list_map(self.tag_blacklist)
         self.duplicate_blacklist = _normalize_source_list_map(self.duplicate_blacklist, structured_entries=True)
         self.missing_blacklist = _normalize_source_list_map(self.missing_blacklist, structured_entries=True)

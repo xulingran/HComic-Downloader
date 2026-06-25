@@ -26,6 +26,7 @@ CONFIG_KEY_MAP = {
     "notifyOnComplete": "notify_on_complete",
     "notifyWhenForeground": "notify_when_foreground",
     "defaultSource": "default_source",
+    "defaultFavouriteSource": "default_favourite_source",
     "fontName": "font_name",
     "fontSize": "font_size",
     "sfwMode": "sfw_mode",

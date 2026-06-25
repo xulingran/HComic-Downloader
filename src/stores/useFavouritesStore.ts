@@ -17,11 +17,14 @@ interface FavouritesStoreState {
   currentSource: string
   currentPage: number
   hasCache: boolean
+  /** 会话级标志：本次应用启动内是否已展示过来源选择器。仅存内存，重启自动归零。 */
+  sessionPickerShown: boolean
   setPage: (source: string, page: number, data: FavouritesPageCache, setCurrent?: boolean) => void
   getPage: (source: string, page: number) => FavouritesPageCache | undefined
   hasPage: (source: string, page: number) => boolean
   clearCache: (source?: string) => void
   setCurrentSource: (source: string) => void
+  markPickerShown: () => void
 }
 
 export const useFavouritesStore = create<FavouritesStoreState>((set, get) => ({
@@ -29,6 +32,7 @@ export const useFavouritesStore = create<FavouritesStoreState>((set, get) => ({
   currentSource: 'hcomic',
   currentPage: 1,
   hasCache: false,
+  sessionPickerShown: false,
   setPage: (source, page, data, setCurrent = true) => {
     const caches = get().caches
     const sourceCache = caches[source] ?? { pages: {} }
@@ -67,5 +71,8 @@ export const useFavouritesStore = create<FavouritesStoreState>((set, get) => ({
       currentPage: 1,
       hasCache: Boolean(get().caches[source]),
     })
+  },
+  markPickerShown: () => {
+    set({ sessionPickerShown: true })
   },
 }))

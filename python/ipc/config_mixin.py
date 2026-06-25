@@ -165,6 +165,7 @@ class ConfigMixin:
             "notify_on_complete": self.config.notify_on_complete,
             "notify_when_foreground": self.config.notify_when_foreground,
             "default_source": self.config.default_source,
+            "default_favourite_source": getattr(self.config, "default_favourite_source", ""),
             "font_name": getattr(self.config, "font_name", ""),
             "font_size": getattr(self.config, "font_size", 14),
             "sfw_mode": getattr(self.config, "sfw_mode", True),

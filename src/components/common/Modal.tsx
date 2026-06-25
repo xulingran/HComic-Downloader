@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import { modalPresenceVariants, overlayPresenceVariants, reduceSafe, useReducedMotionPreference } from '../../lib/anim'
 
@@ -83,16 +84,20 @@ export function Modal({
     ? { role: 'dialog' as const, 'aria-label': ariaLabel }
     : {}
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <motion.div
           key="modal-overlay"
+          data-testid="modal-overlay"
           variants={overlayPresenceVariants}
           initial="initial"
           animate="animate"
           exit="exit"
-          className={`fixed inset-0 z-[${zIndex}] flex items-center justify-center bg-black/50 ${overlayClassName}`}
+          // zIndex 用内联 style 设置：Tailwind JIT 无法生成运行时拼接的 z-[${zIndex}] 类名，
+          // 动态类名会被忽略导致层级失效。内联 style 可靠生效。
+          style={{ zIndex }}
+          className={`fixed inset-0 flex items-center justify-center bg-black/50 ${overlayClassName}`}
           onMouseDown={handleOverlayMouseDown}
           onClick={handleOverlayClick}
         >
@@ -109,6 +114,7 @@ export function Modal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }

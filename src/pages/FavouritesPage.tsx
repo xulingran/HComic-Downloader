@@ -13,6 +13,7 @@ import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
+import { SourcePickerModal } from '../components/common/SourcePickerModal'
 import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore, type FavouritesPageCache } from '../stores/useFavouritesStore'
@@ -34,12 +35,18 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [pagination, setPagination] = useState<PaginationInfo | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
   const [needsLogin, setNeedsLogin] = useState(false)
-  const { cardStyle } = useSettingsStore()
+  const { cardStyle, defaultFavouriteSource } = useSettingsStore()
   const cache = useFavouritesStore()
+  const sessionPickerShown = useFavouritesStore((s) => s.sessionPickerShown)
+  const markPickerShown = useFavouritesStore((s) => s.markPickerShown)
   const [source, setSource] = useState(() => cache.currentSource)
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const [showAlbumDialog, setShowAlbumDialog] = useState(false)
   const [albumDefaultName, setAlbumDefaultName] = useState('')
+  // 来源选择器显隐：仅当未设默认来源且本会话未处理过时自动打开；用户可手动重开
+  const [showPicker, setShowPicker] = useState(false)
+  // 是否处于「未选来源」的空状态（弹窗被跳过且未通过下拉框/按钮选择任何来源）
+  const [noSourceSelected, setNoSourceSelected] = useState(false)
   const { getFavourites, checkDownloadedStatus } = useFavourites()
   const { probeChaptersBeforeDownload } = useChapterProbe()
   const sources = useSources()
@@ -147,12 +154,38 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
 
   useEffect(() => {
     mountedRef.current = true
-    // Use store's currentSource directly — local `source` state is initialized from it,
-    // but we read the store value here to make the intent explicit for the mount-only effect.
+    // 三态分支（设计文档决策 3）：
+    //   ① defaultFavouriteSource 非空 → 直接用该来源加载，不弹窗
+    //   ② 空 + 本会话未弹过 → 不加载，弹出来源选择器
+    //   ③ 空 + 本会话已弹过 → 复用现有缓存优先逻辑
+    if (defaultFavouriteSource) {
+      // ① 已设默认来源
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSource(defaultFavouriteSource)
+      cache.setCurrentSource(defaultFavouriteSource)
+      const currentCache = cache.getPage(defaultFavouriteSource, 1)
+      if (currentCache && currentCache.comics.length > 0) {
+        setComics(currentCache.comics)
+        setPagination(currentCache.pagination)
+        setCurrentPage(currentCache.currentPage)
+        latestPageRef.current = currentCache.currentPage
+        setDownloadedStatus(currentCache.downloadedStatus)
+      } else {
+        loadFavourites(1, defaultFavouriteSource)
+      }
+      return () => { mountedRef.current = false }
+    }
+
+    if (!sessionPickerShown) {
+      // ② 未设默认且本会话首次进入：弹出选择器，不加载任何来源
+      setShowPicker(true)
+      return () => { mountedRef.current = false }
+    }
+
+    // ③ 已弹过：复用现有缓存优先逻辑
     const activeSource = cache.currentSource
     const currentCache = cache.getPage(activeSource, cache.currentPage)
     if (currentCache && currentCache.comics.length > 0) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setComics(currentCache.comics)
       setPagination(currentCache.pagination)
       setCurrentPage(currentCache.currentPage)
@@ -167,9 +200,8 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           pagination: currentCache.pagination,
         }, statusResult.statusMap)
       }).catch((err) => { console.debug('Background downloaded status refresh failed:', err) })
-    } else {
-      loadFavourites(1, activeSource)
     }
+    // 已弹过但无缓存（用户跳过未选来源）：保持空状态，不自动加载
     return () => { mountedRef.current = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -191,6 +223,32 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const handleOpenReader = (comic: ComicInfo) => {
     openReader(comic)
   }
+
+  // 来源选择器：用户选择某个来源
+  const handlePickerSelect = useCallback((selectedSource: string) => {
+    setShowPicker(false)
+    setNoSourceSelected(false)
+    setSource(selectedSource)
+    cache.setCurrentSource(selectedSource)
+    markPickerShown()
+    loadFavourites(1, selectedSource)
+  }, [cache, markPickerShown, loadFavourites])
+
+  // 来源选择器：用户跳过（ESC/遮罩/「稍后再说」）
+  const handlePickerClose = useCallback(() => {
+    setShowPicker(false)
+    setNoSourceSelected(true)
+    setComics([])
+    setError(null)
+    setNeedsLogin(false)
+    setIsLoading(false)
+    markPickerShown()
+  }, [markPickerShown])
+
+  // 空状态下手动重开选择器
+  const handleReopenPicker = useCallback(() => {
+    setShowPicker(true)
+  }, [])
 
   const handleSelectNotDownloaded = useCallback(() => {
     const notDownloaded = comics.filter(
@@ -273,6 +331,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
               const newSource = e.target.value
               setSource(newSource)
               cache.setCurrentSource(newSource)
+              setNoSourceSelected(false)
               const cachedData = cache.getPage(newSource, cache.currentPage)
               if (cachedData) {
                 setComics(cachedData.comics)
@@ -350,6 +409,18 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             )}
           </div>
         </div>
+      ) : noSourceSelected ? (
+        <div className="text-center py-12">
+          <div className="text-[var(--text-secondary)] mb-4">请选择收藏夹来源</div>
+          <div className="flex justify-center">
+            <button
+              onClick={handleReopenPicker}
+              className="px-4 py-2 bg-[var(--accent)] text-white rounded-lg hover:opacity-90 transition-colors text-sm"
+            >
+              选择来源
+            </button>
+          </div>
+        </div>
       ) : comics.length === 0 ? (
         <EmptyState message="暂无收藏" />
       ) : (
@@ -388,6 +459,13 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           />
         </div>
       )}
+
+      {/* ── Source picker (首次进入引导) ── */}
+      <SourcePickerModal
+        isOpen={showPicker}
+        onSelect={handlePickerSelect}
+        onClose={handlePickerClose}
+      />
 
       {/* ── Page jump dialog ── */}
       {showJumpDialog && (

@@ -3,9 +3,9 @@ import { render, screen, fireEvent } from '@testing-library/react'
 import { Modal } from '@/components/common/Modal'
 
 /** 渲染 Modal 并返回遮罩元素的便捷工具。
- *  Modal 的最外层 div 即遮罩本身（fixed inset-0），作为 container 第一个子元素可稳定拿到。
+ *  Modal 通过 createPortal 渲染到 document.body，遮罩 motion.div 带 data-testid="modal-overlay"。
  *  内层内容用 data-testid="content" 标记，由调用方用 await findByTestId 等待 mount 完成。 */
-function renderModal(
+async function renderModal(
   props: React.ComponentProps<typeof Modal> & { contentText?: string },
 ) {
   const { contentText = '内容', ...modalProps } = props
@@ -14,18 +14,21 @@ function renderModal(
       <div data-testid="content">{contentText}</div>
     </Modal>,
   )
-  const overlay = utils.container.firstElementChild as HTMLElement
+  // Portal 渲染到 body，遮罩通过 testid 定位；isOpen=true 时需等待 mount
+  const overlay = modalProps.isOpen
+    ? await screen.findByTestId('modal-overlay')
+    : null
   return { ...utils, overlay }
 }
 
 describe('Modal', () => {
-  it('isOpen=false 时不渲染任何内容', () => {
-    const { container } = renderModal({ isOpen: false, onClose: vi.fn() })
+  it('isOpen=false 时不渲染任何内容', async () => {
+    const { container } = await renderModal({ isOpen: false, onClose: vi.fn() })
     expect(container.innerHTML).toBe('')
   })
 
   it('isOpen=true 时渲染遮罩与内容', async () => {
-    renderModal({ isOpen: true, onClose: vi.fn() })
+    await renderModal({ isOpen: true, onClose: vi.fn() })
     // Modal 经 effect+rAF 完成 mount，用 findBy 等待内容出现
     expect(await screen.findByTestId('content')).toBeInTheDocument()
     expect(screen.getByText('内容')).toBeInTheDocument()
@@ -33,17 +36,17 @@ describe('Modal', () => {
 
   it('点击遮罩本身（mousedown 与 click 均落在遮罩）触发 onClose', async () => {
     const onClose = vi.fn()
-    const { overlay } = renderModal({ isOpen: true, onClose })
+    const { overlay } = await renderModal({ isOpen: true, onClose })
     await screen.findByTestId('content')
     // 完整的点击序列：mousedown → click，都落在遮罩
-    fireEvent.mouseDown(overlay)
-    fireEvent.click(overlay)
+    fireEvent.mouseDown(overlay!)
+    fireEvent.click(overlay!)
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('点击内层内容不触发 onClose（mousedown 与 click 均落在内容）', async () => {
     const onClose = vi.fn()
-    renderModal({ isOpen: true, onClose })
+    await renderModal({ isOpen: true, onClose })
     const content = await screen.findByTestId('content')
     fireEvent.mouseDown(content)
     fireEvent.click(content)
@@ -56,57 +59,58 @@ describe('Modal', () => {
     // 浏览器此时派发 click，target 为遮罩（mousedown 与 mouseup 的共同祖先）。
     // 旧实现会触发遮罩 onClick={onClose}；方案 A 用 mousedown 起点判定，不应触发。
     const onClose = vi.fn()
-    const { overlay } = renderModal({ isOpen: true, onClose })
+    const { overlay } = await renderModal({ isOpen: true, onClose })
     const content = await screen.findByTestId('content')
     // mousedown 落在内层（模拟用户在输入框按下）
     fireEvent.mouseDown(content)
     // click 落在遮罩（模拟拖到外面松手）
-    fireEvent.click(overlay)
+    fireEvent.click(overlay!)
     expect(onClose).not.toHaveBeenCalled()
   })
 
   it('closeOnOverlayClick=false 时点击遮罩不触发 onClose', async () => {
     const onClose = vi.fn()
-    const { overlay } = renderModal({ isOpen: true, onClose, closeOnOverlayClick: false })
+    const { overlay } = await renderModal({ isOpen: true, onClose, closeOnOverlayClick: false })
     await screen.findByTestId('content')
-    fireEvent.mouseDown(overlay)
-    fireEvent.click(overlay)
+    fireEvent.mouseDown(overlay!)
+    fireEvent.click(overlay!)
     expect(onClose).not.toHaveBeenCalled()
   })
 
   it('ESC 键触发 onClose', async () => {
     const onClose = vi.fn()
-    renderModal({ isOpen: true, onClose })
+    await renderModal({ isOpen: true, onClose })
     await screen.findByTestId('content')
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
-  it('isOpen=false 时不监听 ESC', () => {
+  it('isOpen=false 时不监听 ESC', async () => {
     const onClose = vi.fn()
-    renderModal({ isOpen: false, onClose })
+    await renderModal({ isOpen: false, onClose })
     fireEvent.keyDown(window, { key: 'Escape' })
     expect(onClose).not.toHaveBeenCalled()
   })
 
   it('ariaLabel 传入时内层渲染 role="dialog" 与 aria-label', async () => {
-    renderModal({ isOpen: true, onClose: vi.fn(), ariaLabel: '测试对话框' })
+    await renderModal({ isOpen: true, onClose: vi.fn(), ariaLabel: '测试对话框' })
     await screen.findByTestId('content')
     const dialog = screen.getByRole('dialog')
     expect(dialog).toHaveAttribute('aria-label', '测试对话框')
   })
 
-  it('zIndex prop 生成对应的 z-[N] 类名', async () => {
-    const { overlay } = renderModal({ isOpen: true, onClose: vi.fn(), zIndex: 60 })
+  it('zIndex prop 应用到遮罩的内联 style', async () => {
+    const { overlay } = await renderModal({ isOpen: true, onClose: vi.fn(), zIndex: 60 })
     await screen.findByTestId('content')
-    expect(overlay.className).toContain('z-[60]')
+    // zIndex 用内联 style 设置（Tailwind JIT 无法生成运行时拼接的 z-[N] 类名）
+    expect(overlay!.style.zIndex).toBe('60')
   })
 
   it('Modal 打开时渲染 motion 容器并应用进出场 variants', async () => {
     // 变更 2：迁移到 framer-motion AnimatePresence 后，不再用 visible 切换 className，
     // 而是渲染 motion.div 并通过 variants 驱动动画。jsdom 不执行真实动画，
     // 仅验证 content 能被渲染（动画行为由真机回归覆盖）。
-    renderModal({ isOpen: true, onClose: vi.fn() })
+    await renderModal({ isOpen: true, onClose: vi.fn() })
     const content = await screen.findByTestId('content')
     expect(content).toBeInTheDocument()
   })
