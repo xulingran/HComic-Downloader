@@ -203,6 +203,7 @@ def test_verify_login_detects_cloudflare_challenge(monkeypatch):
     parser = JmParser.__new__(JmParser)
     parser._domain = "test.one"
     parser._username = None
+    parser._cookie = ""  # verify_login_status 经 _auth_headers() 访问 self._cookie
     parser.timeout = 5
     parser.session = MagicMock()
 
@@ -246,6 +247,7 @@ def test_verify_login_succeeds_and_discovers_username(monkeypatch):
     parser = JmParser.__new__(JmParser)
     parser._domain = "test.one"
     parser._username = None
+    parser._cookie = ""  # verify_login_status 经 _auth_headers() 访问 self._cookie
     parser.timeout = 5
     parser.session = MagicMock()
 
@@ -435,8 +437,13 @@ def test_sync_cookies_to_jar_basic():
     parser._sync_cookies_to_jar()
 
     assert parser._cookie_synced is True
-    assert parser.session.cookies.get("test_cookie") == "abc123"
-    assert parser.session.cookies.get("other") == "xyz789"
+    # 生产行为：每个 cookie 写入 domain（host-only）与 .domain（domain-cookie，覆盖子域）两条 jar 条目。
+    # 必须用 domain= 参数查询，否则无参 get 命中重复条目抛 CookieConflictError。
+    assert parser.session.cookies.get("test_cookie", domain="test.one") == "abc123"
+    assert parser.session.cookies.get("other", domain="test.one") == "xyz789"
+    # 遍历 jar 验证双域名不变量：同名 cookie 在两种域形式下均存在
+    test_one_domains = sorted(c.domain for c in parser.session.cookies if c.name == "test_cookie")
+    assert test_one_domains == [".test.one", "test.one"]
 
 
 def test_sync_cookies_skips_when_already_synced():
@@ -486,7 +493,12 @@ def test_sync_cookies_curl_cffi_jar_compatibility():
 
     parser._sync_cookies_to_jar()
 
-    mock_jar.set_cookie.assert_called_once()
+    # 生产行为：单 cookie × 两个域变体（domain / .domain）= 2 次 set_cookie 调用
+    assert mock_jar.set_cookie.call_count == 2
+    set_domains = [call.args[0].domain for call in mock_jar.set_cookie.call_args_list]
+    set_initial_dot = [call.args[0].domain_initial_dot for call in mock_jar.set_cookie.call_args_list]
+    assert set_domains == ["test.one", ".test.one"]
+    assert set_initial_dot == [False, True]
     assert parser._cookie_synced is True
 
 

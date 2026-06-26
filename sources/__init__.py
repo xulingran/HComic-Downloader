@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -38,6 +39,11 @@ _PARSER_MODULES: dict[str, tuple[str, str]] = {
 
 # Cache of already-imported parser classes: source name -> class object.
 _PARSER_CLASSES: dict[str, type] = {}
+# 守卫 _PARSER_CLASSES 与解析器实例的懒创建。IPC server 用 8-worker
+# ThreadPoolExecutor 并发跑通用请求处理器（search/favourites/...），它们都会
+# 调 _get_parser —— 不加锁时并发线程会各自跑一次工厂，重复构造 Session+代理，
+# 浪费资源且非确定性决定哪个实例被复用。
+_PARSER_INIT_LOCK = threading.Lock()
 
 
 def _load_parser_class(source: str) -> type:
@@ -45,13 +51,20 @@ def _load_parser_class(source: str) -> type:
 
     Uses importlib so that modules are pulled in on demand rather than at
     ``import sources`` time. Results are cached in ``_PARSER_CLASSES``.
+
+    加锁守卫 check-then-act：importlib 自带导入锁可防真正重复导入，但两个
+    线程仍可能同时通过 ``cls is None`` 判断，各自 getattr 后以 last-writer-wins
+    覆盖缓存。锁确保只构造一次缓存条目。
     """
     cls = _PARSER_CLASSES.get(source)
     if cls is None:
-        module_path, class_name = _PARSER_MODULES[source]
-        module = importlib.import_module(module_path)
-        cls = getattr(module, class_name)
-        _PARSER_CLASSES[source] = cls
+        with _PARSER_INIT_LOCK:
+            cls = _PARSER_CLASSES.get(source)
+            if cls is None:
+                module_path, class_name = _PARSER_MODULES[source]
+                module = importlib.import_module(module_path)
+                cls = getattr(module, class_name)
+                _PARSER_CLASSES[source] = cls
     return cls
 
 
@@ -159,6 +172,10 @@ class MultiSourceParser:
 
         # 缓存字典 —— 已创建的解析器实例
         self._parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser] = {}
+        # 守卫 _parsers 的懒创建（见 _get_parser 的 double-checked locking）。
+        # 与模块级 _PARSER_INIT_LOCK 分离：模块级锁守卫类导入，实例锁守卫实例创建，
+        # 避免不同 MultiSourceParser 实例（如测试）互相阻塞。
+        self._parser_lock = threading.Lock()
 
         # 只创建 default_source 的解析器，其余等待首次访问时创建
         self.current_source = default_source if default_source in self._factory else "hcomic"
@@ -171,15 +188,25 @@ class MultiSourceParser:
 
     def _get_parser(self, name: str) -> HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser:
         """按需获取（或创建）指定来源的解析器实例。"""
-        if name not in self._parsers:
+        # 并发安全：IPC server 用 8-worker 线程池并发跑请求处理器，多个线程可能
+        # 同时首次访问同一 source。用 double-checked locking 守卫懒创建 ——
+        # 已有实例时无锁快路径返回，仅首次创建时持锁，确保每个 source 只构造一次
+        # 解析器（含其 requests.Session + 代理注入）。
+        parser = self._parsers.get(name)
+        if parser is not None:
+            return parser
+        with self._parser_lock:
+            parser = self._parsers.get(name)
+            if parser is not None:
+                return parser
             factory = self._factory.get(name)
             if factory is None:
                 raise ValueError(f"Unknown source: {name}")
             parser = factory()
             self._parsers[name] = parser
-            # 创建后执行凭据恢复等后处理
+            # 创建后执行凭据恢复等后处理（仍在锁内，确保只对胜出的实例应用一次）
             self._apply_post_init(name, parser)
-        return self._parsers[name]
+        return parser
 
     def _apply_post_init(
         self,
