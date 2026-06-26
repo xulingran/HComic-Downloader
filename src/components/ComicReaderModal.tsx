@@ -6,11 +6,13 @@ import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { useZoom } from '../hooks/useZoom'
 import { useSliderDrag } from '../hooks/useSliderDrag'
+import { useFailedPages } from '../hooks/useFailedPages'
 import { motion } from 'framer-motion'
 import { readerPresenceVariants, overlayPresenceVariants, reduceSafe, useReducedMotionPreference } from '../lib/anim'
 import { useHistory } from '../hooks/useIpc'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { useReaderStore } from '../stores/useReaderStore'
+import { useToastStore } from '../stores/useToastStore'
 import { PageFlipView } from './PageFlipView'
 import { ReaderPage } from './ReaderPage'
 import { ChapterPicker } from './ChapterPicker'
@@ -49,6 +51,24 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   // 变更 2：改用 framer-motion AnimatePresence 驱动阅读器进出场，删除 useModalAnimation。
   const reduceMotion = useReducedMotionPreference()
   const readerVariants = reduceMotion ? reduceSafe(readerPresenceVariants) : readerPresenceVariants
+
+  // 失败页聚合：跟踪所有加载失败的页索引，>3 时弹常驻重试 Toast。
+  // 详见 openspec/changes/preview-retry-toast/design.md
+  const {
+    failedCount,
+    retryGen,
+    markFailed,
+    markLoaded,
+    retryAll,
+    clearAll: clearFailedPages,
+  } = useFailedPages()
+  // 阈值 Toast 用的 ref/常量（声明在前，供 modal 关闭 effect 与阈值 effect 共用）
+  const FAILED_THRESHOLD = 3
+  const prevFailedCountRef = useRef(0)
+  const hadFailedToastRef = useRef(false)
+  const handleRetryAll = useCallback(() => {
+    retryAll()
+  }, [retryAll])
 
   const {
     imageCacheRef,
@@ -262,9 +282,14 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       setChapterFlipHint(null)
       reset()
       clearCache()
+      // 清理失败页聚合状态与残留 Toast，避免下本漫画看到上一本的失败提示
+      prevFailedCountRef.current = 0
+      hadFailedToastRef.current = false
+      clearFailedPages()
+      useToastStore.getState().dismiss()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, comic?.id, fetchUrls, fetchChapterUrls, reset, clearCache])
+  }, [open, comic?.id, fetchUrls, fetchChapterUrls, reset, clearCache, clearFailedPages])
 
   // Debounced history recording on page change
   useEffect(() => {
@@ -380,6 +405,48 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     return () => clearTimeout(timer)
   }, [isDragging])
 
+  // 失败页阈值 Toast 逻辑（详见 openspec/changes/preview-retry-toast/design.md 决策 3）：
+  // - failedCount > 3：常驻 Toast，文案"N 页加载失败"，带"全部重试"按钮
+  // - failedCount 从 >0 变 0 且曾弹过失败 Toast：切 success Toast"已恢复全部页面"，自动消失
+  // - failedCount 回落到 ≤3（仍 >0）：直接 dismiss，不显示恢复提示
+  // 切换章节时 imageUrls 引用变化 → 清空失败集合（在下面独立的 effect 中处理）
+  useEffect(() => {
+    const prev = prevFailedCountRef.current
+    // failedCount 不变时不做事
+    if (prev === failedCount) return
+    prevFailedCountRef.current = failedCount
+
+    if (failedCount > FAILED_THRESHOLD) {
+      // 超阈值：常驻失败 Toast
+      hadFailedToastRef.current = true
+      useToastStore.getState().error(`${failedCount} 页加载失败`, {
+        actionLabel: '全部重试',
+        onAction: handleRetryAll,
+        persistent: true,
+      })
+    } else if (failedCount === 0 && hadFailedToastRef.current) {
+      // 曾弹过失败 Toast 且现已全部恢复：切 success，自动消失
+      hadFailedToastRef.current = false
+      useToastStore.getState().success('已恢复全部页面')
+    } else {
+      // 回落到 (0, FAILED_THRESHOLD]：直接 dismiss
+      hadFailedToastRef.current = false
+      useToastStore.getState().dismiss()
+    }
+  }, [failedCount, handleRetryAll])
+
+  // 切换章节（imageUrls 引用变化）时清空失败集合与残留 Toast。
+  // 跳过首次（modal 打开时集合本为空，clearAll 无副作用但 dismiss 多余）。
+  const prevImageUrlsRef = useRef(imageUrls)
+  useEffect(() => {
+    if (prevImageUrlsRef.current === imageUrls) return
+    prevImageUrlsRef.current = imageUrls
+    prevFailedCountRef.current = 0
+    hadFailedToastRef.current = false
+    clearFailedPages()
+    useToastStore.getState().dismiss()
+  }, [imageUrls, clearFailedPages])
+
   if (!open) return null
 
   const progress = effectiveTotalPages > 0 ? Math.round((currentPage / effectiveTotalPages) * 100) : 0
@@ -465,6 +532,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                     scrambleId={scrambleId}
                     comicId={comicId}
                     imageQuality={comic?.sourceSite === 'bika' ? bikaImageQuality : undefined}
+                    onFailed={markFailed}
+                    onLoaded={markLoaded}
+                    retryGen={retryGen}
                   />
                 </div>
                 )
@@ -499,6 +569,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               scrambleId={scrambleId}
               comicId={comicId}
               imageQuality={comic?.sourceSite === 'bika' ? bikaImageQuality : undefined}
+              onFailed={markFailed}
+              onLoaded={markLoaded}
+              retryGen={retryGen}
             />
           )}
         </>

@@ -19,6 +19,12 @@ interface PageFlipViewProps {
   scrambleId?: string
   comicId?: string
   imageQuality?: string
+  /** 加载失败时上报（透传给内部 FlipPage） */
+  onFailed?: (index: number) => void
+  /** 加载成功时上报 */
+  onLoaded?: (index: number) => void
+  /** 父级"全部重试"代数；变化时若当前 FlipPage 处于 error 态则重置触发重载 */
+  retryGen?: number
 }
 
 export function PageFlipView({
@@ -36,6 +42,9 @@ export function PageFlipView({
   scrambleId,
   comicId,
   imageQuality,
+  onFailed,
+  onLoaded,
+  retryGen,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [panOffset, setPanOffset] = useState(0)
@@ -168,13 +177,13 @@ export function PageFlipView({
         <div className="h-full flex items-center justify-center" style={{ gap: '4px' }}>
           <div className="h-full flex items-center justify-center">
             {leftIsBlank ? <BlankPage /> : (
-              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} />
+              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
             )}
           </div>
           {(rightRealIdx !== null || rightIsBlank) && (
             <div className="h-full flex items-center justify-center">
               {rightIsBlank ? <BlankPage /> : (
-                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedDataUri={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} />
+                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedDataUri={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
               )}
             </div>
           )}
@@ -184,7 +193,7 @@ export function PageFlipView({
     // single 模式
     return (
       <div className="h-full flex items-center justify-center">
-        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} />
+        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
       </div>
     )
   }
@@ -283,9 +292,17 @@ function BlankPage() {
   )
 }
 
-function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality }: { url: string; index: number; cachedDataUri?: string; scrambleId?: string; comicId?: string; imageQuality?: string }) {
+function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: { url: string; index: number; cachedDataUri?: string; scrambleId?: string; comicId?: string; imageQuality?: string; onFailed?: (index: number) => void; onLoaded?: (index: number) => void; retryGen?: number }) {
   const [dataUri, setDataUri] = useState<string | null>(() => cachedDataUri ?? null)
   const [error, setError] = useState(false)
+  const [retryTick, setRetryTick] = useState(0)
+  // 用 ref 保存最新回调，避免进入下方 effect 依赖数组
+  const onFailedRef = useRef(onFailed)
+  const onLoadedRef = useRef(onLoaded)
+  useEffect(() => {
+    onFailedRef.current = onFailed
+    onLoadedRef.current = onLoaded
+  })
 
   useEffect(() => {
     // If cache provides the data, use it directly and skip IPC fetch
@@ -293,6 +310,7 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDataUri(cachedDataUri)
       setError(false)
+      onLoadedRef.current?.(index)
       return
     }
 
@@ -304,19 +322,50 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
     window.hcomic!.fetchPreviewImage(url, scrambleId, comicId, imageQuality)
       .then((result) => {
         if (cancelled) return
-        if (result?.dataUri) setDataUri(result.dataUri)
-        else throw new Error('Empty response')
+        if (result?.dataUri) {
+          setDataUri(result.dataUri)
+          onLoadedRef.current?.(index)
+        } else {
+          throw new Error('Empty response')
+        }
       })
       .catch(() => {
-        if (!cancelled) setError(true)
+        if (!cancelled) {
+          setError(true)
+          onFailedRef.current?.(index)
+        }
       })
     return () => { cancelled = true }
-  }, [url, cachedDataUri, scrambleId, comicId, imageQuality])
+  }, [url, cachedDataUri, scrambleId, comicId, imageQuality, retryTick, index])
+
+  // 父级"全部重试"：retryGen 变化时，仅当当前处于 error 态才重置触发重载
+  useEffect(() => {
+    if (retryGen === undefined || retryGen === 0) return
+    if (!error) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setError(false)
+    setDataUri(null)
+    setRetryTick((t) => t + 1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryGen])
+
+  // 本地单页重试（不污染父级 retryGen）
+  const retry = () => {
+    setError(false)
+    setDataUri(null)
+    setRetryTick((t) => t + 1)
+  }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center text-gray-400 text-xs" style={{ height: '100%' }}>
-        第 {index + 1} 页加载失败
+      <div className="flex flex-col items-center justify-center gap-2 text-gray-400 text-xs" style={{ height: '100%' }}>
+        <span>第 {index + 1} 页加载失败</span>
+        <button
+          onClick={retry}
+          className="px-3 py-1 rounded bg-white/10 hover:bg-white/20 transition-colors text-xs"
+        >
+          重试
+        </button>
       </div>
     )
   }
@@ -334,6 +383,10 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
       alt={`第 ${index + 1} 页`}
       className="h-full w-auto max-w-none"
       draggable={false}
+      onError={() => {
+        setError(true)
+        onFailedRef.current?.(index)
+      }}
     />
   )
 }

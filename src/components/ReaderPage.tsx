@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 
-export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, comicId, imageQuality }: {
+interface ReaderPageProps {
   url: string
   index: number
   priority?: boolean
@@ -8,13 +8,28 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
   scrambleId?: string
   comicId?: string
   imageQuality?: string
-}) {
+  /** 加载失败时上报（IPC 失败或图片解码失败均触发） */
+  onFailed?: (index: number) => void
+  /** 加载成功时上报（用于从失败集合中移除） */
+  onLoaded?: (index: number) => void
+  /** 父级"全部重试"代数；变化时若当前处于 error 态则重置触发重载 */
+  retryGen?: number
+}
+
+export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: ReaderPageProps) {
   const [error, setError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [dataUri, setDataUri] = useState<string | null>(null)
   const [retryTick, setRetryTick] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isVisible, setIsVisible] = useState(false)
+  // 用 ref 保存最新回调，避免它们进入下方 effect 依赖数组导致重载循环
+  const onFailedRef = useRef(onFailed)
+  const onLoadedRef = useRef(onLoaded)
+  useEffect(() => {
+    onFailedRef.current = onFailed
+    onLoadedRef.current = onLoaded
+  })
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -39,6 +54,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
     if (cachedDataUri && !dataUri) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDataUri(cachedDataUri)
+      onLoadedRef.current?.(index)
       return
     }
     if (dataUri || error) return
@@ -53,15 +69,32 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
           throw new Error('Empty preview image response')
         }
         setDataUri(result.dataUri)
+        onLoadedRef.current?.(index)
       })
       .catch((err) => {
         if (cancelled) return
         console.error('[preview] fetchPreviewImage failed', { url, err })
         setErrorMessage(err instanceof Error ? err.message : '图片加载失败')
         setError(true)
+        onFailedRef.current?.(index)
       })
     return () => { cancelled = true }
-  }, [cachedDataUri, dataUri, error, isVisible, priority, retryTick, url, scrambleId, comicId, imageQuality])
+  }, [cachedDataUri, dataUri, error, isVisible, priority, retryTick, url, scrambleId, comicId, imageQuality, index])
+
+  // 父级"全部重试"：retryGen 变化时，仅当当前处于 error 态才重置触发重载。
+  // 已成功页（dataUri 存在、无 error）不受打扰。
+  useEffect(() => {
+    if (retryGen === undefined) return
+    if (retryGen === 0) return // 初始值，不触发
+    if (!error) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setError(false)
+    setErrorMessage('')
+    setDataUri(null)
+    setRetryTick((t) => t + 1)
+    // 仅依赖 retryGen 与 error；其余 state 通过 set 触发既有加载 effect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [retryGen])
 
   const retry = () => {
     setError(false)
@@ -107,6 +140,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
               onError={() => {
                 setErrorMessage('浏览器无法解码后端返回的图片')
                 setError(true)
+                onFailedRef.current?.(index)
               }}
               className="w-full h-auto"
             />
