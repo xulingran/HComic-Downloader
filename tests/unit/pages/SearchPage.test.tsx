@@ -550,6 +550,104 @@ describe('SearchPage', () => {
     })
   })
 
+  // 回归：封面从左上角飞入 bug 修复。
+  // 根因：AnimatedCardWrapper 的 layout + AnimatePresence popLayout 在翻页/新搜索整页全量替换时，
+  // 新卡片 mount 测量竞态导致 transform 飞入。修复：grid 容器 key 由「搜索上下文 + 页码」派生，
+  // 全量替换时整页重挂载，规避 layout 测量竞态。
+  // 通过 data-grid-key 断言：全量替换时 key 变化；非全量 re-render 时 key 稳定。
+  describe('卡片列表整页重挂载 key（防 layout 飞入）', () => {
+    const comicsWithResults: ComicInfo[] = [
+      { id: '1', title: 'Comic A', url: 'https://example.com/1', coverUrl: '', source: 'test' }
+    ]
+
+    const getGridKey = () => {
+      // AnimatePresence popLayout 在 exit 动画期间会同时保留新旧 grid 容器，
+      // 故用 getAllByText 取最后（最新挂载）的一个。
+      const grids = screen.getAllByText('Comic A').map(el => el.closest('[data-grid-key]'))
+      const last = grids[grids.length - 1]
+      return last?.getAttribute('data-grid-key') ?? null
+    }
+
+    it('翻页（currentPage 变化）时 grid key 改变', () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 3, totalItems: 30 }
+
+      const { rerender } = render(<SearchPage />)
+      const keyPage1 = getGridKey()
+
+      // 翻到第 2 页（同一批内容上下文，仅页码变化）
+      mockStoreState.pagination = { currentPage: 2, totalPages: 3, totalItems: 30 }
+      rerender(<SearchPage />)
+      const keyPage2 = getGridKey()
+
+      expect(keyPage1).not.toBeNull()
+      expect(keyPage2).not.toBeNull()
+      expect(keyPage1).not.toBe(keyPage2)
+    })
+
+    it('新搜索（query 变化）时 grid key 改变', async () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+
+      const { rerender } = render(<SearchPage />)
+      const keyBefore = getGridKey()
+
+      // 输入新 query 触发 searchContextKey 变化（仅验证 key 派生，不实际搜索）
+      const input = screen.getByPlaceholderText('输入搜索内容...')
+      await userEvent.type(input, 'newquery')
+
+      rerender(<SearchPage />)
+      const keyAfter = getGridKey()
+
+      expect(keyBefore).not.toBe(keyAfter)
+    })
+
+    it('换来源（source 变化）时 grid key 改变', async () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+
+      const { rerender } = render(<SearchPage />)
+      const keyBefore = getGridKey()
+
+      const sourceSelect = screen.getByDisplayValue('HComic')
+      await userEvent.selectOptions(sourceSelect, 'moeimg')
+
+      rerender(<SearchPage />)
+      const keyAfter = getGridKey()
+
+      expect(keyBefore).not.toBe(keyAfter)
+    })
+
+    it('非全量 re-render（仅选中态/下载进度变化）时 grid key 不变', () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+
+      const { rerender } = render(<SearchPage />)
+      const keyBefore = getGridKey()
+
+      // 模拟无关状态变化触发 re-render：再次 rerender 同样 props
+      rerender(<SearchPage />)
+      const keyAfter = getGridKey()
+
+      expect(keyBefore).toBe(keyAfter)
+    })
+
+    it('cardStyle 切换时 grid key 不变（layout 位置过渡仍生效）', () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+
+      const { rerender } = render(<SearchPage />)
+      const keyCover = getGridKey()
+
+      // 切换到 detailed：cardStyle 不在 key 依赖中，key 应保持不变
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
+      rerender(<SearchPage />)
+      const keyDetailed = getGridKey()
+
+      expect(keyCover).toBe(keyDetailed)
+    })
+  })
+
   describe('推荐标签高亮编排', () => {
     const favTagsPayload = (tags: string[]) => ({ tags: tags.map(t => ({ tag: t, count: 1 })) })
 

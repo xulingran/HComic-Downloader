@@ -219,4 +219,59 @@ describe('FavouritesPage', () => {
     await screen.findByText('Current Favourite')
     await waitFor(() => expect(mockGetFavourites).toHaveBeenCalledWith(6, 'hcomic'))
   })
+
+  // 回归：封面从左上角飞入 bug 修复（与 SearchPage 同源）。
+  // grid 容器 key 由「来源 + 页码」派生，全量替换时整页重挂载。
+  describe('卡片列表整页重挂载 key（防 layout 飞入）', () => {
+    const getGridKey = () => {
+      // AnimatePresence popLayout 在 exit 动画期间会同时保留新旧 grid 容器，取最后一个（最新挂载）。
+      const grids = document.querySelectorAll('[data-grid-key]')
+      const last = grids[grids.length - 1]
+      return last?.getAttribute('data-grid-key') ?? null
+    }
+
+    it('翻页（currentPage 变化）时 grid key 改变', async () => {
+      mockFavouritesStore.hasPage.mockReturnValue(true)
+      mockGetFavourites.mockResolvedValueOnce({
+        comics: [{ id: '1', title: 'Page1 Fav', url: '', coverUrl: '', source: 'test' }],
+        pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+        needsLogin: false,
+      }).mockReturnValue(new Promise(() => {}))
+      mockFavouritesStore.getPage.mockImplementation((_source: string, page: number) => {
+        if (page !== 2) return undefined
+        return {
+          comics: [{ id: '2', title: 'Page2 Fav', url: '', coverUrl: '', source: 'test' }],
+          pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+          currentPage: 2,
+          downloadedStatus: {},
+        }
+      })
+
+      render(<FavouritesPage />)
+      await screen.findByText('Page1 Fav')
+      const keyPage1 = getGridKey()
+
+      await userEvent.click((await screen.findAllByText('下一页'))[0])
+      await screen.findByText('Page2 Fav')
+      const keyPage2 = getGridKey()
+
+      expect(keyPage1).not.toBeNull()
+      expect(keyPage2).not.toBeNull()
+      expect(keyPage1).not.toBe(keyPage2)
+    })
+
+    it('grid key 格式为 source:currentPage', async () => {
+      mockGetFavourites.mockResolvedValue({
+        comics: [{ id: '1', title: 'Fav A', url: '', coverUrl: '', source: 'test' }],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+        needsLogin: false,
+      })
+
+      render(<FavouritesPage />)
+      await screen.findByText('Fav A')
+
+      // 初始 source='hcomic'（来自 store mock currentSource）、currentPage=1
+      expect(getGridKey()).toBe('hcomic:1')
+    })
+  })
 })

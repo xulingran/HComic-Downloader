@@ -82,6 +82,11 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     return map
   }, [tasks, downloadProgress])
 
+  // 列表容器 key：换收藏来源 / 翻页等整页全量替换时变化 → 整页重挂载，
+  // 规避 framer-motion `layout` 在 popLayout 全量替换下的 mount 测量竞态（封面从左上角飞入）。
+  // cardStyle 切换时 key 不变 → layout 位置过渡照常生效。
+  const gridContainerKey = `${source}:${currentPage}`
+
   const getTaskId = (comic: ComicInfo) =>
     `${comic.sourceSite || 'hcomic'}_${comic.source || ''}_${comic.id}`
 
@@ -426,7 +431,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       ) : (
         <LayoutGroup>
           <AnimatePresence mode="popLayout">
-            <div className={cardStyle === 'detailed'
+            <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
               ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
               : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
             }>

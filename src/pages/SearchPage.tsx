@@ -125,6 +125,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     searchTags,
   }), [query, mode, source, searchTags])
 
+  // 列表容器 key：翻页 / 新搜索 / 换来源 / 换 mode 等整页全量替换时变化 → 整页重挂载，
+  // 规避 framer-motion `layout` 在 popLayout 全量替换下的 mount 测量竞态（封面从左上角飞入）。
+  // cardStyle 切换时 key 不变 → layout 位置过渡照常生效。
+  const gridContainerKey = `${searchContextKey}:${pagination?.currentPage ?? 1}`
+
   const cacheSearchPage = useCallback((contextKey: string, page: number, data: SearchPageCache, setCurrent: boolean = true) => {
     searchCacheRef.current.setPage(contextKey, page, data, setCurrent)
   }, [])
@@ -666,7 +671,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       {!needsLogin && filteredComics.length > 0 && (
         <LayoutGroup>
           <AnimatePresence mode="popLayout">
-            <div className={cardStyle === 'detailed'
+            <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
               ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
               : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
             }>
