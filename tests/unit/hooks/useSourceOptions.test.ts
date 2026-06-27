@@ -2,14 +2,15 @@ import { renderHook } from '@testing-library/react'
 import { useSources, useSearchModes, useRankingOptions } from '@/hooks/useSourceOptions'
 
 describe('useSourceOptions hooks', () => {
-  it('useSources returns all 5 sources with labels', () => {
+  it('useSources returns all 6 sources with labels', () => {
     const { result } = renderHook(() => useSources())
-    expect(result.current).toHaveLength(5)
+    expect(result.current).toHaveLength(6)
     expect(result.current[0]).toEqual({ value: 'hcomic', label: 'HComic' })
     expect(result.current[1]).toEqual({ value: 'moeimg', label: 'MoeImg' })
     expect(result.current[2]).toEqual({ value: 'jm', label: 'JM' })
     expect(result.current[3]).toEqual({ value: 'bika', label: '哔咔' })
     expect(result.current[4]).toEqual({ value: 'copymanga', label: '拷贝漫画' })
+    expect(result.current[5]).toEqual({ value: 'nh', label: 'nhentai' })
   })
 
   it('useSearchModes returns all 5 modes', () => {
