@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
-import type { HcomicAPI, ConfigKey, ConfigValueMap, MaintenanceProgressEvent } from '@shared/types'
+import type { HcomicAPI, ConfigKey, ConfigValueMap, MaintenanceProgressEvent, TagListProgressEvent } from '@shared/types'
 import { ComicInfo, ACTIVE_DOWNLOAD_STATUSES } from '@shared/types'
 
 declare global {
@@ -262,8 +262,8 @@ export function useFavouriteTags() {
 export function useTagList() {
   const { invoke } = useIpc()
 
-  const getTagList = useCallback(async (source?: string, keyword?: string, page?: number, limit?: number) => {
-    return invoke(() => window.hcomic!.getTagList(source, keyword, page, limit))
+  const getTagList = useCallback(async (source?: string, keyword?: string, page?: number, limit?: number, sort?: 'popular' | 'name') => {
+    return invoke(() => window.hcomic!.getTagList(source, keyword, page, limit, sort))
   }, [invoke])
 
   const refreshTagList = useCallback(async (source?: string) => {
@@ -271,6 +271,21 @@ export function useTagList() {
   }, [invoke])
 
   return { getTagList, refreshTagList }
+}
+
+export function useTagListProgress(source?: string) {
+  const [progress, setProgress] = useState<TagListProgressEvent | null>(null)
+
+  useEffect(() => {
+    if (!window.hcomic?.onTagListProgress) return
+    const unsubscribe = window.hcomic.onTagListProgress((data) => {
+      if (!source || data.source === source) setProgress(data)
+    })
+    return unsubscribe
+  }, [source])
+
+  const clear = useCallback(() => setProgress(null), [])
+  return { progress, clear }
 }
 
 export function useBikaCategories() {

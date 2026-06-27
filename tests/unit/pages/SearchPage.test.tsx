@@ -358,6 +358,64 @@ describe('SearchPage', () => {
     })
   })
 
+  it('selects a tag from NH latest results using tag mode and clears it without restoring ranking', async () => {
+    const user = userEvent.setup()
+    const getTagList = vi.fn().mockResolvedValue({ tags: [{ tag: 'big breasts', count: 224619 }], total: 1 })
+    mockUseTagList.mockReturnValue({
+      getTagList,
+      refreshTagList: vi.fn().mockResolvedValue(undefined),
+    })
+    mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+    mockSearch.mockResolvedValue({
+      comics: [],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
+    })
+
+    render(<SearchPage />)
+    await user.click(await screen.findByText('最近更新'))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'nh'))
+
+    mockSearch.mockClear()
+    await user.click(screen.getByText('标签'))
+    await user.click(await screen.findByText('big breasts'))
+
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'big breasts')
+    })
+
+    await user.click(screen.getByText('清除全部'))
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenLastCalledWith('', 'tag', 1, 'nh', undefined)
+    })
+  })
+
+  it('selects a tag from NH popular results instead of continuing the ranking request', async () => {
+    const user = userEvent.setup()
+    const getTagList = vi.fn().mockResolvedValue({ tags: [{ tag: 'full color', count: 100 }], total: 1 })
+    mockUseTagList.mockReturnValue({
+      getTagList,
+      refreshTagList: vi.fn().mockResolvedValue(undefined),
+    })
+    mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+    mockSearch.mockResolvedValue({
+      comics: [],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
+    })
+
+    render(<SearchPage />)
+    await user.click(await screen.findByText('热门排行'))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('popular', 'ranking', 1, 'nh'))
+
+    mockSearch.mockClear()
+    await user.click(screen.getByText('标签'))
+    await user.click(await screen.findByText('full color'))
+
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'full color')
+    })
+    expect(mockSearch).not.toHaveBeenCalledWith('popular', 'ranking', 1, 'nh', 'full color')
+  })
+
   it('shows cached search page immediately and refreshes it in background', async () => {
     mockStoreState.comics = [
       { id: '1', title: 'Page 1 Comic', url: 'https://example.com/1', coverUrl: '', source: 'test' },

@@ -159,6 +159,22 @@ class SearchMixin:
             "totalItems": pagination.total_items,
         }
 
+    @staticmethod
+    def _build_nh_tag_query(query: str, tag: str = "") -> str:
+        tags: list[str] = []
+        for value in (query, tag):
+            tags.extend(t.strip() for t in (value or "").split(",") if t.strip())
+        seen: set[str] = set()
+        parts: list[str] = []
+        for item in tags:
+            key = item.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            escaped = item.replace('"', r"\"")
+            parts.append(f'tag:"{escaped}"')
+        return " ".join(parts)
+
     def handle_search(
         self,
         query: str,
@@ -183,6 +199,12 @@ class SearchMixin:
         elif effective_source == "copymanga" and mode == "ranking":
             effective_tag = query
             effective_query = ""
+        elif effective_source == "nh" and mode == "ranking":
+            effective_query = ""
+            effective_tag = "popular" if (query or "").strip().lower() == "popular" else ""
+        elif effective_source == "nh" and mode == "tag":
+            effective_query = self._build_nh_tag_query(query, tag)
+            effective_tag = ""
         elif (
             effective_source == "bika"
             and mode in ("ranking", "tag", "category")
@@ -233,7 +255,7 @@ class SearchMixin:
             raise
 
         # Incrementally collect tags for supported sources
-        if effective_source in ("hcomic", "moeimg", "bika") and comics:
+        if effective_source in ("hcomic", "moeimg", "bika", "nh") and comics:
             self._collect_tags_from_comics(comics, effective_source)
 
         return {

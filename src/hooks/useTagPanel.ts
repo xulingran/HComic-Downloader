@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react'
+import type { TagListSort } from '@shared/types'
 import { useTagList, useFavouriteTags } from './useIpc'
 
 export interface TagItem {
@@ -7,7 +8,7 @@ export interface TagItem {
 }
 
 /** Merge tag list catalog with favourite tags, deduplicating and summing counts. */
-function mergeTagSources(listTags: TagItem[], favTags: TagItem[]): TagItem[] {
+function mergeTagSources(listTags: TagItem[], favTags: TagItem[], sort: TagListSort): TagItem[] {
   const merged = new Map<string, number>()
   for (const t of listTags) {
     merged.set(t.tag, t.count)
@@ -15,8 +16,10 @@ function mergeTagSources(listTags: TagItem[], favTags: TagItem[]): TagItem[] {
   for (const t of favTags) {
     merged.set(t.tag, (merged.get(t.tag) ?? 0) + t.count)
   }
-  return Array.from(merged, ([tag, count]) => ({ tag, count }))
-    .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+  const result = Array.from(merged, ([tag, count]) => ({ tag, count }))
+  return result.sort(sort === 'name'
+    ? (a, b) => a.tag.localeCompare(b.tag)
+    : (a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
 }
 
 const EMPTY_TAGS = { tags: [] as TagItem[], total: 0 }
@@ -28,6 +31,8 @@ export interface UseTagPanelResult {
   refreshing: boolean
   keyword: string
   setKeyword: (kw: string) => void
+  sort: TagListSort
+  setSort: (sort: TagListSort) => void
   selectedTags: string[]
   setSelectedTags: (tags: string[]) => void
   toggleTag: (tag: string) => string[]
@@ -46,6 +51,14 @@ export function useTagPanel(source: string, enabled: boolean): UseTagPanelResult
   const [expanded, setExpanded] = useState(false)
   const [tags, setTags] = useState<TagItem[]>([])
   const [keyword, setKeyword] = useState('')
+  const [sortState, setSortState] = useState<{ source: string; value: TagListSort }>({
+    source,
+    value: 'popular',
+  })
+  const sort = sortState.source === source ? sortState.value : 'popular'
+  const setSort = useCallback((value: TagListSort) => {
+    setSortState({ source, value })
+  }, [source])
   const [loading, setLoading] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
@@ -53,31 +66,46 @@ export function useTagPanel(source: string, enabled: boolean): UseTagPanelResult
   const { getFavouriteTags } = useFavouriteTags()
   // Track previous source for reset detection
   const prevSourceRef = useRef(source)
-  const loadedSourceRef = useRef<string | null>(null)
+  const loadedKeyRef = useRef<string | null>(null)
+  const requestVersionRef = useRef(0)
+  const refreshRunRef = useRef(0)
 
   // Load tags when panel is first expanded (or source changes)
   useEffect(() => {
     if (!expanded || !enabled) return
     // Reset state when source changes
-    if (prevSourceRef.current !== source) {
+    const sourceChanged = prevSourceRef.current !== source
+    if (sourceChanged) {
       setTags([])
       setSelectedTags([])
       setKeyword('')
-      loadedSourceRef.current = null
+      loadedKeyRef.current = null
       prevSourceRef.current = source
     }
-    if (loadedSourceRef.current === source) return
-    loadedSourceRef.current = source
+    const requestedSort = sort
+    const loadKey = `${source}:${requestedSort}`
+    if (loadedKeyRef.current === loadKey) return
+    loadedKeyRef.current = loadKey
+    const requestVersion = ++requestVersionRef.current
     setLoading(true)
     Promise.all([
-      getTagList(source).catch(() => EMPTY_TAGS),
+      getTagList(source, undefined, undefined, undefined, requestedSort).catch(() => EMPTY_TAGS),
       getFavouriteTags(source).catch(() => EMPTY_TAGS),
     ]).then(([listResult, favResult]) => {
-      setTags(mergeTagSources(listResult.tags, favResult.tags))
+      if (requestVersion === requestVersionRef.current) {
+        setTags(mergeTagSources(listResult.tags, favResult.tags, requestedSort))
+      }
     }).finally(() => {
-      setLoading(false)
+      if (requestVersion === requestVersionRef.current) {
+        setLoading(false)
+      }
     })
-  }, [expanded, source, enabled, getTagList, getFavouriteTags])
+    return () => {
+      if (requestVersion === requestVersionRef.current) {
+        requestVersionRef.current += 1
+      }
+    }
+  }, [expanded, source, enabled, sort, getTagList, getFavouriteTags])
 
   const filteredTags = useMemo(() => {
     if (!keyword.trim()) return tags
@@ -98,20 +126,27 @@ export function useTagPanel(source: string, enabled: boolean): UseTagPanelResult
   }, [])
 
   const refresh = useCallback(async () => {
+    const refreshRun = ++refreshRunRef.current
+    const requestVersion = ++requestVersionRef.current
+    setLoading(false)
     setRefreshing(true)
     try {
       await refreshTagList(source)
       const [listResult, favResult] = await Promise.all([
-        getTagList(source).catch(() => EMPTY_TAGS),
+        getTagList(source, undefined, undefined, undefined, sort).catch(() => EMPTY_TAGS),
         getFavouriteTags(source).catch(() => EMPTY_TAGS),
       ])
-      setTags(mergeTagSources(listResult.tags, favResult.tags))
+      if (requestVersion === requestVersionRef.current) {
+        setTags(mergeTagSources(listResult.tags, favResult.tags, sort))
+      }
     } catch {
       // Silently handle refresh errors
     } finally {
-      setRefreshing(false)
+      if (refreshRun === refreshRunRef.current) {
+        setRefreshing(false)
+      }
     }
-  }, [source, refreshTagList, getTagList, getFavouriteTags])
+  }, [source, sort, refreshTagList, getTagList, getFavouriteTags])
 
   return {
     tags,
@@ -120,6 +155,8 @@ export function useTagPanel(source: string, enabled: boolean): UseTagPanelResult
     refreshing,
     keyword,
     setKeyword,
+    sort,
+    setSort,
     selectedTags,
     setSelectedTags,
     toggleTag,

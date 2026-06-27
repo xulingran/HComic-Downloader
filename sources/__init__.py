@@ -19,10 +19,11 @@ if TYPE_CHECKING:
     from sources.hcomic.parser import HComicParser, ParserResponseError
     from sources.jm.parser import JmParser
     from sources.moeimg.parser import MoeImgParser
+    from sources.nh.parser import NhParser
 
 logger = logging.getLogger(__name__)
 
-_VALID_SOURCES = ("hcomic", "jm", "moeimg", "bika", "copymanga")
+_VALID_SOURCES = ("hcomic", "jm", "moeimg", "bika", "copymanga", "nh")
 _SOURCES_WITH_FAVOURITES = ("hcomic", "jm", "moeimg", "bika")
 
 # Map source name -> (module path, class name). Loaded lazily by _load_parser_class
@@ -35,6 +36,7 @@ _PARSER_MODULES: dict[str, tuple[str, str]] = {
     "moeimg": ("sources.moeimg.parser", "MoeImgParser"),
     "bika": ("sources.bika.parser", "BikaParser"),
     "copymanga": ("sources.copymanga.parser", "CopyMangaParser"),
+    "nh": ("sources.nh.parser", "NhParser"),
 }
 
 # Cache of already-imported parser classes: source name -> class object.
@@ -148,7 +150,7 @@ class MultiSourceParser:
         # 工厂内部通过 _load_parser_class 按需 import 解析器模块，避免
         # ``import sources`` 时强制加载全部 5 个来源及其重依赖。
         self._factory: dict[
-            str, Callable[[], HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser]
+            str, Callable[[], HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser | NhParser]
         ] = {
             "hcomic": lambda: _load_parser_class("hcomic")(
                 timeout=timeout,
@@ -168,10 +170,11 @@ class MultiSourceParser:
             ),
             "bika": lambda: _load_parser_class("bika")(timeout=timeout),
             "copymanga": lambda: _load_parser_class("copymanga")(timeout=timeout),
+            "nh": lambda: _load_parser_class("nh")(timeout=timeout),
         }
 
         # 缓存字典 —— 已创建的解析器实例
-        self._parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser] = {}
+        self._parsers: dict[str, HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser | NhParser] = {}
         # 守卫 _parsers 的懒创建（见 _get_parser 的 double-checked locking）。
         # 与模块级 _PARSER_INIT_LOCK 分离：模块级锁守卫类导入，实例锁守卫实例创建，
         # 避免不同 MultiSourceParser 实例（如测试）互相阻塞。
@@ -186,7 +189,9 @@ class MultiSourceParser:
         """向后兼容：``parser.parsers["source"]`` 触发懒创建。"""
         return _ParserDict(self)
 
-    def _get_parser(self, name: str) -> HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser:
+    def _get_parser(
+        self, name: str
+    ) -> HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser | NhParser:
         """按需获取（或创建）指定来源的解析器实例。"""
         # 并发安全：IPC server 用 8-worker 线程池并发跑请求处理器，多个线程可能
         # 同时首次访问同一 source。用 double-checked locking 守卫懒创建 ——
@@ -211,7 +216,7 @@ class MultiSourceParser:
     def _apply_post_init(
         self,
         name: str,
-        parser: HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser,
+        parser: HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser | NhParser,
     ) -> None:
         """解析器创建后的后处理 —— 恢复存储的凭据、token、图片质量等。"""
         # 通用：对所有解析器恢复已存储的 cookie/user_agent/bearer_token

@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   CONFIG_KEYS, IMAGE_QUALITIES, SOURCE_VALUES,
-  SEARCH_MODES,
+  SEARCH_MODES, TAG_LIST_SORTS,
   IPC_CHANNELS, NOTIFICATION_CHANNELS,
 } from '../shared/types'
 
 const VALID_SEARCH_MODES = new Set<string>(SEARCH_MODES)
+const VALID_TAG_LIST_SORTS = new Set<string>(TAG_LIST_SORTS)
 const VALID_SOURCES = SOURCE_VALUES
 const VALID_CONFIG_KEYS = new Set<string>(CONFIG_KEYS)
 
@@ -424,7 +425,7 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.WRITE_CLIPBOARD, text)
   },
 
-  getTagList: (source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
+  getTagList: (source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown, sort?: unknown) => {
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
     if (keyword !== undefined && keyword !== null && typeof keyword !== 'string') throw new Error('Invalid keyword')
     if (page !== undefined && page !== null) {
@@ -433,7 +434,10 @@ contextBridge.exposeInMainWorld('hcomic', {
     if (limit !== undefined && limit !== null) {
       if (typeof limit !== 'number' || !Number.isFinite(limit) || !Number.isInteger(limit) || limit < 1 || limit > 500) throw new Error('Invalid limit')
     }
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_TAG_LIST, source ?? undefined, keyword ?? undefined, page ?? undefined, limit ?? undefined)
+    if (sort !== undefined && sort !== null) {
+      if (typeof sort !== 'string' || !VALID_TAG_LIST_SORTS.has(sort)) throw new Error('Invalid sort')
+    }
+    return ipcRenderer.invoke(IPC_CHANNELS.GET_TAG_LIST, source ?? undefined, keyword ?? undefined, page ?? undefined, limit ?? undefined, sort ?? undefined)
   },
 
   refreshTagList: (source?: unknown) => {
@@ -473,6 +477,10 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   onAlbumProgress: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.ALBUM_PROGRESS, callback)
+  },
+
+  onTagListProgress: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.TAG_LIST_PROGRESS, callback)
   },
 
   runHealthCheck: (scope?: unknown, comicKeys?: unknown) => {

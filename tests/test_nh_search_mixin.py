@@ -45,3 +45,17 @@ def test_nh_multi_tag_maps_to_exact_tag_query_and_escapes_quotes():
     mixin.handle_search(query='big "quote"', mode="tag", page=1, source="nh", tag="full color")
 
     assert mixin.calls[-1]["keyword"] == 'tag:"big \\"quote\\"" tag:"full color"'
+
+
+def test_nh_tag_query_deduplicates_case_insensitively():
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(
+        query="Big Breasts,big breasts",
+        mode="tag",
+        page=1,
+        source="nh",
+        tag="Full Color,FULL COLOR",
+    )
+
+    assert mixin.calls[-1]["keyword"] == 'tag:"Big Breasts" tag:"Full Color"'

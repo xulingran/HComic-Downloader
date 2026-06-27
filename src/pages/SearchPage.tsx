@@ -608,11 +608,24 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const newSearchTags = newSelectedTags.join(',')
     setSearchTags(newSearchTags)
     searchTagsRef.current = newSearchTags
+    const isNhTagSearch = sourceRef.current === 'nh'
+    if (isNhTagSearch) {
+      setQuery('')
+      queryRef.current = ''
+      setMode('tag')
+      modeRef.current = 'tag'
+    }
     // Trigger search immediately with the NEW tags value (skip if already loading)
     if (!isLoadingRef.current) {
       clearSelection()
-      setViewingNhEntry(sourceRef.current === 'nh')
-      withLoading(() => search(queryRef.current, modeRef.current, 1, sourceRef.current, newSearchTags || undefined))
+      setViewingNhEntry(isNhTagSearch)
+      withLoading(() => search(
+        isNhTagSearch ? '' : queryRef.current,
+        isNhTagSearch ? 'tag' : modeRef.current,
+        1,
+        sourceRef.current,
+        newSearchTags || undefined,
+      ))
     }
   }, [tagPanel, withLoading, search, clearSelection])
 
@@ -620,11 +633,24 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     tagPanel.clearAll()
     setSearchTags('')
     searchTagsRef.current = ''
+    const isNhTagSearch = sourceRef.current === 'nh'
+    if (isNhTagSearch) {
+      setQuery('')
+      queryRef.current = ''
+      setMode('tag')
+      modeRef.current = 'tag'
+    }
     // Trigger search immediately with cleared tags (skip if already loading)
     if (!isLoadingRef.current) {
       clearSelection()
-      setViewingNhEntry(sourceRef.current === 'nh' && modeRef.current === 'ranking')
-      withLoading(() => search(queryRef.current, modeRef.current, 1, sourceRef.current, undefined))
+      setViewingNhEntry(isNhTagSearch)
+      withLoading(() => search(
+        isNhTagSearch ? '' : queryRef.current,
+        isNhTagSearch ? 'tag' : modeRef.current,
+        1,
+        sourceRef.current,
+        undefined,
+      ))
     }
   }, [tagPanel, withLoading, search, clearSelection])
 

@@ -1,4 +1,5 @@
 import type { TagItem } from '../hooks/useTagPanel'
+import type { TagListProgressEvent } from '@shared/types'
 import { Modal } from './common/Modal'
 
 interface TagDialogProps {
@@ -10,9 +11,12 @@ interface TagDialogProps {
   selectedTags: string[]
   tagKeyword: string
   onTagKeywordChange: (kw: string) => void
+  sort: 'popular' | 'name'
+  onSortChange: (sort: 'popular' | 'name') => void
   onToggleTag: (tag: string) => void
   onClearAllTags: () => void
   onRefreshTags: () => void
+  refreshProgress?: TagListProgressEvent | null
 }
 
 export function TagDialog({
@@ -20,7 +24,9 @@ export function TagDialog({
   loading, refreshing,
   filteredTags, selectedTags,
   tagKeyword, onTagKeywordChange,
+  sort, onSortChange,
   onToggleTag, onClearAllTags, onRefreshTags,
+  refreshProgress,
 }: TagDialogProps) {
   return (
     <Modal
@@ -55,8 +61,26 @@ export function TagDialog({
           </button>
         </div>
 
-        {/* Toolbar: search + refresh */}
+        {/* Toolbar: sort + search + refresh */}
         <div className="flex items-center gap-2 mb-3">
+          <div className="flex shrink-0 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5">
+            {([
+              ['popular', '热门'],
+              ['name', 'A-Z'],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => onSortChange(value)}
+                className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
+                  sort === value
+                    ? 'bg-[var(--accent)] text-white'
+                    : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div className="flex-1 relative">
             <input
               type="text"
@@ -80,6 +104,18 @@ export function TagDialog({
             {refreshing ? '同步中...' : '🔄 刷新'}
           </button>
         </div>
+
+        {refreshing && refreshProgress && (
+          <div className="mb-3 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-xs text-[var(--text-secondary)]">
+            {refreshProgress.status === 'error' ? (
+              <span className="text-[var(--error)]">同步出错：{refreshProgress.message || '部分页面同步失败，可稍后重试'}</span>
+            ) : (
+              <span>
+                同步标签中：第 {refreshProgress.currentPage}/{refreshProgress.totalPages} 页，已收集 {refreshProgress.totalTags} 个标签
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Tag cloud */}
         <div className="flex-1 overflow-y-auto min-h-0">
