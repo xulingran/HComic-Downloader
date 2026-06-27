@@ -477,15 +477,15 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
         className="flex items-center justify-between px-5 py-3 shrink-0"
         style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 flex-1 min-w-0">
           <button
             onClick={onClose}
-            className="px-3 py-1.5 rounded-md text-white text-sm hover:bg-white/10 transition-colors"
+            className="px-3 py-1.5 rounded-md text-white text-sm hover:bg-white/10 transition-colors shrink-0"
             style={{ background: 'rgba(255,255,255,0.1)' }}
           >
             关闭
           </button>
-          <span className="text-sm text-gray-400 truncate max-w-[300px]">{comic?.title}</span>
+          <span className="text-sm text-gray-400 truncate">{comic?.title}</span>
         </div>
         <span
           className="px-2.5 py-1 rounded-full text-xs text-white"
