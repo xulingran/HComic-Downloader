@@ -13,7 +13,10 @@ from utils import normalize_source_key, open_sqlite_db
 
 logger = logging.getLogger(__name__)
 
-_TAG_LIST_SOURCES = ("hcomic", "moeimg", "bika")
+_TAG_LIST_SOURCES = ("hcomic", "moeimg", "bika", "nh")
+# NH tags API anonymous limit is 15 requests / minute per IP.
+# Keep a conservative interval so a full ~39-page sync does not hit 429.
+_NH_TAG_LIST_REQUEST_INTERVAL_SECONDS = 4.2
 
 
 class TagListDB:
@@ -85,12 +88,31 @@ class TagListDB:
                 )
             self._conn.commit()
 
+    def replace_tags(self, tags: dict[str, int], source: str) -> None:
+        """Atomically replace all tags for *source* with explicit counts."""
+        with self._lock:
+            self._conn.execute("BEGIN IMMEDIATE")
+            try:
+                self._conn.execute("DELETE FROM tag_list WHERE source = ?", (source,))
+                for tag, count in tags.items():
+                    if not tag:
+                        continue
+                    self._conn.execute(
+                        "INSERT INTO tag_list (tag, source, count) VALUES (?, ?, ?)",
+                        (tag, source, max(0, int(count or 0))),
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
     def get_tags(
         self,
         source: str,
         keyword: str = "",
         page: int = 1,
         limit: int = 200,
+        sort: str = "popular",
     ) -> tuple[list[dict[str, Any]], int]:
         """Return paginated tags for a source, optionally filtered by keyword.
 
@@ -98,6 +120,7 @@ class TagListDB:
             (tags_list, total_count) where tags_list is a list of {tag, count}.
         """
         offset = (page - 1) * limit
+        order_by = "tag ASC" if sort == "name" else "count DESC, tag ASC"
         with self._lock:
             if keyword:
                 escaped = keyword.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
@@ -108,9 +131,9 @@ class TagListDB:
                 ).fetchone()
                 total = total_row["cnt"] if total_row else 0
                 rows = self._conn.execute(
-                    """SELECT tag, count FROM tag_list
+                    f"""SELECT tag, count FROM tag_list
                        WHERE source = ? AND tag LIKE ? ESCAPE '\\'
-                       ORDER BY count DESC, tag ASC
+                       ORDER BY {order_by}
                        LIMIT ? OFFSET ?""",
                     (source, like_pattern, limit, offset),
                 ).fetchall()
@@ -121,9 +144,9 @@ class TagListDB:
                 ).fetchone()
                 total = total_row["cnt"] if total_row else 0
                 rows = self._conn.execute(
-                    """SELECT tag, count FROM tag_list
+                    f"""SELECT tag, count FROM tag_list
                        WHERE source = ?
-                       ORDER BY count DESC, tag ASC
+                       ORDER BY {order_by}
                        LIMIT ? OFFSET ?""",
                     (source, limit, offset),
                 ).fetchall()
@@ -187,6 +210,7 @@ class TagListMixin:
         keyword: str = "",
         page: int = 1,
         limit: int = 200,
+        sort: str = "popular",
     ) -> dict:
         """Return paginated tag list for the given source."""
         effective_source = source if source in _TAG_LIST_SOURCES else "hcomic"
@@ -194,11 +218,13 @@ class TagListMixin:
             page = 1
         if limit < 1 or limit > 500:
             limit = 200
+        sort_value = sort if sort in ("popular", "name") else "popular"
         tags, total = self._tag_list_db.get_tags(
             effective_source,
             keyword=keyword,
             page=page,
             limit=limit,
+            sort=sort_value,
         )
         return {"tags": tags, "total": total}
 
@@ -217,9 +243,37 @@ class TagListMixin:
             return {"error": "refresh already in progress"}
 
         try:
-            return self._do_refresh_tag_list(effective_source)
+            return (
+                self._do_refresh_nh_tag_list()
+                if effective_source == "nh"
+                else self._do_refresh_tag_list(effective_source)
+            )
         finally:
             lock.release()
+
+    def _emit_tag_list_progress(
+        self,
+        source: str,
+        current_page: int,
+        total_pages: int,
+        total_tags: int,
+        status: str = "running",
+        message: str = "",
+    ) -> None:
+        notification = {
+            "jsonrpc": "2.0",
+            "method": "tag_list_progress",
+            "params": {
+                "source": source,
+                "currentPage": current_page,
+                "totalPages": total_pages,
+                "totalTags": total_tags,
+                "status": status,
+            },
+        }
+        if message:
+            notification["params"]["message"] = message
+        self._write_response(notification)
 
     def _do_refresh_tag_list(self, effective_source: str) -> dict:
         """Collect tags in memory, then atomically replace DB contents."""
@@ -265,9 +319,7 @@ class TagListMixin:
                 logger.warning("refresh_tag_list page %d failed: %s", page, e)
 
         # All data collected — now atomically replace DB contents
-        self._tag_list_db.clear(effective_source)
-        for tag, count in collected.items():
-            self._tag_list_db.upsert_tags([tag] * count, effective_source)
+        self._tag_list_db.replace_tags(collected, effective_source)
 
         total_tags = self._tag_list_db.get_tag_count(effective_source)
         logger.info(
@@ -280,6 +332,61 @@ class TagListMixin:
         return {
             "totalTags": total_tags,
             "totalComics": total_comics,
+            "totalPages": total_pages_done,
+        }
+
+    def _do_refresh_nh_tag_list(self) -> dict:
+        """Sync NH tags from its original tag directory pages."""
+        parser = self.parser.parsers.get("nh")
+        if parser is None:
+            raise ValueError("nh source unavailable")
+
+        collected: dict[str, int] = {}
+        total_pages_done = 0
+
+        try:
+            tags, pagination = parser.get_tag_list(page=1, sort="popular")
+        except Exception as e:
+            logger.error("refresh nh tag_list page 1 failed: %s", e, exc_info=True)
+            raise
+
+        for item in tags:
+            tag = str(item.get("tag") or "").strip()
+            if tag:
+                collected[tag] = int(item.get("count") or 0)
+        total_pages_done = 1
+        max_pages = pagination.total_pages if pagination else 1
+        max_pages = min(max_pages, 100)
+        self._emit_tag_list_progress("nh", total_pages_done, max_pages, len(collected), "running")
+
+        for page in range(2, max_pages + 1):
+            time.sleep(_NH_TAG_LIST_REQUEST_INTERVAL_SECONDS)
+            try:
+                page_tags, _pagination = parser.get_tag_list(page=page, sort="popular")
+                for item in page_tags:
+                    tag = str(item.get("tag") or "").strip()
+                    if tag:
+                        collected[tag] = int(item.get("count") or 0)
+                total_pages_done += 1
+                self._emit_tag_list_progress("nh", total_pages_done, max_pages, len(collected), "running")
+            except Exception as e:
+                logger.warning("refresh nh tag_list page %d failed: %s", page, e)
+                self._emit_tag_list_progress("nh", page, max_pages, len(collected), "error", str(e))
+
+        if not collected:
+            raise RuntimeError("nh tag list refresh returned no tags")
+
+        self._tag_list_db.replace_tags(collected, "nh")
+        total_tags = self._tag_list_db.get_tag_count("nh")
+        self._emit_tag_list_progress("nh", total_pages_done, max_pages, total_tags, "completed")
+        logger.info(
+            "refresh nh tag_list done: pages=%d tags=%d",
+            total_pages_done,
+            total_tags,
+        )
+        return {
+            "totalTags": total_tags,
+            "totalComics": 0,
             "totalPages": total_pages_done,
         }
 

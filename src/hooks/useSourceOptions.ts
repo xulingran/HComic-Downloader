@@ -34,6 +34,10 @@ const BIKA_LEADERBOARD_OPTIONS = [
   { value: 'D30', label: '月榜' },
 ]
 
+const NH_RANKING_OPTIONS = [
+  { value: 'popular', label: '热门排行' },
+]
+
 /** 返回带标签的来源列表 */
 export function useSources(): Option[] {
   return useMemo(() =>
@@ -63,4 +67,9 @@ export function useCopymangaCategories(): Option[] {
 /** 返回哔咔排行榜选项列表 */
 export function useBikaLeaderboardOptions(): Option[] {
   return useMemo(() => BIKA_LEADERBOARD_OPTIONS, [])
+}
+
+/** 返回 NH 排行选项列表 */
+export function useNhRankingOptions(): Option[] {
+  return useMemo(() => NH_RANKING_OPTIONS, [])
 }

@@ -40,6 +40,13 @@ const { mockUseFavouriteTags } = vi.hoisted(() => ({
   })
 }))
 
+const { mockUseTagList } = vi.hoisted(() => ({
+  mockUseTagList: vi.fn().mockReturnValue({
+    getTagList: vi.fn().mockResolvedValue({ tags: [], total: 0 }),
+    refreshTagList: vi.fn().mockResolvedValue(undefined),
+  })
+}))
+
 vi.mock('@/hooks/useIpc', () => ({
   useSearch: vi.fn().mockReturnValue({ search: mockSearch }),
   useRandom: vi.fn().mockReturnValue({ random: mockRandom }),
@@ -72,10 +79,8 @@ vi.mock('@/hooks/useIpc', () => ({
     verifyAuth: mockVerifyAuth,
   }),
   useJmDomains: () => ({ getJmDomains: vi.fn(), jmDomains: [] }),
-  useTagList: vi.fn().mockReturnValue({
-    getTagList: vi.fn().mockResolvedValue({ tags: [], total: 0 }),
-    refreshTagList: vi.fn().mockResolvedValue(undefined),
-  }),
+  useTagList: mockUseTagList,
+  useTagListProgress: vi.fn().mockReturnValue({ progress: null, clear: vi.fn() }),
 }))
 
 vi.mock('@/hooks/useDownloadHelper', () => ({
@@ -97,7 +102,7 @@ vi.mock('@/stores/useDownloadStore', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), favouriteTagHighlight: false, setFavouriteTagHighlight: vi.fn() })
+  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), favouriteTagHighlight: false, setFavouriteTagHighlight: vi.fn() })
 }))
 
 const { mockSearchCacheStore } = vi.hoisted(() => {
@@ -158,8 +163,10 @@ describe('SearchPage', () => {
     mockSearchCacheStore.getPage.mockReset()
     mockSearchCacheStore.hasPage.mockReset()
     mockSearchCacheStore.hasPage.mockReturnValue(false)
-    mockSearchCacheStore.clearContext.mockReset()
-    mockSearchCacheStore.clearCache.mockReset()
+    mockUseTagList.mockReturnValue({
+      getTagList: vi.fn().mockResolvedValue({ tags: [], total: 0 }),
+      refreshTagList: vi.fn().mockResolvedValue(undefined),
+    })
   })
 
   it('renders search input area', () => {
@@ -285,6 +292,72 @@ describe('SearchPage', () => {
     expect(screen.queryByText('暂无搜索结果')).not.toBeInTheDocument()
   })
 
+  it('shows NH entry page and opens popular ranking', async () => {
+    const user = userEvent.setup()
+    mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+    mockSearch.mockResolvedValue({
+      comics: [],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+    })
+
+    render(<SearchPage />)
+
+    expect(await screen.findByText('最近更新')).toBeInTheDocument()
+    expect(screen.getByText('热门排行')).toBeInTheDocument()
+
+    await user.click(screen.getByText('热门排行'))
+
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenCalledWith('popular', 'ranking', 1, 'nh')
+    })
+  })
+
+  it('clicks NH entry hot tag as tag search', async () => {
+    const user = userEvent.setup()
+    const getTagList = vi.fn().mockResolvedValue({ tags: [{ tag: 'big breasts', count: 224619 }], total: 1 })
+    mockUseTagList.mockReturnValue({
+      getTagList,
+      refreshTagList: vi.fn().mockResolvedValue(undefined),
+    })
+    mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+    mockSearch.mockResolvedValue({
+      comics: [],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+    })
+
+    render(<SearchPage />)
+
+    await user.click(await screen.findByText('big breasts'))
+
+    await waitFor(() => {
+      expect(mockSearch).toHaveBeenCalledWith('big breasts', 'tag', 1, 'nh')
+    })
+  })
+
+  it('opens tag dialog for NH and requests sorted tags', async () => {
+    const user = userEvent.setup()
+    const getTagList = vi.fn().mockResolvedValue({ tags: [{ tag: 'big breasts', count: 224619 }], total: 1 })
+    mockUseTagList.mockReturnValue({
+      getTagList,
+      refreshTagList: vi.fn().mockResolvedValue(undefined),
+    })
+    mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+    mockSearch.mockResolvedValue({
+      comics: [],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
+    })
+
+    render(<SearchPage />)
+
+    await user.click(await screen.findByText('标签'))
+    await waitFor(() => expect(screen.getAllByText('big breasts').length).toBeGreaterThanOrEqual(2))
+    await user.click(screen.getByText('A-Z'))
+
+    await waitFor(() => {
+      expect(getTagList).toHaveBeenCalledWith('nh', undefined, undefined, undefined, 'name')
+    })
+  })
+
   it('shows cached search page immediately and refreshes it in background', async () => {
     mockStoreState.comics = [
       { id: '1', title: 'Page 1 Comic', url: 'https://example.com/1', coverUrl: '', source: 'test' },
@@ -356,7 +429,7 @@ describe('SearchPage', () => {
     ]
 
     it('uses grid layout for cover mode', () => {
-      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
       mockStoreState.comics = comicsWithResults
 
       render(<SearchPage />)
@@ -365,7 +438,7 @@ describe('SearchPage', () => {
     })
 
     it('uses flex-col layout for detailed mode', () => {
-      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
       mockStoreState.comics = comicsWithResults
 
       render(<SearchPage />)
@@ -640,7 +713,7 @@ describe('SearchPage', () => {
       const keyCover = getGridKey()
 
       // 切换到 detailed：cardStyle 不在 key 依赖中，key 应保持不变
-      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] }, filterEnabled: true, setFilterEnabled: vi.fn() })
       rerender(<SearchPage />)
       const keyDetailed = getGridKey()
 
@@ -655,7 +728,7 @@ describe('SearchPage', () => {
     const enabledSettings = (overrides: Record<string, unknown> = {}) => ({
       cardStyle: 'cover',
       sfwMode: false,
-      tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
+      tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
       filterEnabled: true,
       setFilterEnabled: vi.fn(),
       favouriteTagHighlight: true,
@@ -772,7 +845,7 @@ describe('SearchPage', () => {
     it('被黑名单屏蔽的漫画不高亮', async () => {
       vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
         filterEnabled: true,
-        tagBlacklist: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [] },
+        tagBlacklist: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
       }))
       const mockGetFavTags = vi.fn().mockResolvedValue(favTagsPayload(['NTR']))
       mockUseFavouriteTags.mockReturnValue({

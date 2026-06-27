@@ -10,7 +10,7 @@ describe('useSourceOptions hooks', () => {
     expect(result.current[2]).toEqual({ value: 'jm', label: 'JM' })
     expect(result.current[3]).toEqual({ value: 'bika', label: '哔咔' })
     expect(result.current[4]).toEqual({ value: 'copymanga', label: '拷贝漫画' })
-    expect(result.current[5]).toEqual({ value: 'nh', label: 'nhentai' })
+    expect(result.current[5]).toEqual({ value: 'nh', label: 'NH' })
   })
 
   it('useSearchModes returns all 5 modes', () => {

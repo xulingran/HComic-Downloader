@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { AnimatePresence, LayoutGroup } from 'framer-motion'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch, useRandom, useConfig, useDownloadProgress, useAuth } from '../hooks/useIpc'
+import { useSearch, useRandom, useConfig, useDownloadProgress, useAuth, useTagListProgress } from '../hooks/useIpc'
 import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
@@ -14,6 +14,7 @@ import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { SearchBar } from '../components/SearchBar'
 import { BikaCategoryGrid } from '../components/BikaCategoryGrid'
+import { NhEntryGrid } from '../components/NhEntryGrid'
 import { TagDialog } from '../components/TagDialog'
 import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
 import { pickAlbumDefaultName } from '../utils/titleSimilarity'
@@ -50,6 +51,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [needsLogin, setNeedsLogin] = useState(false)
   const [viewingCategory, setViewingCategory] = useState(false)
+  const [viewingNhEntry, setViewingNhEntry] = useState(false)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { random } = useRandom()
@@ -84,6 +86,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
   const { favouriteTagHighlight, favouriteTagMinMatches } = useSettingsStore()
   const { getFavouriteTags } = useFavouriteTags()
+  const { progress: tagListProgress } = useTagListProgress(source)
   const [favTags, setFavTags] = useState<Array<{tag: string; count: number}>>([])
   const searchCache = useSearchCacheStore()
   const searchCacheRef = useRef(searchCache)
@@ -150,9 +153,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       }
       setComics(cached.comics)
       if (cached.pagination) setPagination(cached.pagination)
-      // viewingCategory 是本组件局部 state，挂载时会丢失；
-      // 这里依据已恢复的 mode/source 同步推导，避免用户从分类搜索切走再切回后无法返回分类页。
+      // viewingCategory / viewingNhEntry 是本组件局部 state，挂载时会丢失；
+      // 这里依据已恢复的 mode/source 同步推导，避免用户从入口页搜索切走再切回后无法返回入口页。
       setViewingCategory(cached.mode === 'category' && cached.source === 'bika')
+      setViewingNhEntry(cached.source === 'nh' && cached.mode !== 'keyword')
       return
     }
 
@@ -347,6 +351,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     if (query.trim()) {
       addHistory(searchTags ? `${query} [${searchTags}]` : query.trim())
     }
+    setViewingNhEntry(source === 'nh' && (mode === 'ranking' || mode === 'tag'))
 
     const contextKey = createSearchContextKey({ query, mode, source, searchTags })
     const cachedPage = searchCacheRef.current.getPage(contextKey, page)
@@ -383,6 +388,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     tagPanel.clearAll()
     setShowHistory(false)
     setViewingCategory(false)
+    setViewingNhEntry(false)
     await withLoading(() => random(source))
   }
 
@@ -397,6 +403,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     queryRef.current = categoryTitle
     modeRef.current = 'category'
     setViewingCategory(true)
+    setViewingNhEntry(false)
     await withLoading(() => search(categoryTitle, 'category', 1, 'bika'))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
 
@@ -412,6 +419,66 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setError(null)
   }, [clearSelection, setComics, setPagination, setError])
 
+  const handleNhLatest = useCallback(async () => {
+    clearSelection()
+    clearPendingSearch()
+    setSearchTags('')
+    searchTagsRef.current = ''
+    tagPanel.clearAll()
+    setShowHistory(false)
+    setMode('keyword')
+    modeRef.current = 'keyword'
+    setQuery('')
+    queryRef.current = ''
+    setViewingNhEntry(true)
+    await withLoading(() => search('', 'keyword', 1, 'nh'))
+  }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
+
+  const handleNhPopular = useCallback(async () => {
+    clearSelection()
+    clearPendingSearch()
+    setSearchTags('')
+    searchTagsRef.current = ''
+    tagPanel.clearAll()
+    setShowHistory(false)
+    setMode('ranking')
+    modeRef.current = 'ranking'
+    setQuery('popular')
+    queryRef.current = 'popular'
+    setViewingNhEntry(true)
+    await withLoading(() => search('popular', 'ranking', 1, 'nh'))
+  }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
+
+  const handleNhEntryTag = useCallback(async (tag: string) => {
+    clearSelection()
+    clearPendingSearch()
+    tagPanel.setSelectedTags([tag])
+    setSearchTags(tag)
+    searchTagsRef.current = tag
+    setShowHistory(false)
+    setMode('tag')
+    modeRef.current = 'tag'
+    setQuery(tag)
+    queryRef.current = tag
+    setViewingNhEntry(true)
+    await withLoading(() => search(tag, 'tag', 1, 'nh'))
+  }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
+
+  const handleBackToNhEntry = useCallback(() => {
+    clearSelection()
+    setQuery('')
+    queryRef.current = ''
+    setSearchTags('')
+    searchTagsRef.current = ''
+    tagPanel.clearAll()
+    setMode('keyword')
+    modeRef.current = 'keyword'
+    setViewingNhEntry(false)
+    setComics([])
+    setPagination(null)
+    setError(null)
+  }, [clearSelection, tagPanel, setComics, setPagination, setError])
+
   const handleSourceChange = async (newSource: string) => {
     setSource(newSource)
     sourceRef.current = newSource
@@ -422,12 +489,16 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setShowHistory(false)
     setNeedsLogin(false)
     setViewingCategory(false)
+    setViewingNhEntry(false)
     if (newSource === 'copymanga' && mode === 'ranking') {
       setQuery('hot')
       queryRef.current = 'hot'
     } else if (newSource === 'bika' && mode === 'ranking') {
       setQuery('H24')
       queryRef.current = 'H24'
+    } else if (newSource === 'nh' && mode === 'ranking') {
+      setQuery('popular')
+      queryRef.current = 'popular'
     } else {
       setQuery('')
       queryRef.current = ''
@@ -443,6 +514,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       }
       withLoading(() => random(newSource))
     } else if (newSource === 'bika') {
+      setComics([])
+      setPagination(null)
+    } else if (newSource === 'nh') {
       setComics([])
       setPagination(null)
     } else {
@@ -537,6 +611,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     // Trigger search immediately with the NEW tags value (skip if already loading)
     if (!isLoadingRef.current) {
       clearSelection()
+      setViewingNhEntry(sourceRef.current === 'nh')
       withLoading(() => search(queryRef.current, modeRef.current, 1, sourceRef.current, newSearchTags || undefined))
     }
   }, [tagPanel, withLoading, search, clearSelection])
@@ -548,6 +623,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     // Trigger search immediately with cleared tags (skip if already loading)
     if (!isLoadingRef.current) {
       clearSelection()
+      setViewingNhEntry(sourceRef.current === 'nh' && modeRef.current === 'ranking')
       withLoading(() => search(queryRef.current, modeRef.current, 1, sourceRef.current, undefined))
     }
   }, [tagPanel, withLoading, search, clearSelection])
@@ -567,6 +643,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           if (newMode === 'ranking' && source === 'bika' && !query) {
             setQuery('H24')
             queryRef.current = 'H24'
+          }
+          if (newMode === 'ranking' && source === 'nh' && !query) {
+            setQuery('popular')
+            queryRef.current = 'popular'
           }
         }}
         query={query}
@@ -617,9 +697,12 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         selectedTags={tagPanel.selectedTags}
         tagKeyword={tagPanel.keyword}
         onTagKeywordChange={tagPanel.setKeyword}
+        sort={tagPanel.sort}
+        onSortChange={tagPanel.setSort}
         onToggleTag={handleToggleTag}
         onClearAllTags={handleClearAllTags}
         onRefreshTags={tagPanel.refresh}
+        refreshProgress={tagListProgress}
       />
 
       <ErrorDisplay message={error} onRetry={error ? () => handleSearch() : undefined} />
@@ -647,6 +730,18 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
           </svg>
           返回分类
+        </button>
+      )}
+
+      {viewingNhEntry && source === 'nh' && !isLoading && (
+        <button
+          onClick={handleBackToNhEntry}
+          className="flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          返回 NH 入口
         </button>
       )}
 
@@ -748,7 +843,14 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         <BikaCategoryGrid onSelectCategory={handleBikaCategory} />
       )}
 
-      {!isLoading && !needsLogin && comics.length === 0 && !(source === 'bika' && !viewingCategory && !error) && <EmptyState message="暂无搜索结果" />}
+      {!isLoading && !needsLogin && source === 'nh' && comics.length === 0 && !viewingNhEntry && !error && (
+        <NhEntryGrid onLatest={handleNhLatest} onPopular={handleNhPopular} onSelectTag={handleNhEntryTag} />
+      )}
+
+      {!isLoading && !needsLogin && comics.length === 0 && !(
+        (source === 'bika' && !viewingCategory && !error)
+        || (source === 'nh' && !viewingNhEntry && !error)
+      ) && <EmptyState message="暂无搜索结果" />}
 
       {!isLoading && !needsLogin && comics.length > 0 && blockedCount === comics.length && <EmptyState message="所有结果均已被标签过滤" />}
     </div>

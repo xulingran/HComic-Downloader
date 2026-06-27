@@ -82,6 +82,10 @@ export const PROGRESS_BADGE_STATUSES: ReadonlySet<string> = new Set([
 export const IMAGE_QUALITIES = ['low', 'medium', 'high', 'original'] as const
 export type ImageQuality = typeof IMAGE_QUALITIES[number]
 
+// 标签目录排序方式（get_tag_list IPC + 前端 TagDialog 共用）
+export const TAG_LIST_SORTS = ['popular', 'name'] as const
+export type TagListSort = typeof TAG_LIST_SORTS[number]
+
 export interface HistoryItem {
   id: number
   comicId: string
@@ -664,7 +668,7 @@ export interface IPCMethods {
     result: { domains: string[] }
   }
   get_tag_list: {
-    params: { source?: string; keyword?: string; page?: number; limit?: number }
+    params: { source?: string; keyword?: string; page?: number; limit?: number; sort?: TagListSort }
     result: { tags: Array<{ tag: string; count: number }>; total: number }
   }
   refresh_tag_list: {
@@ -838,7 +842,7 @@ export interface HcomicAPI {
   getProxyStatus(): Promise<ProxyStatus>
   getAvailableFonts(): Promise<{ fonts: FontInfo[] }>
   getJmDomains(): Promise<{ domains: string[] }>
-  getTagList(source?: string, keyword?: string, page?: number, limit?: number): Promise<{ tags: Array<{ tag: string; count: number }>; total: number }>
+  getTagList(source?: string, keyword?: string, page?: number, limit?: number, sort?: TagListSort): Promise<{ tags: Array<{ tag: string; count: number }>; total: number }>
   refreshTagList(source?: string): Promise<{ totalTags: number; totalComics: number; totalPages: number }>
   openDownloadDir(dirPath: string): Promise<{ success: boolean }>
   selectDirectory(title: string, defaultPath?: string): Promise<{ canceled: boolean; filePaths: string[] }>
@@ -891,6 +895,7 @@ export interface HcomicAPI {
   resumeAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
   cancelAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
   onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
+  onTagListProgress(callback: (data: TagListProgressEvent) => void): () => void
   runHealthCheck(scope?: 'all' | 'selected', comicKeys?: string[][]): Promise<HealthCheckResponse>
   scanOrphanTemps(): Promise<{ orphans: OrphanTempItem[]; totalSizeBytes: number }>
   cleanupOrphanTemps(paths?: string[]): Promise<CleanupOrphanResult>
@@ -912,7 +917,7 @@ export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking', 'category'] 
 export type SearchMode = typeof SEARCH_MODES[number]
 
 /** Valid comic sources — shared between preload and main */
-export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga'] as const
+export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga', 'nh'] as const
 export type ComicSource = typeof COMIC_SOURCES[number]
 /** Set 形式，供 main/preload 的运行时 oneOf 校验复用，避免每处 `new Set(COMIC_SOURCES)` 重复构造 */
 export const SOURCE_VALUES: ReadonlySet<string> = new Set(COMIC_SOURCES)
@@ -968,6 +973,16 @@ export const SOURCE_META = {
     needsDetailEnrich: false,
     supportsTagRecommendation: false,
     supportsTagList: false,
+  },
+  nh: {
+    label: 'NH',
+    supportsRandom: false,
+    supportsFavourites: false,
+    requiresAuth: false,
+    supportsRanking: true,
+    needsDetailEnrich: false,
+    supportsTagRecommendation: false,
+    supportsTagList: true,
   },
 } as const satisfies Record<ComicSource, {
   label: string
@@ -1089,6 +1104,7 @@ export const NOTIFICATION_CHANNELS = {
   UPDATE_CHECK_RESULT: 'update:check-result',
   ALBUM_PROGRESS: 'album:progress',
   MAINTENANCE_PROGRESS: 'maintenance:progress',
+  TAG_LIST_PROGRESS: 'tag-list:progress',
   FATAL_ERROR: 'fatal:error',
   DEEP_LINK: 'app:deep-link',
   STARTUP_PROGRESS: 'startup:progress',
@@ -1110,6 +1126,15 @@ export interface StartupProgressEvent {
   label: string
 }
 
+export interface TagListProgressEvent {
+  source: string
+  currentPage: number
+  totalPages: number
+  totalTags: number
+  status: 'running' | 'completed' | 'error'
+  message?: string
+}
+
 export const PYTHON_NOTIFICATION_METHODS = {
   DOWNLOAD_PROGRESS: 'download_progress',
   MIGRATION_PROGRESS: 'migration_progress',
@@ -1117,6 +1142,7 @@ export const PYTHON_NOTIFICATION_METHODS = {
   MIGRATION_ERROR: 'migration_error',
   ALBUM_PROGRESS: 'album_progress',
   MAINTENANCE_PROGRESS: 'maintenance_progress',
+  TAG_LIST_PROGRESS: 'tag_list_progress',
 } as const
 
 export const CONFIG_KEYS = [
