@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useDrawerStore } from '@/stores/useDrawerStore'
+import { sourceNeedsDetailEnrich } from '@/utils/source'
 import type { ComicInfo } from '@shared/types'
 
 // --- Mocks（必须用 @/ 别名，相对路径 mock 会失效导致真实模块加载、jsdom 下渲染循环 OOM）---
@@ -17,7 +18,9 @@ vi.mock('@/utils/source', () => ({
   normalizeSourceKey: (s: string) => s,
   sourceSupportsFavourites: () => false,
   sourceSupportsTagRecommendation: () => false,
-  sourceNeedsDetailEnrich: () => false,
+  // 默认返回 false（保持现有用例行为：hcomic + 有 tags 不触发 enrich）。
+  // 新 enrich 失败用例通过 vi.mocked(...).mockReturnValue(...) 覆盖为按来源返回。
+  sourceNeedsDetailEnrich: vi.fn(() => false),
 }))
 vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: () => ({
@@ -87,6 +90,14 @@ afterEach(() => {
 
 // 等待异步 effect（mock 的 IPC hook resolve 触发的 state 更新）沉淀，避免 act() 警告
 const settle = () => new Promise(resolve => setTimeout(resolve, 0))
+
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(resolvePromise => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
 
 describe('ComicInfoDrawer - 点击 tag 加入搜索', () => {
   beforeEach(async () => {
@@ -212,5 +223,112 @@ describe('ComicInfoDrawer - 元数据信息渲染', () => {
     expect(screen.queryByText(/更新/)).not.toBeInTheDocument()
     // category 文案不渲染
     expect(screen.queryByText('artist cg')).not.toBeInTheDocument()
+  })
+})
+
+describe('ComicInfoDrawer - tag enrich 失败兜底', () => {
+  // 模拟 JM 收藏夹条目：sourceSite='jm'、列表项无 tags（JM 收藏夹 HTML 不含 tag 字段）。
+  const jmComicNoTags: ComicInfo = {
+    id: 'jm-1',
+    title: 'JM 测试漫画',
+    url: 'https://example.com/album/jm-1',
+    coverUrl: 'https://example.com/cover.jpg',
+    source: 'JM',
+    sourceSite: 'jm',
+    author: '作者J',
+    tags: [],
+  }
+
+  const mockedNeedsEnrich = vi.mocked(sourceNeedsDetailEnrich)
+
+  beforeEach(() => {
+    // 现有用例（hcomic+有tags）依赖默认 false；此处仅在本 describe 内覆盖为 true。
+    mockedNeedsEnrich.mockReturnValue(true)
+    // 隔离：重置 getComicDetail mock，每个用例自行 mockResolvedValueOnce
+    mockGetComicDetail.mockReset()
+  })
+
+  afterEach(() => {
+    // 恢复默认，避免影响其它 describe
+    mockedNeedsEnrich.mockReturnValue(false)
+    mockGetComicDetail.mockResolvedValue({ comic: null })
+  })
+
+  it('JM 列表项无 tags 且 enrich 失败（comic=null）时显示重试 UI', async () => {
+    mockGetComicDetail.mockResolvedValueOnce({ comic: null })
+    openDrawerWith(jmComicNoTags)
+    await settle()
+
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.getByText('标签加载失败')).toBeInTheDocument()
+    expect(screen.getByText('重试')).toBeInTheDocument()
+  })
+
+  it('首次 enrich 请求未完成时只显示加载提示，不误报失败', async () => {
+    const detailRequest = deferred<{ comic: ComicInfo | null }>()
+    mockGetComicDetail.mockReturnValueOnce(detailRequest.promise)
+    openDrawerWith(jmComicNoTags)
+
+    render(<ComicInfoDrawer />)
+
+    expect(await screen.findByText('标签加载中...')).toBeInTheDocument()
+    expect(screen.queryByText('标签加载失败')).not.toBeInTheDocument()
+    expect(screen.queryByText('重试')).not.toBeInTheDocument()
+
+    await act(async () => {
+      detailRequest.resolve({ comic: null })
+      await detailRequest.promise
+    })
+
+    expect(await screen.findByText('标签加载失败')).toBeInTheDocument()
+    expect(screen.getByText('重试')).toBeInTheDocument()
+  })
+
+  it('点击重试后 enrich 成功则失败 UI 消失、标签渲染', async () => {
+    const user = userEvent.setup()
+    // 第一次 enrich（effect 初次触发）：返回 null → 失败 UI
+    mockGetComicDetail.mockResolvedValueOnce({ comic: null })
+    openDrawerWith(jmComicNoTags)
+    await settle()
+
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.getByText('标签加载失败')).toBeInTheDocument()
+
+    // 第二次 enrich（点重试触发）：先保持 pending，验证 loading UI，再返回带 tags 的 comic
+    const retryRequest = deferred<{ comic: ComicInfo | null }>()
+    mockGetComicDetail.mockReturnValueOnce(retryRequest.promise)
+
+    await user.click(screen.getByText('重试'))
+
+    expect(await screen.findByText('标签加载中...')).toBeInTheDocument()
+    expect(screen.queryByText('标签加载失败')).not.toBeInTheDocument()
+    expect(screen.queryByText('重试')).not.toBeInTheDocument()
+
+    await act(async () => {
+      retryRequest.resolve({ comic: { ...jmComicNoTags, tags: ['百合', '全彩'] } })
+      await retryRequest.promise
+    })
+
+    await waitFor(() => expect(screen.getByText('百合')).toBeInTheDocument())
+    expect(screen.queryByText('标签加载失败')).not.toBeInTheDocument()
+    expect(screen.getByText('全彩')).toBeInTheDocument()
+  })
+
+  it('enrich 成功时不显示失败 UI', async () => {
+    mockGetComicDetail.mockResolvedValueOnce({
+      comic: { ...jmComicNoTags, tags: ['成功标签'] },
+    })
+    openDrawerWith(jmComicNoTags)
+    await settle()
+
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.queryByText('标签加载失败')).not.toBeInTheDocument()
+    expect(screen.getByText('成功标签')).toBeInTheDocument()
   })
 })

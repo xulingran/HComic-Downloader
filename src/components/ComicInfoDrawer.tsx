@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -32,6 +32,11 @@ export function ComicInfoDrawer() {
   const [showTagToast, setShowTagToast] = useState(false)
   const tagToastTimerRef = useRef<number>(0)
   const [enrichedComic, setEnrichedComic] = useState<ComicInfo | null>(null)
+  // enrich 状态机：与 favouritesState 同构的四态。
+  // idle=未触发 enrich；loading=请求中；success=拿到 comic；error=请求抛错或 comic 为 null（原 bug 静默忽略 null）。
+  const [enrichState, setEnrichState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  // retryCount 驱动 enrich effect 重新执行（点击重试时自增），避免把 fetch 逻辑抽成独立函数。
+  const [retryCount, setRetryCount] = useState(0)
   const [drawerFavTags, setDrawerFavTags] = useState<{ tag: string; count: number }[]>([])
 
   const comicSource = drawerComic?.sourceSite || 'hcomic'
@@ -65,6 +70,8 @@ export function ComicInfoDrawer() {
   // moeimg/jm search cards omit some fields (full tag set, page count,
   // works/characters), so enrich from the detail page when the drawer opens.
   // Also enrich when comic data lacks tags (e.g. from history records) regardless of source.
+  // 失败（请求抛错 或 comic===null，后者是 JM 详情页被 Cloudflare/限制级拦截的主要形态）
+  // 必须置为 error 状态供 UI 反馈，禁止静默吞错。
   useEffect(() => {
     if (!isOpen || !drawerComic?.id) {
       return
@@ -73,20 +80,47 @@ export function ComicInfoDrawer() {
     if (!sourceNeedsDetailEnrich(comicSource) && hasCompleteData) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setEnrichedComic(null)
+      setEnrichState('idle')
       return
     }
     let cancelled = false
     setEnrichedComic(null)
+    setEnrichState('loading')
     getComicDetail(drawerComic.id, comicSource, drawerComic.url || '')
       .then((result) => {
-        if (!cancelled && result.comic) {
+        if (cancelled) return
+        if (result.comic) {
           setEnrichedComic(result.comic)
+          setEnrichState('success')
+        } else {
+          // comic===null：详情页请求失败（拦截/限流/下架）。原代码静默忽略，这是 bug 核心。
+          setEnrichState('error')
         }
       })
-      .catch(() => {})
+      .catch(() => {
+        if (!cancelled) {
+          setEnrichState('error')
+        }
+      })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, drawerComic?.id, comicSource])
+  }, [isOpen, drawerComic?.id, comicSource, retryCount])
+
+  // 手动重试 enrich：自增 retryCount 驱动上面的 effect 重新执行。
+  // 不关闭抽屉、不重置其它状态（如收藏状态），仅重跑 enrich。
+  const retryEnrich = useCallback(() => {
+    setEnrichState('loading')
+    setRetryCount(n => n + 1)
+  }, [])
+
+  // enrich 状态 UI 的显示条件封装（与 enrich effect 的进入条件同构）。
+  // shouldEnrich 保证只在"本就需要 enrich"的场景反馈，避免对列表项自带 tags 的来源误报；
+  // tagsEmpty 保证列表项已有 tags 时即便 enrich 失败也正常展示 tags 而非状态 UI。
+  const hasCompleteData = Array.isArray(drawerComic?.tags) && drawerComic.tags.length > 0
+  const shouldEnrich = sourceNeedsDetailEnrich(comicSource) || !hasCompleteData
+  const tagsEmpty = !(displayComic?.tags && displayComic.tags.length > 0)
+  const showEnrichLoading = shouldEnrich && tagsEmpty && enrichState === 'loading'
+  const showEnrichError = shouldEnrich && tagsEmpty && enrichState === 'error'
 
   useEffect(() => {
     if (!isOpen || !drawerComic?.id || !sourceSupportsFavourites(comicSource)) {
@@ -372,6 +406,29 @@ export function ComicInfoDrawer() {
                     </button>
                   </span>
                 ))}
+              </div>
+            </div>
+          )}
+
+          {showEnrichLoading && (
+            <div>
+              <span className="text-xs text-[var(--text-secondary)]">标签</span>
+              <div className="mt-2 text-sm text-[var(--text-secondary)]">标签加载中...</div>
+            </div>
+          )}
+
+          {showEnrichError && (
+            <div>
+              <span className="text-xs text-[var(--text-secondary)]">标签</span>
+              <div className="flex items-center gap-2 mt-2">
+                <span className="text-sm text-[var(--error)]">标签加载失败</span>
+                <button
+                  onClick={retryEnrich}
+                  className="text-xs px-2 py-0.5 rounded-md bg-[var(--accent)]/10 text-[var(--accent)]
+                             hover:bg-[var(--accent)]/20 transition-colors"
+                >
+                  重试
+                </button>
               </div>
             </div>
           )}
