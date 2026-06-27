@@ -22,13 +22,19 @@ def cache(tmp_path):
     return PreviewCacheDB(db_path=db_path, files_dir=files_dir, max_size_mb=1)
 
 
+def _file_path(cache, url_hash):
+    """Join the cache files_dir with a url_hash returned by get()."""
+    return os.path.join(cache._files_dir, url_hash)
+
+
 def test_put_and_get(cache):
     url = "https://example.com/images/1.webp"
     raw = b"pretend-webp-bytes"
     cache.put(url, raw)
 
-    path = cache.get(url)
-    assert path is not None
+    url_hash = cache.get(url)
+    assert url_hash is not None
+    path = _file_path(cache, url_hash)
     assert os.path.exists(path)
     with open(path, "rb") as f:
         assert f.read() == raw
@@ -84,7 +90,7 @@ def test_get_stats(cache):
 def test_clear_all(cache):
     cache.put("https://example.com/a.webp", b"aaa")
     cache.put("https://example.com/b.webp", b"bbb")
-    paths = [
+    url_hashes = [
         cache.get("https://example.com/a.webp"),
         cache.get("https://example.com/b.webp"),
     ]
@@ -93,8 +99,9 @@ def test_clear_all(cache):
 
     assert cache.get_stats()["file_count"] == 0
     assert cache.get_stats()["total_size_bytes"] == 0
-    for p in paths:
-        assert not os.path.exists(p)
+    for h in url_hashes:
+        assert h is not None
+        assert not os.path.exists(_file_path(cache, h))
 
 
 def test_update_max_size(cache):
@@ -107,9 +114,9 @@ def test_same_url_overwrites(cache):
     cache.put(url, b"short")
     cache.put(url, b"much-longer-content")
 
-    path = cache.get(url)
-    assert path is not None
-    with open(path, "rb") as f:
+    url_hash = cache.get(url)
+    assert url_hash is not None
+    with open(_file_path(cache, url_hash), "rb") as f:
         assert f.read() == b"much-longer-content"
     assert cache.get_stats()["file_count"] == 1
 

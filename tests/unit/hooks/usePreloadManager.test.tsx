@@ -5,7 +5,7 @@ import { usePreloadManager } from '@/hooks/usePreloadManager'
 const mockFetch = vi.fn()
 beforeEach(() => {
   vi.clearAllMocks()
-  mockFetch.mockResolvedValue({ dataUri: 'data:image/png;base64,AAA' })
+  mockFetch.mockResolvedValue({ urlHash: 'a'.repeat(64) })
   Object.defineProperty(window, 'hcomic', {
     value: { fetchPreviewImage: mockFetch },
     configurable: true,
@@ -131,7 +131,7 @@ describe('usePreloadManager (adaptive disabled, regression)', () => {
   })
 
   it('cached page content survives params jitter — already-loaded pages remain in cache (no data loss)', async () => {
-    // 更强的不变量：params 抖动不仅不应重复 fetch，已写入缓存的页面 dataUri 必须保持可读。
+    // 更强的不变量：params 抖动不仅不应重复 fetch，已写入缓存的页面 urlHash 必须保持可读。
     // 这锁定的是「用户视角页面不丢失」而非仅「没多调一次 fetch」。对应 regression-guards spec。
     const urls = Array.from({ length: 20 }, (_, i) => `u${i + 1}`)
     const { result, rerender } = renderHook(
@@ -154,8 +154,8 @@ describe('usePreloadManager (adaptive disabled, regression)', () => {
     // 不变量：抖动后缓存内容必须完整保留，不得有页丢失
     const cacheAfter = result.current.imageCacheRef.current
     expect(cacheAfter.size).toBeGreaterThanOrEqual(cacheBefore.size)
-    cacheBefore.forEach((dataUri, idx) => {
-      expect(cacheAfter.get(idx)).toBe(dataUri)
+    cacheBefore.forEach((urlHash, idx) => {
+      expect(cacheAfter.get(idx)).toBe(urlHash)
     })
   })
 })

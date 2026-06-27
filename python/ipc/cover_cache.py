@@ -21,7 +21,7 @@ from collections import OrderedDict
 
 from utils import open_sqlite_db
 
-from .image_utils import _now, detect_image_type
+from .image_utils import _now
 
 logger = logging.getLogger(__name__)
 
@@ -225,8 +225,25 @@ class CoverCacheDB:
         """
         return os.path.abspath(os.path.dirname(self._db_path))
 
+    @property
+    def files_dir(self) -> str:
+        """Absolute path of the directory holding the raw image byte files.
+
+        Used by the ``app-image://`` protocol handler (Electron main process)
+        to locate cover image files by url_hash.
+        """
+        return os.path.abspath(self._files_dir)
+
     def get(self, url: str) -> str | None:
-        """Return cached data URI or *None*."""
+        """Return cached ``url_hash`` (the disk file name) or *None*.
+
+        Performs only an existence check (``os.path.exists``); it does **not**
+        read image bytes or base64-encode them. Deep validity probing of the
+        bytes (magic bytes recognition) is no longer done here — the fetch path
+        validates bytes via ``detect_image_type`` before ``put``, so on-disk
+        files are trusted. If the backing file vanished externally the record is
+        purged and ``None`` returned.
+        """
         with self._lock:
             if url not in self._lru:
                 return None
@@ -242,38 +259,30 @@ class CoverCacheDB:
                 # File vanished externally — drop the stale record.
                 self._purge_entry(url, file_path)
                 return None
-            with open(file_path, "rb") as f:
-                content = f.read()
-            content_type = detect_image_type(content)
-            if not content_type:
-                # Bytes are not a recognized image (corruption / wrong content) —
-                # treat like a vanished file: purge file + record + LRU so the
-                # bad entry does not linger and fail on every subsequent get.
-                logger.debug("Cover cache hit for %s but bytes are not a recognized image", url)
-                self._purge_entry(url, file_path)
-                return None
             now = _now()
             self._conn.execute("UPDATE cover_cache SET last_access = ? WHERE url = ?", (now, url))
             self._conn.commit()
             self._lru.move_to_end(url)
-            b64 = base64.b64encode(content).decode("ascii")
-            return f"data:{content_type};base64,{b64}"
+            # file_name is the url_hash (sha256(url).hexdigest()), also the
+            # disk file name and the identifier downstream layers use to build
+            # the app-image:// protocol URL.
+            return file_name
 
-    def put(self, url: str, data_uri: str) -> None:
-        """Store a data URI in the file + SQLite cache."""
+    def put(self, url: str, raw_bytes: bytes) -> None:
+        """Store raw image bytes in the file + SQLite cache.
+
+        ``raw_bytes`` must be the original image bytes (no base64 wrapping).
+        ``size`` records the raw byte count (matching PreviewCacheDB) so
+        get_stats()/eviction reflect true disk usage.
+        """
         with self._lock:
             url_hash = hashlib.sha256(url.encode()).hexdigest()
             file_name = url_hash
 
-            # Decode once and reuse for both the on-disk write and the size
-            # accounting. ``size`` records the *raw decoded byte count* (matching
-            # PreviewCacheDB) so get_stats()/eviction reflect true disk usage,
-            # not the inflated base64 string length.
-            raw = self._decode_data_uri(data_uri)
             file_path = os.path.join(self._files_dir, file_name)
             with open(file_path, "wb") as f:
-                f.write(raw)
-            size = len(raw)
+                f.write(raw_bytes)
+            size = len(raw_bytes)
             now = _now()
 
             self._conn.execute(

@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react'
+import { buildImageUrl } from '@/lib/image-url'
 
 interface ReaderPageProps {
   url: string
   index: number
   priority?: boolean
-  cachedDataUri?: string
+  cachedUrlHash?: string
   scrambleId?: string
   comicId?: string
   imageQuality?: string
@@ -16,10 +17,10 @@ interface ReaderPageProps {
   retryGen?: number
 }
 
-export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: ReaderPageProps) {
+export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: ReaderPageProps) {
   const [error, setError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const [dataUri, setDataUri] = useState<string | null>(null)
+  const [urlHash, setUrlHash] = useState<string | null>(null)
   const [retryTick, setRetryTick] = useState(0)
   const containerRef = useRef<HTMLDivElement>(null)
   const [isVisible, setIsVisible] = useState(false)
@@ -35,7 +36,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(false)
     setErrorMessage('')
-    setDataUri(null)
+    setUrlHash(null)
     setRetryTick(0)
   }, [url])
 
@@ -51,13 +52,13 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
   }, [])
 
   useEffect(() => {
-    if (cachedDataUri && !dataUri) {
+    if (cachedUrlHash && !urlHash) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDataUri(cachedDataUri)
+      setUrlHash(cachedUrlHash)
       onLoadedRef.current?.(index)
       return
     }
-    if (dataUri || error) return
+    if (urlHash || error) return
     if (!isVisible && !priority) return
     let cancelled = false
 
@@ -65,10 +66,10 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
       .then(() => window.hcomic!.fetchPreviewImage(url, scrambleId, comicId, imageQuality))
       .then((result) => {
         if (cancelled) return
-        if (!result?.dataUri) {
+        if (!result?.urlHash) {
           throw new Error('Empty preview image response')
         }
-        setDataUri(result.dataUri)
+        setUrlHash(result.urlHash)
         onLoadedRef.current?.(index)
       })
       .catch((err) => {
@@ -79,10 +80,10 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
         onFailedRef.current?.(index)
       })
     return () => { cancelled = true }
-  }, [cachedDataUri, dataUri, error, isVisible, priority, retryTick, url, scrambleId, comicId, imageQuality, index])
+  }, [cachedUrlHash, urlHash, error, isVisible, priority, retryTick, url, scrambleId, comicId, imageQuality, index])
 
   // 父级"全部重试"：retryGen 变化时，仅当当前处于 error 态才重置触发重载。
-  // 已成功页（dataUri 存在、无 error）不受打扰。
+  // 已成功页（urlHash 存在、无 error）不受打扰。
   useEffect(() => {
     if (retryGen === undefined) return
     if (retryGen === 0) return // 初始值，不触发
@@ -90,7 +91,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(false)
     setErrorMessage('')
-    setDataUri(null)
+    setUrlHash(null)
     setRetryTick((t) => t + 1)
     // 仅依赖 retryGen 与 error；其余 state 通过 set 触发既有加载 effect
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -99,7 +100,7 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
   const retry = () => {
     setError(false)
     setErrorMessage('')
-    setDataUri(null)
+    setUrlHash(null)
     setRetryTick(t => t + 1)
   }
 
@@ -122,10 +123,10 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
   }
 
   return (
-    <div ref={containerRef} style={dataUri ? undefined : { aspectRatio: '3/4' }} className="relative flex items-center justify-center">
-      {(isVisible || priority || dataUri) ? (
+    <div ref={containerRef} style={urlHash ? undefined : { aspectRatio: '3/4' }} className="relative flex items-center justify-center">
+      {(isVisible || priority || urlHash) ? (
         <>
-          {!dataUri && (
+          {!urlHash && (
             <div className="absolute inset-0 flex items-center justify-center">
               <svg className="animate-spin h-6 w-6 text-gray-600" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -133,9 +134,9 @@ export function ReaderPage({ url, index, priority, cachedDataUri, scrambleId, co
               </svg>
             </div>
           )}
-          {dataUri && (
+          {urlHash && (
             <img
-              src={dataUri}
+              src={buildImageUrl('preview', urlHash)}
               alt={`第 ${index + 1} 页`}
               onError={() => {
                 setErrorMessage('浏览器无法解码后端返回的图片')

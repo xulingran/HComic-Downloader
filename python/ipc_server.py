@@ -325,6 +325,7 @@ class IPCServer(
         "resolve_unmatched": "handle_resolve_unmatched",
         "get_cache_stats": "handle_get_cache_stats",
         "get_cache_dir": "handle_get_cache_dir",
+        "get_image_cache_dirs": "handle_get_image_cache_dirs",
         "open_cache_dir": "handle_open_cache_dir",
         "clear_preview_cache": "handle_clear_preview_cache",
         "clear_all_cache": "handle_clear_all_cache",
@@ -611,6 +612,19 @@ class IPCServer(
         the live cache instances so injected test paths are honored.
         """
         return {"dir": self._cover_cache.db_dir}
+
+    def handle_get_image_cache_dirs(self) -> dict:
+        """Return absolute files_dir paths for cover and preview image caches.
+
+        Used by the Electron main process to register the ``app-image://``
+        protocol handler — it must know where to find raw image byte files
+        keyed by url_hash. Derived from live cache instances so injected test
+        paths are honored (see cache-directory-access spec).
+        """
+        return {
+            "cover": self._cover_cache.files_dir,
+            "preview": self._preview_cache.files_dir,
+        }
 
     def handle_clear_preview_cache(self) -> dict:
         """Clear only the preview image cache (keep cover cache)."""

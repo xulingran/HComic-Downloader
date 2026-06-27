@@ -1,7 +1,9 @@
 """Tests for CoverCacheDB file-storage architecture.
 
-Covers the core contract after the ``data_uri``-inline → file-system migration:
-- put / get round-trip byte consistency
+Covers the core contract after the ``data_uri``-inline → file-system migration
+and the subsequent ``get → url_hash`` / ``put → raw_bytes`` contract change
+(optimize-image-memory-pipeline):
+- put(raw_bytes) / get(url) round-trip (get returns url_hash, not data URI)
 - miss returns None
 - LRU eviction deletes disk files
 - clear_all deletes everything
@@ -10,7 +12,7 @@ Covers the core contract after the ``data_uri``-inline → file-system migration
 - reopen is idempotent and fast
 """
 
-import base64
+import hashlib
 import os
 import sys
 
@@ -23,7 +25,6 @@ from ipc.cover_cache import CoverCacheDB  # noqa: E402
 _PNG_1x1 = bytes.fromhex(
     "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489" "0000000d49444154789c63000100000005000100"
 )
-_PNG_DATA_URI = "data:image/png;base64," + base64.b64encode(_PNG_1x1).decode()
 
 
 def _fresh_cache(tmp_path) -> CoverCacheDB:
@@ -32,15 +33,23 @@ def _fresh_cache(tmp_path) -> CoverCacheDB:
     return CoverCacheDB(db_path=db_path, files_dir=files_dir, max_size_mb=10)
 
 
-def test_put_get_roundtrip_byte_consistency(tmp_path):
-    """put(data_uri) → get(url) returns identical decoded bytes."""
+def _file_path(cache, url_or_hash: str) -> str:
+    return os.path.join(cache._files_dir, url_or_hash)
+
+
+def test_put_get_returns_url_hash(tmp_path):
+    """put(raw_bytes) → get(url) returns the url_hash (= disk file name)."""
     cache = _fresh_cache(tmp_path)
     url = "https://h-comic.com/cover/1.jpg"
-    cache.put(url, _PNG_DATA_URI)
+    cache.put(url, _PNG_1x1)
     got = cache.get(url)
     assert got is not None
-    _, b64 = got.split(",", 1)
-    assert base64.b64decode(b64) == _PNG_1x1
+    # url_hash is sha256(url).hexdigest(), also the disk file name
+    expected_hash = hashlib.sha256(url.encode()).hexdigest()
+    assert got == expected_hash
+    # The backing file holds the original raw bytes
+    with open(_file_path(cache, got), "rb") as f:
+        assert f.read() == _PNG_1x1
 
 
 def test_get_missing_returns_none(tmp_path):
@@ -48,14 +57,15 @@ def test_get_missing_returns_none(tmp_path):
     assert cache.get("https://h-comic.com/cover/missing") is None
 
 
-def test_put_get_mime_type_preserved(tmp_path):
-    """MIME type (image/png) must be preserved in returned data URI."""
+def test_put_get_returns_filename_not_data_uri(tmp_path):
+    """get() must NOT return a base64 data URI — it returns the bare url_hash."""
     cache = _fresh_cache(tmp_path)
     url = "https://h-comic.com/cover/png-test"
-    cache.put(url, _PNG_DATA_URI)
+    cache.put(url, _PNG_1x1)
     got = cache.get(url)
     assert got is not None
-    assert got.startswith("data:image/png;base64,")
+    assert not got.startswith("data:"), "get must return url_hash, not a data URI"
+    assert got == hashlib.sha256(url.encode()).hexdigest()
 
 
 def test_lru_eviction_deletes_disk_file_and_record(tmp_path):
@@ -67,7 +77,7 @@ def test_lru_eviction_deletes_disk_file_and_record(tmp_path):
     urls = []
     for i in range(10):
         url = f"https://h-comic.com/cover/{i}.jpg"
-        cache.put(url, _PNG_DATA_URI)
+        cache.put(url, _PNG_1x1)
         urls.append(url)
 
     # At least some entries should have been evicted
@@ -81,7 +91,7 @@ def test_lru_eviction_deletes_disk_file_and_record(tmp_path):
 def test_clear_all_deletes_files_and_records(tmp_path):
     cache = _fresh_cache(tmp_path)
     for i in range(5):
-        cache.put(f"https://h-comic.com/cover/{i}.jpg", _PNG_DATA_URI)
+        cache.put(f"https://h-comic.com/cover/{i}.jpg", _PNG_1x1)
     assert cache.get_stats()["file_count"] == 5
     cache.clear_all()
     stats = cache.get_stats()
@@ -97,11 +107,10 @@ def test_clear_all_deletes_files_and_records(tmp_path):
 def test_get_stats_accuracy(tmp_path):
     cache = _fresh_cache(tmp_path)
     assert cache.get_stats() == {"file_count": 0, "total_size_bytes": 0}
-    cache.put("https://h-comic.com/cover/a.jpg", _PNG_DATA_URI)
+    cache.put("https://h-comic.com/cover/a.jpg", _PNG_1x1)
     stats = cache.get_stats()
     assert stats["file_count"] == 1
-    # size is the decoded raw byte count (matches PreviewCacheDB / true disk
-    # usage), NOT the base64 data-uri string length.
+    # size is the raw byte count (matches PreviewCacheDB / true disk usage)
     assert stats["total_size_bytes"] == len(_PNG_1x1)
 
 
@@ -109,7 +118,7 @@ def test_external_file_deletion_returns_none(tmp_path):
     """When the backing file is removed externally, get returns None and cleans up."""
     cache = _fresh_cache(tmp_path)
     url = "https://h-comic.com/cover/ext-del"
-    cache.put(url, _PNG_DATA_URI)
+    cache.put(url, _PNG_1x1)
     assert cache.get(url) is not None
 
     # Delete the backing file externally
@@ -124,7 +133,7 @@ def test_reopen_idempotent_and_fast(tmp_path):
     db_path = str(tmp_path / "cover_cache.db")
     files_dir = str(tmp_path / "cover_cache")
     cache = CoverCacheDB(db_path=db_path, files_dir=files_dir, max_size_mb=10)
-    cache.put("https://h-comic.com/cover/persist", _PNG_DATA_URI)
+    cache.put("https://h-comic.com/cover/persist", _PNG_1x1)
     cache.close()
 
     import time
@@ -141,52 +150,30 @@ def test_reopen_idempotent_and_fast(tmp_path):
 def test_get_after_clear_then_put(tmp_path):
     """Clear then put + get should work as a fresh cache."""
     cache = _fresh_cache(tmp_path)
-    cache.put("https://h-comic.com/cover/a", _PNG_DATA_URI)
+    cache.put("https://h-comic.com/cover/a", _PNG_1x1)
     cache.clear_all()
     assert cache.get("https://h-comic.com/cover/a") is None
-    cache.put("https://h-comic.com/cover/b", _PNG_DATA_URI)
+    cache.put("https://h-comic.com/cover/b", _PNG_1x1)
     assert cache.get("https://h-comic.com/cover/b") is not None
 
 
-def test_get_unrecognized_bytes_cleans_entry(tmp_path):
-    """Bytes that are not a recognized image are purged: file + record + LRU.
+def test_external_file_deletion_cleans_entry(tmp_path):
+    """When get() hits but the backing file vanished externally, the record is purged.
 
-    We bypass ``put`` (which would reject such bytes via detect_image_type on
-    the get path only) and inject a corrupt file + record directly, then verify
-    that ``get`` cleans it up symmetrically with the "file vanished externally"
-    branch.
+    Note: after optimize-image-memory-pipeline, get() no longer deep-probes
+    bytes (no detect_image_type). It only checks os.path.exists. So a file
+    containing "unrecognized" bytes is still a hit — only a *missing* file
+    triggers cleanup. This test pins the missing-file cleanup branch.
     """
-    import hashlib
-
     cache = _fresh_cache(tmp_path)
-    url = "https://h-comic.com/cover/corrupt"
-    url_hash = hashlib.sha256(url.encode()).hexdigest()
-    file_name = url_hash
+    url = "https://h-comic.com/cover/vanished"
+    cache.put(url, _PNG_1x1)
+    file_path = _file_path(cache, cache.get(url))
+    assert os.path.exists(file_path)
 
-    # Inject a backing file whose bytes are NOT a recognized image type
-    # (detect_image_type returns "" for this magic).
-    corrupt_bytes = b"\x00" * 64
-    with open(os.path.join(cache._files_dir, file_name), "wb") as f:
-        f.write(corrupt_bytes)
-    cache._conn.execute(
-        """INSERT OR REPLACE INTO cover_cache
-           (url_hash, url, file_path, size, fetched_at, last_access)
-           VALUES (?, ?, ?, ?, ?, ?)""",
-        (url_hash, url, file_name, len(corrupt_bytes), 0.0, 0.0),
-    )
-    cache._conn.commit()
-    cache._lru[url] = None
-    file_path = os.path.join(cache._files_dir, file_name)
-    assert os.path.exists(file_path), "precondition: corrupt file present"
+    os.remove(file_path)  # simulate external deletion
 
-    # get() must return None and purge the entry.
-    assert cache.get(url) is None, "unrecognized bytes should yield None and be purged"
-
-    # File, record and LRU entry all gone.
-    assert not os.path.exists(file_path), "corrupt file should be deleted after get"
-    row = cache._conn.execute("SELECT 1 FROM cover_cache WHERE url = ?", (url,)).fetchone()
-    assert row is None, "corrupt record should be deleted after get"
-    assert url not in cache._lru, "corrupt entry should be removed from LRU"
-
-    # A subsequent get is a clean miss (no decode retry).
     assert cache.get(url) is None
+    row = cache._conn.execute("SELECT 1 FROM cover_cache WHERE url = ?", (url,)).fetchone()
+    assert row is None, "record should be deleted after file vanished"
+    assert url not in cache._lru

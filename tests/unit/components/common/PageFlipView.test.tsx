@@ -7,7 +7,7 @@ const mockFetchPreviewImage = vi.fn()
 
 beforeEach(() => {
   vi.clearAllMocks()
-  mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,page' })
+  mockFetchPreviewImage.mockResolvedValue({ urlHash: 'c'.repeat(64) })
   Object.defineProperty(window, 'hcomic', {
     value: { fetchPreviewImage: mockFetchPreviewImage },
     writable: true,

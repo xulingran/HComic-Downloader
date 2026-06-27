@@ -32,7 +32,7 @@ vi.mock('@/stores/useReaderStore', () => ({
 
 // Mock useCoverImage — MissingGroup 内部使用它渲染封面
 vi.mock('@/hooks/useCoverImage', () => ({
-  useCoverImage: () => ({ coverSrc: 'data:image/png;base64,mock', retry: vi.fn() }),
+  useCoverImage: () => ({ coverSrc: 'app-image://cover/mockhash', retry: vi.fn() }),
 }))
 
 // 可变的 settingsStore 状态镜像：MissingGroup 用 sfwMode，MissingChapterDetector

@@ -94,6 +94,12 @@ vi.mock('electron', () => {
         webRequest: { onHeadersReceived: vi.fn() },
       }),
     },
+    protocol: {
+      handle: vi.fn(),
+    },
+    net: {
+      fetch: vi.fn(),
+    },
   }
 })
 
@@ -139,9 +145,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 72 total
+      // 73 total
       const count = handleCalls.length
-      expect(count).toBe(72)
+      expect(count).toBe(73)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -252,7 +258,7 @@ describe('main.ts', () => {
         'check_downloaded_status', 'start_migration', 'confirm_migration', 'pause_migration', 'resume_migration',
         'cancel_migration', 'get_migration_status', 'resolve_unmatched',
         'add_to_favourites', 'check_favourite', 'remove_from_favourites',
-        'get_cache_stats', 'get_cache_dir', 'open_cache_dir', 'clear_preview_cache', 'clear_all_cache',
+        'get_cache_stats', 'get_cache_dir', 'get_image_cache_dirs', 'open_cache_dir', 'clear_preview_cache', 'clear_all_cache',
         'get_history', 'add_history', 'delete_history', 'clear_history',
         'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
         'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',

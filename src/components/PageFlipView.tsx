@@ -2,6 +2,7 @@ import { useRef, useCallback, useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { DisplayMode, BlankPosition } from '../hooks/useReaderSettings'
 import { usePageFlipVariants } from '../lib/anim'
+import { buildImageUrl } from '@/lib/image-url'
 import { Skeleton } from './common/Skeleton'
 
 interface PageFlipViewProps {
@@ -177,13 +178,13 @@ export function PageFlipView({
         <div className="h-full flex items-center justify-center" style={{ gap: '4px' }}>
           <div className="h-full flex items-center justify-center">
             {leftIsBlank ? <BlankPage /> : (
-              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
+              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
             )}
           </div>
           {(rightRealIdx !== null || rightIsBlank) && (
             <div className="h-full flex items-center justify-center">
               {rightIsBlank ? <BlankPage /> : (
-                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedDataUri={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
+                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedUrlHash={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
               )}
             </div>
           )}
@@ -193,7 +194,7 @@ export function PageFlipView({
     // single 模式
     return (
       <div className="h-full flex items-center justify-center">
-        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedDataUri={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
+        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
       </div>
     )
   }
@@ -292,8 +293,8 @@ function BlankPage() {
   )
 }
 
-function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: { url: string; index: number; cachedDataUri?: string; scrambleId?: string; comicId?: string; imageQuality?: string; onFailed?: (index: number) => void; onLoaded?: (index: number) => void; retryGen?: number }) {
-  const [dataUri, setDataUri] = useState<string | null>(() => cachedDataUri ?? null)
+function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: { url: string; index: number; cachedUrlHash?: string; scrambleId?: string; comicId?: string; imageQuality?: string; onFailed?: (index: number) => void; onLoaded?: (index: number) => void; retryGen?: number }) {
+  const [urlHash, setUrlHash] = useState<string | null>(() => cachedUrlHash ?? null)
   const [error, setError] = useState(false)
   const [retryTick, setRetryTick] = useState(0)
   // 用 ref 保存最新回调，避免进入下方 effect 依赖数组
@@ -306,24 +307,24 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
 
   useEffect(() => {
     // If cache provides the data, use it directly and skip IPC fetch
-    if (cachedDataUri) {
+    if (cachedUrlHash) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDataUri(cachedDataUri)
+      setUrlHash(cachedUrlHash)
       setError(false)
       onLoadedRef.current?.(index)
       return
     }
 
     // Reset state when url changes and no cache hit
-    setDataUri(null)
+    setUrlHash(null)
     setError(false)
 
     let cancelled = false
     window.hcomic!.fetchPreviewImage(url, scrambleId, comicId, imageQuality)
       .then((result) => {
         if (cancelled) return
-        if (result?.dataUri) {
-          setDataUri(result.dataUri)
+        if (result?.urlHash) {
+          setUrlHash(result.urlHash)
           onLoadedRef.current?.(index)
         } else {
           throw new Error('Empty response')
@@ -336,7 +337,7 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
         }
       })
     return () => { cancelled = true }
-  }, [url, cachedDataUri, scrambleId, comicId, imageQuality, retryTick, index])
+  }, [url, cachedUrlHash, scrambleId, comicId, imageQuality, retryTick, index])
 
   // 父级"全部重试"：retryGen 变化时，仅当当前处于 error 态才重置触发重载
   useEffect(() => {
@@ -344,7 +345,7 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
     if (!error) return
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setError(false)
-    setDataUri(null)
+    setUrlHash(null)
     setRetryTick((t) => t + 1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retryGen])
@@ -352,7 +353,7 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
   // 本地单页重试（不污染父级 retryGen）
   const retry = () => {
     setError(false)
-    setDataUri(null)
+    setUrlHash(null)
     setRetryTick((t) => t + 1)
   }
 
@@ -370,7 +371,7 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
     )
   }
 
-  if (!dataUri) {
+  if (!urlHash) {
     // 变更 5：阅读器首屏用骨架屏替代 spinner，占满阅读区。
     return (
       <Skeleton variant="rect" className="h-full w-full" style={{ aspectRatio: '3/4', maxWidth: '100%' }} />
@@ -379,7 +380,7 @@ function FlipPage({ url, index, cachedDataUri, scrambleId, comicId, imageQuality
 
   return (
     <img
-      src={dataUri}
+      src={buildImageUrl('preview', urlHash)}
       alt={`第 ${index + 1} 页`}
       className="h-full w-auto max-w-none"
       draggable={false}

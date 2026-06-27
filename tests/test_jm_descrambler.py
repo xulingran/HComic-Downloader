@@ -77,6 +77,20 @@ def test_descramble_accepts_image_url():
     assert img.size == (100, 200)
 
 
+def test_descramble_is_deterministic_for_same_url():
+    """相同 url + bytes 两次反混淆结果完全一致（jm 预览缓存可复用的前提）。
+
+    optimize-image-memory-pipeline 让 jm 预览图也查 preview_cache。缓存的
+    落盘字节是反混淆后的，要安全复用必须保证反混淆是确定性纯函数——同一
+    url → 同一 eps_id/page_num → 同一输出字节。
+    """
+    img_bytes = _make_test_image(120, 240)
+    url = "https://cdn.example.com/media/photos/500000/00001.webp"
+    first = descramble_image(img_bytes, eps_id=500000, image_url=url)
+    second = descramble_image(img_bytes, eps_id=500000, image_url=url)
+    assert first == second, "descramble_image must be deterministic for the same input"
+
+
 def _scramble_image(image_bytes: bytes, eps_id: int, page_num: str) -> bytes:
     """混淆图片（用于测试反混淆的正确性）。
 

@@ -193,7 +193,7 @@ interface PreviewUrlsResult {
 }
 
 interface PreviewImageResult {
-  dataUri: string
+  urlHash: string
 }
 
 export interface CacheStats {
@@ -523,7 +523,7 @@ export interface IPCMethods {
   }
   fetch_cover: {
     params: { url: string }
-    result: { dataUri: string }
+    result: { urlHash: string }
   }
   pause_task: {
     params: { task_id: string }
@@ -612,6 +612,10 @@ export interface IPCMethods {
   get_cache_dir: {
     params: Record<string, never>
     result: { dir: string }
+  }
+  get_image_cache_dirs: {
+    params: Record<string, never>
+    result: { cover: string; preview: string }
   }
   open_cache_dir: {
     params: Record<string, never>
@@ -774,6 +778,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:resolve-unmatched': 'resolve_unmatched',
   'python:get-cache-stats': 'get_cache_stats',
   'python:get-cache-dir': 'get_cache_dir',
+  'python:get-image-cache-dirs': 'get_image_cache_dirs',
   'python:open-cache-dir': 'open_cache_dir',
   'python:clear-preview-cache': 'clear_preview_cache',
   'python:clear-all-cache': 'clear_all_cache',
@@ -831,7 +836,7 @@ export interface HcomicAPI {
   bikaCategories(): Promise<{ categories: Array<{ id: string; title: string; thumb: string }> }>
   hcomicLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
-  fetchCover(url: string): Promise<{ dataUri: string }>
+  fetchCover(url: string): Promise<{ urlHash: string }>
   openUrl(url: string): Promise<void>
   openLoginWindow(source?: string): Promise<{ success: boolean; message?: string }>
   onDownloadProgress(callback: (data: DownloadProgressEvent) => void): () => void
@@ -861,6 +866,7 @@ export interface HcomicAPI {
   resolveUnmatched(matches: Array<{ dbKey: string[]; file_path: string }>): Promise<{ resolved: number }>
   getCacheStats(): Promise<CacheStats>
   getCacheDir(): Promise<{ dir: string }>
+  getImageCacheDirs(): Promise<{ cover: string; preview: string }>
   openCacheDir(dirPath: string): Promise<{ success: boolean }>
   clearPreviewCache(): Promise<{ success: boolean }>
   clearAllCache(): Promise<{ success: boolean }>
@@ -1076,6 +1082,7 @@ export const IPC_CHANNELS = {
   RESOLVE_UNMATCHED: 'python:resolve-unmatched',
   GET_CACHE_STATS: 'python:get-cache-stats',
   GET_CACHE_DIR: 'python:get-cache-dir',
+  GET_IMAGE_CACHE_DIRS: 'python:get-image-cache-dirs',
   OPEN_CACHE_DIR: 'python:open-cache-dir',
   CLEAR_PREVIEW_CACHE: 'python:clear-preview-cache',
   CLEAR_ALL_CACHE: 'python:clear-all-cache',

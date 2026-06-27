@@ -1,7 +1,8 @@
-import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, crashReporter } from 'electron'
+import { app, BrowserWindow, clipboard, dialog, ipcMain, net, protocol, shell, crashReporter } from 'electron'
 import fs from 'fs'
 import path from 'path'
 import { getPythonBridge } from './python-bridge'
+import { resolveImageCacheFile } from './image-protocol'
 import { checkForUpdates } from './update-checker'
 import { NotificationManager } from './notification-manager'
 import { openLoginWindow } from './login-window'
@@ -344,6 +345,63 @@ function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
   win.loadURL(url).catch(() => {})
 }
 
+// ── app-image:// protocol: stream disk-cached images to <img> without JS heap ──
+
+/**
+ * Cached absolute paths to the cover/preview image byte-file directories.
+ * Fetched once from the Python backend (which owns the live cache instances)
+ * and reused for every subsequent protocol request. `null` = not yet fetched.
+ *
+ * See specs/image-protocol-delivery and specs/cache-directory-access: the
+ * handler must use the *real* files_dir of the cache instances (not a
+ * hardcoded default) so injected test paths are honored.
+ */
+let imageCacheDirs: { cover: string; preview: string } | null = null
+
+async function getImageCacheDirs(): Promise<{ cover: string; preview: string }> {
+  if (imageCacheDirs) return imageCacheDirs
+  const dirs = await getPythonBridge().call('get_image_cache_dirs') as { cover: string; preview: string }
+  imageCacheDirs = dirs
+  return dirs
+}
+
+/**
+ * Register the `app-image://` protocol. Streams raw image byte files from the
+ * disk cache straight to Chromium — image bytes never touch the renderer JS
+ * heap (no base64, no JSON). Chromium manages decoding + its own memory LRU.
+ *
+ * URL form: `app-image://cover/{url_hash}` or `app-image://preview/{url_hash}`.
+ * Security: url_hash is strictly validated as a 64-char hex SHA-256, and the
+ * resolved path is prefix-checked against the authorized cache dir to block
+ * path traversal. Missing files yield HTTP 404 (renderer retries via fetch).
+ *
+ * Must be called after `app.whenReady()` and before `createWindow()`.
+ */
+function setupImageProtocol() {
+  protocol.handle('app-image', async (request) => {
+    const url = new URL(request.url)
+    // url.hostname for custom schemes holds the first path segment value
+    // (e.g. "cover" in app-image://cover/<hash>).
+    const kind = url.hostname
+
+    let dirs: { cover: string; preview: string }
+    try {
+      dirs = await getImageCacheDirs()
+    } catch {
+      return new Response('Cache dirs unavailable', { status: 503 })
+    }
+
+    // Delegate parsing + security validation to the pure, testable resolver.
+    const resolved = resolveImageCacheFile(kind, url.pathname, dirs, (p) => fs.existsSync(p))
+    if ('status' in resolved) {
+      return new Response(resolved.reason, { status: resolved.status })
+    }
+
+    // Stream the file straight to Chromium via net.fetch on a file:// URL.
+    return net.fetch('file://' + resolved.filePath.replace(/\\/g, '/'))
+  })
+}
+
 /**
  * 需要宽松 CSP（含 'unsafe-eval'）的 webContents 集合 —— 登录窗口加载的第三方
  * SPA（Auth0 / h-comic / jm 镜像）需要在 script-src 中放宽 'unsafe-eval'。
@@ -362,7 +420,7 @@ function setupCSP(win: BrowserWindow) {
     "default-src 'self'",
     isDev ? "script-src 'self' 'unsafe-inline'" : "script-src 'self'",
     "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https:",
+    "img-src 'self' data: https: app-image:",
     "font-src 'self' data:",
     isDev ? "connect-src 'self' https: ws:" : "connect-src 'self' https:",
     "media-src 'self' data: blob:",
@@ -1065,6 +1123,10 @@ function registerCacheHandlers(bridge: Bridge) {
     return bridge.call('get_cache_dir')
   })
 
+  ipcMain.handle(IPC_CHANNELS.GET_IMAGE_CACHE_DIRS, async () => {
+    return bridge.call('get_image_cache_dirs')
+  })
+
   ipcMain.handle(IPC_CHANNELS.OPEN_CACHE_DIR, async (_, dirPath: unknown) => {
     return openDirectoryInFileManager(dirPath, 'Cache')
   })
@@ -1408,6 +1470,11 @@ app.whenReady().then(() => {
     if (process.platform !== 'linux') {
       app.setAsDefaultProtocolClient('hcomic')
     }
+
+    // ── app-image:// protocol: stream cached images to <img> without JS heap ──
+    // Must register before createWindow so the scheme is ready when the
+    // renderer first requests an image.
+    setupImageProtocol()
 
     createWindow()
     registerIPCHandlers()

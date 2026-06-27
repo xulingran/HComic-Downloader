@@ -40,7 +40,7 @@ vi.mock('@/stores/useSettingsStore', () => ({
   useSettingsStore: (selector: (s: typeof storeState) => unknown) => selector(storeState),
 }))
 
-const mockCoverSrc: { current: string | null } = { current: 'data:image/png;base64,mock' }
+const mockCoverSrc: { current: string | null } = { current: 'app-image://cover/mockhash' }
 vi.mock('@/hooks/useCoverImage', () => ({
   useCoverImage: () => ({ coverSrc: mockCoverSrc.current, retry: vi.fn() }),
 }))
@@ -58,7 +58,7 @@ describe('DuplicateGroup', () => {
   beforeEach(() => {
     mockOpenDrawer.mockClear(); mockOpenReader.mockClear()
     storeState.sfwMode = false
-    mockCoverSrc.current = 'data:image/png;base64,mock'
+    mockCoverSrc.current = 'app-image://cover/mockhash'
   })
 
   it('renders group header with comic count', () => {

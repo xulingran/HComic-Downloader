@@ -63,33 +63,40 @@
 
 ### 需求:对外 API 契约必须与旧实现兼容
 
-`CoverCacheDB` 的对外方法签名**必须**与旧实现保持兼容：`get(url) -> str | None`、`put(url, data_uri: str) -> None`、`get_stats() -> dict`、`clear_all() -> None`、`update_max_size(max_size_mb: int) -> None`、`db_dir -> str` 属性、`close() -> None`。构造参数 `db_path`、`max_size_mb` **必须**保留。调用方（`cover_mixin`、`config_mixin`、`ipc_server`、`download_mixin`）**禁止**因本次变更而修改其调用代码。
+`CoverCacheDB` 的对外方法签名**必须**改为（本变更显式覆盖该需求的原内容——原要求 `get(url) -> str | None` 返回 dataUri、`put(url, data_uri: str) -> None`、保持调用方不变；为消除 base64 全栈拷贝，改为返回 `url_hash`、put 接收原始字节，并要求调用方相应迁移）：
+- `get(url) -> str | None`：返回 `url_hash`（即 `sha256(url).hexdigest()`，同时是磁盘文件名），**禁止**返回 dataUri 或重新 base64 编码字节。
+- `put(url, raw_bytes: bytes) -> None`：接收**原始图片字节**，**禁止**接收 dataUri 字符串或内部再做 base64 decode。
+- `get_stats() -> dict`、`clear_all() -> None`、`update_max_size(max_size_mb: int) -> None`、`db_dir -> str`、`close() -> None` 保持不变。
 
-`put` 与迁移路径写入的 `size` 元数据**必须**等于解码后的原始图片字节数（`len(raw_bytes)`），**禁止**记录 base64 data URI 字符串长度。`get_stats()["total_size_bytes"]` **必须**等于所有有效条目磁盘文件实际字节数之和，与 `PreviewCacheDB` 口径一致。
+签名变更后 `CoverCacheDB` 与 `PreviewCacheDB` 的字节级 API 对齐（两者均 `put(url, raw_bytes)`、`get(url) -> 路径标识`）。调用方（`cover_mixin`）**必须**相应迁移：fetch 后直接 `put(url, raw_bytes)`，从 `get(url)` 拿 url_hash 下发给前端。
 
-#### 场景:get 返回的 data URI 与写入时解码字节一致
+`put` 写入的 `size` 元数据**必须**等于 `len(raw_bytes)`（已是原始字节，无需 decode）。`get_stats()["total_size_bytes"]` 口径不变。
 
-- **当** `put(url, "data:image/jpeg;base64,/9j/...")` 后调用 `get(url)`
-- **那么** 返回的 data URI 解码后的字节与原写入字节逐字节相同
-- **且** MIME 类型一致（`image/jpeg`）
+#### 场景:get 返回 url_hash 而非 dataUri
 
-#### 场景:get_stats 返回文件数与总字节数
+- **当** `put(url, raw_bytes)` 后调用 `get(url)` 且命中
+- **那么** 返回 `sha256(url).hexdigest()`（url_hash 字符串）
+- **且** **禁止**读取磁盘文件字节、**禁止**执行 base64 编码
+- **且** 该 url_hash 与磁盘文件名一致
+
+#### 场景:put 接收原始字节
+
+- **当** 调用 `put(url, raw_bytes)`，其中 `raw_bytes` 为 N 字节的原始图片字节
+- **那么** 系统将 `raw_bytes` 直接写入 `{files_dir}/{url_hash}` 文件
+- **且** SQLite 记录 `size = N`
+- **且** **禁止**接收 dataUri 字符串或内部 base64 decode
+
+#### 场景:缓存缺失返回 None
+
+- **当** 调用 `get(url)` 且 url 不在 LRU 索引中
+- **那么** 返回 `None`
+- **且** 不发起任何磁盘读
+
+#### 场景:get_stats 口径不变
 
 - **当** 缓存中有 M 个有效条目，总磁盘字节数 S
 - **那么** `get_stats()` 返回 `{"file_count": M, "total_size_bytes": S}`
-- **且** `total_size_bytes` 等于所有磁盘文件的实际字节数之和（即写入时 `len(raw_bytes)` 之和），**不得**为 base64 字符串长度
-
-#### 场景:put 记录的字节大小为原始解码字节数
-
-- **当** 调用 `put(url, data_uri)`，其中 data_uri 的 base64 部分解码后为 N 字节
-- **那么** SQLite 中该条目 `size` 字段值为 N
-- **且** 后续 `get_stats()["total_size_bytes"]` 计入 N（而非 base64 字符串长度）
-
-#### 场景:LRU 淘汰阈值基于真实磁盘字节数
-
-- **当** 缓存配置 `max_size_mb = X`，磁盘实际占用接近 `X * 1024 * 1024`
-- **那么** 淘汰在真实磁盘字节总和超过上限时才触发
-- **且** **禁止**因用 base64 长度（约真实字节 1.35 倍）记账而提前约 35% 触发淘汰
+- **且** `total_size_bytes` 等于所有磁盘文件实际字节数之和（即各 `put` 时 `len(raw_bytes)` 之和）
 
 ### 需求:旧格式数据必须自动迁移
 
@@ -127,18 +134,18 @@
 
 ### 需求:get 必须清理无法识别字节的脏条目
 
-当 `get(url)` 命中缓存但读取的磁盘字节无法通过 magic bytes 探测出合法 MIME 类型（`detect_image_type` 返回空）时，系统**必须**将该条目视为脏数据完整清理：(1) 删除对应磁盘文件；(2) 删除 SQLite 记录；(3) 从内存 LRU 索引移除；然后返回 `None`。清理**禁止**抛出异常。
+`get(url)` 命中时**必须**做 `os.path.exists` 存在性校验（因 `get` 不再读字节、改为返回 url_hash，脏数据检测策略调整：`get` 仅做存在性校验，深度脏数据检测移至 `put` 落盘前的 `detect_image_type` 校验——已在 fetch 路径完成）：若文件缺失（被外部删除），**必须**清理 SQLite 记录与 LRU 索引项后返回 `None`。深度脏数据检测（magic bytes 无法识别）不再在 `get` 内执行——因 fetch 路径在 `put` 前已用 `detect_image_type` 校验过字节合法性，落盘文件可信。清理失败**禁止**抛出异常。
 
-#### 场景:不可识别字节触发对称清理
+#### 场景:文件被外部删除时 get 清理记录返回 None
 
-- **当** `get(url)` 命中，但文件字节 `detect_image_type` 返回空字符串
-- **那么** 系统删除该 url 对应的磁盘文件、SQLite 记录与 LRU 索引项
+- **当** `get(url)` 命中 LRU 索引，但对应磁盘文件已被外部删除
+- **那么** 系统删除该 url 对应的 SQLite 记录与 LRU 索引项
 - **且** 返回 `None`
-- **且** 后续再次 `get(url)` 因记录已不存在而返回 `None`，不重复触发解码
+- **且** 不抛出异常
 
 #### 场景:清理失败不阻断流程
 
-- **当** 脏条目清理过程中文件删除因权限/并发失败
+- **当** 文件存在性校验或记录清理过程中因权限/并发失败
 - **那么** 系统记录 debug 日志而非抛出异常
-- **且** SQLite 记录与 LRU 索引项仍被移除
+- **且** SQLite 记录与 LRU 索引项仍尽力移除
 

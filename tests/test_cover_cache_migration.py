@@ -72,13 +72,14 @@ def test_migrate_legacy_db(tmp_path):
     assert "data_uri" not in cols, f"data_uri column should be removed: {cols}"
     assert "migrated" not in cols, f"migrated column should be removed: {cols}"
 
-    # All entries should be retrievable with byte consistency
-    for url, _uh, du in refs:
+    # All entries should be retrievable — get returns url_hash (= disk file
+    # name); verify byte consistency by reading the backing file.
+    for url, uh, _du in refs:
         got = cache.get(url)
         assert got is not None, f"get({url}) returned None after migration"
-        _, b64 = got.split(",", 1)
-        _, ref_b64 = du.split(",", 1)
-        assert b64 == ref_b64, f"byte mismatch for {url}"
+        assert got == uh, f"get({url}) returned wrong url_hash"
+        with open(os.path.join(files_dir, got), "rb") as f:
+            assert f.read() == _PNG_1x1, f"byte mismatch for {url}"
 
     stats = cache.get_stats()
     assert stats["file_count"] == len(refs), stats
@@ -111,7 +112,7 @@ def test_migration_idempotent(tmp_path):
     v2 = cache2.get(refs[0][0])
     cache2.close()
 
-    assert v1 == v2, "data should survive re-open"
+    assert v1 == v2, "url_hash should survive re-open"
     assert elapsed < 50, f"reopen took {elapsed:.1f}ms (no migration expected)"
 
 
@@ -143,12 +144,12 @@ def test_migration_interrupt_resume(tmp_path):
 
     # Open — should resume migration for the remaining 14 rows
     cache = CoverCacheDB(db_path=db_path, files_dir=files_dir, max_size_mb=10)
-    for url, _uh, du in refs:
+    for url, uh, _du in refs:
         got = cache.get(url)
         assert got is not None, f"get({url}) returned None after resume"
-        _, b64 = got.split(",", 1)
-        _, ref_b64 = du.split(",", 1)
-        assert b64 == ref_b64, f"byte mismatch for {url} after resume"
+        assert got == uh, f"get({url}) returned wrong url_hash after resume"
+        with open(os.path.join(files_dir, got), "rb") as f:
+            assert f.read() == _PNG_1x1, f"byte mismatch for {url} after resume"
     stats = cache.get_stats()
     assert stats["file_count"] == 24, f"expected 24 entries: {stats}"
     cache.close()
@@ -170,7 +171,7 @@ def test_fresh_db_no_migration(tmp_path):
     t0 = time.perf_counter()
     cache = CoverCacheDB(db_path=db_path, files_dir=files_dir, max_size_mb=10)
     elapsed = (time.perf_counter() - t0) * 1000
-    cache.put("https://h-comic.com/cover/fresh", _old_data_uri())
+    cache.put("https://h-comic.com/cover/fresh", _PNG_1x1)
     assert cache.get_stats()["file_count"] == 1
     cache.close()
     assert elapsed < 100, f"Fresh init took {elapsed:.1f}ms (expected < 100ms)"

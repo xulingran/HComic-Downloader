@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 from collections.abc import Callable
 from typing import TYPE_CHECKING
@@ -82,7 +81,12 @@ class CoverMixin:
             raise ValueError("Only HTTPS URLs are allowed")
 
     def _do_fetch_cover(self, url: str) -> str:
-        """Fetch cover image and return base64 data URI (thread-safe, called from pool)."""
+        """Fetch cover image, persist raw bytes to cache, return url_hash.
+
+        Thread-safe, called from pool. The returned ``url_hash`` (= disk file
+        name) is what downstream layers use to build the ``app-image://``
+        protocol URL — no base64 / data URI is produced here.
+        """
         headers = {"Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"}
         try:
             src_headers = dict(self.parser.session.headers)
@@ -117,31 +121,37 @@ class CoverMixin:
         if not content_type:
             raise ValueError("Response is not a recognized image format")
 
-        b64 = base64.b64encode(content).decode("ascii")
-        return f"data:{content_type};base64,{b64}"
+        # Persist raw bytes; put returns nothing, so compute url_hash directly
+        # (deterministic from url) rather than re-reading via get() — avoids a
+        # DB round-trip and any eviction race between put and get. The bytes
+        # are validated above (detect_image_type) before put, keeping the
+        # on-disk cache trustworthy without needing deep probes on get.
+        import hashlib
+
+        self._cover_cache.put(url, content)
+        return hashlib.sha256(url.encode()).hexdigest()
 
     def _async_fetch_cover(self, url: str, req_id: str) -> None:
         """Thread-pool target: fetch cover and write response via stdout lock."""
         try:
+            # Cache hit returns url_hash directly — no fetch, no base64.
             cached = self._cover_cache.get(url)
             if cached is not None:
                 self._write_response(
                     {
                         "jsonrpc": "2.0",
                         "id": req_id,
-                        "result": {"dataUri": cached},
+                        "result": {"urlHash": cached},
                     }
                 )
                 return
 
-            data_uri = self._do_fetch_cover(url)
-            self._cover_cache.put(url, data_uri)
-
+            url_hash = self._do_fetch_cover(url)
             self._write_response(
                 {
                     "jsonrpc": "2.0",
                     "id": req_id,
-                    "result": {"dataUri": data_uri},
+                    "result": {"urlHash": url_hash},
                 }
             )
         except Exception as e:

@@ -11,7 +11,7 @@ vi.mock('@/stores/useSettingsStore', () => ({
 }))
 
 vi.mock('@/hooks/useCoverImage', () => ({
-  useCoverImage: vi.fn().mockReturnValue({ coverSrc: 'data:image/png;base64,mock', retry: vi.fn() })
+  useCoverImage: vi.fn().mockReturnValue({ coverSrc: 'app-image://cover/mockhash', retry: vi.fn() })
 }))
 
 vi.mock('@/stores/useDrawerStore', () => ({
@@ -35,7 +35,7 @@ describe('ComicCard', () => {
   it('renders cover image', () => {
     render(<ComicCard comic={mockComic} />)
     const img = screen.getByRole('img')
-    expect(img).toHaveAttribute('src', 'data:image/png;base64,mock')
+    expect(img).toHaveAttribute('src', 'app-image://cover/mockhash')
     expect(img).toHaveAttribute('alt', mockComic.title)
   })
 

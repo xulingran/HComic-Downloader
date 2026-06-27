@@ -312,6 +312,7 @@ contextBridge.exposeInMainWorld('hcomic', {
   getCacheStats: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CACHE_STATS),
 
   getCacheDir: () => ipcRenderer.invoke(IPC_CHANNELS.GET_CACHE_DIR),
+  getImageCacheDirs: () => ipcRenderer.invoke(IPC_CHANNELS.GET_IMAGE_CACHE_DIRS),
 
   openCacheDir: (dirPath: unknown) => {
     // 复用下载目录的对称校验：缓存目录同样是绝对路径，且必须无遍历/无控制字符。

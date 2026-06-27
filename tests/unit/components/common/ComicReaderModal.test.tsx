@@ -80,7 +80,7 @@ describe('ComicReaderModal', () => {
     mockSetImageWidth.mockClear()
     mockSetDisplayMode.mockClear()
     vi.mocked(useComicReader).mockReturnValue(createReaderState())
-    mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,page' })
+    mockFetchPreviewImage.mockResolvedValue({ urlHash: 'c'.repeat(64) })
     Object.defineProperty(window, 'hcomic', {
       value: { fetchPreviewImage: mockFetchPreviewImage, getConfig: vi.fn().mockResolvedValue({ config: {} }), setConfig: vi.fn().mockResolvedValue({ success: true }) },
       writable: true,
@@ -137,7 +137,7 @@ describe('ComicReaderModal', () => {
 
     await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(2))
     for (const image of screen.getAllByRole('img')) {
-      expect(image).toHaveAttribute('src', 'data:image/webp;base64,page')
+      expect(image).toHaveAttribute('src', `app-image://preview/${'c'.repeat(64)}`)
     }
   })
 
@@ -148,7 +148,7 @@ describe('ComicReaderModal', () => {
 
     await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(2))
     for (const image of screen.getAllByRole('img')) {
-      expect(image).toHaveAttribute('src', 'data:image/webp;base64,page')
+      expect(image).toHaveAttribute('src', `app-image://preview/${'c'.repeat(64)}`)
       expect(image).toHaveClass('w-full')
       expect(image).not.toHaveClass('hidden')
       expect(image).not.toHaveClass('opacity-0')
@@ -212,7 +212,7 @@ describe('ComicReaderModal', () => {
     }))
     mockFetchPreviewImage
       .mockRejectedValueOnce(new Error('Forbidden'))
-      .mockResolvedValueOnce({ dataUri: 'data:image/webp;base64,page' })
+      .mockResolvedValueOnce({ urlHash: 'c'.repeat(64) })
 
     render(
       <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
@@ -241,7 +241,7 @@ describe('ComicReaderModal', () => {
         totalPages: 3,
         currentPage: 1,
       }))
-      mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,cached-page-1' })
+      mockFetchPreviewImage.mockResolvedValue({ urlHash: 'd'.repeat(64) })
 
       render(
         <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
@@ -301,7 +301,7 @@ describe('ComicReaderModal', () => {
         currentPage: 1,
         setCurrentPage,
       }))
-      mockFetchPreviewImage.mockResolvedValue({ dataUri: 'data:image/webp;base64,preloaded' })
+      mockFetchPreviewImage.mockResolvedValue({ urlHash: 'e'.repeat(64) })
 
       render(
         <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />

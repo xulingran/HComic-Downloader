@@ -37,17 +37,17 @@ def _create_test_server():
         return IPCServer()
 
 
-def test_fetch_preview_image_returns_data_uri(monkeypatch):
+def test_fetch_preview_image_returns_url_hash(monkeypatch):
     server = _create_test_server()
     monkeypatch.setattr(
         server,
         "_do_fetch_preview_image",
-        lambda url, **kw: "data:image/webp;base64,abc",
+        lambda url, **kw: "a1b2c3d4" * 8,  # 64-char hex url_hash
     )
 
     result = server.handle_fetch_preview_image("https://h-comic.link/api/nh/media123/pages/1")
 
-    assert result == {"dataUri": "data:image/webp;base64,abc"}
+    assert result == {"urlHash": "a1b2c3d4" * 8}
 
 
 @pytest.mark.parametrize(
@@ -143,12 +143,12 @@ def test_fetch_preview_image_uses_downloader_auth_and_referer():
         ),
     )
 
-    data_uri = server._fetch_image_as_data_uri(
+    raw_bytes = server._fetch_image_bytes(
         "https://h-comic.link/api/nh/media123/pages/1",
         1024,
     )
 
-    assert data_uri.startswith("data:image/png;base64,")
+    assert raw_bytes == png_bytes
     assert captured["url"] == "https://h-comic.com/api/nh/media123/pages/1"
     assert captured["headers"] == {"Cookie": "sid=abc", "User-Agent": "Downloader-UA"}
     assert captured["kwargs"]["timeout"] == 17

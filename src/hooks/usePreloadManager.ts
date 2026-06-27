@@ -147,8 +147,8 @@ export function usePreloadManager(
                   imageQuality,
                 )
               if (cancelled) return
-              if (result?.dataUri) {
-                cache.set(pg - 1, result.dataUri)
+              if (result?.urlHash) {
+                cache.set(pg - 1, result.urlHash)
                 pendingWrites++
                 if (pendingWrites >= 3) {
                   pendingWrites = 0

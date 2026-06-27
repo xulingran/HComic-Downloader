@@ -35,7 +35,7 @@ class MockIntersectionObserver {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ;(globalThis as any).IntersectionObserver = MockIntersectionObserver
 
-const DATA_URI = 'data:image/png;base64,iVBORw0KGgo='
+const URL_HASH = 'f'.repeat(64)
 
 describe('ReaderPage 失败上报与重试', () => {
   afterEach(() => { vi.restoreAllMocks() })
@@ -52,7 +52,7 @@ describe('ReaderPage 失败上报与重试', () => {
 
   it('成功加载时调用 onLoaded(index)', async () => {
     createMockHcomic({
-      fetchPreviewImage: vi.fn().mockResolvedValue({ dataUri: DATA_URI }),
+      fetchPreviewImage: vi.fn().mockResolvedValue({ urlHash: URL_HASH }),
     })
     const onLoaded = vi.fn()
     render(<ReaderPage url="http://x/1.jpg" index={5} priority onLoaded={onLoaded} />)
@@ -79,7 +79,7 @@ describe('ReaderPage 失败上报与重试', () => {
 
   it('未传 onFailed/onLoaded/retryGen 时行为正常（向后兼容）', async () => {
     createMockHcomic({
-      fetchPreviewImage: vi.fn().mockResolvedValue({ dataUri: DATA_URI }),
+      fetchPreviewImage: vi.fn().mockResolvedValue({ urlHash: URL_HASH }),
     })
     render(<ReaderPage url="http://x/1.jpg" index={0} priority />)
     // 不报错即视为通过
@@ -120,7 +120,7 @@ describe('FlipPage (PageFlipView) 失败上报与单页重试', () => {
   it('点击单页重试按钮重新发起请求', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new Error('fail'))
-      .mockResolvedValue({ dataUri: DATA_URI })
+      .mockResolvedValue({ urlHash: URL_HASH })
     createMockHcomic({ fetchPreviewImage: fetchMock })
 
     render(
@@ -148,7 +148,7 @@ describe('FlipPage (PageFlipView) 失败上报与单页重试', () => {
   it('retryGen 变化触发 error 态 FlipPage 重载', async () => {
     const fetchMock = vi.fn()
       .mockRejectedValueOnce(new Error('fail'))
-      .mockResolvedValue({ dataUri: DATA_URI })
+      .mockResolvedValue({ urlHash: URL_HASH })
     createMockHcomic({ fetchPreviewImage: fetchMock })
     const onFailed = vi.fn()
 

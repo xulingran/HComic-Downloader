@@ -202,7 +202,9 @@ class SearchMixin:
         elif effective_source == "nh" and mode == "ranking":
             effective_query = ""
             _nh_sort = (query or "").strip().lower()
-            effective_tag = _nh_sort if _nh_sort in ("popular", "popular-today", "popular-week", "popular-month") else ""
+            effective_tag = (
+                _nh_sort if _nh_sort in ("popular", "popular-today", "popular-week", "popular-month") else ""
+            )
         elif effective_source == "nh" and mode == "tag":
             effective_query = self._build_nh_tag_query(query, tag)
             effective_tag = ""
@@ -470,10 +472,10 @@ class SearchMixin:
             scramble_id,
             comic_id,
         )
-        data_uri = self._do_fetch_preview_image(
+        url_hash = self._do_fetch_preview_image(
             image_url, scramble_id=scramble_id, comic_id=comic_id, image_quality=image_quality
         )
-        return {"dataUri": data_uri}
+        return {"urlHash": url_hash}
 
     def _update_tags_on_favourite_add(self, comic_id: str, source: str) -> None:
         """Attempt to fetch full comic detail and update the tag index after adding to favourites."""

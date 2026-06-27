@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import logging
 import sqlite3
 from collections.abc import Callable
@@ -94,7 +93,8 @@ class PreviewMixin:
         if not any(hostname == d or hostname.endswith("." + d) for d in allowed):
             raise ValueError(f"Domain not allowed: {hostname}")
 
-    def _fetch_image_as_data_uri(self, url: str, max_size: int, *, image_quality: str = "") -> str:
+    def _fetch_image_bytes(self, url: str, max_size: int, *, image_quality: str = "") -> bytes:
+        """Fetch a preview image and return its raw bytes (no base64 / data URI)."""
         self._validate_preview_image_url(url)
         session = self.downloader.create_isolated_session()
         try:
@@ -143,67 +143,65 @@ class PreviewMixin:
         content_type = detect_image_type(content)
         if not content_type:
             raise ValueError("Response is not a recognized image format")
-
-        b64 = base64.b64encode(content).decode("ascii")
-        return f"data:{content_type};base64,{b64}"
+        return content
 
     def _read_preview_cache(self, url: str) -> str | None:
-        """Return data-URI from persistent cache, or None on miss."""
-        import base64 as _base64
+        """Return url_hash from persistent cache, or None on miss.
 
-        from .image_utils import detect_image_type as _detect
-
+        The url_hash (= disk file name) is returned directly by the cache's
+        ``get``; no bytes are read and no base64 encoding happens here.
+        """
         if not hasattr(self, "_preview_cache"):
             return None
-        cached_path = self._preview_cache.get(url)
-        if not cached_path:
-            return None
         try:
-            with open(cached_path, "rb") as f:
-                content = f.read()
-            content_type = _detect(content)
-            if content_type:
-                b64 = _base64.b64encode(content).decode("ascii")
-                logger.debug("Preview cache hit for %s", url)
-                return f"data:{content_type};base64,{b64}"
+            cached_hash = self._preview_cache.get(url)
         except (OSError, sqlite3.Error):
             logger.debug("Preview cache read failed for %s, re-fetching", url, exc_info=True)
-        return None
+            return None
+        if cached_hash:
+            logger.debug("Preview cache hit for %s", url)
+        return cached_hash
 
-    def _apply_descramble(self, data_uri: str, url: str, comic_id: str) -> str:
-        """Apply jm descrambling to a data-URI, returning the result."""
-        import base64 as _base64
+    def _apply_descramble(self, raw_bytes: bytes, url: str, comic_id: str) -> bytes:
+        """Apply jm descrambling to raw image bytes, returning the result bytes.
 
-        from .image_utils import detect_image_type as _detect
-
+        If descrambling is a no-op (bytes unchanged) or unavailable, the input
+        bytes are returned as-is. Never raises on descramble failure — logs a
+        warning and returns the original bytes so the (un-scrambled-looking)
+        image still displays rather than failing the whole fetch.
+        """
         try:
             from sources.jm.descrambler import descramble_image
 
-            b64_part = data_uri.split(",", 1)[1]
-            raw_bytes = _base64.b64decode(b64_part)
             eps_id = _resolve_eps_id(url, comic_id)
             descrambled = descramble_image(raw_bytes, eps_id, image_url=url)
             if descrambled != raw_bytes:
-                content_type = _detect(descrambled)
-                if content_type:
-                    data_uri = f"data:{content_type};base64,{_base64.b64encode(descrambled).decode('ascii')}"
-                    logger.debug("Descrambled preview image for %s", url)
+                logger.debug("Descrambled preview image for %s", url)
+                return descrambled
         except (ValueError, OSError) as e:
             logger.warning("Descramble failed for %s: %s", url, e)
-        return data_uri
+        return raw_bytes
 
-    def _write_preview_cache(self, url: str, data_uri: str) -> None:
-        """Save image data to persistent cache (best-effort)."""
-        import base64 as _base64
+    def _write_preview_cache(self, url: str, raw_bytes: bytes) -> str | None:
+        """Save raw image bytes to persistent cache; return url_hash or None.
 
+        Best-effort: on failure logs and returns None. The returned url_hash
+        (= ``sha256(url).hexdigest()``, = disk file name) lets the caller avoid
+        a follow-up ``get`` to retrieve it.
+        """
         if not hasattr(self, "_preview_cache"):
-            return
+            return None
         try:
-            b64_part = data_uri.split(",", 1)[1]
-            raw_bytes = _base64.b64decode(b64_part)
             self._preview_cache.put(url, raw_bytes)
         except (OSError, sqlite3.Error):
             logger.debug("Failed to write preview cache for %s", url, exc_info=True)
+            return None
+        # url_hash is deterministic from the url; compute it directly rather
+        # than re-reading via get() (avoids a DB round-trip and any eviction
+        # race between put and get).
+        import hashlib
+
+        return hashlib.sha256(url.encode()).hexdigest()
 
     def _do_fetch_preview_image(
         self,
@@ -213,28 +211,40 @@ class PreviewMixin:
         comic_id: str = "",
         image_quality: str = "",
     ) -> str:
-        """Fetch a preview page image, using cache when available.
+        """Fetch a preview page image, persist it, and return its url_hash.
 
-        When *scramble_id* and *comic_id* are provided (jm source),
-        the fetched image is descrambled before caching.
+        Uses cache when available — including for jm (the on-disk bytes are
+        already descrambled, since descrambling happens before ``put``, so a
+        cache hit is safe to reuse). When *scramble_id* and *comic_id* are
+        provided (jm source), a freshly-fetched image is descrambled before
+        caching. Returns the ``url_hash`` (= disk file name) downstream layers
+        use to build the ``app-image://`` protocol URL.
         """
         self._validate_preview_image_url(url)
 
         needs_descramble = bool(scramble_id and comic_id)
 
-        if not needs_descramble:
-            cached = self._read_preview_cache(url)
-            if cached:
-                return cached
+        # Cache hit returns url_hash directly for ALL sources (incl. jm — the
+        # stored bytes are post-descramble, deterministic per url).
+        cached = self._read_preview_cache(url)
+        if cached:
+            return cached
 
-        data_uri = self._fetch_image_as_data_uri(url, _PREVIEW_IMAGE_MAX_SIZE, image_quality=image_quality)
+        raw_bytes = self._fetch_image_bytes(url, _PREVIEW_IMAGE_MAX_SIZE, image_quality=image_quality)
 
         if needs_descramble:
-            data_uri = self._apply_descramble(data_uri, url, comic_id)
+            raw_bytes = self._apply_descramble(raw_bytes, url, comic_id)
 
-        self._write_preview_cache(url, data_uri)
+        url_hash = self._write_preview_cache(url, raw_bytes)
+        if url_hash is None:
+            # Cache unavailable (no _preview_cache) — compute url_hash anyway so
+            # the caller can still address the image via the protocol handler's
+            # on-demand fetch fallback. This path is rare (cache always present
+            # in production) but keeps the contract total.
+            import hashlib
 
-        return data_uri
+            url_hash = hashlib.sha256(url.encode()).hexdigest()
+        return url_hash
 
     def _async_fetch_preview_image(
         self,
@@ -247,14 +257,14 @@ class PreviewMixin:
     ) -> None:
         """Thread-pool target: fetch a reader page image and write response."""
         try:
-            data_uri = self._do_fetch_preview_image(
+            url_hash = self._do_fetch_preview_image(
                 url, scramble_id=scramble_id, comic_id=comic_id, image_quality=image_quality
             )
             self._write_response(
                 {
                     "jsonrpc": "2.0",
                     "id": req_id,
-                    "result": {"dataUri": data_uri},
+                    "result": {"urlHash": url_hash},
                 }
             )
         except Exception as e:

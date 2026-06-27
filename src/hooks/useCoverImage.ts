@@ -1,6 +1,20 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { buildImageUrl } from '@/lib/image-url'
 
-const coverCache = new Map<string, string | null>()
+/**
+ * Lightweight memo of url → resolved outcome, keyed by the original cover URL.
+ *
+ * Unlike the pre-optimize-image-memory-pipeline design, this no longer holds
+ * image bytes (no base64 data URIs anywhere in the pipeline). It only remembers
+ * the *outcome* of a fetch so we don't refetch:
+ *  - a string urlHash  → fetched OK, build the protocol URL from it
+ *  - null              → fetch failed; don't retry on every render
+ *
+ * The actual image bytes live on disk and are streamed by Chromium via the
+ * app-image:// protocol — they never enter the renderer JS heap, so there is
+ * nothing large to evict here. This map holds only short hex strings / nulls.
+ */
+const coverOutcome = new Map<string, string | null>()
 const pendingRequests = new Map<string, Promise<string | null>>()
 
 // Shared IntersectionObserver for all cover images
@@ -34,10 +48,12 @@ function getSharedObserver(): IntersectionObserver {
 }
 
 export function useCoverImage(coverUrl: string | undefined, containerRef?: React.RefObject<HTMLElement>, disabled?: boolean): { coverSrc: string | null | undefined; retry: () => void } {
-  const [dataUri, setDataUri] = useState<string | null | undefined>(() => {
+  // coverSrc is now a protocol URL (or null/undefined sentinel), never a
+  // base64 data URI.
+  const [imageUrl, setImageUrl] = useState<string | null | undefined>(() => {
     if (disabled || !coverUrl) return null
-    if (coverCache.has(coverUrl)) return coverCache.get(coverUrl)
-    return undefined
+    const outcome = coverOutcome.get(coverUrl)
+    return outcome ? buildImageUrl('cover', outcome) : outcome
   })
 
   const currentUrlRef = useRef(coverUrl)
@@ -49,7 +65,7 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
   useEffect(() => {
     if (disabled) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDataUri(null)
+      setImageUrl(null)
     }
   }, [disabled])
 
@@ -77,29 +93,30 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
   const fetchCover = useCallback(() => {
     if (disabled) return
     if (!currentUrlRef.current) {
-      setDataUri(null)
+      setImageUrl(null)
       return
     }
     const url = currentUrlRef.current
 
-    if (coverCache.has(url)) {
-      setDataUri(coverCache.get(url))
+    const cached = coverOutcome.get(url)
+    if (cached !== undefined) {
+      setImageUrl(cached ? buildImageUrl('cover', cached) : null)
       return
     }
 
     let cancelled = false
-    setDataUri(undefined)
+    setImageUrl(undefined)
 
     // Deduplicate: reuse an in-flight request for the same URL
     const existing = pendingRequests.get(url)
     const promise = existing ?? (async (): Promise<string | null> => {
       try {
         const result = await window.hcomic!.fetchCover(url)
-        const uri = result.dataUri as string | null
-        coverCache.set(url, uri)
-        return uri
+        const urlHash = result.urlHash as string
+        coverOutcome.set(url, urlHash)
+        return urlHash
       } catch {
-        coverCache.set(url, null)
+        coverOutcome.set(url, null)
         return null
       } finally {
         pendingRequests.delete(url)
@@ -110,10 +127,10 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
       pendingRequests.set(url, promise)
     }
 
-    promise.then((uri) => {
+    promise.then((urlHash) => {
       if (cancelled) return
       if (currentUrlRef.current === url) {
-        setDataUri(uri)
+        setImageUrl(urlHash ? buildImageUrl('cover', urlHash) : null)
       }
     })
 
@@ -128,10 +145,10 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
 
   const retry = useCallback(() => {
     if (coverUrl) {
-      coverCache.delete(coverUrl)
+      coverOutcome.delete(coverUrl)
       setRetryTick(t => t + 1)
     }
   }, [coverUrl])
 
-  return { coverSrc: dataUri, retry }
+  return { coverSrc: imageUrl, retry }
 }

@@ -93,8 +93,22 @@ class PreviewCacheDB:
         """
         return os.path.abspath(os.path.dirname(self._db_path))
 
+    @property
+    def files_dir(self) -> str:
+        """Absolute path of the directory holding the raw image byte files.
+
+        Used by the ``app-image://`` protocol handler (Electron main process)
+        to locate preview image files by url_hash.
+        """
+        return os.path.abspath(self._files_dir)
+
     def get(self, url: str) -> str | None:
-        """Return absolute file path for cached image, or *None* on miss."""
+        """Return the cached ``url_hash`` (disk file name) for the image, or *None* on miss.
+
+        Returns the relative file name (= ``sha256(url).hexdigest()``), which
+        downstream layers use to build the ``app-image://preview/{url_hash}``
+        protocol URL. Does not read image bytes.
+        """
         with self._lock:
             if url not in self._lru:
                 return None
@@ -103,7 +117,8 @@ class PreviewCacheDB:
             if row is None:
                 self._lru.pop(url, None)
                 return None
-            file_path = os.path.join(self._files_dir, row[0])
+            file_name = row[0]
+            file_path = os.path.join(self._files_dir, file_name)
             if not os.path.exists(file_path):
                 self._conn.execute("DELETE FROM preview_cache WHERE url = ?", (url,))
                 self._conn.commit()
@@ -115,7 +130,7 @@ class PreviewCacheDB:
                 (now, url),
             )
             self._conn.commit()
-            return file_path
+            return file_name
 
     def put(self, url: str, raw_bytes: bytes) -> None:
         """Store raw image bytes.  Evicts LRU entries if over size limit."""

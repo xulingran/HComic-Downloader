@@ -59,6 +59,8 @@ vi.mock('electron', () => {
         webRequest: { onHeadersReceived: vi.fn() },
       }),
     },
+    protocol: { handle: vi.fn() },
+    net: { fetch: vi.fn() },
   }
 })
 

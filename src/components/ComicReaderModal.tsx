@@ -517,7 +517,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
             <div className="flex flex-col items-center py-2" style={{ gap: pageGap + 'px' }}>
               {/* eslint-disable-next-line react-hooks/refs */}
               {imageUrls.map((url, idx) => {
-                const cachedDataUri = imageCacheRef.current.get(idx)
+                const cachedUrlHash = imageCacheRef.current.get(idx)
                 return (
                 <div
                   key={idx}
@@ -528,7 +528,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                     url={url}
                     index={idx}
                     priority={preloadTarget != null && Math.abs(idx + 1 - preloadTarget) <= 5}
-                    cachedDataUri={cachedDataUri}
+                    cachedUrlHash={cachedUrlHash}
                     scrambleId={scrambleId}
                     comicId={comicId}
                     imageQuality={comic?.sourceSite === 'bika' ? bikaImageQuality : undefined}
