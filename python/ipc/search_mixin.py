@@ -201,7 +201,8 @@ class SearchMixin:
             effective_query = ""
         elif effective_source == "nh" and mode == "ranking":
             effective_query = ""
-            effective_tag = "popular" if (query or "").strip().lower() == "popular" else ""
+            _nh_sort = (query or "").strip().lower()
+            effective_tag = _nh_sort if _nh_sort in ("popular", "popular-today", "popular-week", "popular-month") else ""
         elif effective_source == "nh" and mode == "tag":
             effective_query = self._build_nh_tag_query(query, tag)
             effective_tag = ""

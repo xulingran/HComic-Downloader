@@ -19,6 +19,9 @@ from .constants import (
     REQUEST_HEADERS,
     SEARCH_URL,
     SORT_POPULAR,
+    SORT_POPULAR_MONTH,
+    SORT_POPULAR_TODAY,
+    SORT_POPULAR_WEEK,
     TAGS_URL,
 )
 
@@ -320,14 +323,14 @@ class NhParser(ParserContextMixin):
 
         Args:
             page: 页码 (1-based)
-            sort_by: 排序方式（"popular" 表示按热度排序，空字符串表示按日期排序）
+            sort_by: 排序方式（"popular"/"popular-today"/"popular-week"/"popular-month"，空字符串表示按日期排序）
 
         Returns:
             (漫画列表, 分页信息) 元组
         """
         # 构建 URL：popular 排序使用 search API 的 sort 参数
-        if sort_by == SORT_POPULAR:
-            url = f"{SEARCH_URL}?query=*&sort=popular&page={page}"
+        if sort_by in (SORT_POPULAR, SORT_POPULAR_TODAY, SORT_POPULAR_WEEK, SORT_POPULAR_MONTH):
+            url = f"{SEARCH_URL}?query=*&sort={sort_by}&page={page}"
         else:
             url = f"{GALLERIES_URL}?page={page}"
 

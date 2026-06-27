@@ -11,7 +11,10 @@ GALLERIES_URL = f"{API_INDEX}/galleries"  # 首页/最新漫画列表
 TAGS_URL = f"{API_INDEX}/tags/tag"  # 标签目录 API
 
 # 排序方式
-SORT_POPULAR = "popular"  # 按热度排序（Popular Now）
+SORT_POPULAR = "popular"  # 全站热度排序
+SORT_POPULAR_TODAY = "popular-today"  # 今日热门（默认热门入口）
+SORT_POPULAR_WEEK = "popular-week"  # 本周热门
+SORT_POPULAR_MONTH = "popular-month"  # 本月热门
 SORT_DATE = ""  # 按日期排序（最近更新，默认）
 
 # 图片和缩略图 CDN

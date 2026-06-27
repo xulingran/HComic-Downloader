@@ -43,6 +43,8 @@ interface SearchBarProps {
   showTagPanel: boolean
   onTagPanelToggle: () => void
   selectedTags: string[]
+  // NH ranking auto-search
+  onNhRankingChange?: (sortValue: string) => void
 }
 
 export function SearchBar({
@@ -59,6 +61,7 @@ export function SearchBar({
   // Tag panel
   showTagPanel, onTagPanelToggle,
   selectedTags,
+  onNhRankingChange,
 }: SearchBarProps) {
   const sources = useSources()
   const searchModes = useSearchModes()
@@ -157,7 +160,11 @@ export function SearchBar({
           ) : isNhRanking ? (
             <select
               value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
+              onChange={(e) => {
+                const val = e.target.value
+                onQueryChange(val)
+                onNhRankingChange?.(val)
+              }}
               className="flex-1 bg-transparent border-none py-2 pl-3 pr-4 text-[var(--text-primary)]
                          text-sm outline-none cursor-pointer"
             >

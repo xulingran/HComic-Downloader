@@ -30,6 +30,38 @@ def test_nh_ranking_popular_maps_to_popular_tag():
     assert mixin.calls[-1] == {"keyword": "", "page": 2, "source": "nh", "tag": "popular"}
 
 
+def test_nh_ranking_popular_today_maps_to_tag():
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(query="popular-today", mode="ranking", page=1, source="nh")
+
+    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": "popular-today"}
+
+
+def test_nh_ranking_popular_week_maps_to_tag():
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(query="popular-week", mode="ranking", page=1, source="nh")
+
+    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": "popular-week"}
+
+
+def test_nh_ranking_popular_month_maps_to_tag():
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(query="popular-month", mode="ranking", page=1, source="nh")
+
+    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": "popular-month"}
+
+
+def test_nh_ranking_unknown_query_maps_to_empty_tag():
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(query="random", mode="ranking", page=1, source="nh")
+
+    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": ""}
+
+
 def test_nh_single_tag_maps_to_exact_tag_query():
     mixin = _FakeSearchMixin()
 

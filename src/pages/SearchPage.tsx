@@ -443,11 +443,19 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setShowHistory(false)
     setMode('ranking')
     modeRef.current = 'ranking'
-    setQuery('popular')
-    queryRef.current = 'popular'
+    setQuery('popular-today')
+    queryRef.current = 'popular-today'
     setViewingNhEntry(true)
-    await withLoading(() => search('popular', 'ranking', 1, 'nh'))
+    await withLoading(() => search('popular-today', 'ranking', 1, 'nh'))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
+
+  const handleNhRankingChange = useCallback(async (sortValue: string) => {
+    setQuery(sortValue)
+    queryRef.current = sortValue
+    setSearchTags('')
+    searchTagsRef.current = ''
+    await withLoading(() => search(sortValue, 'ranking', 1, 'nh'))
+  }, [withLoading, search])
 
   const handleNhEntryTag = useCallback(async (tag: string) => {
     clearSelection()
@@ -497,8 +505,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       setQuery('H24')
       queryRef.current = 'H24'
     } else if (newSource === 'nh' && mode === 'ranking') {
-      setQuery('popular')
-      queryRef.current = 'popular'
+      setQuery('popular-today')
+      queryRef.current = 'popular-today'
     } else {
       setQuery('')
       queryRef.current = ''
@@ -671,8 +679,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
             queryRef.current = 'H24'
           }
           if (newMode === 'ranking' && source === 'nh' && !query) {
-            setQuery('popular')
-            queryRef.current = 'popular'
+            setQuery('popular-today')
+            queryRef.current = 'popular-today'
           }
         }}
         query={query}
@@ -711,6 +719,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           setShowTagDialog(true)
         }}
         selectedTags={tagPanel.selectedTags}
+        onNhRankingChange={handleNhRankingChange}
       />
 
       {/* Tag dialog */}

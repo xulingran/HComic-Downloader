@@ -308,7 +308,7 @@ describe('SearchPage', () => {
     await user.click(screen.getByText('热门排行'))
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('popular', 'ranking', 1, 'nh')
+      expect(mockSearch).toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh')
     })
   })
 
@@ -404,7 +404,7 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
     await user.click(await screen.findByText('热门排行'))
-    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('popular', 'ranking', 1, 'nh'))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh'))
 
     mockSearch.mockClear()
     await user.click(screen.getByText('标签'))
@@ -413,7 +413,7 @@ describe('SearchPage', () => {
     await waitFor(() => {
       expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'full color')
     })
-    expect(mockSearch).not.toHaveBeenCalledWith('popular', 'ranking', 1, 'nh', 'full color')
+    expect(mockSearch).not.toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh', 'full color')
   })
 
   it('shows cached search page immediately and refreshes it in background', async () => {

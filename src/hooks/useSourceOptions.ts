@@ -35,7 +35,10 @@ const BIKA_LEADERBOARD_OPTIONS = [
 ]
 
 const NH_RANKING_OPTIONS = [
-  { value: 'popular', label: '热门排行' },
+  { value: 'popular-today', label: '今日热门' },
+  { value: 'popular-week', label: '本周热门' },
+  { value: 'popular-month', label: '本月热门' },
+  { value: 'popular', label: '全站热门' },
 ]
 
 /** 返回带标签的来源列表 */
