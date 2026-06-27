@@ -55,6 +55,8 @@ class PreviewMixin:
             "cdndelivers.cloud",
             "bunnyssd.com",
             "picacomic.com",
+            "i.nhentai.net",
+            "t.nhentai.net",
         }
     )
 

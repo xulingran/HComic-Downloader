@@ -11,6 +11,7 @@ import { buildDiagnostics } from './diagnostics'
 import {
   SEARCH_MODES, SOURCE_VALUES, SOURCES_WITH_FAVOURITES,
   DOWNLOAD_STATUSES, ACTIVE_DOWNLOAD_STATUSES, IMAGE_QUALITIES,
+  TAG_LIST_SORTS,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
   type DownloadProgressEvent,
   type DeepLinkTarget,
@@ -95,6 +96,7 @@ const ALLOWED_EXTERNAL_DOMAINS = [
   '18comic.vip',
   '18comic.org',
   'jmcomic.me',
+  'nhentai.net',
   // jm mirror domains — need periodic maintenance as mirrors change frequently
   'jmcomic-zzz.one',
   'jmcomic-zzz.xyz',
@@ -600,6 +602,10 @@ function registerNotificationHandlers(bridge: Bridge) {
 
   bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.MAINTENANCE_PROGRESS, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.MAINTENANCE_PROGRESS, params)
+  })
+
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.TAG_LIST_PROGRESS, (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.TAG_LIST_PROGRESS, params)
   })
 
   // 致命错误：后端进程启动失败或重启超限时转发到渲染进程横幅。
@@ -1143,7 +1149,7 @@ function registerFavouriteTagHandlers(bridge: Bridge) {
 }
 
 function registerTagListHandlers(bridge: Bridge) {
-  ipcMain.handle(IPC_CHANNELS.GET_TAG_LIST, async (_, source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.GET_TAG_LIST, async (_, source?: unknown, keyword?: unknown, page?: unknown, limit?: unknown, sort?: unknown) => {
     const params: Record<string, unknown> = {}
     withOptionalSource(params, source, 'get_tag_list')
     if (keyword !== undefined && keyword !== null) {
@@ -1157,6 +1163,10 @@ function registerTagListHandlers(bridge: Bridge) {
     if (limit !== undefined && limit !== null) {
       assert(and(integer(), range(1, 500)), limit, 'get_tag_list limit')
       params.limit = limit
+    }
+    if (sort !== undefined && sort !== null) {
+      assert(and(string(), oneOf(TAG_LIST_SORTS)), sort, 'get_tag_list sort')
+      params.sort = sort
     }
     return bridge.call('get_tag_list', params)
   })
