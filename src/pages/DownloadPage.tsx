@@ -28,7 +28,12 @@ function matchStatusFilter(status: DownloadStatus, filter: StatusFilter): boolea
   return status === filter
 }
 
-export function DownloadPage() {
+interface DownloadPageProps {
+  /** 该页是否为当前激活 tab。keep-alive 下用于切回时轻量刷新任务列表。 */
+  isActive?: boolean
+}
+
+export function DownloadPage({ isActive = false }: DownloadPageProps = {}) {
   const { tasks, setTasks, updateTask, isGloballyPaused } = useDownloadStore()
   const { getDownloads, cancelDownload, progress } = useDownload()
   const { handlePauseTask, handleResumeTask, handleRetryTask, handleToggleGlobalPause, handlePauseAlbum, handleResumeAlbum, handleCancelAlbum } = useDownloadHelper()
@@ -202,6 +207,22 @@ export function DownloadPage() {
       useToastStore.getState().error('加载下载列表失败')
     }
   }
+
+  // keep-alive 切回刷新：isActive 从 false→true（切回下载页）时轻量重拉任务列表，
+  // 同步后台下载状态变化。首挂载时 mount effect 已加载过，用 ref 跳过首次避免重复请求。
+  const isFirstActiveRef = useRef(true)
+  useEffect(() => {
+    if (!isActive) {
+      isFirstActiveRef.current = true
+      return
+    }
+    if (isFirstActiveRef.current) {
+      isFirstActiveRef.current = false
+      return
+    }
+    loadDownloads()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive])
 
   const handleOpenDir = async () => {
     if (!downloadDir) return

@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from 'react'
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { TAB_ORDER, useTabPageVariants } from './lib/anim'
+import { prefetchHighFrequencyChunks } from './lib/prefetch'
 import { useTheme } from './hooks/useTheme'
 import { useSettingsStore } from './stores/useSettingsStore'
 import { useConfig } from './hooks/useIpc'
 import { useInitConfig } from './hooks/useInitConfig'
 import { useStartupProgress, markStartupReady } from './hooks/useStartupProgress'
 import { Sidebar } from './components/Sidebar'
+import { PageSkeleton } from './components/common/PageSkeleton'
 import { SearchPage } from './pages/SearchPage'
 import { Toast } from './components/common/Toast'
 import { Toaster } from './components/common/Toaster'
@@ -29,18 +31,6 @@ const ComicInfoDrawer = lazy(() => import('./components/ComicInfoDrawer').then(m
 const ComicReaderModal = lazy(() => import('./components/ComicReaderModal').then(m => ({ default: m.ComicReaderModal })))
 const UpdateDialog = lazy(() => import('./components/UpdateDialog').then(m => ({ default: m.UpdateDialog })))
 
-/** 页面切换时的骨架屏 fallback。 */
-function PageSkeleton() {
-  return (
-    <div className="flex items-center justify-center h-full">
-      <div className="flex flex-col items-center gap-4">
-        <div className="w-8 h-8 border-2 border-[var(--text-tertiary)] border-t-[var(--accent)] rounded-full animate-spin" />
-        <div className="w-32 h-3 bg-[var(--bg-tertiary)] rounded animate-pulse" />
-      </div>
-    </div>
-  )
-}
-
 function App() {
   const { sfwToastDismissed, dismissSfwToast } = useSettingsStore()
   const { setConfig } = useConfig()
@@ -57,6 +47,16 @@ function App() {
   useEffect(() => {
     if (configLoaded) markStartupReady()
   }, [configLoaded])
+
+  // 懒加载预热：应用就绪后（StartupScreen 淡出、主内容开始渲染）在空闲窗口静默拉取高频
+  // lazy chunk，把首次切换的下载/编译成本前移到用户无感知时段。仅加载不渲染。
+  // 用 ref 守卫确保只触发一次（done 可能在 Python 100% 与 configLoaded 间抖动）。
+  const prefetchStartedRef = useRef(false)
+  useEffect(() => {
+    if (!startupProgress.done || prefetchStartedRef.current) return
+    prefetchStartedRef.current = true
+    prefetchHighFrequencyChunks()
+  }, [startupProgress.done])
 
   const [showSfwToast, setShowSfwToast] = useState(true)
 
@@ -92,6 +92,9 @@ function App() {
   const [activePage, setActivePage] = useState('search')
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
   const [direction, setDirection] = useState(0)
+  // keep-alive：已访问页面集合，懒创建——首屏只含 search，用户访问新 tab 时才加入。
+  // 切走不卸载、切回复用实例，消除重复 mount 与 stagger 重播。
+  const [visitedPages, setVisitedPages] = useState<string[]>(['search'])
   const { pendingSearch } = useDrawerStore()
   const { readerComic, closeReader } = useReaderStore()
   const tabVariants = useTabPageVariants()
@@ -101,6 +104,8 @@ function App() {
     const newIndex = TAB_ORDER.indexOf(page as typeof TAB_ORDER[number])
     setDirection(oldIndex === -1 || page === activePage ? 0 : newIndex > oldIndex ? 1 : -1)
     setActivePage(page)
+    // 懒创建：首次访问新页面时加入存活集合
+    setVisitedPages((prev) => (prev.includes(page) ? prev : [...prev, page]))
   }, [activePage])
 
   useEffect(() => {
@@ -110,12 +115,12 @@ function App() {
     }
   }, [pendingSearch, activePage, handlePageChange])
 
-  const renderPage = () => {
-    switch (activePage) {
+  const renderPageContent = (page: string) => {
+    switch (page) {
       case 'search':
         return <SearchPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} />
       case 'downloads':
-        return <Suspense fallback={<PageSkeleton />}><DownloadPage /></Suspense>
+        return <Suspense fallback={<PageSkeleton />}><DownloadPage isActive={activePage === 'downloads'} /></Suspense>
       case 'favourites':
         return <Suspense fallback={<PageSkeleton />}><FavouritesPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} /></Suspense>
       case 'history':
@@ -157,19 +162,29 @@ function App() {
         {/* 致命错误横幅：位于内容区顶部，不阻塞操作 */}
         <FatalBanner />
         <main className="flex-1 relative px-6 py-3">
-          <AnimatePresence custom={direction}>
-            <motion.div
-              key={activePage}
-              variants={tabVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              custom={direction}
-              className="absolute inset-0 overflow-auto"
-            >
-              {renderPage()}
-            </motion.div>
-          </AnimatePresence>
+          {/* keep-alive 容器：遍历已访问页面，每个页面一个常驻 motion.div。
+              激活页 display:block 并播放进入动画（slide 8% + fade，方向感知）；
+              非激活页 display:none 不参与渲染（跳过 layout 与 paint）。
+              切回已访问页面时实例复用，无 mount、无 stagger 重播。
+              首次进入直接渲染真实内容——chunk 已由 idle prefetch 预热，
+              数据走 store 缓存快路径，无需骨架兜底（避免骨架闪现）。 */}
+          {visitedPages.map((page) => {
+            const isActive = page === activePage
+            return (
+              <motion.div
+                key={page}
+                variants={tabVariants}
+                custom={direction}
+                initial="initial"
+                animate="animate"
+                aria-hidden={!isActive}
+                className="absolute inset-0 overflow-auto"
+                style={{ display: isActive ? 'block' : 'none' }}
+              >
+                {renderPageContent(page)}
+              </motion.div>
+            )
+          })}
         </main>
       </div>
       <Suspense fallback={null}><ComicInfoDrawer /></Suspense>

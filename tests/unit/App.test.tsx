@@ -1,11 +1,12 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
-const { mockGetConfig, mockSetConfig } = vi.hoisted(() => ({
+const { mockGetConfig, mockSetConfig, mockPrefetch } = vi.hoisted(() => ({
   mockGetConfig: vi.fn(),
-  mockSetConfig: vi.fn()
+  mockSetConfig: vi.fn(),
+  mockPrefetch: vi.fn().mockResolvedValue(undefined)
 }))
 
 vi.mock('@/hooks/useIpc', () => ({
@@ -41,6 +42,10 @@ vi.mock('@/hooks/useIpc', () => ({
 
 vi.mock('@/hooks/useTheme', () => ({
   useTheme: vi.fn().mockReturnValue({ themeMode: 'auto', setThemeMode: vi.fn() })
+}))
+
+vi.mock('@/lib/prefetch', () => ({
+  prefetchHighFrequencyChunks: mockPrefetch
 }))
 
 vi.mock('@/components/Sidebar', () => ({
@@ -208,6 +213,16 @@ describe('App', () => {
     })
   })
 
+  it('idle prefetch 在应用就绪后触发一次高频 chunk 预热', async () => {
+    // mockGetConfig resolve → configLoaded true → markStartupReady → done=true
+    // → prefetch effect 在 startupProgress.done 为 true 时触发
+    render(<App />)
+
+    await waitFor(() => {
+      expect(mockPrefetch).toHaveBeenCalledTimes(1)
+    })
+  })
+
   it('switches to toolbox page when Toolbox button clicked', async () => {
     render(<App />)
 
@@ -217,5 +232,44 @@ describe('App', () => {
       expect(screen.getByTestId('toolbox-page')).toBeInTheDocument()
     })
     expect(screen.getByTestId('active-page')).toHaveTextContent('toolbox')
+  })
+
+  describe('keep-alive', () => {
+    it('切走后页面实例保留在 DOM（display:none），切回复用', async () => {
+      render(<App />)
+
+      // 首屏只有 search
+      expect(screen.getByTestId('search-page')).toBeInTheDocument()
+
+      // 切到 downloads（首次进入，走 deferred mount）
+      await userEvent.click(screen.getByText('Downloads'))
+      await waitFor(() => {
+        expect(screen.getByTestId('download-page')).toBeInTheDocument()
+      })
+
+      // 切回 search
+      await userEvent.click(screen.getByText('Search'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
+      })
+
+      // keep-alive：downloads 页元素应仍在 DOM（display:none 隐藏但未卸载）
+      expect(screen.getByTestId('download-page')).toBeInTheDocument()
+      // search 页可见
+      expect(screen.getByTestId('search-page')).toBeInTheDocument()
+    })
+
+    it('首次进入非首屏页面直接渲染真实内容（无骨架闪现）', async () => {
+      render(<App />)
+
+      // 切到 settings（非首屏）——无 deferred mount，直接渲染真实内容
+      await userEvent.click(screen.getByText('Settings'))
+
+      // 真实内容应立即可见（无骨架兜底阶段）
+      await waitFor(() => {
+        expect(screen.getByTestId('settings-page')).toBeInTheDocument()
+      })
+      expect(screen.getByTestId('active-page')).toHaveTextContent('settings')
+    })
   })
 })

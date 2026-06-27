@@ -44,6 +44,25 @@ JS 内用 `src/lib/anim.ts` 的 `DURATION` 常量与 variants。
 - **CSS contain**：`AnimatedCardWrapper` 用 `style={{ contain: 'layout' }}` 隔离重排
 - **layout 动画**：用 framer-motion `layout` prop + `LayoutGroup` 协调，避免整页重排
 
+## 5.5 tab 切换性能策略（keep-alive + idle prefetch）
+
+tab 切换掉帧的根因是「新页面在动画第一帧被完整 mount」造成的主线程突发负载（lazy chunk 加载 + 20-67 个 hooks + N 个 motion.div 注册）。两层优化各自负责不同频次的切换成本：
+
+| 切换频次 | 成本来源 | 优化 | 实现 |
+|------|---------|------|------|
+| 首次进入某页 | chunk 下载 + 冷 mount | ① idle prefetch | `src/lib/prefetch.ts`（首次 mount 走 store 缓存快路径，足够轻） |
+| 再次切回该页 | 重挂 + stagger 重播 | ② keep-alive | App.tsx `visitedPages` + `display` 切换 |
+
+- **idle prefetch**：应用就绪（`startupProgress.done`）后空闲窗口（`src/lib/scheduler.ts` 的 `scheduleIdle`）静默预加载高频 lazy chunk（ComicInfoDrawer/ComicReaderModal/DownloadPage/FavouritesPage/HistoryPage/SettingsPage），仅加载不渲染。低频页面不预热。
+- **keep-alive**：页面切走不卸载，改用 `display: none` 隐藏、切回复用实例。懒创建（`visitedPages` 初始仅含 `search`，访问新 tab 才加入）。切回变为纯合成层切换（零 mount、零 stagger 重播）。
+- **首次进入直接渲染**：首次挂载时直接渲染真实内容（chunk 已预热、数据走 store 缓存快路径），**不走骨架兜底**——曾尝试 deferred mount（动画期间显示骨架）但因骨架闪现的视觉负担被废弃。
+- **切回刷新**：keep-alive 下 mount effect 不重复触发，仅 `DownloadPage` 接收 `isActive` prop 在切回时轻量重拉任务列表；其余页面依赖 store 缓存 + 后台订阅保证新鲜度。
+
+**护栏**：
+- lazy 页面的 `<Suspense fallback={<PageSkeleton/>}>` 仅在未预热的低频页面首次加载时出现一次（React.lazy 标准行为），高频页面因 prefetch 已就绪不会触发
+- `gridContainerKey`（SearchPage/FavouritesPage 列表容器级重挂）语义保留，与页面级 keep-alive 互不冲突
+- `display: none` 让浏览器跳过离屏页的 layout 与 paint，禁止用 `visibility: hidden`（占布局）或 `opacity: 0`（占合成层）
+
 ## 6. bundle 基线
 
 - framer-motion 全量引入后 renderer JS bundle 约 976KB（gzip ~290KB）
