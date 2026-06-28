@@ -701,4 +701,3 @@ describe('login-window: overlay IPC handlers', () => {
     vi.useRealTimers()
   })
 })
-

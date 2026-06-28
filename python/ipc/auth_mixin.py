@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from typing import TYPE_CHECKING
 
 from .types import _get_config_path
@@ -21,6 +22,9 @@ class AuthMixin:
     config: Config
     parser: MultiSourceParser
     downloader: ComicDownloader
+    # 与 ConfigMixin 共享同一 IPCServer 实例属性，串行化所有 config.save() 临界区，
+    # 避免并发 os.replace (WinError 5) 与 source_auth 字典读改写竞态。
+    _config_write_lock: threading.Lock
 
     def handle_apply_auth(self, curl_text: str, source: str = "hcomic", jm_username: str = "") -> dict:
         if not curl_text or not curl_text.strip():
@@ -30,11 +34,14 @@ class AuthMixin:
         from config import AuthSourceData
 
         cookie, user_agent, bearer_token, domain = extract_auth_from_curl(curl_text.strip())
-        self.config.set_source_auth(
-            source,
-            AuthSourceData(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token),
-        )
-        self.config.save(_get_config_path())
+        # set_source_auth (字典读改写) + save (原子 os.replace) 必须作为临界区整体串行化，
+        # 网络解析 (extract_auth_from_curl) 留锁外避免长事务。
+        with self._config_write_lock:
+            self.config.set_source_auth(
+                source,
+                AuthSourceData(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token),
+            )
+            self.config.save(_get_config_path())
 
         self.parser.configure_auth(
             cookie=cookie,
@@ -78,11 +85,13 @@ class AuthMixin:
         if not moeimg_parser:
             raise ValueError("moeimg 来源不可用")
         cookie = moeimg_parser.login(username, password)
-        self.config.set_source_auth(
-            "moeimg",
-            AuthSourceData(cookie=cookie, username=username, password=password),
-        )
-        self.config.save(_get_config_path())
+        # 网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        with self._config_write_lock:
+            self.config.set_source_auth(
+                "moeimg",
+                AuthSourceData(cookie=cookie, username=username, password=password),
+            )
+            self.config.save(_get_config_path())
         self.parser.configure_auth(cookie=cookie, source="moeimg")
         moeimg_parser.set_stored_credentials(username, password)
         logger.info("moeimg login successful for user %s", username)
@@ -101,11 +110,13 @@ class AuthMixin:
         if not bika_parser:
             raise ValueError("bika 来源不可用")
         token = bika_parser.login(username, password)
-        self.config.set_source_auth(
-            "bika",
-            AuthSourceData(bearer_token=token, username=username, password=password),
-        )
-        self.config.save(_get_config_path())
+        # 网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        with self._config_write_lock:
+            self.config.set_source_auth(
+                "bika",
+                AuthSourceData(bearer_token=token, username=username, password=password),
+            )
+            self.config.save(_get_config_path())
         self.parser.configure_auth(bearer_token=token, source="bika")
         bika_parser.set_stored_credentials(username, password)
         logger.info("bika login successful for user %s", username)
@@ -124,11 +135,13 @@ class AuthMixin:
         if not hcomic_parser:
             raise ValueError("hcomic 来源不可用")
         token = hcomic_parser.login(username, password)
-        self.config.set_source_auth(
-            "hcomic",
-            AuthSourceData(bearer_token=token, username=username, password=password),
-        )
-        self.config.save(_get_config_path())
+        # 网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        with self._config_write_lock:
+            self.config.set_source_auth(
+                "hcomic",
+                AuthSourceData(bearer_token=token, username=username, password=password),
+            )
+            self.config.save(_get_config_path())
         self.parser.configure_auth(bearer_token=token, source="hcomic")
         self.downloader.configure_auth(bearer_token=token)
         hcomic_parser.set_stored_credentials(username, password)

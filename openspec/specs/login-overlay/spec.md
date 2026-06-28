@@ -134,4 +134,3 @@
 - **当** 叠层构建完成
 - **那么** 所有样式规则必须位于 shadow root 内的 `<style>` 元素中
 - **且** 不得依赖 `style-src 'unsafe-inline'`（避免被 CSP `style-src` 拦截）
-

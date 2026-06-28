@@ -219,6 +219,15 @@ class PreviewMixin:
         provided (jm source), a freshly-fetched image is descrambled before
         caching. Returns the ``url_hash`` (= disk file name) downstream layers
         use to build the ``app-image://`` protocol URL.
+
+        Write-failure policy: if ``_write_preview_cache`` returns ``None``
+        (disk write failure / SQLite error / permission error, or no
+        ``_preview_cache`` attribute), this method **must** raise. The
+        ``app-image://`` protocol handler only streams on-disk files and has no
+        on-demand re-fetch fallback — so a url_hash without a backing file is a
+        guaranteed 404. Returning such a hash would surface as a silent image
+        load failure while masking the real (recoverable) write error. Raising
+        lets the existing preview error-recovery / retry path engage instead.
         """
         self._validate_preview_image_url(url)
 
@@ -237,13 +246,7 @@ class PreviewMixin:
 
         url_hash = self._write_preview_cache(url, raw_bytes)
         if url_hash is None:
-            # Cache unavailable (no _preview_cache) — compute url_hash anyway so
-            # the caller can still address the image via the protocol handler's
-            # on-demand fetch fallback. This path is rare (cache always present
-            # in production) but keeps the contract total.
-            import hashlib
-
-            url_hash = hashlib.sha256(url.encode()).hexdigest()
+            raise RuntimeError(f"Failed to persist preview image to cache for {url}")
         return url_hash
 
     def _async_fetch_preview_image(

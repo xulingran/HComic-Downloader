@@ -129,4 +129,3 @@
 
 - **当** 一个 language="chinese" 的专辑经 `build_album_cbz` 打包
 - **那么** 打包出的 CBZ 内 ComicInfo.xml 必须包含 `<LanguageISO>zh</LanguageISO>`
-
