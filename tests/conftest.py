@@ -10,6 +10,22 @@ from sources.hcomic import HComicParser
 from sources.moeimg import MoeImgParser
 
 
+@pytest.fixture(autouse=True)
+def _isolate_config_dir(tmp_path, monkeypatch):
+    """Redirect config.json to a per-test tmp dir.
+
+    `_get_config_path()` reads HCOMIC_CONFIG_DIR at call time, so setting it
+    here redirects every module's binding (auth_mixin / config_mixin /
+    migration_mixin / ipc_server) uniformly — no per-module patching needed.
+    Prevents tests from clobbering the real ~/.hcomic_downloader/config.json.
+    Harmless for tests that never trigger Config.save (the path function only
+    reads the env var when called).
+    """
+    config_dir = tmp_path / ".hcomic_downloader"
+    monkeypatch.setenv("HCOMIC_CONFIG_DIR", str(config_dir))
+    yield
+
+
 @pytest.fixture
 def html_sample():
     """加载 fixtures/html/ 目录中的 HTML 样本
@@ -71,15 +87,3 @@ def json_fixture():
         return _json.loads(path.read_text(encoding="utf-8"))
 
     return _load
-
-
-@pytest.fixture
-def temp_config(tmp_path):
-    """创建临时配置目录
-
-    Returns:
-        临时配置目录的 Path 对象
-    """
-    config_dir = tmp_path / ".hcomic_downloader"
-    config_dir.mkdir()
-    return config_dir

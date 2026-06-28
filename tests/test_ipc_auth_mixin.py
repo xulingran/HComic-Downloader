@@ -200,7 +200,6 @@ def test_hcomic_login_saves_under_config_write_lock():
 
 def test_moeimg_login_success_persists_credentials_and_cookie():
     server = _create_test_server()
-    server.config.save = lambda path: None
     moeimg_parser = MagicMock()
     moeimg_parser.login.return_value = "moeimg-cookie"
     server.parser.parsers = {"moeimg": moeimg_parser}
@@ -216,7 +215,6 @@ def test_moeimg_login_success_persists_credentials_and_cookie():
 
 def test_bika_login_success_persists_credentials_and_token():
     server = _create_test_server()
-    server.config.save = lambda path: None
     bika_parser = MagicMock()
     bika_parser.login.return_value = "bika-token"
     server.parser.parsers = {"bika": bika_parser}
@@ -232,7 +230,6 @@ def test_bika_login_success_persists_credentials_and_token():
 
 def test_hcomic_login_success_persists_credentials_and_token():
     server = _create_test_server()
-    server.config.save = lambda path: None
     hcomic_parser = MagicMock()
     hcomic_parser.login.return_value = "hcomic-token"
     server.parser.parsers = {"hcomic": hcomic_parser}
@@ -318,7 +315,6 @@ def test_hcomic_login_failure_persists_credentials():
 def test_failed_login_then_successful_relogin_updates_token():
     """登录失败保留旧 token，再次成功登录后写入新 token（边界回归）。"""
     server = _create_test_server()
-    server.config.save = lambda path: None
     hcomic_parser = MagicMock()
     hcomic_parser.login.side_effect = [RuntimeError("network"), "new-token"]
     server.parser.parsers = {"hcomic": hcomic_parser}
@@ -346,9 +342,6 @@ def test_failed_login_then_successful_relogin_updates_token():
 def test_concurrent_logins_do_not_corrupt_source_auth():
     """moeimg 与 bika 登录并发执行，最终两个来源的 source_auth 都应正确落库。"""
     server = _create_test_server()
-    # save 直接写内存（不落盘），保留真实 set_source_auth 字典操作
-    server.config.save = lambda path: None
-
     moeimg_parser = MagicMock()
     moeimg_parser.login.return_value = "moeimg-cookie"
     bika_parser = MagicMock()

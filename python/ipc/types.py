@@ -10,7 +10,16 @@ class AuthRequiredError(Exception):
 
 
 def _get_config_path() -> str:
-    return os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "config.json")
+    """Return the path to config.json.
+
+    HCOMIC_CONFIG_DIR overrides the base directory. It is read at call time
+    (not import time), so every module's local binding picks up the override
+    uniformly — used by tests to redirect config writes to a tmp dir and
+    avoid clobbering the real ~/.hcomic_downloader/config.json. When unset or
+    empty, falls back to the user's home directory for production use.
+    """
+    base = os.environ.get("HCOMIC_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".hcomic_downloader")
+    return os.path.join(base, "config.json")
 
 
 CONFIG_KEY_MAP = {
