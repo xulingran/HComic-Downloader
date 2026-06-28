@@ -4,9 +4,10 @@
 // 取消、二次挑战停止、非法错误载荷拒绝。
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 
-const { mockBridgeCall, mockOpenJmChallengeWindow, loginWindowImports } = vi.hoisted(() => ({
+const { mockBridgeCall, mockOpenJmChallengeWindow, mockCaptureJmFavouritesSnapshotWindow, loginWindowImports } = vi.hoisted(() => ({
   mockBridgeCall: vi.fn(),
   mockOpenJmChallengeWindow: vi.fn(),
+  mockCaptureJmFavouritesSnapshotWindow: vi.fn(),
   loginWindowImports: {} as { resolvedDomain?: string; challengeUrl?: string },
 }))
 
@@ -17,12 +18,15 @@ vi.mock('../../../electron/python-bridge', () => ({
 
 vi.mock('../../../electron/login-window', () => ({
   openJmChallengeWindow: mockOpenJmChallengeWindow,
+  captureJmFavouritesSnapshotWindow: mockCaptureJmFavouritesSnapshotWindow,
 }))
 
 import {
   extractJmChallengeData,
   isJmChallengeError,
   recoverJmChallenge,
+  recoverJmFavouritesSilently,
+  resetJmChallengeRecoveryStateForTests,
 } from '../../../electron/jm-challenge-recovery'
 import { IPC_ERROR_CODES } from '../../../shared/types'
 import type { BrowserWindow } from 'electron'
@@ -120,6 +124,8 @@ describe('jm-challenge-recovery: recoverJmChallenge (编排)', () => {
   beforeEach(() => {
     mockBridgeCall.mockReset()
     mockOpenJmChallengeWindow.mockReset()
+    mockCaptureJmFavouritesSnapshotWindow.mockReset()
+    resetJmChallengeRecoveryStateForTests()
     loginWindowImports.resolvedDomain = undefined
     loginWindowImports.challengeUrl = undefined
   })
@@ -248,6 +254,66 @@ describe('jm-challenge-recovery: recoverJmChallenge (编排)', () => {
 
     expect(mockBridgeCall).toHaveBeenNthCalledWith(1, 'get_favourites', { page: 3, source: 'jm' })
     expect(mockBridgeCall).toHaveBeenNthCalledWith(2, 'parse_jm_favourites_snapshot', expect.objectContaining({ page: 3 }))
+  })
+
+  it('silent favourites recovery parses hidden browser snapshot without calling Python get_favourites first', async () => {
+    const snapshot = {
+      html: '<html><body>page2</body></html>',
+      sourceUrl: 'https://18comic.vip/user/u/favorite/albums?page=2',
+    }
+    mockCaptureJmFavouritesSnapshotWindow.mockResolvedValueOnce({ success: true, snapshot })
+    mockBridgeCall.mockResolvedValueOnce({ comics: [{ id: '2' }], needsLogin: false })
+
+    const outcome = await recoverJmFavouritesSilently(
+      ctx,
+      'https://18comic.vip/user/u/favorite/albums?page=2',
+      2,
+    )
+
+    expect(outcome.resolved).toBe(true)
+    expect(mockOpenJmChallengeWindow).not.toHaveBeenCalled()
+    expect(mockBridgeCall).toHaveBeenCalledTimes(1)
+    expect(mockBridgeCall).toHaveBeenCalledWith('parse_jm_favourites_snapshot', {
+      html: snapshot.html,
+      source_url: snapshot.sourceUrl,
+      page: 2,
+    })
+  })
+
+  it('after snapshot fallback, next challenged page uses hidden snapshot capture without opening challenge window', async () => {
+    const firstSnapshot = {
+      html: '<html><body>page1</body></html>',
+      sourceUrl: 'https://18comic.vip/user/u/favorite/albums',
+    }
+    const secondSnapshot = {
+      html: '<html><body>page2</body></html>',
+      sourceUrl: 'https://18comic.vip/user/u/favorite/albums?page=2',
+    }
+    mockOpenJmChallengeWindow.mockResolvedValueOnce({ success: true, snapshot: firstSnapshot })
+    mockBridgeCall.mockRejectedValueOnce(makeChallengeError())
+    mockBridgeCall.mockResolvedValueOnce({ comics: [{ id: '1' }], needsLogin: false })
+
+    const first = await recoverJmChallenge(ctx, makeChallengeError(), 1)
+    expect(first.resolved).toBe(true)
+
+    mockBridgeCall.mockClear()
+    mockCaptureJmFavouritesSnapshotWindow.mockResolvedValueOnce({ success: true, snapshot: secondSnapshot })
+    mockBridgeCall.mockResolvedValueOnce({ comics: [{ id: '2' }], needsLogin: false })
+
+    const second = await recoverJmChallenge(
+      ctx,
+      makeChallengeError({ data: { source: 'jm', challengeUrl: secondSnapshot.sourceUrl, message: 'JM 站点人机验证持续阻断' } }),
+      2,
+    )
+
+    expect(second.resolved).toBe(true)
+    expect(mockOpenJmChallengeWindow).toHaveBeenCalledTimes(1)
+    expect(mockCaptureJmFavouritesSnapshotWindow).toHaveBeenCalledWith(ctx.mainWindow, secondSnapshot.sourceUrl, undefined)
+    expect(mockBridgeCall).toHaveBeenCalledWith('parse_jm_favourites_snapshot', {
+      html: secondSnapshot.html,
+      source_url: secondSnapshot.sourceUrl,
+      page: 2,
+    })
   })
 
   it('passes resolvedDomain to challenge window', async () => {

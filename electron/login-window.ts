@@ -10,6 +10,7 @@ import {
 import { IPC_CHANNELS, NOTIFICATION_CHANNELS } from '../shared/types'
 
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
+const HIDDEN_CHALLENGE_CAPTURE_TIMEOUT_MS = 8_000
 /** 叠层成功后，主进程等待渲染端 LOGIN_FINISH 的兜底超时。
  *  渲染端倒数默认 5s；此值取 10s 留足余量，避免正常倒数路径误触发。
  *  渲染进程崩溃 / 导航丢失状态 / 用户拖很久不放手时由它收尾。 */
@@ -23,14 +24,14 @@ const COPYMANGA_DOMAIN = 'www.2026copy.com'
 const HCOMIC_DOMAIN = 'h-comic.com'
 const JM_DEFAULT_DOMAIN = '18comic.vip'
 const JM_FAVOURITES_PATH_RE = /^\/user\/([^/]+)\/favorite\/albums\/?$/
-const CHALLENGE_MARKERS = [
+const STRONG_CHALLENGE_MARKERS = [
   'just a moment',
-  'captcha',
   '/cdn-cgi/challenge-platform/',
   'challenge-platform',
   'cf-chl-',
   'cf-challenge',
 ] as const
+const WEAK_CHALLENGE_MARKERS = ['captcha'] as const
 
 /**
  * 登录窗口允许导航到的域名白名单：
@@ -394,7 +395,11 @@ async function captureJmChallengeSnapshot(
     }
     resolveJmChallengeTarget(sourceUrl, expectedDomain)
     const lower = html.toLowerCase()
-    if (CHALLENGE_MARKERS.some(marker => lower.includes(marker))) {
+    const hasFavouritesContent = /class=["'][^"']*thumb-overlay/i.test(html) || /href=["'][^"']*\/album\/\d+/i.test(html)
+    if (
+      STRONG_CHALLENGE_MARKERS.some(marker => lower.includes(marker))
+      || (!hasFavouritesContent && WEAK_CHALLENGE_MARKERS.some(marker => lower.includes(marker)))
+    ) {
       return { success: false, message: '验证尚未完成，请继续完成人机验证' }
     }
     if (Buffer.byteLength(html, 'utf8') > LOGIN_SNAPSHOT_MAX_BYTES) {
@@ -542,6 +547,7 @@ function createLoginBrowserWindow(
   parent: BrowserWindow,
   title: string = '登录 H-Comic',
   mode: SourceWindowMode = 'login',
+  show: boolean = true,
 ): BrowserWindow {
   diag('createLoginBrowserWindow: start')
   const preloadPath = join(__dirname, '../preload/login-preload.cjs')
@@ -553,6 +559,7 @@ function createLoginBrowserWindow(
   const win = new BrowserWindow({
     width: 500,
     height: 700,
+    show,
     title,
     parent,
     modal: true,
@@ -679,21 +686,7 @@ function createLoginExtractHandler(
     void triggerExtraction(ctx, loginWin, targetSource, domain)
       .then((result) => {
         ctx.extractInProgress = false
-        // 成功 → 置标志 + 启动兜底关窗 timer（渲染端倒数到 0 会调 LOGIN_FINISH 清除它）
-        if (result.success && !ctx.finishFallbackTimer) {
-          ctx.finishFallbackTimer = setTimeout(() => {
-            diag('login finish fallback timer fired (renderer did not LOGIN_FINISH in time)')
-            ctx.done(ctx.successResult || { success: true, message: result.message || '登录成功' })
-          }, LOGIN_FINISH_FALLBACK_MS)
-        }
-        // 定向回推到登录窗（不广播到 mainWindow，避免多窗口串扰）
-        if (!loginWin.isDestroyed()) {
-          loginWin.webContents.send(NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT, {
-            success: result.success,
-            message: result.message,
-            notLoggedIn: result.notLoggedIn,
-          })
-        }
+        notifyExtractionResult(loginWin, ctx, result)
       })
       .catch((err) => {
         ctx.extractInProgress = false
@@ -708,6 +701,57 @@ function createLoginExtractHandler(
 
     return { accepted: true }
   }
+}
+
+function notifyExtractionResult(
+  loginWin: BrowserWindow,
+  ctx: LoginWindowContext,
+  result: ExtractionResult,
+): void {
+  // 成功 → 置标志 + 启动兜底关窗 timer（渲染端倒数到 0 会调 LOGIN_FINISH 清除它）
+  if (result.success && !ctx.finishFallbackTimer) {
+    ctx.finishFallbackTimer = setTimeout(() => {
+      diag('login finish fallback timer fired (renderer did not LOGIN_FINISH in time)')
+      ctx.done(ctx.successResult || { success: true, message: result.message || '登录成功' })
+    }, LOGIN_FINISH_FALLBACK_MS)
+  }
+  // 定向回推到登录窗（不广播到 mainWindow，避免多窗口串扰）
+  if (!loginWin.isDestroyed()) {
+    loginWin.webContents.send(NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT, {
+      success: result.success,
+      message: result.message,
+      notLoggedIn: result.notLoggedIn,
+    })
+  }
+}
+
+function tryAutoCompleteChallengeExtraction(
+  loginWin: BrowserWindow,
+  ctx: LoginWindowContext,
+  source: string,
+  domain: string,
+): void {
+  if (ctx.mode !== 'challenge' || ctx.extractInProgress || ctx.settled || ctx.alreadySucceeded) return
+
+  void captureJmChallengeSnapshot(loginWin, domain)
+    .then((snapshotResult) => {
+      if (!snapshotResult.success || ctx.extractInProgress || ctx.settled || ctx.alreadySucceeded) return
+      ctx.extractInProgress = true
+      return triggerExtraction(ctx, loginWin, source, domain)
+        .then((result) => {
+          ctx.extractInProgress = false
+          if (result.success) {
+            notifyExtractionResult(loginWin, ctx, result)
+          }
+        })
+        .catch((err) => {
+          ctx.extractInProgress = false
+          diag(`auto challenge extraction failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
+        })
+    })
+    .catch((err) => {
+      diag(`auto challenge snapshot probe failed (non-fatal): ${err instanceof Error ? err.message : String(err)}`)
+    })
 }
 
 /**
@@ -896,6 +940,8 @@ function attachLoginWindowLifecycle(
   loginWin: BrowserWindow,
   ctx: LoginWindowContext,
   allowedDomains: ReadonlySet<string>,
+  source: string,
+  domain: string,
 ): void {
   loginWin.webContents.on('render-process-gone', (_event, details) => {
     diag(`render-process-gone: ${details.reason} (exit ${details.exitCode})`)
@@ -919,6 +965,7 @@ function attachLoginWindowLifecycle(
     if (!ctx.savedUserAgent && !loginWin.isDestroyed()) {
       ctx.savedUserAgent = loginWin.webContents.userAgent
     }
+    tryAutoCompleteChallengeExtraction(loginWin, ctx, source, domain)
   })
 
   loginWin.webContents.on('will-navigate', (event, url) => {
@@ -980,7 +1027,7 @@ function openSourceWindow(
 
     const ctx = createLoginContext(loginWin, resolve, removeCspHandler, mode)
 
-    attachLoginWindowLifecycle(loginWin, ctx, allowedDomains)
+    attachLoginWindowLifecycle(loginWin, ctx, allowedDomains, source, target.domain)
 
     const timeout = setTimeout(() => {
       diag('login window timed out')
@@ -1027,6 +1074,49 @@ export function openJmChallengeWindow(
 ): Promise<JmChallengeWindowResult> {
   const target = resolveJmChallengeTarget(challengeUrl, resolvedDomain)
   return openSourceWindow(mainWindow, { mode: 'challenge', source: 'jm', target })
+}
+
+export function captureJmFavouritesSnapshotWindow(
+  mainWindow: BrowserWindow | null,
+  challengeUrl: string,
+  resolvedDomain?: string,
+): Promise<JmChallengeWindowResult> {
+  const target = resolveJmChallengeTarget(challengeUrl, resolvedDomain)
+  return new Promise<JmChallengeWindowResult>((resolve) => {
+    if (!mainWindow) {
+      resolve({ success: false, message: '主窗口不存在' })
+      return
+    }
+    const win = createLoginBrowserWindow(mainWindow, 'JM 收藏夹快照', 'challenge', false)
+    const allowedDomains = buildAllowedNavigationDomains('jm', target.domain)
+    const removeCspHandler = setupLoginWindowCSP(win)
+    const removePermissionHandlers = setupLoginContentIsolation(win, allowedDomains)
+    let settled = false
+    const timeout = setTimeout(() => done({ success: false, message: '收藏夹页面快照超时' }), HIDDEN_CHALLENGE_CAPTURE_TIMEOUT_MS)
+
+    function done(result: JmChallengeWindowResult): void {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      removeCspHandler()
+      removePermissionHandlers()
+      if (!win.isDestroyed()) win.destroy()
+      resolve(result)
+    }
+
+    win.webContents.on('did-finish-load', () => {
+      void captureJmChallengeSnapshot(win, target.domain)
+        .then((snapshotResult) => {
+          if (snapshotResult.success) {
+            done({ success: true, message: '收藏夹快照已获取', snapshot: snapshotResult.snapshot })
+          }
+        })
+        .catch(() => { /* keep window alive until timeout */ })
+    })
+    win.webContents.on('render-process-gone', () => done({ success: false, message: '收藏夹页面加载失败' }))
+    win.on('closed', () => done({ success: false, message: '收藏夹页面快照已取消' }))
+    loadLoginUrl(win, target.url)
+  })
 }
 
 /** 仅供单元测试清理模块级单飞状态。 */

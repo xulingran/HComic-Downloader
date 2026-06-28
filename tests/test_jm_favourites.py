@@ -340,6 +340,26 @@ class TestJmFavourites(unittest.TestCase):
         self.assertEqual(pagination.total_pages, 3)
         self.parser.session.get.assert_not_called()
 
+    def test_parse_favourites_snapshot_accepts_visible_list_with_non_active_captcha_marker(self):
+        """已渲染收藏夹列表即使残留 captcha 文本，也不应被误判为未完成验证。"""
+        html = """
+        <html><body>
+          <script>window.captchaConfig = {};</script>
+          <div class="thumb-overlay">
+            <a href="/album/12345"><img title="渲染后标题" src="/cover.jpg"></a>
+          </div>
+        </body></html>
+        """
+
+        comics, pagination, needs_login = self.parser.parse_favourites_snapshot(
+            html,
+            "https://18comic.vip/user/testuser/favorite/albums",
+        )
+
+        self.assertFalse(needs_login)
+        self.assertEqual([comic.id for comic in comics], ["12345"])
+        self.assertIsNone(pagination)
+
     def test_parse_favourites_snapshot_rejects_challenge_page(self):
         with self.assertRaises(AntiBotChallengeError):
             self.parser.parse_favourites_snapshot(

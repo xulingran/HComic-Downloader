@@ -44,12 +44,12 @@ _INVALID_ID_RE = re.compile(r"album_missing|login")
 _COMIC_ID_RE = re.compile(r"^\d+$")
 _CHALLENGE_KEYWORDS = (
     "just a moment",
-    "captcha",
     "/cdn-cgi/challenge-platform/",
     "challenge-platform",
     "cf-chl-",
     "cf-challenge",
 )
+_WEAK_CHALLENGE_KEYWORDS = ("captcha",)
 _FAVOURITES_CHALLENGE_RETRIES = 2
 _FAVOURITES_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
 _FAVOURITES_PATH_RE = re.compile(r"^/user/[^/?#]+/favorite/albums/?$")
@@ -777,10 +777,20 @@ class JmParser(ParserContextMixin):
         return bool(_COMIC_ID_RE.match(keyword or ""))
 
     @staticmethod
-    def _is_challenge_page(html: str) -> bool:
+    def _has_favourites_content(html: str) -> bool:
+        """检测页面是否已经包含可解析的收藏夹内容。"""
+        return bool(
+            re.search(r'class=["\'][^"\']*thumb-overlay', html or "", re.I)
+            or re.search(r'href=["\'][^"\']*/album/\d+', html or "", re.I)
+        )
+
+    @classmethod
+    def _is_challenge_page(cls, html: str) -> bool:
         """检测 Cloudflare/反爬挑战页面。"""
         lower = (html or "").lower()
-        return any(kw in lower for kw in _CHALLENGE_KEYWORDS)
+        return any(kw in lower for kw in _CHALLENGE_KEYWORDS) or (
+            not cls._has_favourites_content(html) and any(kw in lower for kw in _WEAK_CHALLENGE_KEYWORDS)
+        )
 
     @classmethod
     def _is_challenge_response(cls, resp: Any) -> bool:
