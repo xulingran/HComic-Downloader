@@ -20,6 +20,7 @@ sys.path.insert(
 
 from config import Config
 from python.ipc_server import IPCServer
+from sources.base import AntiBotChallengeError
 
 
 def _create_test_server():
@@ -231,6 +232,35 @@ def test_handle_line_routes_unknown_method_to_minus32601():
 
     [resp] = _drain_responses(server, 1)
     assert resp["error"]["code"] == -32601
+
+
+def test_dispatch_request_serializes_anti_bot_challenge_data():
+    server = _create_test_server()
+    _capture_stdout(server)
+    challenge_url = "https://18comic.vip/user/test/favorite/albums?page=2"
+
+    def fake_handler():
+        raise AntiBotChallengeError("JM 站点人机验证持续阻断", challenge_url=challenge_url)
+
+    server.handle_get_favourites = fake_handler  # type: ignore[method-assign]
+    server._handler_param_keys[server._HANDLER_NAMES["get_favourites"]] = set()
+
+    asyncio.run(server._dispatch_request({"jsonrpc": "2.0", "id": 10, "method": "get_favourites", "params": {}}))
+    server._request_executor.shutdown(wait=True)
+
+    [resp] = _drain_responses(server, 1)
+    assert resp["error"] == {
+        "code": -32002,
+        "message": "JM 站点人机验证持续阻断",
+        "data": {
+            "source": "jm",
+            "challengeUrl": challenge_url,
+            "message": "JM 站点人机验证持续阻断",
+        },
+    }
+    serialized = json.dumps(resp["error"], ensure_ascii=False).lower()
+    assert "cookie" not in serialized
+    assert "user-agent" not in serialized
 
 
 def test_handle_line_rejects_non_object_params():

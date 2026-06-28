@@ -204,7 +204,8 @@ describe('FavouritesPage', () => {
     await userEvent.click((await screen.findAllByText('下一页'))[0])
 
     expect(await screen.findByText('Cached Favourite')).toBeInTheDocument()
-    expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic')
+    // 缓存后台刷新：非交互（allowInteractiveChallenge=false）
+    expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic', false)
   })
 
   it('preloads nearby favourites pages after current page is loaded', async () => {
@@ -217,7 +218,8 @@ describe('FavouritesPage', () => {
     render(<FavouritesPage />)
 
     await screen.findByText('Current Favourite')
-    await waitFor(() => expect(mockGetFavourites).toHaveBeenCalledWith(6, 'hcomic'))
+    // 相邻页预加载：非交互（allowInteractiveChallenge=false）
+    await waitFor(() => expect(mockGetFavourites).toHaveBeenCalledWith(6, 'hcomic', false))
   })
 
   // 回归：封面从左上角飞入 bug 修复（与 SearchPage 同源）。
@@ -272,6 +274,112 @@ describe('FavouritesPage', () => {
 
       // 初始 source='hcomic'（来自 store mock currentSource）、currentPage=1
       expect(getGridKey()).toBe('hcomic:1')
+    })
+  })
+
+  // ── 任务 6.3：交互恢复前台/后台区分测试 ──────────────────────────────────
+  describe('交互挑战恢复 allowInteractiveChallenge 区分', () => {
+    it('无缓存主动加载启用交互恢复（allowInteractiveChallenge=true）', async () => {
+      mockGetFavourites.mockResolvedValue({ comics: [] })
+      render(<FavouritesPage />)
+      await screen.findByText('暂无收藏')
+      // 首次无缓存主动加载：第三个参数应为 true
+      expect(mockGetFavourites).toHaveBeenCalledWith(1, 'hcomic', true)
+    })
+
+    it('用户刷新按钮触发主动加载（启用交互恢复）', async () => {
+      mockGetFavourites.mockResolvedValue({ comics: [] })
+      render(<FavouritesPage />)
+      await screen.findByText('暂无收藏')
+      mockGetFavourites.mockClear()
+
+      await userEvent.click(screen.getByText('刷新'))
+
+      // 刷新走无缓存主动加载路径：allowInteractiveChallenge=true
+      await waitFor(() => {
+        expect(mockGetFavourites).toHaveBeenCalledWith(1, 'hcomic', true)
+      })
+    })
+
+    it('缓存后台刷新不启用交互恢复（allowInteractiveChallenge=false）', async () => {
+      mockFavouritesStore.hasPage.mockReturnValue(true)
+      // 第 1 页主动加载返回带分页的结果（使翻页按钮出现）
+      mockGetFavourites.mockResolvedValue({
+        comics: [{ id: '1', title: 'Page1', url: '', coverUrl: '', source: 'test' }],
+        pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+        needsLogin: false,
+      })
+      // 第 2 页有缓存
+      mockFavouritesStore.getPage.mockImplementation((_source: string, page: number) => {
+        if (page !== 2) return undefined
+        return {
+          comics: [{ id: '2', title: 'Cached', url: '', coverUrl: '', source: 'test' }],
+          pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+          currentPage: 2,
+          downloadedStatus: {},
+        }
+      })
+
+      render(<FavouritesPage />)
+      await screen.findByText('Page1')
+      // 翻到有缓存的第 2 页 → 触发缓存后台刷新
+      await userEvent.click((await screen.findAllByText('下一页'))[0])
+
+      // 缓存后台刷新：第三个参数应为 false（不弹窗）
+      await waitFor(() => {
+        expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic', false)
+      })
+    })
+
+    it('恢复取消（无缓存）显示可重试错误，不显示登录失效', async () => {
+      // 主进程恢复取消时抛出的错误 message 不含 403/登录失效
+      mockGetFavourites.mockRejectedValue(new Error('已取消'))
+      render(<FavouritesPage />)
+
+      // 显示错误提示（可重试），不显示 needsLogin 的登录失效文案
+      await screen.findByText('已取消')
+      expect(screen.queryByText(/登录信息已过期/)).not.toBeInTheDocument()
+      // 手动重试入口存在
+      expect(screen.getByText('重试')).toBeInTheDocument()
+    })
+
+    it('恢复失败（无缓存）显示人机验证提示，不映射为登录失效', async () => {
+      mockGetFavourites.mockRejectedValue(new Error('收藏夹请求遇到问题，请稍后重试'))
+      render(<FavouritesPage />)
+
+      await screen.findByText(/收藏夹请求遇到问题/)
+      // 不应显示 needsLogin 状态（登录失效）
+      expect(screen.queryByText(/登录信息已过期/)).not.toBeInTheDocument()
+    })
+
+    it('有缓存时取消恢复保留已显示的缓存内容', async () => {
+      mockFavouritesStore.hasPage.mockReturnValue(true)
+      // 第 1 页主动加载成功（带分页，使翻页按钮出现）
+      mockGetFavourites.mockResolvedValueOnce({
+        comics: [{ id: '1', title: 'Page1', url: '', coverUrl: '', source: 'test' }],
+        pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+        needsLogin: false,
+      }).mockRejectedValue(new Error('已取消'))
+      // 第 2 页有缓存
+      mockFavouritesStore.getPage.mockImplementation((_source: string, page: number) => {
+        if (page !== 2) return undefined
+        return {
+          comics: [{ id: '2', title: 'Cached Favourite', url: '', coverUrl: '', source: 'test' }],
+          pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+          currentPage: 2,
+          downloadedStatus: {},
+        }
+      })
+
+      render(<FavouritesPage />)
+      await screen.findByText('Page1')
+      // 翻到有缓存的第 2 页 → 缓存后台刷新被取消（reject）
+      await userEvent.click((await screen.findAllByText('下一页'))[0])
+
+      // 缓存的漫画仍显示（后台刷新失败不影响已显示内容）
+      expect(await screen.findByText('Cached Favourite')).toBeInTheDocument()
+      // 不应显示全局错误（缓存后台刷新失败静默吞掉）
+      expect(screen.queryByText('已取消')).not.toBeInTheDocument()
     })
   })
 })

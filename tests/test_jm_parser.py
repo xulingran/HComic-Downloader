@@ -209,13 +209,15 @@ def test_verify_login_detects_cloudflare_challenge(monkeypatch):
 
     mock_resp = MagicMock()
     mock_resp.status_code = 403
-    mock_resp.text = "Just a moment... Please wait while we verify..."
+    mock_resp.headers = {"cf-mitigated": "challenge"}
+    mock_resp.text = "x" * 6000
     mock_resp.url = "https://test.one/"
     parser.session.get.return_value = mock_resp
 
     valid, msg = parser.verify_login_status()
     assert valid is False
-    assert "cf_clearance" in msg
+    assert "人机验证" in msg
+    assert "过期" not in msg
 
 
 def test_verify_login_detects_not_logged_in(monkeypatch):
@@ -225,6 +227,7 @@ def test_verify_login_detects_not_logged_in(monkeypatch):
     parser = JmParser.__new__(JmParser)
     parser._domain = "test.one"
     parser._username = None
+    parser._cookie = ""
     parser.timeout = 5
     parser.session = MagicMock()
 
@@ -263,6 +266,22 @@ def test_verify_login_succeeds_and_discovers_username(monkeypatch):
     assert parser._username == "xulingran"
 
 
+def test_ensure_username_stops_on_long_challenge_response():
+    """用户名发现遇到现代长挑战页时应直接失败，不尝试解析页面。"""
+    from unittest.mock import MagicMock
+
+    parser = _make_parser_with_session()
+    resp = MagicMock()
+    resp.status_code = 403
+    resp.headers = {"cf-mitigated": "challenge"}
+    resp.text = "x" * 6000
+    resp.url = "https://test.one/"
+    parser.session.get.return_value = resp
+
+    assert parser._ensure_username("test.one") is False
+    assert parser._username is None
+
+
 # ---------------------------------------------------------------------------
 # 辅助函数
 # ---------------------------------------------------------------------------
@@ -288,8 +307,8 @@ def _make_parser_with_session(session=None) -> JmParser:
 # ---------------------------------------------------------------------------
 
 
-def test_is_challenge_page_cloudflare():
-    assert JmParser._is_challenge_page("Please wait, cloudflare check...") is True
+def test_is_challenge_page_does_not_match_cloudflare_branding_alone():
+    assert JmParser._is_challenge_page("Protected by Cloudflare") is False
 
 
 def test_is_challenge_page_just_a_moment():
@@ -302,6 +321,25 @@ def test_is_challenge_page_captcha():
 
 def test_is_challenge_page_cf_prefix():
     assert JmParser._is_challenge_page("cf-challenge loading...") is True
+
+
+def test_is_challenge_page_long_cloudflare_challenge():
+    html = "x" * 6000 + '<script src="/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1"></script>'
+    assert JmParser._is_challenge_page(html) is True
+
+
+def test_is_challenge_response_prefers_mitigation_header():
+    from types import SimpleNamespace
+
+    resp = SimpleNamespace(headers={"CF-Mitigated": "Challenge"}, text="x" * 6000)
+    assert JmParser._is_challenge_response(resp) is True
+
+
+def test_is_challenge_response_normal_long_page():
+    from types import SimpleNamespace
+
+    resp = SimpleNamespace(headers={"server": "cloudflare"}, text="<html>" + "x" * 6000 + "</html>")
+    assert JmParser._is_challenge_response(resp) is False
 
 
 def test_is_challenge_page_normal_html():

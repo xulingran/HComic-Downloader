@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
+from urllib.parse import parse_qs, urlparse
 
 from sources import _SOURCES_WITH_FAVOURITES, _VALID_SOURCES
-from sources.base import ParserResponseError
+from sources.base import AntiBotChallengeError, ParserResponseError
 
 from .types import AuthRequiredError
 
@@ -19,6 +21,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 _DEFAULT_SOURCE = "hcomic"
+_JM_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
+_JM_FAVOURITES_PATH_RE = re.compile(r"^/user/[^/?#]+/favorite/albums/?$")
 _AUTH_KEYWORDS = (
     "401",
     "403",
@@ -135,6 +139,9 @@ class SearchMixin:
         """Context manager that converts source auth errors to AuthRequiredError."""
         try:
             yield
+        except AntiBotChallengeError as e:
+            logger.warning("Anti-bot challenge in %s handler: %s", source, e)
+            raise
         except ParserResponseError as e:
             msg = str(e)
             if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
@@ -308,6 +315,58 @@ class SearchMixin:
                 "pagination": self._pagination_to_dict(pagination, fallback_page=page),
                 "needsLogin": needs_login,
             }
+
+    def handle_parse_jm_favourites_snapshot(self, html: str, source_url: str, page: int = 1) -> dict:
+        """解析来自 Electron 主进程的可信 JM 收藏夹 DOM 快照。"""
+        self._validate_jm_favourites_snapshot_input(html, source_url, page)
+        with self._auth_error_guard("jm"):
+            comics, pagination, needs_login = self.parser.parse_jm_favourites_snapshot(
+                html=html,
+                source_url=source_url,
+                page=page,
+            )
+            self._update_tags_from_favourites_page(comics, "jm")
+            deduped = []
+            seen: set[tuple] = set()
+            for comic in comics:
+                key = (comic.source_site, comic.id, comic.comic_source)
+                if key not in seen:
+                    seen.add(key)
+                    deduped.append(comic)
+            return {
+                "comics": [self._comic_to_dict(comic) for comic in deduped],
+                "pagination": self._pagination_to_dict(pagination, fallback_page=page),
+                "needsLogin": needs_login,
+            }
+
+    def _validate_jm_favourites_snapshot_input(self, html: str, source_url: str, page: int) -> None:
+        if not isinstance(html, str) or not html.strip():
+            raise ValueError("JM favourites snapshot HTML is required")
+        if len(html.encode("utf-8")) > _JM_SNAPSHOT_MAX_BYTES:
+            raise ValueError("JM favourites snapshot exceeds 5 MiB")
+        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= 1000:
+            raise ValueError("Invalid JM favourites snapshot page")
+        if not isinstance(source_url, str) or not 1 <= len(source_url) <= 2048:
+            raise ValueError("Invalid JM favourites snapshot URL")
+        parsed = urlparse(source_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.username
+            or parsed.password
+            or parsed.port not in (None, 443)
+            or not parsed.hostname
+            or not _JM_FAVOURITES_PATH_RE.fullmatch(parsed.path)
+            or parsed.fragment
+        ):
+            raise ValueError("Untrusted JM favourites snapshot URL")
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if any(key != "page" for key in query) or any(len(values) != 1 for values in query.values()):
+            raise ValueError("Invalid JM favourites snapshot query")
+        if page == 1:
+            if query.get("page", ["1"]) != ["1"]:
+                raise ValueError("JM favourites snapshot page mismatch")
+        elif query.get("page") != [str(page)]:
+            raise ValueError("JM favourites snapshot page mismatch")
 
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         valid_sources = _SOURCES_WITH_FAVOURITES

@@ -67,6 +67,8 @@ from ipc.types import (  # noqa: E402,F401
     _get_config_path,
 )
 
+from sources.base import AntiBotChallengeError  # noqa: E402
+
 
 class IPCServer(
     SearchMixin,
@@ -288,6 +290,7 @@ class IPCServer(
         "download": "handle_download",
         "check_download_conflict": "handle_check_download_conflict",
         "get_favourites": "handle_get_favourites",
+        "parse_jm_favourites_snapshot": "handle_parse_jm_favourites_snapshot",
         "add_to_favourites": "handle_add_to_favourites",
         "check_favourite": "handle_check_favourite",
         "remove_from_favourites": "handle_remove_from_favourites",
@@ -404,6 +407,23 @@ class IPCServer(
                     lambda: handler(**valid_params),
                 )
             self._write_response({"jsonrpc": "2.0", "id": req_id, "result": result})
+        except AntiBotChallengeError as e:
+            message = str(e)
+            self._write_response(
+                {
+                    "jsonrpc": "2.0",
+                    "id": req_id,
+                    "error": {
+                        "code": -32002,
+                        "message": message,
+                        "data": {
+                            "source": "jm",
+                            "challengeUrl": e.challenge_url,
+                            "message": message,
+                        },
+                    },
+                }
+            )
         except AuthRequiredError as e:
             self._write_response(
                 {

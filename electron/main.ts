@@ -6,6 +6,7 @@ import { resolveImageCacheFile } from './image-protocol'
 import { checkForUpdates } from './update-checker'
 import { NotificationManager } from './notification-manager'
 import { openLoginWindow } from './login-window'
+import { isJmChallengeError, recoverJmChallenge } from './jm-challenge-recovery'
 import { needsRelaxedCsp } from './csp-relaxed-registry'
 import { initLogging } from './log-init'
 import { buildDiagnostics } from './diagnostics'
@@ -744,12 +745,37 @@ function registerDownloadHandlers(bridge: Bridge) {
     return bridge.call('check_download_conflict', { comic_data: comicData })
   })
 
-  ipcMain.handle(IPC_CHANNELS.GET_FAVOURITES, async (_, page?: unknown, source?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.GET_FAVOURITES, async (_, page?: unknown, source?: unknown, allowInteractive?: unknown) => {
     const p = page ?? 1
     assert(and(number(), integer(), range(1, 1000)), p, 'favourites page')
+    // 交互挑战恢复开关：仅接受严格布尔，缺省/非布尔视为 false（保守默认）
+    const interactiveFlag = allowInteractive === true
+    const effectiveSource = typeof source === 'string' ? source : undefined
     const params: Record<string, unknown> = { page: p }
-    withOptionalSource(params, source, 'favourites')
-    return bridge.call('get_favourites', params)
+    withOptionalSource(params, effectiveSource, 'favourites')
+    // 禁止把 UI 控制参数转发给 Python handler
+    try {
+      return await bridge.call('get_favourites', params)
+    } catch (err) {
+      // 仅 JM 来源、显式交互标志、结构化挑战错误时启动恢复
+      if (
+        interactiveFlag
+        && effectiveSource === 'jm'
+        && isJmChallengeError(err)
+      ) {
+        const outcome = await recoverJmChallenge(
+          { mainWindow, resolvedDomain: jmMainDomain || undefined },
+          err,
+          p,
+        )
+        if (outcome.resolved && outcome.result) {
+          return outcome.result
+        }
+        // 恢复失败/取消：重新抛出，让 renderer 按可恢复错误处理
+        throw Object.assign(new Error(outcome.message || '收藏夹请求遇到问题，请稍后重试'), { cause: err })
+      }
+      throw err
+    }
   })
 
   ipcMain.handle(IPC_CHANNELS.ADD_TO_FAVOURITES, async (_, comicId: unknown, source?: unknown) => {

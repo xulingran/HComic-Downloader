@@ -112,7 +112,9 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       setDownloadedStatus(cachedPage.downloadedStatus)
       setError(null)
 
-      getFavourites(page, effectiveSource).then(async (result) => {
+      // 缓存后台刷新：不启用交互恢复，避免在有缓存内容时抢占焦点；
+      // 挑战失败时静默吞掉，保留已显示的缓存。
+      getFavourites(page, effectiveSource, false).then(async (result) => {
         const statusResult = await checkDownloadedStatus(result.comics).catch(() => ({ statusMap: {} }))
         if (!mountedRef.current || latestPageRef.current !== pageSnapshot) return
         setComics(result.comics)
@@ -131,7 +133,8 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     }
 
     try {
-      const result = await getFavourites(page, effectiveSource)
+      // 无缓存的用户主动加载：启用交互恢复，让用户可在前台完成人机验证
+      const result = await getFavourites(page, effectiveSource, reason === 'user')
       const statusResult = await checkDownloadedStatus(result.comics).catch(() => ({ statusMap: {} }))
       const resolvedPage = result.pagination?.currentPage ?? page
       cacheFavouritesPage(effectiveSource, resolvedPage, result, statusResult.statusMap)
@@ -289,7 +292,8 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   }
 
   const preloadFavouritesPage = useCallback(async (page: number) => {
-    const result = await getFavourites(page, source)
+    // 相邻页预加载：后台非交互，挑战失败静默吞掉
+    const result = await getFavourites(page, source, false)
     const statusResult = await checkDownloadedStatus(result.comics).catch(() => ({ statusMap: {} }))
     preloadedPagesRef.current.set(`favourites:${source}:${page}`, {
       comics: result.comics,
@@ -398,7 +402,17 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         </div>
       )}
 
-      {error && <ErrorDisplay message={error} />}
+      {error && (
+        <ErrorDisplay
+          message={error}
+          onRetry={() => {
+            // 手动重试：无缓存失败时重新触发主动加载（启用交互恢复）
+            cache.clearCache(source)
+            setComics([])
+            loadFavourites(currentPage, source)
+          }}
+        />
+      )}
 
       {!isLoading && !error && (needsLogin ? (
         <div className="text-center py-12">

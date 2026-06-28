@@ -89,7 +89,16 @@ vi.mock('fs', () => ({
   default: { promises: { appendFile: mockAppendFile } },
 }))
 
-import { openLoginWindow, shellQuoteForShlex, resolveLoginTarget, extractCookiesForSource, verifyLoginCookies } from '../../../electron/login-window'
+import {
+  extractCookiesForSource,
+  openJmChallengeWindow,
+  openLoginWindow,
+  resetSourceWindowStateForTests,
+  resolveJmChallengeTarget,
+  resolveLoginTarget,
+  shellQuoteForShlex,
+  verifyLoginCookies,
+} from '../../../electron/login-window'
 import { session as electronSession } from 'electron'
 import { IPC_CHANNELS, NOTIFICATION_CHANNELS } from '../../../shared/types'
 
@@ -233,6 +242,7 @@ describe('login-window: diag (async batching)', () => {
   // 模块级 diagFlushTimer 状态污染。diag 的 timer 是模块私有，无法在
   // beforeEach 重置，故通过测试顺序保证此 describe 先跑、状态干净。
   beforeEach(() => {
+    resetSourceWindowStateForTests()
     mockAppendFile.mockClear()
     vi.clearAllMocks()
   })
@@ -260,6 +270,7 @@ describe('login-window: diag (async batching)', () => {
 
 describe('login-window: openLoginWindow', () => {
   beforeEach(() => {
+    resetSourceWindowStateForTests()
     vi.clearAllMocks()
     // 清空事件捕获
     for (const k of Object.keys(loginWinEvents)) delete loginWinEvents[k]
@@ -524,6 +535,7 @@ describe('login-window: openLoginWindow', () => {
 
 describe('login-window: overlay IPC handlers', () => {
   beforeEach(() => {
+    resetSourceWindowStateForTests()
     vi.clearAllMocks()
     for (const k of Object.keys(loginWinEvents)) delete loginWinEvents[k]
     for (const k of Object.keys(webContentsEvents)) delete webContentsEvents[k]
@@ -698,6 +710,332 @@ describe('login-window: overlay IPC handlers', () => {
     await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
     expect(ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]).toBeUndefined()
     expect(ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]).toBeUndefined()
+    vi.useRealTimers()
+  })
+})
+
+// ── 任务 3.6：挑战模式专项测试 ────────────────────────────────────────────
+// 覆盖：URL 验证器、两种模式开窗、单飞互斥、仍在挑战页不关闭、快照成功/超限、
+// Cookie/UA 同步、取消与生命周期清理。
+
+describe('login-window: resolveJmChallengeTarget (URL validator)', () => {
+  it('accepts canonical favourites URL without page', () => {
+    const t = resolveJmChallengeTarget('https://18comic.vip/user/testuser/favorite/albums')
+    expect(t.domain).toBe('18comic.vip')
+    expect(t.title).toBe('JM 人机验证')
+    expect(t.url).toBe('https://18comic.vip/user/testuser/favorite/albums')
+  })
+
+  it('accepts URL with explicit page query', () => {
+    const t = resolveJmChallengeTarget('https://18comic.vip/user/testuser/favorite/albums?page=3')
+    expect(t.url).toContain('page=3')
+  })
+
+  it('accepts trusted JM mirror domain', () => {
+    const t = resolveJmChallengeTarget('https://jmcomic-zzz.one/user/u/favorite/albums')
+    expect(t.domain).toBe('jmcomic-zzz.one')
+  })
+
+  it('accepts resolved domain override', () => {
+    const t = resolveJmChallengeTarget('https://custom.jm.example/user/u/favorite/albums', 'custom.jm.example')
+    expect(t.domain).toBe('custom.jm.example')
+  })
+
+  it('rejects non-https scheme', () => {
+    expect(() => resolveJmChallengeTarget('http://18comic.vip/user/u/favorite/albums')).toThrow('不受信任')
+  })
+
+  it('rejects userinfo in URL', () => {
+    expect(() => resolveJmChallengeTarget('https://user:pass@18comic.vip/user/u/favorite/albums')).toThrow('不受信任')
+  })
+
+  it('rejects non-default port', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip:8443/user/u/favorite/albums')).toThrow('不受信任')
+  })
+
+  it('rejects non-trusted domain', () => {
+    expect(() => resolveJmChallengeTarget('https://evil.example/user/u/favorite/albums')).toThrow('不受信任')
+  })
+
+  it('rejects non-favourites path', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/')).toThrow('不受信任')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/user/u/favorite/threads')).toThrow('不受信任')
+  })
+
+  it('rejects fragment', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/user/u/favorite/albums#frag')).toThrow('不受信任')
+  })
+
+  it('rejects disallowed query keys', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/user/u/favorite/albums?foo=1')).toThrow('查询参数无效')
+  })
+
+  it('rejects invalid page values', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/user/u/favorite/albums?page=0')).toThrow('页码无效')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/user/u/favorite/albums?page=abc')).toThrow('页码无效')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/user/u/favorite/albums?page=1001')).toThrow('页码无效')
+  })
+
+  it('rejects oversized URL (>2048 chars)', () => {
+    const long = 'a'.repeat(2048)
+    expect(() => resolveJmChallengeTarget(`https://18comic.vip/user/u/favorite/albums?x=${long}`)).toThrow()
+  })
+
+  it('rejects malformed URL string', () => {
+    expect(() => resolveJmChallengeTarget('not-a-url')).toThrow('无效')
+    expect(() => resolveJmChallengeTarget('')).toThrow('无效')
+  })
+})
+
+describe('login-window: openJmChallengeWindow (challenge mode)', () => {
+  beforeEach(() => {
+    resetSourceWindowStateForTests()
+    vi.clearAllMocks()
+    for (const k of Object.keys(loginWinEvents)) delete loginWinEvents[k]
+    for (const k of Object.keys(webContentsEvents)) delete webContentsEvents[k]
+    for (const k of Object.keys(ipcHandlers)) delete ipcHandlers[k]
+    capturedInstances.length = 0
+    mockBridgeCall.mockReset()
+    mockBridgeCall.mockResolvedValue({ valid: true, message: 'verify ok' })
+  })
+
+  const CHALLENGE_URL = 'https://18comic.vip/user/testuser/favorite/albums'
+
+  // 辅助：开挑战窗并填充 savedUserAgent，返回捕获的 loginWin + promise
+  async function setupChallenge() {
+    const promise = openJmChallengeWindow(makeMainWindow(), CHALLENGE_URL)
+    await Promise.resolve()
+    const win = capturedInstances[0] as {
+      webContents: {
+        send: ReturnType<typeof vi.fn>
+        executeJavaScript: ReturnType<typeof vi.fn>
+        session: { cookies: { get: ReturnType<typeof vi.fn> } }
+        userAgent: string
+      }
+      destroy: ReturnType<typeof vi.fn>
+    }
+    if (webContentsEvents['did-finish-load']) webContentsEvents['did-finish-load'][0]()
+    return { promise, win }
+  }
+
+  it('creates a modal window in challenge mode with JM title', async () => {
+    await setupChallenge()
+    expect(capturedInstances).toHaveLength(1)
+    const opts = (capturedInstances[0] as { options?: { title?: string; modal?: boolean } }).options as
+      | { title?: string; modal?: boolean }
+      | undefined
+    expect(opts?.modal).toBe(true)
+    expect(opts?.title).toBe('JM 人机验证')
+  })
+
+  it('passes mode to preload via additionalArguments', async () => {
+    await setupChallenge()
+    const webPrefs = ((capturedInstances[0] as { options?: { webPreferences?: { additionalArguments?: string[] } } })
+      .options as { webPreferences?: { additionalArguments?: string[] } }).webPreferences
+    expect(webPrefs?.additionalArguments).toContain('--hcomic-window-mode=challenge')
+  })
+
+  it('loads the challenge favourites URL', async () => {
+    await setupChallenge()
+    expect((capturedInstances[0] as { loadURL: ReturnType<typeof vi.fn> }).loadURL)
+      .toHaveBeenCalledWith(CHALLENGE_URL)
+  })
+
+  it('single-flight: second call reuses promise and focuses existing window', async () => {
+    const main = makeMainWindow()
+    const p1 = openJmChallengeWindow(main, CHALLENGE_URL)
+    const p2 = openJmChallengeWindow(main, CHALLENGE_URL)
+    // 同一 Promise 实例（复用），且只创建一个窗口
+    expect(p1).toBe(p2)
+    expect(capturedInstances).toHaveLength(1)
+    // 已有窗口被 focus（restore+focus）
+    const win = capturedInstances[0] as { focus: ReturnType<typeof vi.fn>; restore: ReturnType<typeof vi.fn> }
+    // 等微任务让 focusActiveSourceWindow 有机会执行
+    await Promise.resolve()
+    expect(win.focus).toHaveBeenCalled()
+  })
+
+  it('login and challenge windows are mutually exclusive via shared coordinator', async () => {
+    const main = makeMainWindow()
+    // 先开挑战窗
+    void openJmChallengeWindow(main, CHALLENGE_URL)
+    await Promise.resolve()
+    expect(capturedInstances).toHaveLength(1)
+    const challengeWin = capturedInstances[0] as { focus: ReturnType<typeof vi.fn> }
+    // 再开登录窗 → 复用协调器，聚焦已有窗口，不创建第二个窗口
+    void openLoginWindow(main, 'jm')
+    await Promise.resolve()
+    expect(capturedInstances).toHaveLength(1)
+    expect(challengeWin.focus).toHaveBeenCalled()
+  })
+
+  it('snapshot capture fails when page still shows challenge markers', async () => {
+    vi.useFakeTimers()
+    const { win, promise } = await setupChallenge()
+    // 模拟 executeJavaScript 返回仍含挑战标记的页面
+    vi.mocked(win.webContents.executeJavaScript).mockResolvedValue({
+      sourceUrl: CHALLENGE_URL,
+      html: '<html><script src="/cdn-cgi/challenge-platform/h/g/orchestrate"></script></html>',
+    })
+    // 提供有效 jm cookie，使提取链能走到快照校验
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+    ])
+    const r = await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'jm')
+    expect(r).toEqual({ accepted: true })
+    await vi.runAllTimersAsync()
+    // 快照校验失败 → 推回失败结果，窗口未 settle
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+      expect.objectContaining({ success: false, message: expect.stringContaining('验证尚未完成') }),
+    )
+    // 窗口未被 destroy（仍在挑战页，保持打开）
+    expect(win.destroy).not.toHaveBeenCalled()
+    // 清理：取消 promise
+    const closeHandlers = loginWinEvents['close'] as Array<(...args: unknown[]) => void> | undefined
+    if (closeHandlers) {
+      closeHandlers[0]({ preventDefault: vi.fn() })
+      await vi.runAllTimersAsync()
+    }
+    await promise.catch(() => undefined)
+    vi.useRealTimers()
+  })
+
+  it('snapshot capture succeeds and result carries snapshot for main-process consumer', async () => {
+    vi.useFakeTimers()
+    const { promise, win } = await setupChallenge()
+    const snapshotHtml = '<html><body><div class="thumb-overlay"><a href="/album/1"><img title="t"></a></div></body></html>'
+    vi.mocked(win.webContents.executeJavaScript).mockResolvedValue({
+      sourceUrl: CHALLENGE_URL,
+      html: snapshotHtml,
+    })
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+      cookie('cf_clearance', 'clear'),
+    ])
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'jm')
+    // flush 提取链微任务（不推进 timer，避免 10s 兜底误触发 done）
+    await vi.waitFor(() => {
+      expect(mockBridgeCall).toHaveBeenCalledWith('apply_auth', expect.anything())
+    })
+    // apply_auth 被调用，携带 cookie 与 UA
+    expect(mockBridgeCall).toHaveBeenCalledWith('apply_auth', expect.objectContaining({ source: 'jm' }))
+    const applyCall = mockBridgeCall.mock.calls.find(c => c[0] === 'apply_auth')
+    const applyParams = applyCall?.[1] as { curl_text: string }
+    expect(applyParams.curl_text).toContain('remember=abc')
+    expect(applyParams.curl_text).toContain('cf_clearance=clear')
+    expect(applyParams.curl_text).toContain('User-Agent: MockUA/1.0')
+    // 成功后推回成功结果
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+      expect.objectContaining({ success: true }),
+    )
+    // 渲染端倒数到 0 → LOGIN_FINISH，done 返回 successResult（含 snapshot）
+    const finishResult = await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
+    expect(finishResult).toEqual({ ok: true })
+    const result = await promise
+    expect(result.success).toBe(true)
+    // 挑战模式结果携带快照，供主进程内部消费者使用
+    expect(result.snapshot).toBeDefined()
+    expect(result.snapshot?.html).toBe(snapshotHtml)
+    vi.useRealTimers()
+  })
+
+  it('snapshot capture fails when HTML exceeds 5 MiB limit', async () => {
+    vi.useFakeTimers()
+    const { win } = await setupChallenge()
+    vi.mocked(win.webContents.executeJavaScript).mockResolvedValue({
+      sourceUrl: CHALLENGE_URL,
+      html: 'x'.repeat(5 * 1024 * 1024 + 1),
+    })
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+    ])
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'jm')
+    await vi.runAllTimersAsync()
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+      expect.objectContaining({ success: false }),
+    )
+    vi.useRealTimers()
+  })
+
+  it('snapshot capture fails when current URL is untrusted (cross-domain)', async () => {
+    vi.useFakeTimers()
+    const { win } = await setupChallenge()
+    vi.mocked(win.webContents.executeJavaScript).mockResolvedValue({
+      sourceUrl: 'https://evil.example/user/u/favorite/albums',
+      html: '<html><body>ok</body></html>',
+    })
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+    ])
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'jm')
+    await vi.runAllTimersAsync()
+    expect(win.webContents.send).toHaveBeenCalledWith(
+      NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+      expect.objectContaining({ success: false }),
+    )
+    vi.useRealTimers()
+  })
+
+  it('user cancel (close in challenge mode) returns 已取消 without clearing auth', async () => {
+    vi.useFakeTimers()
+    const { promise } = await setupChallenge()
+    // 未触发叠层提取即关窗 → 挑战模式直接返回已取消
+    const closeHandlers = loginWinEvents['close'] as Array<(...args: unknown[]) => void> | undefined
+    expect(closeHandlers).toBeDefined()
+    const fakeEvent = { preventDefault: vi.fn() }
+    closeHandlers![0](fakeEvent)
+    const result = await promise
+    expect(result.success).toBe(false)
+    expect(result.message).toBe('已取消')
+    // 未调用 apply_auth（未清除/覆盖认证）
+    expect(mockBridgeCall).not.toHaveBeenCalledWith('apply_auth', expect.anything())
+    vi.useRealTimers()
+  })
+
+  it('challenge window timeout returns 验证超时 message', async () => {
+    vi.useFakeTimers()
+    const promise = openJmChallengeWindow(makeMainWindow(), CHALLENGE_URL)
+    await Promise.resolve()
+    // 推进到 LOGIN_WINDOW_TIMEOUT_MS (5 分钟)
+    await vi.advanceTimersByTimeAsync(5 * 60 * 1_000)
+    const result = await promise
+    expect(result.success).toBe(false)
+    expect(result.message).toContain('超时')
+    vi.useRealTimers()
+  })
+
+  it('openLoginWindow strips snapshot from public return value', async () => {
+    vi.useFakeTimers()
+    const main = makeMainWindow()
+    const promise = openLoginWindow(main, 'jm')
+    await Promise.resolve()
+    if (webContentsEvents['did-finish-load']) webContentsEvents['did-finish-load'][0]()
+    const win = capturedInstances[0] as {
+      webContents: {
+        session: { cookies: { get: ReturnType<typeof vi.fn> } }
+        userAgent: string
+      }
+    }
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+    ])
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'jm')
+    await vi.waitFor(() => {
+      expect(win.webContents.session.cookies.get).toHaveBeenCalled()
+    })
+    // LOGIN_FINISH 关窗 → done 返回 successResult（登录模式无 snapshot）
+    await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
+    const result = await promise
+    // 公共契约：openLoginWindow 返回值只有 success/message，禁止 snapshot 字段
+    expect(result).not.toHaveProperty('snapshot')
     vi.useRealTimers()
   })
 })

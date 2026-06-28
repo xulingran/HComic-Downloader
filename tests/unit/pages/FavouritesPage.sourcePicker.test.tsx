@@ -128,9 +128,9 @@ describe('FavouritesPage 来源选择器三态分支', () => {
 
       // 不应出现选择器
       expect(screen.queryByText('选择收藏夹来源')).not.toBeInTheDocument()
-      // 应直接以 bika 加载
+      // 应直接以 bika 加载（启用交互恢复）
       await waitFor(() => {
-        expect(mockGetFavourites).toHaveBeenCalledWith(1, 'bika')
+        expect(mockGetFavourites).toHaveBeenCalledWith(1, 'bika', true)
       })
     })
 
@@ -142,7 +142,8 @@ describe('FavouritesPage 来源选择器三态分支', () => {
 
       expect(screen.queryByText('选择收藏夹来源')).not.toBeInTheDocument()
       await waitFor(() => {
-        expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm')
+        // 用户主动加载：启用交互恢复（allowInteractiveChallenge=true）
+        expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm', true)
       })
     })
   })
@@ -175,7 +176,8 @@ describe('FavouritesPage 来源选择器三态分支', () => {
       fireEvent.click(within(dialog).getByText('JM'))
 
       await waitFor(() => {
-        expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm')
+        // 用户从选择器主动选择来源后加载：启用交互恢复（allowInteractiveChallenge=true）
+        expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm', true)
       })
       expect(mockFavouritesStore.setCurrentSource).toHaveBeenCalledWith('jm')
       expect(mockFavouritesStore.markPickerShown).toHaveBeenCalled()

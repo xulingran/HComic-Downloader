@@ -92,8 +92,10 @@ const OVERLAY_HOST_ID = 'hcomic-login-overlay'
 const DRAG_THRESHOLD_PX = 4
 /** 倒数起始秒数 */
 const COUNTDOWN_START = 5
+const WINDOW_MODE = process.argv.includes('--hcomic-window-mode=challenge') ? 'challenge' : 'login'
 
 type OverlayState = 'idle' | 'expanded' | 'extracting' | 'counting'
+type WindowMode = 'login' | 'challenge'
 
 /** 按 location.hostname 推断 source，传给主进程提取 */
 function inferSource(): string {
@@ -107,14 +109,14 @@ function inferSource(): string {
  * 注入叠层。幂等（host 已存在则跳过）；body 不存在时等 DOMContentLoaded。
  * 整体 try/catch：注入失败仅 console.error，不影响页面加载与上方 prototype 补丁。
  */
-function injectOverlay(source: string): void {
+function injectOverlay(source: string, mode: WindowMode): void {
   try {
     if (document.getElementById(OVERLAY_HOST_ID)) return
     if (!document.body) {
-      document.addEventListener('DOMContentLoaded', () => injectOverlay(source), { once: true })
+      document.addEventListener('DOMContentLoaded', () => injectOverlay(source, mode), { once: true })
       return
     }
-    buildOverlay(source)
+    buildOverlay(source, mode)
   } catch (err) {
     console.error('[HComicLoginOverlay] inject failed:', err)
   }
@@ -167,7 +169,7 @@ const OVERLAY_STYLES = `
 `
 
 /** 构建叠层 DOM、状态机、事件绑定。仅在 host 不存在时调用。 */
-function buildOverlay(source: string): void {
+function buildOverlay(source: string, mode: WindowMode): void {
   const host = document.createElement('div')
   host.id = OVERLAY_HOST_ID
   host.style.cssText = 'position:fixed;top:12px;right:12px;z-index:2147483647;'
@@ -215,7 +217,7 @@ function buildOverlay(source: string): void {
     head.className = 'head'
     const title = document.createElement('span')
     title.className = 'head-title'
-    title.textContent = '登录助手'
+    title.textContent = mode === 'challenge' ? '验证助手' : '登录助手'
     const closeBtn = document.createElement('button')
     closeBtn.className = 'close'
     closeBtn.textContent = '✕'
@@ -257,7 +259,7 @@ function buildOverlay(source: string): void {
     renderCard({
       hint: hintText,
       hintClass,
-      btnText: '我已登录',
+      btnText: mode === 'challenge' ? '我已完成验证' : '我已登录',
       btnOnClick: onExtractClick,
     })
   }
@@ -272,7 +274,7 @@ function buildOverlay(source: string): void {
     labelEl.textContent = `${remaining} 秒后自动关闭`
 
     renderCard({
-      hint: '✅ 登录成功',
+      hint: mode === 'challenge' ? '✅ 验证成功' : '✅ 登录成功',
       btnText: '',
       extra: (() => {
         const wrap = document.createElement('div')
@@ -302,11 +304,13 @@ function buildOverlay(source: string): void {
   function setState(next: OverlayState): void {
     state = next
     if (next === 'idle') renderDot()
-    else if (next === 'expanded') renderExpanded('登录后点此获取凭证')
+    else if (next === 'expanded') {
+      renderExpanded(mode === 'challenge' ? '完成站点人机验证后点此继续' : '登录后点此获取凭证')
+    }
     else if (next === 'extracting') {
       renderCard({
-        hint: '正在获取凭证…',
-        btnText: '提取中',
+        hint: mode === 'challenge' ? '正在确认验证状态…' : '正在获取凭证…',
+        btnText: mode === 'challenge' ? '确认中' : '提取中',
         btnDisabled: true,
         btnSpinner: true,
       })
@@ -334,7 +338,7 @@ function buildOverlay(source: string): void {
     }
     if (payload.notLoggedIn) {
       setState('expanded')
-      renderExpanded('未检测到登录状态', 'err')
+      renderExpanded(mode === 'challenge' ? '未检测到登录状态，请先在当前窗口登录' : '未检测到登录状态', 'err')
       return
     }
     // 其他失败：显示后端返回的 message
@@ -426,7 +430,7 @@ function bindDrag(host: HTMLElement, dragHandle: HTMLElement): void {
 
 // preload 顶层执行：注入叠层
 try {
-  injectOverlay(inferSource())
+  injectOverlay(inferSource(), WINDOW_MODE)
 } catch (err) {
   console.error('[HComicLoginOverlay] bootstrap failed:', err)
 }

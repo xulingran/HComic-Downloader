@@ -98,9 +98,12 @@ export function useDownload() {
 export function useFavourites() {
   const { invoke } = useIpc()
 
-  const getFavourites = useCallback(async (page: number = 1, source?: string) => {
-    return invoke(() => window.hcomic!.getFavourites(page, source))
-  }, [invoke])
+  const getFavourites = useCallback(
+    async (page: number = 1, source?: string, allowInteractiveChallenge?: boolean) => {
+      return invoke(() => window.hcomic!.getFavourites(page, source, allowInteractiveChallenge))
+    },
+    [invoke],
+  )
 
   const checkDownloadedStatus = useCallback(async (comics: ComicInfo[]) => {
     return invoke(() => window.hcomic!.checkDownloadedStatus(comics))

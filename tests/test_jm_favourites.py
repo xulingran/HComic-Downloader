@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import requests
 
+from sources.base import AntiBotChallengeError
 from sources.jm.parser import JmParser
 
 
@@ -32,6 +33,14 @@ def _make_fav_resp(
     suffix = f"?page={page}" if page > 1 else ""
     resp.url = f"https://18comic.vip/user/{username}/favorite/albums{suffix}"
     resp.text = text
+    resp.headers = {}
+    return resp
+
+
+def _make_challenge_resp(text: str | None = None) -> MagicMock:
+    """构造 Cloudflare 明确标记的收藏夹挑战响应。"""
+    resp = _make_fav_resp(status=403, text=text or ("x" * 6000))
+    resp.headers = {"cf-mitigated": "challenge", "server": "cloudflare"}
     return resp
 
 
@@ -137,6 +146,73 @@ class TestJmFavourites(unittest.TestCase):
         with self.assertRaises(requests.ConnectionError):
             self.parser.favourites(page=1, raise_errors=True)
 
+    def test_favourites_recovers_after_challenge_with_same_session_and_auth(self):
+        """首次挑战后应在同一 Session 预热并成功重试收藏夹。"""
+        cookie = "remember_id=42"
+        self.parser.configure_auth(cookie=cookie, user_agent="UA/1.0")
+        self.parser._domain = "18comic.vip"
+        self.parser._username = "testuser"
+        get = MagicMock(
+            side_effect=[
+                _make_challenge_resp(),
+                _make_homepage_resp(),
+                _make_fav_resp(),
+            ]
+        )
+        self.parser.session.get = get
+
+        comics, pagination, needs_login = self.parser.favourites(page=1, raise_errors=True)
+
+        self.assertEqual(comics, [])
+        self.assertIsNone(pagination)
+        self.assertFalse(needs_login)
+        self.assertEqual(get.call_count, 3)
+        self.assertIn("/favorite/albums", get.call_args_list[0].args[0])
+        self.assertEqual(get.call_args_list[1].args[0], "https://18comic.vip/")
+        self.assertIn("/favorite/albums", get.call_args_list[2].args[0])
+        for call in get.call_args_list:
+            self.assertEqual(call.kwargs["headers"]["Cookie"], cookie)
+            self.assertEqual(call.kwargs["headers"]["Referer"], "https://18comic.vip/")
+
+    def test_favourites_raises_challenge_error_after_bounded_retries(self):
+        """持续挑战最多请求三次收藏夹，并抛出结构化挑战异常。"""
+        self.parser._username = "testuser"
+        get = MagicMock(
+            side_effect=[
+                _make_challenge_resp(),
+                _make_challenge_resp(),  # 首页预热也被挑战
+                _make_challenge_resp(),
+                _make_challenge_resp(),
+            ]
+        )
+        self.parser.session.get = get
+
+        with self.assertRaises(AntiBotChallengeError) as ctx:
+            self.parser.favourites(page=1, raise_errors=True)
+
+        self.assertIn("人机验证", str(ctx.exception))
+        self.assertNotIn("登录凭证已失效", str(ctx.exception))
+        self.assertEqual(
+            ctx.exception.challenge_url,
+            "https://18comic.vip/user/testuser/favorite/albums",
+        )
+        self.assertEqual(get.call_count, 4)
+        favourite_calls = [call for call in get.call_args_list if "/favorite/albums" in call.args[0]]
+        self.assertEqual(len(favourite_calls), 3)
+
+    def test_favourites_does_not_retry_plain_403(self):
+        """无挑战信号的普通 403 沿用 HTTP 错误路径且不重试。"""
+        self.parser._username = "testuser"
+        resp = _make_fav_resp(status=403, text="Forbidden")
+        error = requests.HTTPError("403 Client Error", response=resp)
+        resp.raise_for_status.side_effect = error
+        self.parser.session.get = MagicMock(return_value=resp)
+
+        with self.assertRaises(requests.HTTPError):
+            self.parser.favourites(page=1, raise_errors=True)
+
+        self.parser.session.get.assert_called_once()
+
     # ── URL 构造 ─────────────────────────────────────────────────────────────
 
     def test_favourites_builds_canonical_url_page1(self):
@@ -233,6 +309,65 @@ class TestJmFavourites(unittest.TestCase):
         self.assertIn(("cf_clearance", "18comic.vip", False), domains)
         self.assertIn(("cf_clearance", ".18comic.vip", True), domains)
         self.assertTrue(self.parser._cookie_synced)
+
+    def test_parse_favourites_snapshot_uses_rendered_dom_without_network(self):
+        """浏览器快照走共享解析流程，且不触发标题补全网络请求。"""
+        self.parser._username = "testuser"
+        html = """
+        <html><body>
+          <div class="thumb-overlay">
+            <a href="/album/12345"><img title="渲染后标题" src="/cover.jpg"></a>
+          </div>
+          <ul class="pagination">
+            <li><a href="?page=1">1</a></li>
+            <li class="active">2</li>
+            <li><a href="?page=3">3</a></li>
+          </ul>
+        </body></html>
+        """
+        self.parser.session.get = MagicMock()
+
+        comics, pagination, needs_login = self.parser.parse_favourites_snapshot(
+            html,
+            "https://18comic.vip/user/testuser/favorite/albums?page=2",
+            page=2,
+        )
+
+        self.assertFalse(needs_login)
+        self.assertEqual([comic.id for comic in comics], ["12345"])
+        self.assertEqual(comics[0].title, "渲染后标题")
+        self.assertEqual(pagination.current_page, 2)
+        self.assertEqual(pagination.total_pages, 3)
+        self.parser.session.get.assert_not_called()
+
+    def test_parse_favourites_snapshot_rejects_challenge_page(self):
+        with self.assertRaises(AntiBotChallengeError):
+            self.parser.parse_favourites_snapshot(
+                '<html><script src="/cdn-cgi/challenge-platform/x"></script></html>',
+                "https://18comic.vip/user/testuser/favorite/albums",
+            )
+
+    def test_parse_favourites_snapshot_rejects_untrusted_url(self):
+        with self.assertRaisesRegex(ValueError, "不受信任"):
+            self.parser.parse_favourites_snapshot(
+                "<html><body></body></html>",
+                "https://evil.example/user/testuser/favorite/albums",
+            )
+
+    def test_parse_favourites_snapshot_rejects_page_mismatch(self):
+        with self.assertRaisesRegex(ValueError, "页码不匹配"):
+            self.parser.parse_favourites_snapshot(
+                "<html><body></body></html>",
+                "https://18comic.vip/user/testuser/favorite/albums?page=3",
+                page=2,
+            )
+
+    def test_parse_favourites_snapshot_rejects_oversized_html(self):
+        with self.assertRaisesRegex(ValueError, "5 MiB"):
+            self.parser.parse_favourites_snapshot(
+                "x" * (5 * 1024 * 1024 + 1),
+                "https://18comic.vip/user/testuser/favorite/albums",
+            )
 
 
 class TestJmAddToFavourites(unittest.TestCase):

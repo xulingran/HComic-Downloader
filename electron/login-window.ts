@@ -14,6 +14,7 @@ const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
  *  渲染端倒数默认 5s；此值取 10s 留足余量，避免正常倒数路径误触发。
  *  渲染进程崩溃 / 导航丢失状态 / 用户拖很久不放手时由它收尾。 */
 const LOGIN_FINISH_FALLBACK_MS = 10_000
+const LOGIN_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
 const JM_LOGIN_COOKIE_NAMES = ['remember', 'remember_id']
 const JM_MIRROR_DOMAINS = ['jmcomic-zzz.one', '18comic.vip', '18comic.org']
 
@@ -21,6 +22,15 @@ const COPYMANGA_LOGIN_COOKIE_NAMES = ['token', 'sessionid', 'copymanga_session']
 const COPYMANGA_DOMAIN = 'www.2026copy.com'
 const HCOMIC_DOMAIN = 'h-comic.com'
 const JM_DEFAULT_DOMAIN = '18comic.vip'
+const JM_FAVOURITES_PATH_RE = /^\/user\/([^/]+)\/favorite\/albums\/?$/
+const CHALLENGE_MARKERS = [
+  'just a moment',
+  'captcha',
+  '/cdn-cgi/challenge-platform/',
+  'challenge-platform',
+  'cf-chl-',
+  'cf-challenge',
+] as const
 
 /**
  * 登录窗口允许导航到的域名白名单：
@@ -116,7 +126,25 @@ export function shellQuoteForShlex(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`
 }
 
-type ExtractionResult = { success: boolean; message: string; notLoggedIn?: boolean }
+type SourceWindowMode = 'login' | 'challenge'
+
+export interface JmChallengeSnapshot {
+  html: string
+  sourceUrl: string
+}
+
+export interface JmChallengeWindowResult {
+  success: boolean
+  message?: string
+  snapshot?: JmChallengeSnapshot
+}
+
+type ExtractionResult = {
+  success: boolean
+  message: string
+  notLoggedIn?: boolean
+  snapshot?: JmChallengeSnapshot
+}
 
 interface LoginWindowContext {
   settled: boolean
@@ -128,7 +156,9 @@ interface LoginWindowContext {
    * 不再二次提取（用户叠层已成功后随手关窗）。
    */
   alreadySucceeded: boolean
-  done: (result: { success: boolean; message?: string }) => void
+  mode: SourceWindowMode
+  successResult: JmChallengeWindowResult | null
+  done: (result: JmChallengeWindowResult) => void
   clearTimeout: () => void
   removeCspHandler: (() => void) | null
   removePermissionHandlers: (() => void) | null
@@ -309,6 +339,13 @@ async function triggerExtraction(
   const cookieSession = loginWin.webContents.session
   diag(`triggerExtraction: source=${source} domain=${domain}`)
 
+  const snapshotResult = ctx.mode === 'challenge'
+    ? await captureJmChallengeSnapshot(loginWin, domain)
+    : { success: true as const, snapshot: undefined }
+  if (!snapshotResult.success) {
+    return { success: false, message: snapshotResult.message }
+  }
+
   // jm: 从 DOM 提取用户名（窗口存活）。Python 后端因 Cloudflare 403 无法
   // 从首页发现用户名，必须在窗口销毁前从浏览器 DOM 获取。
   const usernamePromise = source === 'jm'
@@ -325,8 +362,50 @@ async function triggerExtraction(
   // 成功后置标志，后续关窗路径命中即直接 done，不二次提取
   if (result.success) {
     ctx.alreadySucceeded = true
+    ctx.successResult = {
+      success: true,
+      message: ctx.mode === 'challenge' ? '人机验证已完成' : result.message,
+      ...(snapshotResult.snapshot ? { snapshot: snapshotResult.snapshot } : {}),
+    }
   }
-  return result
+  return ctx.successResult
+    ? { ...result, message: ctx.successResult.message || result.message, snapshot: ctx.successResult.snapshot }
+    : result
+}
+
+const CAPTURE_JM_SNAPSHOT_SCRIPT = `(() => ({
+  sourceUrl: location.href,
+  html: document.documentElement ? document.documentElement.outerHTML : ''
+}))()`
+
+async function captureJmChallengeSnapshot(
+  loginWin: BrowserWindow,
+  expectedDomain: string,
+): Promise<{ success: true; snapshot: JmChallengeSnapshot } | { success: false; message: string }> {
+  if (loginWin.isDestroyed()) return { success: false, message: '验证窗口已关闭' }
+  try {
+    const raw = await loginWin.webContents.executeJavaScript(CAPTURE_JM_SNAPSHOT_SCRIPT) as unknown
+    if (!raw || typeof raw !== 'object') {
+      return { success: false, message: '无法读取验证页面，请稍后重试' }
+    }
+    const { sourceUrl, html } = raw as { sourceUrl?: unknown; html?: unknown }
+    if (typeof sourceUrl !== 'string' || typeof html !== 'string') {
+      return { success: false, message: '无法读取验证页面，请稍后重试' }
+    }
+    resolveJmChallengeTarget(sourceUrl, expectedDomain)
+    const lower = html.toLowerCase()
+    if (CHALLENGE_MARKERS.some(marker => lower.includes(marker))) {
+      return { success: false, message: '验证尚未完成，请继续完成人机验证' }
+    }
+    if (Buffer.byteLength(html, 'utf8') > LOGIN_SNAPSHOT_MAX_BYTES) {
+      diag(`challenge snapshot discarded: exceeds ${LOGIN_SNAPSHOT_MAX_BYTES} bytes`)
+      return { success: false, message: '收藏夹页面过大，请关闭窗口后重试' }
+    }
+    return { success: true, snapshot: { html, sourceUrl } }
+  } catch (err) {
+    diag(`challenge snapshot rejected: ${err instanceof Error ? err.message : String(err)}`)
+    return { success: false, message: '当前页面不是可信的 JM 收藏夹，请完成验证后重试' }
+  }
 }
 
 /**
@@ -459,7 +538,11 @@ function setupLoginContentIsolation(
   }
 }
 
-function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录 H-Comic'): BrowserWindow {
+function createLoginBrowserWindow(
+  parent: BrowserWindow,
+  title: string = '登录 H-Comic',
+  mode: SourceWindowMode = 'login',
+): BrowserWindow {
   diag('createLoginBrowserWindow: start')
   const preloadPath = join(__dirname, '../preload/login-preload.cjs')
   // Use default session to avoid session.fromPartition side effects.
@@ -475,6 +558,7 @@ function createLoginBrowserWindow(parent: BrowserWindow, title: string = '登录
     modal: true,
     webPreferences: {
       preload: preloadPath,
+      additionalArguments: [`--hcomic-window-mode=${mode}`],
       contextIsolation: true,
       nodeIntegration: false,
       // TODO: Re-enable sandbox after Electron upgrade — currently disabled because
@@ -512,11 +596,15 @@ function bindManualCloseExtraction(
     // 叠层已成功提取（用户随后关窗）→ 直接 done 已知成功结果，不二次提取
     if (ctx.alreadySucceeded) {
       diag('close after overlay success: short-circuit done')
-      ctx.done({ success: true, message: '登录成功' })
+      ctx.done(ctx.successResult || { success: true, message: '登录成功' })
       return
     }
     // 挡住关闭，确保异步提取期间窗口存活
     event.preventDefault()
+    if (ctx.mode === 'challenge') {
+      ctx.done({ success: false, message: '已取消' })
+      return
+    }
     // 提取进行中（用户连点 ✕）→ 仅保持窗口存活，不重复触发提取
     if (ctx.extractInProgress) return
     ctx.extractInProgress = true
@@ -595,7 +683,7 @@ function createLoginExtractHandler(
         if (result.success && !ctx.finishFallbackTimer) {
           ctx.finishFallbackTimer = setTimeout(() => {
             diag('login finish fallback timer fired (renderer did not LOGIN_FINISH in time)')
-            ctx.done({ success: true, message: result.message || '登录成功' })
+            ctx.done(ctx.successResult || { success: true, message: result.message || '登录成功' })
           }, LOGIN_FINISH_FALLBACK_MS)
         }
         // 定向回推到登录窗（不广播到 mainWindow，避免多窗口串扰）
@@ -613,7 +701,7 @@ function createLoginExtractHandler(
         if (!loginWin.isDestroyed()) {
           loginWin.webContents.send(NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT, {
             success: false,
-            message: '登录处理失败',
+            message: ctx.mode === 'challenge' ? '验证处理失败' : '登录处理失败',
           })
         }
       })
@@ -633,7 +721,7 @@ function createLoginFinishHandler(ctx: LoginWindowContext) {
       clearTimeout(ctx.finishFallbackTimer)
       ctx.finishFallbackTimer = null
     }
-    ctx.done({ success: true, message: '登录成功' })
+    ctx.done(ctx.successResult || { success: true, message: '登录成功' })
     return { ok: true }
   }
 }
@@ -685,6 +773,60 @@ export function resolveLoginTarget(source: string, resolvedDomain?: string): Log
   return { url: `https://${HCOMIC_DOMAIN}`, title: '登录 H-Comic', domain: HCOMIC_DOMAIN }
 }
 
+export function resolveJmChallengeTarget(challengeUrl: string, resolvedDomain?: string): LoginTarget {
+  if (typeof challengeUrl !== 'string' || !challengeUrl || challengeUrl.length > 2048) {
+    throw new Error('JM 人机验证 URL 无效')
+  }
+  let parsed: URL
+  try {
+    parsed = new URL(challengeUrl)
+  } catch {
+    throw new Error('JM 人机验证 URL 无效')
+  }
+  const trustedDomains = new Set([resolvedDomain || JM_DEFAULT_DOMAIN, ...JM_MIRROR_DOMAINS])
+  const pathMatch = JM_FAVOURITES_PATH_RE.exec(parsed.pathname)
+  // 提取并解码收藏夹用户段：仅用于校验（HTTPS/默认端口/可信域/路径/无控制字符），
+  // 不在返回值中暴露。解码失败或段为空 → 视为不可信 URL。
+  let decodedUser = ''
+  if (pathMatch) {
+    try {
+      decodedUser = decodeURIComponent(pathMatch[1])
+    } catch {
+      throw new Error('JM 人机验证 URL 路径无效')
+    }
+  }
+  const userLooksSafe = decodedUser.length > 0
+    // eslint-disable-next-line no-control-regex
+    && !/[/\\\x00-\x1f\x7f]/.test(decodedUser)
+  if (
+    parsed.protocol !== 'https:'
+    || parsed.username
+    || parsed.password
+    || (parsed.port && parsed.port !== '443')
+    || !trustedDomains.has(parsed.hostname)
+    || !pathMatch
+    || !userLooksSafe
+    || parsed.hash
+  ) {
+    throw new Error('JM 人机验证 URL 不受信任')
+  }
+  const entries = [...parsed.searchParams.entries()]
+  if (entries.length > 1 || (entries.length === 1 && entries[0][0] !== 'page')) {
+    throw new Error('JM 人机验证 URL 查询参数无效')
+  }
+  if (entries.length === 1) {
+    const page = Number(entries[0][1])
+    if (!Number.isInteger(page) || page < 1 || page > 1000 || String(page) !== entries[0][1]) {
+      throw new Error('JM 人机验证页码无效')
+    }
+  }
+  return {
+    url: parsed.toString(),
+    title: 'JM 人机验证',
+    domain: parsed.hostname,
+  }
+}
+
 /**
  * 构造登录窗口上下文：合并 settled/extractInProgress 标志与 done 闭包。
  *
@@ -694,14 +836,17 @@ export function resolveLoginTarget(source: string, resolvedDomain?: string): Log
  */
 function createLoginContext(
   loginWin: BrowserWindow,
-  resolve: (r: { success: boolean; message?: string }) => void,
+  resolve: (r: JmChallengeWindowResult) => void,
   removeCspHandler: () => void,
+  mode: SourceWindowMode,
 ): LoginWindowContext {
   const ctx: LoginWindowContext = {
     settled: false,
     savedUserAgent: '',
     extractInProgress: false,
     alreadySucceeded: false,
+    mode,
+    successResult: null,
     clearTimeout: () => {},
     removeCspHandler,
     removePermissionHandlers: null,
@@ -733,6 +878,7 @@ function createLoginContext(
       if (!loginWin.isDestroyed()) {
         loginWin.destroy()
       }
+      ctx.successResult = null
       resolve(result)
     },
   }
@@ -796,28 +942,49 @@ function loadLoginUrl(loginWin: BrowserWindow, url: string): void {
   })
 }
 
-export function openLoginWindow(mainWindow: BrowserWindow | null, source: string = 'hcomic', resolvedDomain?: string): Promise<{ success: boolean; message?: string }> {
-  diag(`openLoginWindow called: source=${source}`)
+interface SourceWindowOptions {
+  mode: SourceWindowMode
+  source: string
+  target: LoginTarget
+}
+
+let activeSourceWindow: BrowserWindow | null = null
+let activeSourceWindowPromise: Promise<JmChallengeWindowResult> | null = null
+
+function focusActiveSourceWindow(): void {
+  if (!activeSourceWindow || activeSourceWindow.isDestroyed()) return
+  if (activeSourceWindow.isMinimized()) activeSourceWindow.restore()
+  activeSourceWindow.focus()
+}
+
+function openSourceWindow(
+  mainWindow: BrowserWindow | null,
+  options: SourceWindowOptions,
+): Promise<JmChallengeWindowResult> {
+  const { mode, source, target } = options
+  diag(`openSourceWindow called: mode=${mode} source=${source}`)
   if (!mainWindow) {
     return Promise.resolve({ success: false, message: '主窗口不存在' })
   }
-
-  const target = resolveLoginTarget(source, resolvedDomain)
+  if (activeSourceWindowPromise && activeSourceWindow && !activeSourceWindow.isDestroyed()) {
+    focusActiveSourceWindow()
+    return activeSourceWindowPromise
+  }
   const allowedDomains = buildAllowedNavigationDomains(source, target.domain)
-
-  return new Promise((resolve) => {
+  const promise = new Promise<JmChallengeWindowResult>((resolve) => {
     diag('openLoginWindow: creating window')
-    const loginWin = createLoginBrowserWindow(mainWindow, target.title)
+    const loginWin = createLoginBrowserWindow(mainWindow, target.title, mode)
+    activeSourceWindow = loginWin
     diag('openLoginWindow: setting up CSP')
     const removeCspHandler = setupLoginWindowCSP(loginWin)
 
-    const ctx = createLoginContext(loginWin, resolve, removeCspHandler)
+    const ctx = createLoginContext(loginWin, resolve, removeCspHandler, mode)
 
     attachLoginWindowLifecycle(loginWin, ctx, allowedDomains)
 
     const timeout = setTimeout(() => {
       diag('login window timed out')
-      ctx.done({ success: false, message: '登录超时，请重试' })
+      ctx.done({ success: false, message: mode === 'challenge' ? '人机验证超时，请重试' : '登录超时，请重试' })
     }, LOGIN_WINDOW_TIMEOUT_MS)
     ctx.clearTimeout = () => clearTimeout(timeout)
 
@@ -832,4 +999,38 @@ export function openLoginWindow(mainWindow: BrowserWindow | null, source: string
     loadLoginUrl(loginWin, target.url)
     diag('openLoginWindow: loadURL called')
   })
+  activeSourceWindowPromise = promise.finally(() => {
+    if (activeSourceWindowPromise) {
+      activeSourceWindow = null
+      activeSourceWindowPromise = null
+    }
+  })
+  return activeSourceWindowPromise
+}
+
+export function openLoginWindow(
+  mainWindow: BrowserWindow | null,
+  source: string = 'hcomic',
+  resolvedDomain?: string,
+): Promise<{ success: boolean; message?: string }> {
+  const target = resolveLoginTarget(source, resolvedDomain)
+  return openSourceWindow(mainWindow, { mode: 'login', source, target }).then(result => ({
+    success: result.success,
+    message: result.message,
+  }))
+}
+
+export function openJmChallengeWindow(
+  mainWindow: BrowserWindow | null,
+  challengeUrl: string,
+  resolvedDomain?: string,
+): Promise<JmChallengeWindowResult> {
+  const target = resolveJmChallengeTarget(challengeUrl, resolvedDomain)
+  return openSourceWindow(mainWindow, { mode: 'challenge', source: 'jm', target })
+}
+
+/** 仅供单元测试清理模块级单飞状态。 */
+export function resetSourceWindowStateForTests(): void {
+  activeSourceWindow = null
+  activeSourceWindowPromise = null
 }

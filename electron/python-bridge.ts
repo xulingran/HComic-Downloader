@@ -25,6 +25,11 @@ interface PendingRequest {
   timer: NodeJS.Timeout
 }
 
+export interface PythonBridgeError extends Error {
+  code?: number
+  data?: unknown
+}
+
 export class PythonBridge {
   private process: ChildProcess | null = null
   private pendingRequests = new Map<string, PendingRequest>()
@@ -104,9 +109,12 @@ export class PythonBridge {
           clearTimeout(pending.timer)
           this.pendingRequests.delete(response.id)
           if (response.error) {
-            const err = new Error(response.error.message) as Error & { code?: number }
+            const err = new Error(response.error.message) as PythonBridgeError
             if (typeof response.error.code === 'number') {
               err.code = response.error.code
+            }
+            if (response.error.data !== undefined) {
+              err.data = response.error.data
             }
             pending.reject(err)
           } else {

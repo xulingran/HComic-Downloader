@@ -89,16 +89,38 @@ describe('preload.ts', () => {
   describe('getFavourites', () => {
     it('should invoke with default page 1', async () => {
       await exposedApi.getFavourites()
-      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 1, undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 1, undefined, false)
     })
 
     it('should invoke with specified page', async () => {
       await exposedApi.getFavourites(3)
-      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 3, undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 3, undefined, false)
     })
 
     it('should reject invalid page', () => {
       expect(() => exposedApi.getFavourites(0)).toThrow('Invalid page')
+    })
+
+    it('should default allowInteractiveChallenge to false (background-safe)', async () => {
+      await exposedApi.getFavourites(1, 'jm')
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 1, 'jm', false)
+    })
+
+    it('should forward allowInteractiveChallenge=true to main process', async () => {
+      await exposedApi.getFavourites(1, 'jm', true)
+      expect(mockInvoke).toHaveBeenCalledWith('python:get-favourites', 1, 'jm', true)
+    })
+
+    it('should reject non-boolean allowInteractiveChallenge', () => {
+      expect(() => exposedApi.getFavourites(1, 'jm', 'yes' as unknown as boolean)).toThrow('Invalid allowInteractiveChallenge')
+      expect(() => exposedApi.getFavourites(1, 'jm', 1 as unknown as boolean)).toThrow('Invalid allowInteractiveChallenge')
+    })
+
+    it('should treat null/undefined allowInteractiveChallenge as false', async () => {
+      await exposedApi.getFavourites(1, 'jm', undefined)
+      expect(mockInvoke).toHaveBeenLastCalledWith('python:get-favourites', 1, 'jm', false)
+      await exposedApi.getFavourites(1, 'jm', null)
+      expect(mockInvoke).toHaveBeenLastCalledWith('python:get-favourites', 1, 'jm', false)
     })
   })
 

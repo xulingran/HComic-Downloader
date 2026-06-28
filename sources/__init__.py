@@ -347,6 +347,16 @@ class MultiSourceParser:
             return [], None, False
         return self._get_parser(src).favourites(page=page, raise_errors=raise_errors)
 
+    def parse_jm_favourites_snapshot(
+        self,
+        html: str,
+        source_url: str,
+        page: int = 1,
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+        """解析 Electron 捕获的 JM 收藏夹 DOM 快照。"""
+        parser = self._get_parser("jm")
+        return parser.parse_favourites_snapshot(html=html, source_url=source_url, page=page)  # type: ignore[union-attr]
+
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)
         if src not in _SOURCES_WITH_FAVOURITES:

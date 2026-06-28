@@ -6,13 +6,14 @@ import logging
 import re
 from dataclasses import dataclass
 from http.cookies import CookieError, SimpleCookie
-from urllib.parse import quote
+from typing import Any
+from urllib.parse import parse_qs, quote, urlparse
 
 import requests
 from lxml import etree
 
 from models import ChapterInfo, ComicInfo, PaginationInfo
-from sources.base import ParserContextMixin, ParserResponseError
+from sources.base import AntiBotChallengeError, ParserContextMixin, ParserResponseError
 from utils import apply_system_proxy_to_session, configure_session_auth
 
 from .constants import (
@@ -41,8 +42,17 @@ logger = logging.getLogger(__name__)
 _RANKING_RE = re.compile(r"^[日周月总](更新|点击|评分|评论|收藏)$")
 _INVALID_ID_RE = re.compile(r"album_missing|login")
 _COMIC_ID_RE = re.compile(r"^\d+$")
-_CHALLENGE_MIN_LENGTH = 500
-_CHALLENGE_KEYWORDS = ("cloudflare", "just a moment", "captcha", "cf-")
+_CHALLENGE_KEYWORDS = (
+    "just a moment",
+    "captcha",
+    "/cdn-cgi/challenge-platform/",
+    "challenge-platform",
+    "cf-chl-",
+    "cf-challenge",
+)
+_FAVOURITES_CHALLENGE_RETRIES = 2
+_FAVOURITES_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
+_FAVOURITES_PATH_RE = re.compile(r"^/user/[^/?#]+/favorite/albums/?$")
 
 
 class JmParser(ParserContextMixin):
@@ -215,15 +225,14 @@ class JmParser(ParserContextMixin):
                 allow_redirects=True,
                 headers=self._auth_headers({"Referer": f"https://{domain}/"}),
             )
-            # 检测 Cloudflare 拦截
-            if resp.status_code == 403 and "Just a moment" in resp.text[:200]:
-                return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
-            if resp.status_code == 200 and self._is_challenge_page(resp.text):
+            # Cloudflare 挑战只表示本次服务端校验受阻，不能据此判定 Cookie 失效。
+            if self._is_challenge_response(resp):
                 logger.debug(
-                    "jm verify_login: challenge page detected at status 200 (first 500 chars): %s",
+                    "jm verify_login: challenge detected at status %d (first 500 chars): %s",
+                    resp.status_code,
                     resp.text[:500],
                 )
-                return False, "Cookie 中的 cf_clearance 已过期，请重新通过弹窗登录获取"
+                return False, "登录校验被站点人机验证阻断，请稍后重试或检查网络与域名设置"
             if resp.status_code != 200:
                 logger.warning(
                     "jm verify_login: unexpected status=%d url=%s",
@@ -476,6 +485,13 @@ class JmParser(ParserContextMixin):
                 allow_redirects=True,
                 headers=self._auth_headers({"Referer": f"https://{domain}/"}),
             )
+            if self._is_challenge_response(resp):
+                logger.warning(
+                    "_ensure_username: got anti-bot challenge (status=%d, %d bytes)",
+                    resp.status_code,
+                    len(resp.text or ""),
+                )
+                return False
             if resp.status_code != 200:
                 logger.warning(
                     "_ensure_username: unexpected status=%d url=%s",
@@ -486,13 +502,6 @@ class JmParser(ParserContextMixin):
             self._fix_encoding(resp)
             html = resp.text
             doc = etree.HTML(html)
-            # 检测 Cloudflare 挑战页面
-            if self._is_challenge_page(html):
-                logger.warning(
-                    "_ensure_username: got Cloudflare challenge page (%d bytes)",
-                    len(html),
-                )
-                return False
             for href in doc.xpath('//a[contains(@href,"/favorite")]/@href'):
                 m = re.search(r"/user/([^/?#]+)/favorite", href)
                 if m:
@@ -525,6 +534,47 @@ class JmParser(ParserContextMixin):
             logger.warning("_ensure_username request failed: %s", e)
             return False
 
+    def _request_favourites_page(self, url: str, domain: str) -> Any:
+        """请求收藏夹页面，并对明确的反爬挑战执行有界恢复。"""
+        headers = self._auth_headers({"Referer": f"https://{domain}/"})
+        for attempt in range(_FAVOURITES_CHALLENGE_RETRIES + 1):
+            resp = self.session.get(
+                url,
+                timeout=self.timeout,
+                allow_redirects=True,
+                headers=headers,
+            )
+            if resp.url and "/login" in str(resp.url):
+                return resp
+            if not self._is_challenge_response(resp):
+                return resp
+
+            logger.warning(
+                "jm favourites anti-bot challenge (attempt=%d/%d, status=%d, bytes=%d)",
+                attempt + 1,
+                _FAVOURITES_CHALLENGE_RETRIES + 1,
+                resp.status_code,
+                len(resp.text or ""),
+            )
+            if attempt >= _FAVOURITES_CHALLENGE_RETRIES:
+                raise AntiBotChallengeError(
+                    "JM 站点人机验证持续阻断收藏夹请求，请完成站点人机验证后重试",
+                    challenge_url=url,
+                )
+
+            if attempt == 0:
+                try:
+                    self.session.get(
+                        f"https://{domain}/",
+                        timeout=self.timeout,
+                        allow_redirects=True,
+                        headers=headers,
+                    )
+                except Exception as e:
+                    logger.debug("jm favourites challenge warm-up failed: %s", e)
+
+        raise AssertionError("unreachable")
+
     def favourites(
         self, page: int = 1, raise_errors: bool = False
     ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
@@ -544,56 +594,105 @@ class JmParser(ParserContextMixin):
             return [], None, True
         try:
             url = self._build_favourites_url(domain, page)
-            resp = self.session.get(
-                url,
-                timeout=self.timeout,
-                allow_redirects=True,
-                headers=self._auth_headers({"Referer": f"https://{domain}/"}),
-            )
+            resp = self._request_favourites_page(url, domain)
             # 检查是否重定向到登录页面
             if resp.url and "/login" in str(resp.url):
                 return [], None, True
             resp.raise_for_status()
             self._fix_encoding(resp)
             html = resp.text
-            if not html or not html.strip():
-                logger.warning(
-                    "jm favourites returned empty response (status=%d)",
-                    resp.status_code,
-                )
-                return [], None, False
-            # 检测 Cloudflare / 反爬页面
             if self._is_challenge_page(html):
-                logger.warning(
-                    "jm favourites page looks like a challenge page (%d bytes)",
-                    len(html),
+                raise AntiBotChallengeError(
+                    "JM 站点人机验证持续阻断收藏夹请求，请完成站点人机验证后重试",
+                    challenge_url=url,
                 )
-                return [], None, False
-            doc = etree.HTML(html)
-            # 检查是否需要登录（页面包含登录提示）
-            login_prompt = doc.xpath('//div[contains(text(),"請先登入")]')
-            if login_prompt:
-                return [], None, True
-            try:
-                comics = self._parse_favourites_items(doc, domain=domain)
-                self._known_favourite_ids.update(comic.id for comic in comics if comic.id)
-            except Exception:
-                comics = []
-                logger.warning("Failed to parse favourites items", exc_info=True)
-            try:
-                pagination = self._parse_pagination(doc)
-            except Exception:
-                pagination = None
-                logger.warning("Failed to parse favourites pagination", exc_info=True)
-            # 部分条目标题由 JS 懒加载，HTML 中不存在；
-            # 通过并发获取专辑详情页来补全缺失的标题。
-            self._fill_missing_titles(comics, domain)
-            return comics, pagination, False
+            return self._parse_favourites_html(html, domain=domain, enrich_missing_titles=True)
         except Exception as e:
             logger.error("jm favourites failed: %s", e, exc_info=True)
             if raise_errors:
                 raise
             return [], None, False
+
+    def parse_favourites_snapshot(
+        self,
+        html: str,
+        source_url: str,
+        page: int = 1,
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+        """解析 Electron 已验证窗口捕获的收藏夹 DOM，不发起收藏夹网络请求。"""
+        domain = self._validate_favourites_snapshot(html, source_url, page)
+        if self._is_challenge_page(html):
+            raise AntiBotChallengeError(
+                "浏览器页面仍处于 JM 人机验证状态，请完成验证后重试",
+                challenge_url=source_url,
+            )
+        return self._parse_favourites_html(html, domain=domain, enrich_missing_titles=False)
+
+    def _validate_favourites_snapshot(self, html: str, source_url: str, page: int) -> str:
+        if not isinstance(html, str) or not html.strip():
+            raise ValueError("JM 收藏夹页面快照为空")
+        if len(html.encode("utf-8")) > _FAVOURITES_SNAPSHOT_MAX_BYTES:
+            raise ValueError("JM 收藏夹页面快照超过 5 MiB 限制")
+        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= 1000:
+            raise ValueError("JM 收藏夹页面快照页码无效")
+        if not isinstance(source_url, str) or len(source_url) > 2048:
+            raise ValueError("JM 收藏夹页面快照 URL 无效")
+
+        parsed = urlparse(source_url)
+        expected_domain = self._ensure_domain().lower()
+        if (
+            parsed.scheme != "https"
+            or bool(parsed.username or parsed.password)
+            or parsed.port not in (None, 443)
+            or (parsed.hostname or "").lower() != expected_domain
+            or not _FAVOURITES_PATH_RE.fullmatch(parsed.path)
+            or parsed.fragment
+        ):
+            raise ValueError("JM 收藏夹页面快照 URL 不受信任")
+
+        query = parse_qs(parsed.query, keep_blank_values=True)
+        if any(key != "page" for key in query) or any(len(values) != 1 for values in query.values()):
+            raise ValueError("JM 收藏夹页面快照查询参数无效")
+        expected_page = str(page)
+        if page == 1:
+            if query.get("page", ["1"])[0] != expected_page:
+                raise ValueError("JM 收藏夹页面快照页码不匹配")
+        elif query.get("page") != [expected_page]:
+            raise ValueError("JM 收藏夹页面快照页码不匹配")
+        return expected_domain
+
+    def _parse_favourites_html(
+        self,
+        html: str,
+        *,
+        domain: str,
+        enrich_missing_titles: bool,
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+        """解析收藏夹 HTML；网络响应与浏览器 DOM 快照共用此入口。"""
+        if not html or not html.strip():
+            logger.warning("jm favourites returned empty HTML")
+            return [], None, False
+        doc = etree.HTML(html)
+        if doc is None:
+            raise ParserResponseError("JM 收藏夹页面无法解析")
+        if doc.xpath('//div[contains(text(),"請先登入")]'):
+            return [], None, True
+        try:
+            comics = self._parse_favourites_items(doc, domain=domain)
+        except Exception as e:
+            raise ParserResponseError(f"JM 收藏夹条目解析失败: {e}") from e
+        self._known_favourite_ids.update(comic.id for comic in comics if comic.id)
+        try:
+            pagination = self._parse_pagination(doc)
+        except Exception:
+            pagination = None
+            logger.warning("Failed to parse favourites pagination", exc_info=True)
+        if enrich_missing_titles:
+            try:
+                self._fill_missing_titles(comics, domain)
+            except Exception:
+                logger.warning("Failed to enrich jm favourites titles", exc_info=True)
+        return comics, pagination, False
 
     def _parse_favourites_items(self, doc, domain: str) -> list[ComicInfo]:
         """解析收藏夹页面的漫画列表。"""
@@ -680,10 +779,19 @@ class JmParser(ParserContextMixin):
     @staticmethod
     def _is_challenge_page(html: str) -> bool:
         """检测 Cloudflare/反爬挑战页面。"""
-        if len(html) >= _CHALLENGE_MIN_LENGTH:
-            return False
-        lower = html.lower()
+        lower = (html or "").lower()
         return any(kw in lower for kw in _CHALLENGE_KEYWORDS)
+
+    @classmethod
+    def _is_challenge_response(cls, resp: Any) -> bool:
+        """结合响应头和正文识别 Cloudflare/反爬挑战。"""
+        headers = getattr(resp, "headers", None)
+        if headers:
+            for name, value in headers.items():
+                if str(name).lower().strip() == "cf-mitigated" and str(value).lower().strip() == "challenge":
+                    return True
+        text = getattr(resp, "text", "")
+        return isinstance(text, str) and cls._is_challenge_page(text)
 
     @staticmethod
     def _fix_encoding(resp) -> None:

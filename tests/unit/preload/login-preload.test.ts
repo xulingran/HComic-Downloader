@@ -207,3 +207,153 @@ describe('login-preload: overlay drag', () => {
     expect(queryShadow(host, '.card')).not.toBeNull()
   })
 })
+
+// ── 任务 4.3：挑战模式叠层文案与提交流程 ──────────────────────────────────
+// 通过 process.argv 注入 --hcomic-window-mode=challenge，验证叠层文案切换、
+// 挑战未完成不关闭、成功倒计时与 extracting 态防抖。
+
+describe('login-preload: challenge mode overlay', () => {
+  let originalArgv: string[]
+
+  beforeEach(async () => {
+    document.getElementById(OVERLAY_HOST_ID)?.remove()
+    mockInvoke.mockClear()
+    mockInvoke.mockResolvedValue({ accepted: true })
+    for (const k of Object.keys(ipcListeners)) delete ipcListeners[k]
+    originalArgv = process.argv
+    process.argv = [...originalArgv, '--hcomic-window-mode=challenge']
+    await loadPreload()
+  })
+
+  afterEach(() => {
+    process.argv = originalArgv
+  })
+
+  it('shows 验证助手 title in challenge mode', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    // title 仅在 card 态存在，需先展开
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    const title = queryShadow(host, '.head-title') as HTMLElement
+    expect(title.textContent).toBe('验证助手')
+  })
+
+  it('expanded state shows 我已完成验证 button in challenge mode', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    const btn = queryShadow(host, '.btn') as HTMLElement
+    expect(btn.textContent).toContain('我已完成验证')
+  })
+
+  it('expanded hint uses verification wording in challenge mode', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    const hint = queryShadow(host, '.hint') as HTMLElement
+    expect(hint.textContent).toContain('人机验证')
+  })
+
+  it('clicking 提交 fires LOGIN_EXTRACT in challenge mode', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_EXTRACT, expect.any(String))
+  })
+
+  it('extracting state shows verification wording and disables button (debounce)', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    const btn = queryShadow(host, '.btn') as HTMLElement
+    btn.click()
+    // extracting 态：按钮禁用 + 验证文案
+    const hint = queryShadow(host, '.hint') as HTMLElement
+    expect(hint.textContent).toContain('确认')
+    const extractingBtn = queryShadow(host, '.btn') as HTMLElement
+    expect(extractingBtn.disabled).toBe(true)
+    // 重复点击不再触发新的 LOGIN_EXTRACT（防抖）
+    mockInvoke.mockClear()
+    extractingBtn.click()
+    expect(mockInvoke).not.toHaveBeenCalled()
+  })
+
+  it('challenge incomplete (主进程推回失败) → stays expanded, does not close', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    // 主进程推回"验证尚未完成"
+    ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, {
+      success: false,
+      message: '验证尚未完成，请继续完成人机验证',
+    })
+    // 回到 expanded 态，未进入 counting（未关闭）
+    const card = queryShadow(host, '.card')
+    expect(card).not.toBeNull()
+    const btn = queryShadow(host, '.btn') as HTMLElement
+    expect(btn.disabled).toBeFalsy()
+    expect(queryShadow(host, '.count-num')).toBeNull()
+  })
+
+  it('verification success → counting state with countdown 5', () => {
+    vi.useFakeTimers()
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, {
+      success: true,
+      message: '人机验证已完成',
+    })
+    const hint = queryShadow(host, '.hint') as HTMLElement
+    expect(hint.textContent).toContain('验证成功')
+    const num = queryShadow(host, '.count-num') as HTMLElement
+    expect(num.textContent).toBe('5')
+    vi.useRealTimers()
+  })
+
+  it('countdown reaches 0 → fires LOGIN_FINISH (closes window)', async () => {
+    vi.useFakeTimers()
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, {
+      success: true,
+      message: '人机验证已完成',
+    })
+    mockInvoke.mockClear()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_FINISH)
+    vi.useRealTimers()
+  })
+
+  it('notLoggedIn in challenge mode hints to log in within the window', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: false, notLoggedIn: true })
+    const hint = queryShadow(host, '.hint') as HTMLElement
+    expect(hint.textContent).toContain('登录')
+  })
+})
+
+// 回归：登录模式文案不被挑战模式改动污染（默认 process.argv 不含挑战标志）。
+describe('login-preload: login mode wording regression', () => {
+  beforeEach(async () => {
+    document.getElementById(OVERLAY_HOST_ID)?.remove()
+    mockInvoke.mockClear()
+    for (const k of Object.keys(ipcListeners)) delete ipcListeners[k]
+    // 显式确保 argv 不含挑战标志
+    process.argv = process.argv.filter(a => !a.includes('--hcomic-window-mode='))
+    await loadPreload()
+  })
+
+  it('keeps 登录助手 title in login mode', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    const title = queryShadow(host, '.head-title') as HTMLElement
+    expect(title.textContent).toBe('登录助手')
+  })
+
+  it('keeps 我已登录 button in login mode', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.dot') as HTMLElement).click()
+    const btn = queryShadow(host, '.btn') as HTMLElement
+    expect(btn.textContent).toContain('我已登录')
+  })
+})

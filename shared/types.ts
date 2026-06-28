@@ -821,7 +821,11 @@ export interface HcomicAPI {
   downloadBatchAsAlbum(comics: ComicInfo[], albumTitle: string, overwrite?: boolean): Promise<DownloadBatchAsAlbumResult>
   download(comicId: string, comicData: ComicInfo, overwrite?: boolean, chapterIds?: string[]): Promise<DownloadResult>
   checkDownloadConflict(comicData: ComicInfo): Promise<DownloadConflictResult>
-  getFavourites(page?: number, source?: string): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
+  getFavourites(
+    page?: number,
+    source?: string,
+    allowInteractiveChallenge?: boolean,
+  ): Promise<{ comics: ComicInfo[]; pagination?: PaginationInfo; needsLogin: boolean }>
   checkFavourite(comicId: string, source?: string): Promise<{ isFavourited: boolean }>
   addToFavourites(comicId: string, source?: string): Promise<{ success: boolean }>
   removeFromFavourites(comicId: string, source?: string): Promise<{ success: boolean }>
@@ -1020,7 +1024,14 @@ export const TAG_RECOMMENDATION_SOURCES = COMIC_SOURCES.filter(
 /** JSON-RPC application error codes (Python backend) */
 export const IPC_ERROR_CODES = {
   AUTH_REQUIRED: -32001,
+  ANTI_BOT_CHALLENGE: -32002,
 } as const
+
+export interface AntiBotChallengeData {
+  source: 'jm'
+  challengeUrl: string
+  message: string
+}
 
 /** Config keys accepted by set-config — shared between preload and main */
 /** Typed IPC channel constants — use instead of hardcoded strings */

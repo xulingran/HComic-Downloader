@@ -114,11 +114,24 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.CHECK_DOWNLOAD_CONFLICT, comicData)
   },
 
-  getFavourites: (page?: unknown, source?: unknown) => {
+  getFavourites: (page?: unknown, source?: unknown, allowInteractiveChallenge?: unknown) => {
     const p = page ?? 1
     validatePage(p)
     if (source !== undefined && source !== null && typeof source !== 'string') throw new Error('Invalid source')
-    return ipcRenderer.invoke(IPC_CHANNELS.GET_FAVOURITES, p, source ?? undefined)
+    // 交互挑战恢复开关：仅接受严格布尔，缺省视为 false，禁止其他类型绕过
+    if (
+      allowInteractiveChallenge !== undefined
+      && allowInteractiveChallenge !== null
+      && typeof allowInteractiveChallenge !== 'boolean'
+    ) {
+      throw new Error('Invalid allowInteractiveChallenge')
+    }
+    return ipcRenderer.invoke(
+      IPC_CHANNELS.GET_FAVOURITES,
+      p,
+      source ?? undefined,
+      allowInteractiveChallenge === true,
+    )
   },
 
   addToFavourites: (comicId: unknown, source?: unknown) => {

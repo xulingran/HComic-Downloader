@@ -147,6 +147,24 @@ describe('PythonBridge', () => {
       await expect(callPromise).rejects.toThrow('Search failed')
     })
 
+    it('preserves structured anti-bot error code and data', async () => {
+      const callPromise = bridge.call('get_favourites', { page: 1, source: 'jm' })
+      const written = JSON.parse(stdinWriteData[0].trim())
+      const data = {
+        source: 'jm',
+        challengeUrl: 'https://18comic.vip/user/test/favorite/albums',
+        message: '需要人机验证',
+      }
+
+      stdoutCallbacks.forEach(cb => cb(Buffer.from(JSON.stringify({
+        jsonrpc: '2.0',
+        id: written.id,
+        error: { code: -32002, message: data.message, data },
+      }) + '\n')))
+
+      await expect(callPromise).rejects.toMatchObject({ code: -32002, data })
+    })
+
     it('should reject pending requests when process exits', async () => {
       const callPromise = bridge.call('search', { query: 'test' })
 
