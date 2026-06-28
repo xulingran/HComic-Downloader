@@ -120,7 +120,11 @@ class TestDMRecovery:
 
         mixin._run_migration()
 
-        dm.toggle_global_pause.assert_not_called()
+        # 降级记录（test-discipline-gate Phase 1）：原 dm.toggle_global_pause.assert_not_called()
+        # 是裸 mock 调用断言（mock 替换测试：换真实 dm，"未被调用"仍成立，因 _run_migration
+        # 仅在 _migration_paused_dm 为 True 时才调用 toggle_global_pause）。
+        # 真实信号：_migration_paused_dm 保持 False（未被置位为 True），证明"未暂停则不恢复"的守卫。
+        assert mixin._migration_paused_dm is False
 
 
 class TestLockProtection:

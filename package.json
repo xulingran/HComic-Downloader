@@ -21,6 +21,8 @@
     "lint:fix": "eslint src electron shared tests --fix",
     "lint:py": "node scripts/lint-py.mjs",
     "lint:py:fix": "node scripts/lint-py.mjs --fix",
+    "lint:test-quality": "node scripts/lint-test-quality.mjs",
+    "lint:test-quality:py": "node scripts/lint-test-quality.mjs --py",
     "format:py": "node scripts/format-py.mjs --check",
     "format:py:fix": "node scripts/format-py.mjs",
     "generate:icons": "node scripts/generate-icons.mjs",

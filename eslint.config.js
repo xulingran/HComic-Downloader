@@ -2,6 +2,7 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
+import testQuality from "./eslint-rules/test-quality.js";
 
 export default tseslint.config(
   js.configs.recommended,
@@ -45,6 +46,25 @@ export default tseslint.config(
         selector: "CallExpression[callee.name='require'][arguments.0.value=/^(electron|fs|path|child_process|os|crypto|node:)/]",
         message: "渲染进程禁止 require Node/Electron 模块，请通过 window.hcomic API。",
       }],
+    },
+  },
+  {
+    // 测试质量闸门（openspec/changes/test-discipline-gate / test-quality-gate 规范）
+    // 把 test-discipline 的判断标准从被动文档转为主动门控。
+    // Phase 2a：先以 'warn' 注册，不阻断；Phase 1 合并后 Phase 2b 转 'error'。
+    files: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
+    plugins: { "test-quality": testQuality },
+    rules: {
+      "test-quality/no-bare-mock-assertion": "warn",
+    },
+  },
+  {
+    // Store CRUD 同义反复守卫（test-quality-gate 专项）
+    // 作用域仅限 store 测试目录，避免误伤组件/hooks 测试中的合法 setState 断言。
+    files: ["tests/unit/stores/**/*.test.ts"],
+    plugins: { "test-quality": testQuality },
+    rules: {
+      "test-quality/no-pure-store-crud-roundtrip": "warn",
     },
   },
   {

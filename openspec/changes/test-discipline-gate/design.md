@@ -73,6 +73,8 @@
 
 **替代方案**：*一次性大 PR 同时清理 + 加闸门*——风险是 PR 过大、审查困难，且若闸门规则有 bug，清理决策会被裹挟。分步更稳。
 
+**实施期发现（决策 4 修正）**：Phase 1 清理审计范围内用例后，闸门在真实套件中发现**额外存量违规**——前端约 84 处（23 个文件）+ Python 8 处（3 个文件），这些是本次审计未覆盖的同义反复测试。经决策，**不扩大本次清理范围**：本次变更只交付闸门机制（warn 级别），存量违规作为**后续清理变更的 backlog**。Phase 2b（转 error + 接入 AGENTS.md）相应推迟到 backlog 清零。这把"决策 4 的清理前置条件"从"Phase 1 清理"扩展为"backlog 清零"，但分步原则不变。
+
 ### 决策 5：自我验证测试复用 `test_config_isolation_guard.py` 的守卫模式
 
 **选择**：闸门规则的反例/正例集合作为独立测试文件（前端 `tests/unit/lint/test-quality-rule.test.ts`、Python `tests/test_test_quality_gate.py`），喂入合成用例片段断言闸门判定。模式对齐既有的 `tests/test_config_isolation_guard.py`（守卫隔离机制不被破坏）。
