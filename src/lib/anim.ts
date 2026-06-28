@@ -34,35 +34,6 @@ export const smoothTransition: Transition = {
   duration: DURATION.slow,
 }
 
-/** 标准过渡：默认 ease-out，用于通用微交互。 */
-export const standardTransition: Transition = {
-  type: 'tween',
-  ease: 'easeOut',
-  duration: DURATION.base,
-}
-
-/**
- * 进入/退出 variants 的工厂（通用）。
- *
- * 在 reduced-motion 开启时退化为纯 opacity 过渡（无位移、无缩放），
- * 这是比全局 CSS 兜底更细腻的退化路径——后者会把所有动画压成瞬时，
- * 而这里保留一个短暂的淡入淡出，体验不至于过于生硬。
- */
-export function createPresenceVariants(opts: {
-  enter?: Variant
-  exit?: Variant
-  reduced?: 'opacity-only'
-}): Variants {
-  const reduced = opts.reduced ?? 'opacity-only'
-  const enterVariant = opts.enter ?? {}
-  const exitVariant = opts.exit ?? {}
-  return {
-    initial: reduced === 'opacity-only' ? { opacity: 0 } : enterVariant,
-    animate: { opacity: 1, ...enterVariant },
-    exit: reduced === 'opacity-only' ? { opacity: 0 } : exitVariant,
-  }
-}
-
 /**
  * 对 framer-motion useReducedMotion 的薄封装。
  * 测试可通过 mock 此函数控制 reduced-motion 行为。
@@ -161,16 +132,6 @@ export const tagItemVariants: Variants = {
 // 稳稳停下。smooth 有"减速停下"的感觉，符合翻页直觉。
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** 翻页过渡时长（smooth 曲线）。 */
-export const PAGE_FLIP_DURATION = 0.25
-
-/** 翻页过渡配置：smooth tween。 */
-export const pageFlipTransition: Transition = {
-  type: 'tween',
-  ease: [0.4, 0, 0.2, 1],
-  duration: PAGE_FLIP_DURATION,
-}
-
 /**
  * 方向感知的翻页 variants。
  * enter/exit 是函数形式，framer-motion 通过 AnimatePresence 的 custom prop
@@ -212,18 +173,19 @@ export function usePageFlipVariants(): Variants {
   return reduceMotion ? getReducedPageVariants() : getDirectionalPageVariants()
 }
 
-void pageFlipTransition // 预留给组件按需引用，避免 tree-shake 误删
-
 // ─────────────────────────────────────────────────────────────────────────────
 // 列表进出场 variants（变更 4 引入）
 //
 // 约束：搜索结果可能上百项，全量 stagger 会让总时长过长且卡顿。
-// 通过 getCardItemVariants(index) 实现 stagger 封顶——前 STAGGER_LIMIT 项错峰，
-// 之后立即出现。STAGGER_LIMIT 与 ComicInfoDrawer tag stagger 保持一致（20）。
+// 通过 getCardItemVariants(index) 实现 stagger 封顶——前 CARD_STAGGER_LIMIT 项错峰，
+// 之后立即出现。
 // ─────────────────────────────────────────────────────────────────────────────
 
-/** stagger 封顶阈值：仅前 STAGGER_LIMIT 项错峰，之后立即出现。 */
-export const STAGGER_LIMIT = 20
+/** 搜索结果**卡片网格**的 stagger 封顶阈值：仅前 CARD_STAGGER_LIMIT 项错峰，之后立即出现。
+ *
+ * 命名刻意带 CARD 前缀，避免与 ComicInfoDrawer 内 tag 列表用的同名局部常量
+ * STAGGER_LIMIT（=40）混淆——两者是不同对象的独立阈值，本值 20 仅作用于卡片列表。 */
+const CARD_STAGGER_LIMIT = 20
 
 /** 单项 stagger 间隔（秒）。 */
 const CARD_STAGGER_STEP = 0.02
@@ -237,10 +199,10 @@ export const cardItemVariants: Variants = {
 
 /**
  * 带 stagger delay 的卡片 variant。
- * index < STAGGER_LIMIT 时返回带 delay 的 variant；之后 delay=0。
+ * index < CARD_STAGGER_LIMIT 时返回带 delay 的 variant；之后 delay=0。
  */
 export function getCardItemVariants(index: number): Variants {
-  if (index >= STAGGER_LIMIT) {
+  if (index >= CARD_STAGGER_LIMIT) {
     return {
       initial: { opacity: 0 },
       animate: { opacity: 1 },

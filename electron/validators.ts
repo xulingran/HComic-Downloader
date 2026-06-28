@@ -228,44 +228,47 @@ export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[]; 
 }
 
 /**
- * duplicateBlacklist 校验：{ [source]: { fingerprint, memberCount }[] }
- * memberCount 为 null（旧数据迁移）或非负整数。
+ * 黑名单校验工厂：duplicateBlacklist / missingBlacklist 数据结构同构
+ * （{ [source]: { fingerprint, memberCount }[] }），校验规则完全一致，
+ * 仅错误消息前缀不同。label 用字面量联合类型，避免拼写错误导致消息分叉。
  */
-export function duplicateBlacklist(): Validator<Record<string, Array<{ fingerprint: string; memberCount: number | null }>>> {
+function blacklistValidator(
+  label: 'duplicateBlacklist' | 'missingBlacklist',
+): Validator<Record<string, Array<{ fingerprint: string; memberCount: number | null }>>> {
   return (value): value is Record<string, Array<{ fingerprint: string; memberCount: number | null }>> => {
     if (typeof value !== 'object' || value === null) {
-      throw new ValidationError('duplicateBlacklist must be an object')
+      throw new ValidationError(`${label} must be an object`)
     }
     const obj = value as Record<string, unknown>
     for (const key of Object.keys(obj)) {
       const arr = obj[key]
       if (!Array.isArray(arr)) {
-        throw new ValidationError(`duplicateBlacklist.${key} must be an array`)
+        throw new ValidationError(`${label}.${key} must be an array`)
       }
       if (arr.length > 500) {
-        throw new ValidationError(`duplicateBlacklist.${key} must not exceed 500 items`)
+        throw new ValidationError(`${label}.${key} must not exceed 500 items`)
       }
       const seen = new Set<string>()
       for (const item of arr) {
         // 兼容旧版纯字符串（迁移未完成时）
         if (typeof item === 'string') {
           if (item.length === 0 || item.length > 200) {
-            throw new ValidationError(`duplicateBlacklist.${key} fingerprint must be 1-200 chars`)
+            throw new ValidationError(`${label}.${key} fingerprint must be 1-200 chars`)
           }
           continue
         }
         if (typeof item !== 'object' || item === null) {
-          throw new ValidationError(`duplicateBlacklist.${key} items must be objects or strings`)
+          throw new ValidationError(`${label}.${key} items must be objects or strings`)
         }
         const entry = item as Record<string, unknown>
         if (typeof entry.fingerprint !== 'string' || entry.fingerprint.length === 0 || entry.fingerprint.length > 200) {
-          throw new ValidationError(`duplicateBlacklist.${key}.fingerprint must be 1-200 chars`)
+          throw new ValidationError(`${label}.${key}.fingerprint must be 1-200 chars`)
         }
         if (entry.memberCount !== null && (typeof entry.memberCount !== 'number' || !Number.isInteger(entry.memberCount) || entry.memberCount < 0)) {
-          throw new ValidationError(`duplicateBlacklist.${key}.memberCount must be null or non-negative integer`)
+          throw new ValidationError(`${label}.${key}.memberCount must be null or non-negative integer`)
         }
         if (seen.has(entry.fingerprint)) {
-          throw new ValidationError(`duplicateBlacklist.${key} contains duplicate: ${entry.fingerprint}`)
+          throw new ValidationError(`${label}.${key} contains duplicate: ${entry.fingerprint}`)
         }
         seen.add(entry.fingerprint)
       }
@@ -275,51 +278,18 @@ export function duplicateBlacklist(): Validator<Record<string, Array<{ fingerpri
 }
 
 /**
- * missingBlacklist 校验：与 duplicateBlacklist 数据结构同构
- * （{ [source]: { fingerprint, memberCount }[] }），用于「查缺补漏」工具
- * 的独立黑名单。校验规则与 duplicateBlacklist 完全一致。
+ * duplicateBlacklist 校验：去重工具用的黑名单。
+ * memberCount 为 null（旧数据迁移）或非负整数。
+ */
+export function duplicateBlacklist(): Validator<Record<string, Array<{ fingerprint: string; memberCount: number | null }>>> {
+  return blacklistValidator('duplicateBlacklist')
+}
+
+/**
+ * missingBlacklist 校验：查缺补漏工具的独立黑名单。
  */
 export function missingBlacklist(): Validator<Record<string, Array<{ fingerprint: string; memberCount: number | null }>>> {
-  return (value): value is Record<string, Array<{ fingerprint: string; memberCount: number | null }>> => {
-    if (typeof value !== 'object' || value === null) {
-      throw new ValidationError('missingBlacklist must be an object')
-    }
-    const obj = value as Record<string, unknown>
-    for (const key of Object.keys(obj)) {
-      const arr = obj[key]
-      if (!Array.isArray(arr)) {
-        throw new ValidationError(`missingBlacklist.${key} must be an array`)
-      }
-      if (arr.length > 500) {
-        throw new ValidationError(`missingBlacklist.${key} must not exceed 500 items`)
-      }
-      const seen = new Set<string>()
-      for (const item of arr) {
-        // 兼容旧版纯字符串（迁移未完成时）
-        if (typeof item === 'string') {
-          if (item.length === 0 || item.length > 200) {
-            throw new ValidationError(`missingBlacklist.${key} fingerprint must be 1-200 chars`)
-          }
-          continue
-        }
-        if (typeof item !== 'object' || item === null) {
-          throw new ValidationError(`missingBlacklist.${key} items must be objects or strings`)
-        }
-        const entry = item as Record<string, unknown>
-        if (typeof entry.fingerprint !== 'string' || entry.fingerprint.length === 0 || entry.fingerprint.length > 200) {
-          throw new ValidationError(`missingBlacklist.${key}.fingerprint must be 1-200 chars`)
-        }
-        if (entry.memberCount !== null && (typeof entry.memberCount !== 'number' || !Number.isInteger(entry.memberCount) || entry.memberCount < 0)) {
-          throw new ValidationError(`missingBlacklist.${key}.memberCount must be null or non-negative integer`)
-        }
-        if (seen.has(entry.fingerprint)) {
-          throw new ValidationError(`missingBlacklist.${key} contains duplicate: ${entry.fingerprint}`)
-        }
-        seen.add(entry.fingerprint)
-      }
-    }
-    return true
-  }
+  return blacklistValidator('missingBlacklist')
 }
 
 // ── Assertion helper ─────────────────────────────────────────────────────

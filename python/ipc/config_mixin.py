@@ -102,8 +102,8 @@ class ConfigMixin:
         """Apply jm custom domain with availability test."""
         v = v.strip()
         if v:
-            # Format validation
-            if " " in v or "/" in v or not v or len(v) > 256:
+            # Format validation (v 已 strip 且非空，故 not v 永假，省略)
+            if " " in v or "/" in v or len(v) > 256:
                 raise ValueError(f"域名格式不正确: {v}")
             # Availability test
             try:

@@ -522,14 +522,15 @@ class DownloadMixin:
 
         return {"statusMap": result}
 
-    def handle_open_download_dir(self) -> dict:
-        """Open the download directory in the OS file manager."""
+    def _open_in_file_manager(self, directory: str) -> None:
+        """Open a directory in the OS-native file manager.
+
+        Shared by download/cache dir openers; both delegate here after
+        existence validation. Raises ``RuntimeError`` on failure.
+        """
         import platform
         import subprocess
 
-        directory = self.config.download_dir
-        if not directory or not os.path.isdir(directory):
-            raise ValueError(f"Download directory does not exist: {directory}")
         try:
             system = platform.system()
             if system == "Windows":
@@ -538,10 +539,17 @@ class DownloadMixin:
                 subprocess.Popen(["open", directory])
             else:
                 subprocess.Popen(["xdg-open", directory])
-            return {"success": True}
         except Exception as e:
-            logger.error("Open download dir error: %s", e)
+            logger.error("Failed to open directory %s: %s", directory, e)
             raise RuntimeError(f"Failed to open directory: {e}") from e
+
+    def handle_open_download_dir(self) -> dict:
+        """Open the download directory in the OS file manager."""
+        directory = self.config.download_dir
+        if not directory or not os.path.isdir(directory):
+            raise ValueError(f"Download directory does not exist: {directory}")
+        self._open_in_file_manager(directory)
+        return {"success": True}
 
     def handle_open_cache_dir(self) -> dict:
         """Open the cache directory in the OS file manager.
@@ -552,21 +560,8 @@ class DownloadMixin:
         ``python:open-cache-dir`` channel symmetric with ``open-download-dir``
         in the channel map.
         """
-        import platform
-        import subprocess
-
         directory = self._cover_cache.db_dir
         if not directory or not os.path.isdir(directory):
             raise ValueError(f"Cache directory does not exist: {directory}")
-        try:
-            system = platform.system()
-            if system == "Windows":
-                os.startfile(directory)
-            elif system == "Darwin":
-                subprocess.Popen(["open", directory])
-            else:
-                subprocess.Popen(["xdg-open", directory])
-            return {"success": True}
-        except Exception as e:
-            logger.error("Open cache dir error: %s", e)
-            raise RuntimeError(f"Failed to open directory: {e}") from e
+        self._open_in_file_manager(directory)
+        return {"success": True}

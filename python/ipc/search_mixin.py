@@ -17,6 +17,7 @@ from .types import AuthRequiredError
 
 if TYPE_CHECKING:
     from config import Config
+    from models import ComicInfo
     from sources import MultiSourceParser
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,33 @@ _AUTH_KEYWORDS = (
     "cloudflare",
     "just a moment",
 )
+
+
+def _matches_auth_keywords(message: str) -> bool:
+    """检查错误消息是否命中任一 auth 失效关键字（纯字符串匹配，不含 source 白名单）。
+
+    供 ``_is_source_auth_error``（带 source 白名单）与 ``_auth_error_guard`` 的
+    ``ParserResponseError`` 分支（不带白名单）共用，避免字面逻辑重复。两处对 source
+    白名单的处理有意不同，故仅抽取字符串匹配部分。
+    """
+    msg = message.lower()
+    return any(kw in msg for kw in _AUTH_KEYWORDS)
+
+
+def _dedupe_comics(comics: list[ComicInfo]) -> tuple[list[ComicInfo], int]:
+    """按 (source_site, id, comic_source) 元组对漫画列表去重。
+
+    返回 ``(deduped_list, original_count)``，调用方据此决定是否记录去重日志。
+    同一漫画可能在收藏夹页面 DOM 中重复出现。
+    """
+    deduped: list[ComicInfo] = []
+    seen: set[tuple] = set()
+    for c in comics:
+        key = (c.source_site, c.id, c.comic_source)
+        if key not in seen:
+            seen.add(key)
+            deduped.append(c)
+    return deduped, len(comics)
 
 
 class SearchMixin:
@@ -131,12 +159,16 @@ class SearchMixin:
         """Check if an exception indicates auth failure for the given source."""
         if source not in ("jm", "copymanga", "hcomic"):
             return False
-        msg = str(error).lower()
-        return any(kw in msg for kw in _AUTH_KEYWORDS)
+        return _matches_auth_keywords(str(error))
 
     @contextmanager
     def _auth_error_guard(self, source: str):
-        """Context manager that converts source auth errors to AuthRequiredError."""
+        """Context manager that converts source auth errors to AuthRequiredError.
+
+        注意：``ParserResponseError`` 分支有意不做 source 白名单检查——任何 source
+        匹配关键字都转 ``AuthRequiredError``。这与 ``_is_source_auth_error`` 的白名单
+        语义不同，故此处直接调 ``_matches_auth_keywords`` 而非 ``_is_source_auth_error``。
+        """
         try:
             yield
         except AntiBotChallengeError as e:
@@ -144,7 +176,7 @@ class SearchMixin:
             raise
         except ParserResponseError as e:
             msg = str(e)
-            if any(kw in msg.lower() for kw in _AUTH_KEYWORDS):
+            if _matches_auth_keywords(msg):
                 raise AuthRequiredError(msg) from e
             raise RuntimeError(msg) from e
         except (ValueError, json.JSONDecodeError, TypeError) as e:
@@ -297,17 +329,11 @@ class SearchMixin:
             )
             self._update_tags_from_favourites_page(comics, effective_source)
             # 去重：同一漫画可能在页面 DOM 中重复出现
-            deduped: list = []
-            seen: set[tuple] = set()
-            for c in comics:
-                key = (c.source_site, c.id, c.comic_source)
-                if key not in seen:
-                    seen.add(key)
-                    deduped.append(c)
-            if len(deduped) < len(comics):
+            deduped, original_count = _dedupe_comics(comics)
+            if len(deduped) < original_count:
                 logger.info(
                     "Deduplicated favourites: %d -> %d",
-                    len(comics),
+                    original_count,
                     len(deduped),
                 )
             return {
@@ -326,13 +352,7 @@ class SearchMixin:
                 page=page,
             )
             self._update_tags_from_favourites_page(comics, "jm")
-            deduped = []
-            seen: set[tuple] = set()
-            for comic in comics:
-                key = (comic.source_site, comic.id, comic.comic_source)
-                if key not in seen:
-                    seen.add(key)
-                    deduped.append(comic)
+            deduped, _ = _dedupe_comics(comics)
             return {
                 "comics": [self._comic_to_dict(comic) for comic in deduped],
                 "pagination": self._pagination_to_dict(pagination, fallback_page=page),

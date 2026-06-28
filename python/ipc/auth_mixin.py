@@ -105,7 +105,24 @@ class AuthMixin:
         is_valid, message = self.parser.verify_login_status(source=source)
         return {"valid": is_valid, "message": message}
 
-    def handle_moeimg_login(self, username: str, password: str) -> dict:
+    def _do_password_login(
+        self,
+        source: str,
+        username: str,
+        password: str,
+        *,
+        credential_kind: str,
+        apply_to_downloader: bool = False,
+    ) -> dict:
+        """Shared body for moeimg/bika/hcomic password login handlers.
+
+        Validates credentials, persists them, calls ``parser.login()``, then
+        writes ``source_auth`` under the config lock. Returns a uniform
+        success dict. ``credential_kind`` selects whether the login secret is
+        stored as ``cookie`` (moeimg) or ``bearer_token`` (bika/hcomic);
+        ``apply_to_downloader`` additionally syncs the secret to the downloader
+        (hcomic only).
+        """
         from config import AuthSourceData
 
         if not username or not username.strip():
@@ -114,81 +131,44 @@ class AuthMixin:
             raise ValueError("请输入密码")
         username = username.strip()
         password = password.strip()
-        moeimg_parser = self.parser.parsers.get("moeimg")
-        if not moeimg_parser:
-            raise ValueError("moeimg 来源不可用")
+
+        parser = self.parser.parsers.get(source)
+        if not parser:
+            raise ValueError(f"{source} 来源不可用")
+
         # 凭据持久化解耦：登录前先把账号密码落盘 + 注入懒登录，
         # 这样网络/密码错误导致 parser.login() 抛异常时凭据仍被保留（credential-persistence spec）。
         # 失败也注入 set_stored_credentials 是预期行为：网络恢复后下次请求可自动重试登录。
-        self._persist_credentials("moeimg", username, password)
-        moeimg_parser.set_stored_credentials(username, password)
-        cookie = moeimg_parser.login(username, password)
-        # 成功路径：落 cookie。网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        self._persist_credentials(source, username, password)
+        parser.set_stored_credentials(username, password)
+        secret = parser.login(username, password)
+
+        # 成功路径：落 secret。网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        auth_kwargs = {credential_kind: secret, "username": username, "password": password}
         with self._config_write_lock:
-            self.config.set_source_auth(
-                "moeimg",
-                AuthSourceData(cookie=cookie, username=username, password=password),
-            )
+            self.config.set_source_auth(source, AuthSourceData(**auth_kwargs))
             self.config.save(_get_config_path())
-        self.parser.configure_auth(cookie=cookie, source="moeimg")
-        logger.info("moeimg login successful for user %s", username)
+
+        configure_kwargs = {credential_kind: secret, "source": source}
+        self.parser.configure_auth(**configure_kwargs)
+        if apply_to_downloader:
+            # 仅 hcomic：下载器需要同步 bearer_token
+            self.downloader.configure_auth(**{credential_kind: secret})
+
+        logger.info("%s login successful for user %s", source, username)
         return {"success": True, "message": "登录成功"}
+
+    def handle_moeimg_login(self, username: str, password: str) -> dict:
+        return self._do_password_login("moeimg", username, password, credential_kind="cookie")
 
     def handle_bika_login(self, username: str, password: str) -> dict:
-        from config import AuthSourceData
-
-        if not username or not username.strip():
-            raise ValueError("请输入用户名")
-        if not password or not password.strip():
-            raise ValueError("请输入密码")
-        username = username.strip()
-        password = password.strip()
-        bika_parser = self.parser.parsers.get("bika")
-        if not bika_parser:
-            raise ValueError("bika 来源不可用")
-        # 凭据持久化解耦：登录前先把账号密码落盘 + 注入懒登录，
-        # 这样网络/密码错误导致 parser.login() 抛异常时凭据仍被保留（credential-persistence spec）。
-        # 失败也注入 set_stored_credentials 是预期行为：网络恢复后下次请求可自动重试登录。
-        self._persist_credentials("bika", username, password)
-        bika_parser.set_stored_credentials(username, password)
-        token = bika_parser.login(username, password)
-        # 成功路径：落 bearer_token。网络 login() 留锁外；仅 set_source_auth + save 进临界区。
-        with self._config_write_lock:
-            self.config.set_source_auth(
-                "bika",
-                AuthSourceData(bearer_token=token, username=username, password=password),
-            )
-            self.config.save(_get_config_path())
-        self.parser.configure_auth(bearer_token=token, source="bika")
-        logger.info("bika login successful for user %s", username)
-        return {"success": True, "message": "登录成功"}
+        return self._do_password_login("bika", username, password, credential_kind="bearer_token")
 
     def handle_hcomic_login(self, username: str, password: str) -> dict:
-        from config import AuthSourceData
-
-        if not username or not username.strip():
-            raise ValueError("请输入用户名")
-        if not password or not password.strip():
-            raise ValueError("请输入密码")
-        username = username.strip()
-        password = password.strip()
-        hcomic_parser = self.parser.parsers.get("hcomic")
-        if not hcomic_parser:
-            raise ValueError("hcomic 来源不可用")
-        # 凭据持久化解耦：登录前先把账号密码落盘 + 注入懒登录，
-        # 这样网络/密码错误导致 parser.login() 抛异常时凭据仍被保留（credential-persistence spec）。
-        # 失败也注入 set_stored_credentials 是预期行为：网络恢复后下次请求可自动重试登录。
-        self._persist_credentials("hcomic", username, password)
-        hcomic_parser.set_stored_credentials(username, password)
-        token = hcomic_parser.login(username, password)
-        # 成功路径：落 bearer_token。网络 login() 留锁外；仅 set_source_auth + save 进临界区。
-        with self._config_write_lock:
-            self.config.set_source_auth(
-                "hcomic",
-                AuthSourceData(bearer_token=token, username=username, password=password),
-            )
-            self.config.save(_get_config_path())
-        self.parser.configure_auth(bearer_token=token, source="hcomic")
-        self.downloader.configure_auth(bearer_token=token)
-        logger.info("hcomic login successful for user %s", username)
-        return {"success": True, "message": "登录成功"}
+        return self._do_password_login(
+            "hcomic",
+            username,
+            password,
+            credential_kind="bearer_token",
+            apply_to_downloader=True,
+        )

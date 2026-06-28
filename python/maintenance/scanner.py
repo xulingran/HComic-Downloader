@@ -296,17 +296,11 @@ def scan_download_dir(download_dir: str, history_db: DownloadHistoryDB | None = 
     return assets
 
 
-def is_image_file(path: str) -> bool:
-    """判断路径是否为支持的图片文件。"""
-    return os.path.splitext(path)[1].lower() in SUPPORTED_IMAGE_EXTENSIONS
-
-
 # re-export for convenience
 __all__ = [
     "ComicAsset",
     "MaintenanceError",
     "scan_download_dir",
-    "is_image_file",
     "_collect_history_output_paths",
     "_collect_image_files",
     "_dir_size",

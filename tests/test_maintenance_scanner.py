@@ -23,7 +23,6 @@ from maintenance.scanner import (
     _infer_source_site,
     _parse_cbz_comic_info,
     _parse_filename_author_title,
-    is_image_file,
     scan_download_dir,
 )
 from PIL import Image
@@ -39,12 +38,6 @@ def _make_image(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     img = Image.new("RGB", (10, 10), color="red")
     img.save(path)
-
-
-def test_is_image_file():
-    assert is_image_file("foo.jpg")
-    assert is_image_file("foo.PNG")
-    assert not is_image_file("foo.txt")
 
 
 def test_collect_image_files(tmp_path: Path):

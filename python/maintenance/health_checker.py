@@ -21,8 +21,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-HealthCheckKind = str
-
 # 默认仅校验图片头部（verify），成本约为全解码的 1/50；
 # 设 HCOMIC_HEALTH_FULL_DECODE=1 时退回逐像素 load()，用于可疑资产的深度校验。
 _FULL_DECODE = os.environ.get("HCOMIC_HEALTH_FULL_DECODE") == "1"
