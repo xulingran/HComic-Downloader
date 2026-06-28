@@ -5,14 +5,17 @@ interface AuthSettingsProps {
   loginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   loginMessage: string
   hcomicSavedUsername: string
+  hcomicSavedPassword: string
   jmLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   jmLoginMessage: string
   moeimgLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   moeimgLoginMessage: string
   moeimgSavedUsername: string
+  moeimgSavedPassword: string
   bikaLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   bikaLoginMessage: string
   bikaSavedUsername: string
+  bikaSavedPassword: string
   copymangaLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   copymangaLoginMessage: string
   onApplyAuth: (curlText: string, source?: string) => Promise<void>
@@ -30,14 +33,17 @@ export function AuthSettings({
   loginStatus,
   loginMessage,
   hcomicSavedUsername,
+  hcomicSavedPassword,
   jmLoginStatus,
   jmLoginMessage,
   moeimgLoginStatus,
   moeimgLoginMessage,
   moeimgSavedUsername,
+  moeimgSavedPassword,
   bikaLoginStatus,
   bikaLoginMessage,
   bikaSavedUsername,
+  bikaSavedPassword,
   copymangaLoginStatus,
   copymangaLoginMessage,
   onApplyAuth,
@@ -49,16 +55,30 @@ export function AuthSettings({
 }: AuthSettingsProps) {
   const [curlText, setCurlText] = useState('')
   const [hcomicUsername, setHcomicUsername] = useState(hcomicSavedUsername || '')
-  const [hcomicPassword, setHcomicPassword] = useState('')
+  const [hcomicPassword, setHcomicPassword] = useState(hcomicSavedPassword || '')
   const [showHcomicPassword, setShowHcomicPassword] = useState(false)
   const [jmCurlText, setJmCurlText] = useState('')
   const [moeimgUsername, setMoeimgUsername] = useState(moeimgSavedUsername || '')
-  const [moeimgPassword, setMoeimgPassword] = useState('')
+  const [moeimgPassword, setMoeimgPassword] = useState(moeimgSavedPassword || '')
   const [moeimgCurlText, setMoeimgCurlText] = useState('')
   const [showMoeimgPassword, setShowMoeimgPassword] = useState(false)
   const [bikaUsername, setBikaUsername] = useState(bikaSavedUsername || '')
-  const [bikaPassword, setBikaPassword] = useState('')
+  const [bikaPassword, setBikaPassword] = useState(bikaSavedPassword || '')
   const [showBikaPassword, setShowBikaPassword] = useState(false)
+
+  // 配置异步加载：挂载后 savedUsername/savedPassword 才到达，同步到本地 state。
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setHcomicUsername(hcomicSavedUsername || '') }, [hcomicSavedUsername])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setHcomicPassword(hcomicSavedPassword || '') }, [hcomicSavedPassword])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMoeimgUsername(moeimgSavedUsername || '') }, [moeimgSavedUsername])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setMoeimgPassword(moeimgSavedPassword || '') }, [moeimgSavedPassword])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setBikaUsername(bikaSavedUsername || '') }, [bikaSavedUsername])
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { setBikaPassword(bikaSavedPassword || '') }, [bikaSavedPassword])
 
   return (
     <div ref={loginSectionRef} className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
@@ -459,6 +479,8 @@ function AuthSourceCard({
     <div className={first ? '' : 'border-t border-[var(--border)] pt-4'}>
       <button
         onClick={() => setExpanded(!expanded)}
+        aria-expanded={expanded}
+        aria-label={`${expanded ? '收起' : '展开'} ${label} 登录设置`}
         className="w-full flex items-center gap-2 text-left hover:bg-[var(--bg-secondary)] rounded-lg px-2 py-1 -mx-2 transition-colors"
       >
         <span className="text-xs text-[var(--text-secondary)] transition-transform" style={expanded ? { transform: 'rotate(90deg)' } : undefined}>

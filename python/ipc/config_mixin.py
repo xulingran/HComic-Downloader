@@ -193,14 +193,17 @@ class ConfigMixin:
         hcomic_auth = self.config.source_auth.get("hcomic", {})
         config["hasAuth"] = bool(hcomic_auth.get("cookie") or hcomic_auth.get("bearer_token"))
         config["hcomicUsername"] = hcomic_auth.get("username", "")
+        config["hcomicPassword"] = hcomic_auth.get("password", "")
         config["hasJmAuth"] = bool(self.config.source_auth.get("jm", {}).get("cookie"))
         config["hasMoeimgAuth"] = bool(self.config.source_auth.get("moeimg", {}).get("cookie"))
         config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get("username", "")
+        config["moeimgPassword"] = self.config.source_auth.get("moeimg", {}).get("password", "")
         bika_auth = self.config.source_auth.get("bika", {})
         config["hasBikaAuth"] = bool(
             bika_auth.get("bearer_token") or (bika_auth.get("username") and bika_auth.get("password"))
         )
         config["bikaUsername"] = self.config.source_auth.get("bika", {}).get("username", "")
+        config["bikaPassword"] = bika_auth.get("password", "")
         config["hasCopymangaAuth"] = bool(self.config.source_auth.get("copymanga", {}).get("cookie"))
         # 返回 jm CDN 域名，供前端动态更新白名单
         jm_cdn = self.parser.get_jm_cdn_domain()

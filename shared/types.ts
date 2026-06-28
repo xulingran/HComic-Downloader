@@ -136,8 +136,11 @@ export interface AppConfig {
   jmDomain?: string
   jmCdnDomain?: string
   moeimgUsername?: string
+  moeimgPassword?: string
   bikaUsername?: string
+  bikaPassword?: string
   hcomicUsername?: string
+  hcomicPassword?: string
   favouriteTagHighlight?: boolean
   favouriteTagMinMatches?: number
   checkUpdateOnStart?: boolean

@@ -35,8 +35,11 @@ interface ConfigState {
   previewCacheSizeLimitMB: number
   jmDomain: string
   moeimgUsername: string
+  moeimgPassword: string
   bikaUsername?: string
+  bikaPassword?: string
   hcomicUsername?: string
+  hcomicPassword?: string
   previewPreloadForward: number
   previewPreloadBackward: number
   previewPreloadConcurrency: number
@@ -77,8 +80,11 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     previewCacheSizeLimitMB: 500,
     jmDomain: '',
     moeimgUsername: '',
+    moeimgPassword: '',
     bikaUsername: '',
+    bikaPassword: '',
     hcomicUsername: '',
+    hcomicPassword: '',
     previewPreloadForward: 8,
     previewPreloadBackward: 2,
     previewPreloadConcurrency: 3,
@@ -149,8 +155,11 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           previewCacheSizeLimitMB: result.config.previewCacheSizeLimitMB ?? 500,
           jmDomain: result.config.jmDomain ?? '',
           moeimgUsername: result.config.moeimgUsername ?? '',
+          moeimgPassword: result.config.moeimgPassword ?? '',
           bikaUsername: result.config.bikaUsername ?? '',
+          bikaPassword: result.config.bikaPassword ?? '',
           hcomicUsername: result.config.hcomicUsername ?? '',
+          hcomicPassword: result.config.hcomicPassword ?? '',
           previewPreloadForward: result.config.previewPreloadForward ?? 8,
           previewPreloadBackward: result.config.previewPreloadBackward ?? 2,
           previewPreloadConcurrency: result.config.previewPreloadConcurrency ?? 3,
@@ -633,14 +642,17 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           loginStatus={hcomicAuth.status}
           loginMessage={hcomicAuth.message}
           hcomicSavedUsername={config.hcomicUsername || ''}
+          hcomicSavedPassword={config.hcomicPassword || ''}
           jmLoginStatus={jmAuth.status}
           jmLoginMessage={jmAuth.message}
           moeimgLoginStatus={moeimgAuth.status}
           moeimgLoginMessage={moeimgAuth.message}
           moeimgSavedUsername={config.moeimgUsername}
+          moeimgSavedPassword={config.moeimgPassword || ''}
           bikaLoginStatus={bikaAuth.status}
           bikaLoginMessage={bikaAuth.message}
           bikaSavedUsername={config.bikaUsername || ''}
+          bikaSavedPassword={config.bikaPassword || ''}
           copymangaLoginStatus={copymangaAuth.status}
           copymangaLoginMessage={copymangaAuth.message}
           onApplyAuth={handleApplyAuth}

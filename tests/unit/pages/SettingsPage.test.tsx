@@ -358,6 +358,45 @@ describe('SettingsPage', () => {
     })
   })
 
+  it('prefills saved username and password for credential-based sources', async () => {
+    mockGetConfig.mockResolvedValue({
+      config: {
+        ...defaultConfig,
+        hcomicUsername: 'hcomic_user',
+        hcomicPassword: 'hcomic_pass',
+        moeimgUsername: 'moeimg_user',
+        moeimgPassword: 'moeimg_pass',
+        bikaUsername: 'bika_user',
+        bikaPassword: 'bika_pass',
+      }
+    })
+
+    render(<SettingsPage />)
+
+    // 等待配置加载后，用可访问名称展开对应来源卡片，避免依赖卡片顺序或折叠图标文本。
+    await userEvent.click(await screen.findByRole('button', { name: '展开 HComic 登录设置' }))
+    await userEvent.click(screen.getByRole('button', { name: '展开 MoeImg 登录设置' }))
+    await userEvent.click(screen.getByRole('button', { name: '展开 哔咔 (Bika) 登录设置' }))
+
+    // 卡片展开后输入框才渲染；findBy 会自动等待
+    const hcomicUserInput = await screen.findByPlaceholderText('HComic 用户名或邮箱') as HTMLInputElement
+    const hcomicPassInput = await screen.findByPlaceholderText('HComic 密码') as HTMLInputElement
+    const moeimgUserInput = await screen.findByPlaceholderText('moeimg 用户名') as HTMLInputElement
+    const moeimgPassInput = await screen.findByPlaceholderText('moeimg 密码') as HTMLInputElement
+    const bikaUserInput = await screen.findByPlaceholderText('哔咔用户名') as HTMLInputElement
+    const bikaPassInput = await screen.findByPlaceholderText('哔咔密码') as HTMLInputElement
+
+    expect(hcomicUserInput.value).toBe('hcomic_user')
+    expect(hcomicPassInput.value).toBe('hcomic_pass')
+    expect(hcomicPassInput).toHaveAttribute('type', 'password')
+    expect(moeimgUserInput.value).toBe('moeimg_user')
+    expect(moeimgPassInput.value).toBe('moeimg_pass')
+    expect(moeimgPassInput).toHaveAttribute('type', 'password')
+    expect(bikaUserInput.value).toBe('bika_user')
+    expect(bikaPassInput.value).toBe('bika_pass')
+    expect(bikaPassInput).toHaveAttribute('type', 'password')
+  })
+
   it('renders apply and test auth buttons', async () => {
     render(<SettingsPage />)
 
