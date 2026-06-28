@@ -1,0 +1,45 @@
+# credential-persistence 规范
+
+## 目的
+
+定义漫画来源账号密码凭据的持久化语义：登录失败时凭据仍须被保存，且 curl/cookie 登录不得覆盖既有账号密码。覆盖支持账号密码登录的来源（hcomic、moeimg、bika）。
+
+## 需求
+
+### 需求:账号密码登录失败时仍持久化凭据
+
+对于支持账号密码登录的来源（hcomic、moeimg、bika），当用户提交非空用户名和密码触发登录时，系统**必须**在发起网络登录请求之前将用户名和密码持久化到配置，且**禁止**因后续网络登录失败而丢弃或清空已提交的凭据。登录失败时异常必须正常向上传播，但配置中的 username/password 字段**必须**保留用户本次提交的值。
+
+#### 场景:网络异常导致登录失败时凭据仍被保存
+
+- **当** 用户对 moeimg 来源提交有效的用户名和密码，且 `parser.login()` 因网络异常抛出异常
+- **那么** 该次提交的用户名和密码必须已写入 `config.source_auth["moeimg"]` 的 username/password 字段，且异常被传播给调用方
+
+#### 场景:密码错误导致登录失败时凭据仍被保存
+
+- **当** 用户对 bika 来源提交用户名和错误密码，且 `parser.login()` 因凭据无效抛出 ParserResponseError
+- **那么** 该次提交的用户名和密码必须已写入 `config.source_auth["bika"]`，且异常被传播给调用方
+
+#### 场景:登录成功时凭据与 token/cookie 一并保存
+
+- **当** 用户对 hcomic 来源提交凭据，且 `parser.login()` 成功返回 access_token
+- **那么** config 中该来源的 username/password 与 bearer_token 必须同时反映本次提交与登录结果
+
+#### 场景:登录失败时凭据也注入 parser 懒登录路径
+
+- **当** 任一账号密码登录 handler 在 `parser.login()` 之前完成凭据持久化
+- **那么** 同一次提交的用户名和密码必须也通过 `parser.set_stored_credentials()` 注入解析器实例，使后续请求触发懒登录自动重试，无论 `parser.login()` 成功或失败
+
+### 需求:apply_auth 不得覆盖已存在的账号密码
+
+当用户通过 curl/cookie 方式应用登录信息（`handle_apply_auth`）时，系统**必须**保留配置中该来源已有的 username/password 字段，**禁止**以空字符串覆盖。对于不使用账号密码字段的来源（jm、copymanga），此要求不影响其既有行为。
+
+#### 场景:curl 登录保留既有账号密码
+
+- **当** 用户先前已通过账号密码登录 hcomic 来源使 `config.source_auth["hcomic"]` 含有 username/password，随后用户通过粘贴 curl 调用 `handle_apply_auth` 应用新的 cookie/bearer_token
+- **那么** 应用后 `config.source_auth["hcomic"]` 必须同时包含新的 cookie/bearer_token 与原有的 username/password
+
+#### 场景:对无账号密码的来源应用 curl 不受影响
+
+- **当** 用户对 jm 来源调用 `handle_apply_auth` 应用 cookie
+- **那么** 该来源的 cookie/user_agent/bearer_token 按提交值写入，行为与既有实现一致（jm 不维护 username/password 字段）

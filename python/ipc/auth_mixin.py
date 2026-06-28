@@ -26,9 +26,32 @@ class AuthMixin:
     # 避免并发 os.replace (WinError 5) 与 source_auth 字典读改写竞态。
     _config_write_lock: threading.Lock
 
+    def _persist_credentials(self, source: str, username: str, password: str) -> None:
+        """仅持久化账号密码，保留该来源已存的 cookie/user_agent/bearer_token。
+
+        登录失败场景下用户输入的凭据也必须落盘（见 credential-persistence spec），
+        因此 handler 在调用 parser.login() 之前先调用本方法。读改写 + 原子 save 必须
+        在 _config_write_lock 内整体串行化；本方法不涉及任何网络请求。
+        """
+        from config import AuthSourceData
+
+        existing = self.config.get_source_auth(source)
+        with self._config_write_lock:
+            self.config.set_source_auth(
+                source,
+                AuthSourceData(
+                    cookie=existing.get("cookie", ""),
+                    user_agent=existing.get("user_agent", ""),
+                    bearer_token=existing.get("bearer_token", ""),
+                    username=username,
+                    password=password,
+                ),
+            )
+            self.config.save(_get_config_path())
+
     def handle_apply_auth(self, curl_text: str, source: str = "hcomic", jm_username: str = "") -> dict:
         if not curl_text or not curl_text.strip():
-            raise ValueError("\u8bf7\u7c98\u8d34 curl \u547d\u4ee4")
+            raise ValueError("\u8bf7\u7c08\u8d34 curl \u547d\u4ee4")
 
         from auth_parser import extract_auth_from_curl
         from config import AuthSourceData
@@ -36,10 +59,20 @@ class AuthMixin:
         cookie, user_agent, bearer_token, domain = extract_auth_from_curl(curl_text.strip())
         # set_source_auth (字典读改写) + save (原子 os.replace) 必须作为临界区整体串行化，
         # 网络解析 (extract_auth_from_curl) 留锁外避免长事务。
+        # 合并写：curl 登录不得覆盖既有 username/password（credential-persistence spec）。
+        # 对 jm/copymanga 等无账号密码字段的来源，get_source_auth 不 setdefault 这两键，
+        # 回填值为空串，行为与原实现一致。
+        existing = self.config.get_source_auth(source)
         with self._config_write_lock:
             self.config.set_source_auth(
                 source,
-                AuthSourceData(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token),
+                AuthSourceData(
+                    cookie=cookie,
+                    user_agent=user_agent,
+                    bearer_token=bearer_token,
+                    username=existing.get("username", ""),
+                    password=existing.get("password", ""),
+                ),
             )
             self.config.save(_get_config_path())
 
@@ -84,8 +117,13 @@ class AuthMixin:
         moeimg_parser = self.parser.parsers.get("moeimg")
         if not moeimg_parser:
             raise ValueError("moeimg 来源不可用")
+        # 凭据持久化解耦：登录前先把账号密码落盘 + 注入懒登录，
+        # 这样网络/密码错误导致 parser.login() 抛异常时凭据仍被保留（credential-persistence spec）。
+        # 失败也注入 set_stored_credentials 是预期行为：网络恢复后下次请求可自动重试登录。
+        self._persist_credentials("moeimg", username, password)
+        moeimg_parser.set_stored_credentials(username, password)
         cookie = moeimg_parser.login(username, password)
-        # 网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        # 成功路径：落 cookie。网络 login() 留锁外；仅 set_source_auth + save 进临界区。
         with self._config_write_lock:
             self.config.set_source_auth(
                 "moeimg",
@@ -93,7 +131,6 @@ class AuthMixin:
             )
             self.config.save(_get_config_path())
         self.parser.configure_auth(cookie=cookie, source="moeimg")
-        moeimg_parser.set_stored_credentials(username, password)
         logger.info("moeimg login successful for user %s", username)
         return {"success": True, "message": "登录成功"}
 
@@ -109,8 +146,13 @@ class AuthMixin:
         bika_parser = self.parser.parsers.get("bika")
         if not bika_parser:
             raise ValueError("bika 来源不可用")
+        # 凭据持久化解耦：登录前先把账号密码落盘 + 注入懒登录，
+        # 这样网络/密码错误导致 parser.login() 抛异常时凭据仍被保留（credential-persistence spec）。
+        # 失败也注入 set_stored_credentials 是预期行为：网络恢复后下次请求可自动重试登录。
+        self._persist_credentials("bika", username, password)
+        bika_parser.set_stored_credentials(username, password)
         token = bika_parser.login(username, password)
-        # 网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        # 成功路径：落 bearer_token。网络 login() 留锁外；仅 set_source_auth + save 进临界区。
         with self._config_write_lock:
             self.config.set_source_auth(
                 "bika",
@@ -118,7 +160,6 @@ class AuthMixin:
             )
             self.config.save(_get_config_path())
         self.parser.configure_auth(bearer_token=token, source="bika")
-        bika_parser.set_stored_credentials(username, password)
         logger.info("bika login successful for user %s", username)
         return {"success": True, "message": "登录成功"}
 
@@ -134,8 +175,13 @@ class AuthMixin:
         hcomic_parser = self.parser.parsers.get("hcomic")
         if not hcomic_parser:
             raise ValueError("hcomic 来源不可用")
+        # 凭据持久化解耦：登录前先把账号密码落盘 + 注入懒登录，
+        # 这样网络/密码错误导致 parser.login() 抛异常时凭据仍被保留（credential-persistence spec）。
+        # 失败也注入 set_stored_credentials 是预期行为：网络恢复后下次请求可自动重试登录。
+        self._persist_credentials("hcomic", username, password)
+        hcomic_parser.set_stored_credentials(username, password)
         token = hcomic_parser.login(username, password)
-        # 网络 login() 留锁外；仅 set_source_auth + save 进临界区。
+        # 成功路径：落 bearer_token。网络 login() 留锁外；仅 set_source_auth + save 进临界区。
         with self._config_write_lock:
             self.config.set_source_auth(
                 "hcomic",
@@ -144,6 +190,5 @@ class AuthMixin:
             self.config.save(_get_config_path())
         self.parser.configure_auth(bearer_token=token, source="hcomic")
         self.downloader.configure_auth(bearer_token=token)
-        hcomic_parser.set_stored_credentials(username, password)
         logger.info("hcomic login successful for user %s", username)
         return {"success": True, "message": "登录成功"}
