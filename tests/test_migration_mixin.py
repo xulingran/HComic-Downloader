@@ -45,7 +45,9 @@ class TestDMRecovery:
         with patch.object(mixin, "_run_migration"):
             mixin.handle_confirm_migration("test-id")
 
-        dm.toggle_global_pause.assert_called_once()
+        # 降级记录（test-discipline-gate Phase 1）：已删除 dm.toggle_global_pause.assert_called_once()
+        # —— 裸 mock 调用断言重述实现行 self._download_manager.toggle_global_pause()。
+        # 真实信号由下方 _migration_paused_dm 状态断言承载（confirm 后置位为 True）。
         assert mixin._migration_paused_dm is True
 
     def test_migration_complete_resumes_dm(self, mixin):
@@ -58,7 +60,8 @@ class TestDMRecovery:
 
         mixin._run_migration()
 
-        dm.toggle_global_pause.assert_called_once()
+        # 降级记录：已删除 dm.toggle_global_pause.assert_called_once()（裸调用断言，重述实现）。
+        # 真实信号：迁移完成后 _migration_paused_dm 复位为 False。
         assert mixin._migration_paused_dm is False
 
     def test_migration_error_resumes_dm(self, mixin):
@@ -71,7 +74,8 @@ class TestDMRecovery:
 
         mixin._run_migration()
 
-        dm.toggle_global_pause.assert_called_once()
+        # 降级记录：已删除 dm.toggle_global_pause.assert_called_once()（裸调用断言，重述实现）。
+        # 真实信号：迁移异常后 _migration_paused_dm 仍复位为 False（finally 兜底）。
         assert mixin._migration_paused_dm is False
 
     def test_cancel_migration_resumes_dm(self, mixin):
@@ -83,7 +87,8 @@ class TestDMRecovery:
 
         mixin.handle_cancel_migration()
 
-        dm.toggle_global_pause.assert_called_once()
+        # 降级记录：已删除 dm.toggle_global_pause.assert_called_once()（裸调用断言，重述实现）。
+        # 真实信号：取消迁移后 _migration_paused_dm 复位为 False。
         assert mixin._migration_paused_dm is False
 
     def test_no_dm_no_crash_on_complete(self, mixin):
@@ -119,22 +124,12 @@ class TestDMRecovery:
 
 
 class TestLockProtection:
-    def test_pause_migration_holds_lock(self, mixin):
-        mixin._migration_engine = MagicMock()
-
-        mixin.handle_pause_migration()
-
-        mixin._migration_engine.pause.assert_called_once()
-
-    def test_resume_migration_holds_lock(self, mixin):
-        mixin._migration_engine = MagicMock()
-        mixin._migration_engine.state = _make_migration_state(status="paused")
-
-        with patch.object(mixin, "_run_migration"):
-            result = mixin.handle_resume_migration()
-
-        mixin._migration_engine.resume.assert_called_once()
-        assert result == {"resumed": True}
+    # 降级记录（test-discipline-gate Phase 1）：已删除两个纯 mock 调用断言用例：
+    #   - test_pause_migration_holds_lock：仅断言 mixin._migration_engine.pause.assert_called_once()
+    #   - test_resume_migration_holds_lock：仅断言 resume.assert_called_once()
+    # 两者均重述紧邻的实现行（handle_pause/resume 内调用 self._migration_engine.pause()/resume()），
+    # 无任何可观察状态/返回值断言承载真实信号（mock 替换测试：换真实 engine 断言仍必然成立）。
+    # 该类保留有真实信号的 test_resume_migration_invalid_state（守卫：非 paused 状态抛 RuntimeError）。
 
     def test_resume_migration_invalid_state(self, mixin):
         mixin._migration_engine = MagicMock()
@@ -143,22 +138,50 @@ class TestLockProtection:
         with pytest.raises(RuntimeError, match="No paused migration"):
             mixin.handle_resume_migration()
 
-    def test_pause_and_confirm_are_serialized(self, mixin):
+    def test_concurrent_pause_is_serialized_under_migration_lock(self, mixin):
+        """并发 handle_pause_migration 必须在 _migration_lock 下串行——pause 回调不得重叠。
+
+        强化记录（test-discipline-gate Phase 1 / 任务 2.2）：原 test_pause_and_confirm_are_serialized
+        的断言 `assert "pause" in pause_order` 仅验证 tracked_pause 包装器被执行，重述调用本身
+        （mock 替换测试：换真实 pause 断言仍成立）。改为验证真实并发不变量——
+        handle_pause_migration 持 self._migration_lock，故 engine.pause() 调用不得并发重叠。
+        """
+        import threading
+
         mixin._migration_engine = MagicMock()
         mixin._migration_engine.state = _make_migration_state(id="test-id", status="ready")
 
-        pause_order = []
-        original_pause = mixin._migration_engine.pause
+        overlap = {"active": 0, "max": 0}
+        overlap_lock = threading.Lock()
 
-        def tracked_pause():
-            pause_order.append("pause")
-            original_pause()
+        def observing_pause():
+            with overlap_lock:
+                overlap["active"] += 1
+                overlap["max"] = max(overlap["max"], overlap["active"])
+            # 放大并发窗口，使未串行化的实现能被捕获
+            import time
 
-        mixin._migration_engine.pause = tracked_pause
+            time.sleep(0.01)
+            with overlap_lock:
+                overlap["active"] -= 1
 
-        mixin.handle_pause_migration()
+        mixin._migration_engine.pause = observing_pause
 
-        assert "pause" in pause_order
+        num_threads = 6
+        barrier = threading.Barrier(num_threads)
+        threads = [
+            threading.Thread(target=lambda: (barrier.wait(), mixin.handle_pause_migration()))
+            for _ in range(num_threads)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=5)
+
+        # 不变量：_migration_lock 串行化 pause 调用，峰值并发必须为 1
+        assert (
+            overlap["max"] == 1
+        ), f"handle_pause_migration 必须串行调用 engine.pause()，实测峰值并发 = {overlap['max']}（应 = 1）"
 
 
 class TestConfigWriteLockSerialization:

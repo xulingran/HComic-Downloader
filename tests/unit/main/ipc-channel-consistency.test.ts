@@ -1,5 +1,8 @@
 // @vitest-environment node
 import { describe, it, expect } from 'vitest'
+import { readFileSync } from 'fs'
+import { dirname, join } from 'path'
+import { fileURLToPath } from 'url'
 import {
   IPC_CHANNELS,
   NOTIFICATION_CHANNELS,
@@ -7,6 +10,10 @@ import {
   PYTHON_IPC_CHANNEL_MAP,
   type IPCMethods,
 } from '../../../shared/types'
+
+const __filename_test = fileURLToPath(import.meta.url)
+const __dirname_test = dirname(__filename_test)
+const REPO_ROOT = join(__dirname_test, '..', '..', '..')
 
 describe('IPC Channel Consistency', () => {
   it('every IPC_CHANNELS entry should have a corresponding PYTHON_IPC_CHANNEL_MAP entry or be a non-python channel', () => {
@@ -72,13 +79,41 @@ describe('IPC Channel Consistency', () => {
     expect(notifKeys.sort()).toEqual(pyNotifKeys.sort())
   })
 
-  it('no IPC channel string should appear as a raw string in preload or main — all use IPC_CHANNELS constant', () => {
-    const channelValues = new Set(Object.values(IPC_CHANNELS))
-    const notifValues = new Set(Object.values(NOTIFICATION_CHANNELS))
-    const pyNotifValues = new Set(Object.values(PYTHON_NOTIFICATION_METHODS))
+  it('preload and main must reference every IPC channel via IPC_CHANNELS constant — no raw string literals', () => {
+    // 修正记录（test-discipline-gate Phase 1 / 任务 3.1）：原版本用例标题承诺"扫描源文件中不出现裸
+    // 通道字符串"，但实现只断言常量集合非空（名不副实）。现让它名副其实——读取 preload.ts 与 main.ts
+    // 源码，断言没有任何 IPC_CHANNELS 值作为裸字符串字面量出现，强制所有通道引用走常量。
+    // 漏写（如新增通道后忘记加到 IPC_CHANNELS 却在 main 里手写 'python:xxx'）会被本用例捕获。
+    const preloadSrc = readFileSync(join(REPO_ROOT, 'electron', 'preload.ts'), 'utf-8')
+    const mainSrc = readFileSync(join(REPO_ROOT, 'electron', 'main.ts'), 'utf-8')
 
-    expect(channelValues.size).toBeGreaterThan(0)
-    expect(notifValues.size).toBeGreaterThan(0)
-    expect(pyNotifValues.size).toBeGreaterThan(0)
+    const channelValues = Object.values(IPC_CHANNELS).filter(
+      (ch): ch is string => typeof ch === 'string'
+    )
+    expect(channelValues.length, 'IPC_CHANNELS 必须非空').toBeGreaterThan(0)
+
+    // 收集每个通道值作为裸字符串字面量（单/双引号/反引号包裹）的出现位置。
+    // 允许的例外：通道值出现在注释中（// 或 /* 行）——这类是文档而非代码引用。
+    const violations: string[] = []
+    for (const src of [
+      { name: 'preload.ts', content: preloadSrc },
+      { name: 'main.ts', content: mainSrc },
+    ]) {
+      for (const ch of channelValues) {
+        // 转义通道值用于正则（含 ':' '-' 等无需转义的字符，但稳妥处理）
+        const escaped = ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        // 匹配被引号包裹的通道值：'python:search' / "python:search" / `python:search`
+        const quotedRe = new RegExp(`(['"\`])${escaped}\\1`, 'g')
+        let m: RegExpExecArray | null
+        while ((m = quotedRe.exec(src.content)) !== null) {
+          // 判断该匹配是否在注释行内（行内 // 或处于 /* */ 块）
+          const lineStart = src.content.lastIndexOf('\n', m.index) + 1
+          const lineUpToMatch = src.content.slice(lineStart, m.index)
+          if (lineUpToMatch.includes('//')) continue // 行注释，放行
+          violations.push(`${src.name}: 裸通道字符串 "${ch}"（应改用 IPC_CHANNELS 常量引用）`)
+        }
+      }
+    }
+    expect(violations, `发现裸通道字符串字面量:\n${violations.join('\n')}`).toEqual([])
   })
 })

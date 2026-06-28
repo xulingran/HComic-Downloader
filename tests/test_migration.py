@@ -510,19 +510,27 @@ def test_cross_drive_full_success_updates_db(tmp_path):
         engine.execute(on_progress=lambda p: None)
 
     assert state.plan[0].status == "done"
-    mock_db.update_output_path.assert_called_once()
+    # 真实信号：迁移后 DB 的 output_path 必须更新为目标路径（而非仅断言 mock 被调用一次）。
+    # 降级记录（test-discipline-gate Phase 1）：原 assert_called_once() 是裸计数断言；
+    # 改为断言 update_output_path 被以目标路径调用——验证"DB 记录迁移到新位置"这一真实行为。
+    mock_db.update_output_path.assert_called_once_with(
+        ("hcomic", "100", "MMCG_SHORT"),
+        os.path.join(target_dir, "comic.cbz"),
+    )
 
 
 # ── T9: Log handler initialized once ─────────────────────────────────
 
 
 def test_log_handler_initialized_in_constructor(tmp_path):
-    with patch("os.makedirs") as mock_makedirs:
-        mock_db = MagicMock()
-        engine = MigrationEngine(history_db=mock_db)
-        mock_makedirs.assert_called_once()
-        assert engine._log_handler is not None
-        assert engine._migration_logger is not None
+    # 降级记录（test-discipline-gate Phase 1）：已删除 `with patch("os.makedirs") as mock_makedirs`
+    # 与 `mock_makedirs.assert_called_once()` —— 后者重述构造函数内 makedirs 调用，无独立信号。
+    # patch makedirs 还会阻止真实日志目录创建，使下方 _log_handler 断言依赖被 patch 的副作用。
+    # 真实信号由下方两个属性断言承载：构造函数必须初始化 log handler 与专属 logger。
+    mock_db = MagicMock()
+    engine = MigrationEngine(history_db=mock_db)
+    assert engine._log_handler is not None
+    assert engine._migration_logger is not None
 
 
 # ── T10: Resume preserves log ────────────────────────────────────────
