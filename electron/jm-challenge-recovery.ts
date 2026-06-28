@@ -17,11 +17,13 @@
  */
 import type { BrowserWindow } from 'electron'
 import { getPythonBridge, type PythonBridgeError } from './python-bridge'
-import { openJmChallengeWindow, type JmChallengeSnapshot } from './login-window'
+import { captureJmFavouritesSnapshotWindow, openJmChallengeWindow, type JmChallengeSnapshot, type JmChallengeWindowResult } from './login-window'
 import { IPC_ERROR_CODES, type AntiBotChallengeData } from '../shared/types'
 
 /** 挑战 URL 与 challengeUrl 字段最大长度（与 Python 端 _JM_SNAPSHOT_MAX_URL_LEN 对齐） */
 const CHALLENGE_URL_MAX_LEN = 2048
+let preferSilentSnapshotRecovery = false
+let lastSnapshotSourceUrl: string | null = null
 
 export interface JmChallengeRecoveryContext {
   /** 主窗口引用，用于挂载模态挑战窗口 */
@@ -105,9 +107,16 @@ export async function recoverJmChallenge(
     return { resolved: false, message: '收藏夹请求遇到问题，请稍后重试' }
   }
 
+  if (preferSilentSnapshotRecovery) {
+    const silentSnapshot = await captureJmFavouritesSnapshotWindow(ctx.mainWindow, challengeData.challengeUrl, ctx.resolvedDomain)
+    if (silentSnapshot.success && silentSnapshot.snapshot) {
+      return parseSnapshotFallback(getPythonBridge(), silentSnapshot.snapshot, page)
+    }
+  }
+
   // 步骤 1：打开挑战窗口。openJmChallengeWindow 在 URL 非法时抛 Error，
   // 在用户取消/超时/窗口失败时返回 success=false（不抛）。
-  let windowResult: { success: boolean; message?: string; snapshot?: JmChallengeSnapshot }
+  let windowResult: JmChallengeWindowResult
   try {
     windowResult = await openJmChallengeWindow(ctx.mainWindow, challengeData.challengeUrl, ctx.resolvedDomain)
   } catch {
@@ -132,7 +141,12 @@ export async function recoverJmChallenge(
   } catch (retryErr) {
     // 重试仍为挑战错误且有合格快照 → 走步骤 4
     if (isJmChallengeError(retryErr) && windowResult.snapshot) {
-      return parseSnapshotFallback(bridge, windowResult.snapshot, page)
+      const outcome = await parseSnapshotFallback(bridge, windowResult.snapshot, page)
+      if (outcome.resolved) {
+        preferSilentSnapshotRecovery = true
+        lastSnapshotSourceUrl = windowResult.snapshot.sourceUrl
+      }
+      return outcome
     }
     // 其他错误（含无快照的二次挑战）→ 停止恢复
     return {
@@ -146,6 +160,41 @@ export async function recoverJmChallenge(
     resolved: true,
     result: retryResult as { comics: unknown[]; pagination?: unknown; needsLogin: boolean },
   }
+}
+
+export function shouldPreferSilentJmSnapshotRecovery(): boolean {
+  return preferSilentSnapshotRecovery && lastSnapshotSourceUrl !== null
+}
+
+export function buildSilentJmFavouritesUrl(page: number): string | null {
+  if (!lastSnapshotSourceUrl || !Number.isInteger(page) || page < 1 || page > 1000) return null
+  const url = new URL(lastSnapshotSourceUrl)
+  if (page === 1) {
+    url.searchParams.delete('page')
+  } else {
+    url.searchParams.set('page', String(page))
+  }
+  return url.toString()
+}
+
+export async function recoverJmFavouritesSilently(
+  ctx: JmChallengeRecoveryContext,
+  favouritesUrl: string,
+  page: number,
+): Promise<JmChallengeRecoveryOutcome> {
+  const silentSnapshot = await captureJmFavouritesSnapshotWindow(ctx.mainWindow, favouritesUrl, ctx.resolvedDomain)
+  if (silentSnapshot.success && silentSnapshot.snapshot) {
+    return parseSnapshotFallback(getPythonBridge(), silentSnapshot.snapshot, page)
+  }
+  return {
+    resolved: false,
+    message: silentSnapshot.message || '无法获取收藏夹页面快照，请稍后重试',
+  }
+}
+
+export function resetJmChallengeRecoveryStateForTests(): void {
+  preferSilentSnapshotRecovery = false
+  lastSnapshotSourceUrl = null
 }
 
 /**

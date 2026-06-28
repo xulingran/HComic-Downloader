@@ -3,13 +3,16 @@ import { describe, it, expect, beforeEach, vi } from 'vitest'
 
 // Use vi.hoisted to create all shared state and mock functions
 // These are hoisted to the top of the file, before vi.mock factories run
-const { mockBridgeCall, mockBridgeKill, mockBridgeShutdown, handleCalls, capturedInstances, notificationHandlers, MockNotification } = vi.hoisted(() => {
+const { mockBridgeCall, mockBridgeKill, mockBridgeShutdown, mockShouldPreferSilentJmSnapshotRecovery, mockBuildSilentJmFavouritesUrl, mockRecoverJmFavouritesSilently, handleCalls, capturedInstances, notificationHandlers, MockNotification } = vi.hoisted(() => {
   const mockNotify = vi.fn().mockImplementation(function () { return { on: vi.fn(), show: vi.fn() } })
   mockNotify.isSupported = vi.fn().mockReturnValue(true)
   return {
     mockBridgeCall: vi.fn().mockResolvedValue({ success: true }),
     mockBridgeKill: vi.fn(),
     mockBridgeShutdown: vi.fn().mockResolvedValue(undefined),
+    mockShouldPreferSilentJmSnapshotRecovery: vi.fn().mockReturnValue(false),
+    mockBuildSilentJmFavouritesUrl: vi.fn().mockReturnValue(null),
+    mockRecoverJmFavouritesSilently: vi.fn(),
     handleCalls: [] as Array<{ channel: string; handler: (...args: unknown[]) => unknown }>,
     capturedInstances: [] as unknown[],
     notificationHandlers: {} as Record<string, (...args: unknown[]) => unknown>,
@@ -115,6 +118,15 @@ vi.mock('../../../electron/python-bridge', () => ({
   })
 }))
 
+// Mock JM challenge recovery
+vi.mock('../../../electron/jm-challenge-recovery', () => ({
+  isJmChallengeError: vi.fn().mockReturnValue(false),
+  recoverJmChallenge: vi.fn(),
+  recoverJmFavouritesSilently: mockRecoverJmFavouritesSilently,
+  shouldPreferSilentJmSnapshotRecovery: mockShouldPreferSilentJmSnapshotRecovery,
+  buildSilentJmFavouritesUrl: mockBuildSilentJmFavouritesUrl,
+}))
+
 // Import after mocks - this triggers side effects
 import { app } from 'electron'
 
@@ -133,6 +145,9 @@ describe('main.ts', () => {
   beforeEach(async () => {
     mockBridgeCall.mockResolvedValue({ success: true })
     mockBridgeCall.mockClear()
+    mockShouldPreferSilentJmSnapshotRecovery.mockReturnValue(false)
+    mockBuildSilentJmFavouritesUrl.mockReturnValue(null)
+    mockRecoverJmFavouritesSilently.mockReset()
     // Flush microtasks from import to ensure registerIPCHandlers has run
     await flushMicrotasks()
   })
@@ -357,6 +372,23 @@ describe('main.ts', () => {
       await handler.handler({})
 
       expect(mockBridgeCall).toHaveBeenCalledWith('get_favourites', { page: 1 })
+    })
+
+    it('python:get-favourites uses silent JM snapshot recovery before Python when enabled', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:get-favourites')!
+      const result = { comics: [{ id: '2' }], needsLogin: false }
+      mockShouldPreferSilentJmSnapshotRecovery.mockReturnValue(true)
+      mockBuildSilentJmFavouritesUrl.mockReturnValue('https://18comic.vip/user/u/favorite/albums?page=2')
+      mockRecoverJmFavouritesSilently.mockResolvedValueOnce({ resolved: true, result })
+
+      await expect(handler.handler({}, 2, 'jm', true)).resolves.toEqual(result)
+
+      expect(mockBridgeCall).not.toHaveBeenCalledWith('get_favourites', expect.anything())
+      expect(mockRecoverJmFavouritesSilently).toHaveBeenCalledWith(
+        expect.objectContaining({ mainWindow: expect.anything() }),
+        'https://18comic.vip/user/u/favorite/albums?page=2',
+        2,
+      )
     })
 
     it('python:get-config delegates with no params', async () => {

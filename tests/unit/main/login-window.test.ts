@@ -802,7 +802,7 @@ describe('login-window: openJmChallengeWindow (challenge mode)', () => {
   const CHALLENGE_URL = 'https://18comic.vip/user/testuser/favorite/albums'
 
   // 辅助：开挑战窗并填充 savedUserAgent，返回捕获的 loginWin + promise
-  async function setupChallenge() {
+  async function setupChallenge(triggerLoad = true) {
     const promise = openJmChallengeWindow(makeMainWindow(), CHALLENGE_URL)
     await Promise.resolve()
     const win = capturedInstances[0] as {
@@ -814,7 +814,7 @@ describe('login-window: openJmChallengeWindow (challenge mode)', () => {
       }
       destroy: ReturnType<typeof vi.fn>
     }
-    if (webContentsEvents['did-finish-load']) webContentsEvents['did-finish-load'][0]()
+    if (triggerLoad && webContentsEvents['did-finish-load']) webContentsEvents['did-finish-load'][0]()
     return { promise, win }
   }
 
@@ -902,6 +902,32 @@ describe('login-window: openJmChallengeWindow (challenge mode)', () => {
     vi.useRealTimers()
   })
 
+  it('auto-completes challenge recovery when loaded page already shows favourites', async () => {
+    vi.useFakeTimers()
+    const { promise, win } = await setupChallenge(false)
+    const snapshotHtml = '<html><body><div class="thumb-overlay"><a href="/album/1"><img title="t"></a></div></body></html>'
+    vi.mocked(win.webContents.executeJavaScript).mockResolvedValue({
+      sourceUrl: CHALLENGE_URL,
+      html: snapshotHtml,
+    })
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+    ])
+
+    webContentsEvents['did-finish-load'][0]()
+    await vi.waitFor(() => {
+      expect(mockBridgeCall).toHaveBeenCalledWith('apply_auth', expect.objectContaining({ source: 'jm' }))
+    })
+    await vi.advanceTimersByTimeAsync(10_000)
+
+    const result = await promise
+    expect(result.success).toBe(true)
+    expect(result.snapshot?.html).toBe(snapshotHtml)
+    expect(win.destroy).toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
   it('snapshot capture succeeds and result carries snapshot for main-process consumer', async () => {
     vi.useFakeTimers()
     const { promise, win } = await setupChallenge()
@@ -939,6 +965,34 @@ describe('login-window: openJmChallengeWindow (challenge mode)', () => {
     expect(result.success).toBe(true)
     // 挑战模式结果携带快照，供主进程内部消费者使用
     expect(result.snapshot).toBeDefined()
+    expect(result.snapshot?.html).toBe(snapshotHtml)
+    vi.useRealTimers()
+  })
+
+  it('snapshot capture accepts visible favourites page even when non-active captcha marker text is present', async () => {
+    vi.useFakeTimers()
+    const { promise, win } = await setupChallenge()
+    const snapshotHtml = '<html><body><script>window.captchaConfig={};</script><div class="thumb-overlay"><a href="/album/1"><img title="t"></a></div></body></html>'
+    vi.mocked(win.webContents.executeJavaScript).mockResolvedValue({
+      sourceUrl: CHALLENGE_URL,
+      html: snapshotHtml,
+    })
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+    ])
+
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'jm')
+    await vi.waitFor(() => {
+      expect(win.webContents.send).toHaveBeenCalledWith(
+        NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+        expect.objectContaining({ success: true }),
+      )
+    })
+
+    await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
+    const result = await promise
+    expect(result.success).toBe(true)
     expect(result.snapshot?.html).toBe(snapshotHtml)
     vi.useRealTimers()
   })

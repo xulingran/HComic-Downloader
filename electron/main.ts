@@ -6,7 +6,7 @@ import { resolveImageCacheFile } from './image-protocol'
 import { checkForUpdates } from './update-checker'
 import { NotificationManager } from './notification-manager'
 import { openLoginWindow } from './login-window'
-import { isJmChallengeError, recoverJmChallenge } from './jm-challenge-recovery'
+import { isJmChallengeError, recoverJmChallenge, recoverJmFavouritesSilently, shouldPreferSilentJmSnapshotRecovery, buildSilentJmFavouritesUrl } from './jm-challenge-recovery'
 import { needsRelaxedCsp } from './csp-relaxed-registry'
 import { initLogging } from './log-init'
 import { buildDiagnostics } from './diagnostics'
@@ -754,6 +754,19 @@ function registerDownloadHandlers(bridge: Bridge) {
     const params: Record<string, unknown> = { page: p }
     withOptionalSource(params, effectiveSource, 'favourites')
     // 禁止把 UI 控制参数转发给 Python handler
+    if (interactiveFlag && effectiveSource === 'jm' && shouldPreferSilentJmSnapshotRecovery()) {
+      const favouritesUrl = buildSilentJmFavouritesUrl(p)
+      if (favouritesUrl) {
+        const outcome = await recoverJmFavouritesSilently(
+          { mainWindow, resolvedDomain: jmMainDomain || undefined },
+          favouritesUrl,
+          p,
+        )
+        if (outcome.resolved && outcome.result) {
+          return outcome.result
+        }
+      }
+    }
     try {
       return await bridge.call('get_favourites', params)
     } catch (err) {
