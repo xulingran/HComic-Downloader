@@ -99,7 +99,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     }, setCurrent)
   }, [cache])
 
-  const loadFavourites = useCallback(async (page: number = 1, selectedSource?: string, reason: 'user' | 'preload' = 'user') => {
+  const loadFavourites = useCallback(async (page: number = 1, selectedSource?: string, reason: 'user' | 'preload' = 'user', keepExisting: boolean = false) => {
     const effectiveSource = selectedSource || source
     const cachedPage = cache.getPage(effectiveSource, page)
 
@@ -130,6 +130,11 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       setIsLoading(true)
       setError(null)
       setNeedsLogin(false)
+      // 翻页（keepExisting=true）：保留旧结果 + 遮罩；换来源/刷新：清空 + 空状态
+      if (!keepExisting) {
+        setComics([])
+        setPagination(null)
+      }
     }
 
     try {
@@ -265,6 +270,11 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     selectAll(notDownloaded)
   }, [comics, downloadedStatus, selectAll])
 
+  // 翻页导航：保留当前页结果 + 遮罩（Direction B），仅在无缓存时进入加载态
+  const handlePageNavigate = useCallback((page: number) => {
+    loadFavourites(page, undefined, 'user', true)
+  }, [loadFavourites])
+
   // 打开弹窗时才提取默认名（而非 useMemo 预算）：保证日志在"即将展示给用户"
   // 的诊断点输出，且能拿到 selectedComics() 跨页缓存的最新数据。
   const handleBatchDownloadAsAlbumClick = useCallback(() => {
@@ -390,17 +400,11 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           <PaginationControls
             currentPage={currentPage}
             totalPages={pagination.totalPages}
-            onNavigate={loadFavourites}
+            onNavigate={handlePageNavigate}
             onJumpClick={() => setShowJumpDialog(true)}
           />
         )}
       </div>
-
-      {isLoading && (
-        <div className="flex items-center justify-center py-12">
-          <div className="text-[var(--text-secondary)]">加载中...</div>
-        </div>
-      )}
 
       {error && (
         <ErrorDisplay
@@ -414,7 +418,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         />
       )}
 
-      {!isLoading && !error && (needsLogin ? (
+      {!error && (needsLogin ? (
         <div className="text-center py-12">
           <div className="text-[var(--text-secondary)] mb-4">登录信息已过期或未配置，请前往设置页面重新登录</div>
           <div className="flex justify-center gap-3">
@@ -441,31 +445,44 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           </div>
         </div>
       ) : comics.length === 0 ? (
-        <EmptyState message="暂无收藏" />
+        isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <span className="text-sm text-[var(--text-secondary)]">加载中...</span>
+          </div>
+        ) : <EmptyState message="暂无收藏" />
       ) : (
-        <LayoutGroup>
-          <AnimatePresence mode="popLayout">
-            <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
-              ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-              : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
-            }>
-              {comics.map((comic, index) => (
-                <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
-                  <ComicCard
-                    comic={comic}
-                    onOpenReader={handleOpenReader}
-                    batchMode={batchMode}
-                    selected={selectedIds.has(getComicKey(comic))}
-                    onToggleSelect={toggleSelect}
-                    onDownload={handleDownload}
-                    downloadStatus={downloadedStatus[getTaskId(comic)]}
-                    activeDownload={activeDownloadMap.get(comic.id)}
-                  />
-                </AnimatedCardWrapper>
-              ))}
+        <div className="relative">
+          <LayoutGroup>
+            <AnimatePresence mode="popLayout">
+              <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
+                ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+                : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
+              }>
+                {comics.map((comic, index) => (
+                  <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
+                    <ComicCard
+                      comic={comic}
+                      onOpenReader={handleOpenReader}
+                      batchMode={batchMode}
+                      selected={selectedIds.has(getComicKey(comic))}
+                      onToggleSelect={toggleSelect}
+                      onDownload={handleDownload}
+                      downloadStatus={downloadedStatus[getTaskId(comic)]}
+                      activeDownload={activeDownloadMap.get(comic.id)}
+                    />
+                  </AnimatedCardWrapper>
+                ))}
+              </div>
+            </AnimatePresence>
+          </LayoutGroup>
+
+          {/* 翻页加载遮罩：保留旧结果（Direction B），仅在加载中且仍有旧结果时显示 */}
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-primary)]/60 backdrop-blur-[1px] rounded-xl">
+              <span className="text-sm text-[var(--text-secondary)]">加载中...</span>
             </div>
-          </AnimatePresence>
-        </LayoutGroup>
+          )}
+        </div>
       ))}
 
       {!isLoading && !needsLogin && pagination && pagination.totalPages > 1 && (
@@ -473,7 +490,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
           <PaginationControls
             currentPage={currentPage}
             totalPages={pagination.totalPages}
-            onNavigate={loadFavourites}
+            onNavigate={handlePageNavigate}
             onJumpClick={() => setShowJumpDialog(true)}
           />
         </div>
@@ -490,7 +507,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
       {showJumpDialog && (
         <PageJumpDialog
           totalPages={pagination?.totalPages || 1}
-          onJump={(page) => { loadFavourites(page); setShowJumpDialog(false) }}
+          onJump={(page) => { handlePageNavigate(page); setShowJumpDialog(false) }}
           onClose={() => setShowJumpDialog(false)}
         />
       )}

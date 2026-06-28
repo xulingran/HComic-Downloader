@@ -109,6 +109,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }, [tasks, downloadProgress])
 
   const searchGenRef = useRef(0)
+  // 记录当前 comics 所属的搜索上下文（query/mode/source/searchTags 的 key）。
+  // 用于区分「翻页」（同一 context 换页 → 保留旧结果 + 遮罩）与「新查询」（换 context → 清空 + 骨架）。
+  const loadedContextKeyRef = useRef<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const historyDropdownRef = useRef<HTMLDivElement>(null)
   const queryRef = useRef(query)
@@ -251,6 +254,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
+    // 抽屉/侧栏触发的搜索属于新查询，清空旧结果以触发骨架渲染
+    setComics([])
+    loadedContextKeyRef.current = null
 
     search(finalQuery, searchMode === 'tag' && !finalQuery ? 'tag' : searchMode, 1, source, finalTags).then(result => {
       if (gen !== searchGenRef.current) return
@@ -263,6 +269,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         source,
         searchTags: finalTags,
       })
+      loadedContextKeyRef.current = contextKey
       cacheSearchPage(contextKey, result.pagination?.currentPage ?? 1, {
         query: finalQuery,
         mode: finalMode,
@@ -307,10 +314,16 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
 
   const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
-  const withLoading = useCallback(async (fn: () => Promise<{ comics: ComicInfo[]; pagination: PaginationInfo | null }>) => {
+  const withLoading = useCallback(async (fn: () => Promise<{ comics: ComicInfo[]; pagination: PaginationInfo | null }>, opts: { keepExisting?: boolean } = {}) => {
     const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
+    // 新查询默认清空当前结果 → 触发骨架渲染（filteredComics.length === 0）。
+    // 翻页（keepExisting=true）保留旧结果 → 触发遮罩渲染（filteredComics.length > 0 && isLoading）。
+    if (!opts.keepExisting) {
+      setComics([])
+      loadedContextKeyRef.current = null
+    }
     try {
       const result = await fn()
       if (gen !== searchGenRef.current) return
@@ -323,6 +336,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         source: sourceRef.current,
         searchTags: searchTagsRef.current,
       })
+      loadedContextKeyRef.current = contextKey
       cacheSearchPage(contextKey, result.pagination?.currentPage ?? 1, {
         query: queryRef.current,
         mode: modeRef.current,
@@ -360,6 +374,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       setComics(cachedPage.comics)
       if (cachedPage.pagination) setPagination(cachedPage.pagination)
       setError(null)
+      loadedContextKeyRef.current = contextKey
       search(query, mode, page, source, searchTags || undefined).then((result) => {
         if (gen !== searchGenRef.current) return
         setComics(result.comics)
@@ -376,7 +391,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       return
     }
 
-    await withLoading(() => search(query, mode, page, source, searchTags || undefined))
+    // 区分新查询与翻页：当前 comics 属于同一搜索上下文（仅页码不同）→ 翻页，保留旧结果 + 遮罩；
+    // 否则 → 新查询，清空 + 骨架。
+    const isPaging = loadedContextKeyRef.current === contextKey
+    await withLoading(() => search(query, mode, page, source, searchTags || undefined), { keepExisting: isPaging })
   }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search, setComics, setPagination, setError, cacheSearchPage])
 
   const handleRandom = async () => {
@@ -799,36 +817,45 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       )}
 
       {!needsLogin && filteredComics.length > 0 && (
-        <LayoutGroup>
-          <AnimatePresence mode="popLayout">
-            <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
-              ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-              : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
-            }>
-              {filteredComics.map(({ comic, isBlocked, isRecommended }, index) => (
-                <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
-                  {isBlocked ? (
-                    <BlockedPlaceholder comic={comic} cardStyle={cardStyle} />
-                  ) : (
-                    <ComicCard
-                      comic={comic}
-                      onOpenReader={handleOpenReader}
-                      batchMode={batchMode}
-                      selected={selectedIds.has(getComicKey(comic))}
-                      onToggleSelect={toggleSelect}
-                      onDownload={handleDownload}
-                      isRecommended={isRecommended}
-                      recommendedTags={recommendedTags}
-                      activeDownload={activeDownloadMap.get(comic.id)}
-                      // 详细列表下 tag 可点击触发追加式 tag 搜索（仅支持 tag 搜索的来源）
-                      onTagClick={sourceSupportsTagList(source) ? handleToggleTag : undefined}
-                    />
-                  )}
-                </AnimatedCardWrapper>
-              ))}
+        <div className="relative">
+          <LayoutGroup>
+            <AnimatePresence mode="popLayout">
+              <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
+                ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+                : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
+              }>
+                {filteredComics.map(({ comic, isBlocked, isRecommended }, index) => (
+                  <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
+                    {isBlocked ? (
+                      <BlockedPlaceholder comic={comic} cardStyle={cardStyle} />
+                    ) : (
+                      <ComicCard
+                        comic={comic}
+                        onOpenReader={handleOpenReader}
+                        batchMode={batchMode}
+                        selected={selectedIds.has(getComicKey(comic))}
+                        onToggleSelect={toggleSelect}
+                        onDownload={handleDownload}
+                        isRecommended={isRecommended}
+                        recommendedTags={recommendedTags}
+                        activeDownload={activeDownloadMap.get(comic.id)}
+                        // 详细列表下 tag 可点击触发追加式 tag 搜索（仅支持 tag 搜索的来源）
+                        onTagClick={sourceSupportsTagList(source) ? handleToggleTag : undefined}
+                      />
+                    )}
+                  </AnimatedCardWrapper>
+                ))}
+              </div>
+            </AnimatePresence>
+          </LayoutGroup>
+
+          {/* 翻页加载遮罩：保留旧结果（Direction B），仅在 isLoading 且仍有旧结果时显示 */}
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-primary)]/60 backdrop-blur-[1px] rounded-xl">
+              <span className="text-sm text-[var(--text-secondary)]">加载中...</span>
             </div>
-          </AnimatePresence>
-        </LayoutGroup>
+          )}
+        </div>
       )}
 
       {!isLoading && !needsLogin && pagination && pagination.totalPages > 1 && (
