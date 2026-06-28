@@ -1,8 +1,11 @@
-"""Tests for AuthMixin config-save serialization (fix-code-review-findings).
+"""Tests for AuthMixin: config-save serialization + credential persistence.
 
-验证认证 handler 的 set_source_auth + config.save 临界区被 _config_write_lock
-串行化：save() 必须始终在锁内调用，避免并发 os.replace (WinError 5) 与
-source_auth 字典读改写竞态。
+覆盖两条契约：
+1. _config_write_lock 串行化：set_source_auth + config.save 必须始终在锁内调用，
+   parser.login() 必须在锁外，避免并发 os.replace (WinError 5) 与 source_auth
+   字典读改写竞态（fix-code-review-findings）。
+2. 凭据持久化解耦：登录失败时账号密码仍必须落盘且注入懒登录；apply_auth 不得
+   覆盖既有账号密码（credential-persistence spec）。
 """
 
 import os
@@ -16,7 +19,9 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "python"),
 )
 
-from config import Config
+import pytest
+
+from config import AuthSourceData, Config
 from python.ipc_server import IPCServer
 
 
@@ -92,8 +97,49 @@ def test_apply_auth_persists_source_auth():
     assert hcomic_auth["user_agent"] == "UA"
 
 
+def test_apply_auth_preserves_existing_credentials():
+    """curl 登录不得覆盖既有 username/password（credential-persistence spec 场景5）。"""
+    server = _create_test_server()
+    # 预设已有账号密码（模拟先前账号密码登录成功）
+    server.config.set_source_auth(
+        "hcomic",
+        AuthSourceData(cookie="", user_agent="", bearer_token="old-token", username="alice", password="secret"),
+    )
+
+    server.handle_apply_auth(
+        "curl 'https://h-comic.link/' -H 'Cookie: sid=abc' -H 'User-Agent: UA'",
+        source="hcomic",
+    )
+
+    hcomic_auth = server.config.get_source_auth("hcomic")
+    # 新 cookie 已写入
+    assert hcomic_auth["cookie"] == "sid=abc"
+    # 既有账号密码被保留，未被空串覆盖
+    assert hcomic_auth["username"] == "alice"
+    assert hcomic_auth["password"] == "secret"
+
+
+def test_apply_auth_jm_source_no_username_fields():
+    """jm 来源无 username/password 字段，apply_auth 合并写后行为与原实现一致
+    （credential-persistence spec 场景6）。"""
+    server = _create_test_server()
+
+    server.handle_apply_auth(
+        "curl 'https://jmcomic.example/' -H 'Cookie: jmsid=xyz' -H 'User-Agent: UA'",
+        source="jm",
+    )
+
+    jm_auth = server.config.get_source_auth("jm")
+    # jm 来源不维护 username/password 字段
+    assert jm_auth["cookie"] == "jmsid=xyz"
+    # get_source_auth 对 jm 不 setdefault username/password，回填值缺失或为空
+    assert jm_auth.get("username", "") == ""
+    assert jm_auth.get("password", "") == ""
+
+
 # ---------------------------------------------------------------------------
 # 三个登录 handler: login() 留锁外，set_source_auth + save 进锁
+# 成功路径为双 save（先凭据、后 token/cookie），断言改为全部在锁内
 # ---------------------------------------------------------------------------
 
 
@@ -108,8 +154,9 @@ def test_moeimg_login_saves_under_config_write_lock():
     result = server.handle_moeimg_login("user1", "pass1")
 
     assert result == {"success": True, "message": "登录成功"}
-    assert len(save_calls) == 1
-    assert save_calls[0] is True, "config.save 必须在 _config_write_lock 持有期间调用"
+    # 成功路径双 save：先持久化凭据，成功后落 cookie；均必须在锁内
+    assert len(save_calls) >= 1
+    assert all(c is True for c in save_calls), "所有 config.save 必须在 _config_write_lock 持有期间调用"
     moeimg_parser.login.assert_called_once_with("user1", "pass1")
     assert server.config.get_source_auth("moeimg")["cookie"] == "moeimg-cookie"
 
@@ -125,8 +172,8 @@ def test_bika_login_saves_under_config_write_lock():
     result = server.handle_bika_login("user2", "pass2")
 
     assert result["success"] is True
-    assert len(save_calls) == 1
-    assert save_calls[0] is True, "config.save 必须在 _config_write_lock 持有期间调用"
+    assert len(save_calls) >= 1
+    assert all(c is True for c in save_calls), "所有 config.save 必须在 _config_write_lock 持有期间调用"
     assert server.config.get_source_auth("bika")["bearer_token"] == "bika-token"
 
 
@@ -141,9 +188,153 @@ def test_hcomic_login_saves_under_config_write_lock():
     result = server.handle_hcomic_login("user3", "pass3")
 
     assert result["success"] is True
-    assert len(save_calls) == 1
-    assert save_calls[0] is True, "config.save 必须在 _config_write_lock 持有期间调用"
+    assert len(save_calls) >= 1
+    assert all(c is True for c in save_calls), "所有 config.save 必须在 _config_write_lock 持有期间调用"
     assert server.config.get_source_auth("hcomic")["bearer_token"] == "hcomic-token"
+
+
+# ---------------------------------------------------------------------------
+# 登录成功路径：username/password 与 token/cookie 同时写入（spec 场景3）
+# ---------------------------------------------------------------------------
+
+
+def test_moeimg_login_success_persists_credentials_and_cookie():
+    server = _create_test_server()
+    server.config.save = lambda path: None
+    moeimg_parser = MagicMock()
+    moeimg_parser.login.return_value = "moeimg-cookie"
+    server.parser.parsers = {"moeimg": moeimg_parser}
+
+    server.handle_moeimg_login("u", "p")
+
+    auth = server.config.get_source_auth("moeimg")
+    assert auth["cookie"] == "moeimg-cookie"
+    assert auth["username"] == "u"
+    assert auth["password"] == "p"
+    moeimg_parser.set_stored_credentials.assert_called_once_with("u", "p")
+
+
+def test_bika_login_success_persists_credentials_and_token():
+    server = _create_test_server()
+    server.config.save = lambda path: None
+    bika_parser = MagicMock()
+    bika_parser.login.return_value = "bika-token"
+    server.parser.parsers = {"bika": bika_parser}
+
+    server.handle_bika_login("u", "p")
+
+    auth = server.config.get_source_auth("bika")
+    assert auth["bearer_token"] == "bika-token"
+    assert auth["username"] == "u"
+    assert auth["password"] == "p"
+    bika_parser.set_stored_credentials.assert_called_once_with("u", "p")
+
+
+def test_hcomic_login_success_persists_credentials_and_token():
+    server = _create_test_server()
+    server.config.save = lambda path: None
+    hcomic_parser = MagicMock()
+    hcomic_parser.login.return_value = "hcomic-token"
+    server.parser.parsers = {"hcomic": hcomic_parser}
+
+    server.handle_hcomic_login("u", "p")
+
+    auth = server.config.get_source_auth("hcomic")
+    assert auth["bearer_token"] == "hcomic-token"
+    assert auth["username"] == "u"
+    assert auth["password"] == "p"
+    hcomic_parser.set_stored_credentials.assert_called_once_with("u", "p")
+
+
+# ---------------------------------------------------------------------------
+# 登录失败路径：凭据仍落盘 + 注入懒登录（spec 场景1/2/4）
+# ---------------------------------------------------------------------------
+
+
+def test_moeimg_login_network_failure_persists_credentials():
+    """网络异常导致登录失败时，凭据仍必须落盘且注入懒登录（spec 场景1/4）。"""
+    server = _create_test_server()
+    save_calls = _wrap_save_with_lock_check(server)
+
+    moeimg_parser = MagicMock()
+    moeimg_parser.login.side_effect = RuntimeError("network error")
+    server.parser.parsers = {"moeimg": moeimg_parser}
+
+    with pytest.raises(RuntimeError, match="network error"):
+        server.handle_moeimg_login("u", "p")
+
+    # 失败路径也必须 save 一次（凭据），且在锁内
+    assert len(save_calls) == 1, "登录失败时应 save 一次以持久化凭据"
+    assert save_calls[0] is True, "凭据 save 必须在 _config_write_lock 持有期间调用"
+    auth = server.config.get_source_auth("moeimg")
+    assert auth["username"] == "u"
+    assert auth["password"] == "p"
+    # 失败也注入懒登录
+    moeimg_parser.set_stored_credentials.assert_called_once_with("u", "p")
+
+
+def test_bika_login_failure_persists_credentials():
+    """bika 登录失败（ParserResponseError）时凭据仍落盘且注入懒登录（spec 场景2/4）。"""
+    from sources.base import ParserResponseError
+
+    server = _create_test_server()
+    save_calls = _wrap_save_with_lock_check(server)
+
+    bika_parser = MagicMock()
+    bika_parser.login.side_effect = ParserResponseError("invalid credentials")
+    server.parser.parsers = {"bika": bika_parser}
+
+    with pytest.raises(ParserResponseError, match="invalid credentials"):
+        server.handle_bika_login("u", "p")
+
+    assert len(save_calls) == 1, "登录失败时应 save 一次以持久化凭据"
+    assert save_calls[0] is True
+    auth = server.config.get_source_auth("bika")
+    assert auth["username"] == "u"
+    assert auth["password"] == "p"
+    bika_parser.set_stored_credentials.assert_called_once_with("u", "p")
+
+
+def test_hcomic_login_failure_persists_credentials():
+    """hcomic 登录失败时凭据仍落盘且注入懒登录（spec 场景4）。"""
+    server = _create_test_server()
+    save_calls = _wrap_save_with_lock_check(server)
+
+    hcomic_parser = MagicMock()
+    hcomic_parser.login.side_effect = RuntimeError("network error")
+    server.parser.parsers = {"hcomic": hcomic_parser}
+
+    with pytest.raises(RuntimeError, match="network error"):
+        server.handle_hcomic_login("u", "p")
+
+    assert len(save_calls) == 1, "登录失败时应 save 一次以持久化凭据"
+    assert save_calls[0] is True
+    auth = server.config.get_source_auth("hcomic")
+    assert auth["username"] == "u"
+    assert auth["password"] == "p"
+    hcomic_parser.set_stored_credentials.assert_called_once_with("u", "p")
+
+
+def test_failed_login_then_successful_relogin_updates_token():
+    """登录失败保留旧 token，再次成功登录后写入新 token（边界回归）。"""
+    server = _create_test_server()
+    server.config.save = lambda path: None
+    hcomic_parser = MagicMock()
+    hcomic_parser.login.side_effect = [RuntimeError("network"), "new-token"]
+    server.parser.parsers = {"hcomic": hcomic_parser}
+
+    with pytest.raises(RuntimeError):
+        server.handle_hcomic_login("u", "p")
+    # 失败后凭据已存，token 仍空
+    auth_after_fail = server.config.get_source_auth("hcomic")
+    assert auth_after_fail["username"] == "u"
+    assert auth_after_fail["bearer_token"] == ""
+
+    # 成功重登后写入新 token
+    server.handle_hcomic_login("u", "p")
+    auth_after_ok = server.config.get_source_auth("hcomic")
+    assert auth_after_ok["bearer_token"] == "new-token"
+    assert auth_after_ok["username"] == "u"
 
 
 # ---------------------------------------------------------------------------
@@ -192,25 +383,3 @@ def test_concurrent_logins_do_not_corrupt_source_auth():
     assert server.config.get_source_auth("moeimg")["username"] == "u"
     assert server.config.get_source_auth("bika")["bearer_token"] == "bika-token"
     assert server.config.get_source_auth("bika")["username"] == "u"
-
-
-# ---------------------------------------------------------------------------
-# 登录失败（网络）时不应触达 save 临界区
-# ---------------------------------------------------------------------------
-
-
-def test_moeimg_login_network_failure_skips_save():
-    """login() 抛错时不应落库（save 不被调用）。"""
-    server = _create_test_server()
-    save_calls = _wrap_save_with_lock_check(server)
-
-    moeimg_parser = MagicMock()
-    moeimg_parser.login.side_effect = RuntimeError("network error")
-    server.parser.parsers = {"moeimg": moeimg_parser}
-
-    import pytest
-
-    with pytest.raises(RuntimeError, match="network error"):
-        server.handle_moeimg_login("u", "p")
-
-    assert save_calls == [], "login 失败时不应调用 config.save"
