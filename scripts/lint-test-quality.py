@@ -42,24 +42,20 @@ from dataclasses import dataclass
 
 # 被拦截的 mock 调用断言方法名（cleanup-test-quality-backlog Phase A 精炼）。
 # 仅保留"裸调用"语义（无信号）的方法：
-#   - assert_called：仅"被调用过"
-#   - assert_any_call / assert_has_calls：调用历史检查，参数判定在 _is_mock_call_assertion
-# 移除的（承载信号，放行）：
+#   - assert_called：仅"被调用过"，无次数/参数信息
+#   - assert_any_call / assert_has_calls：调用历史检查，参数判定不承载"恰好一次"等不变量
+# 放行的（承载信号，不拦截）：
 #   - assert_called_once / assert_called_once_with：断言"恰好一次"（与前端 toHaveBeenCalledTimes(1) 对齐）
 #   - assert_not_called：断言"未触发"（与前端 not.toHaveBeenCalled 对齐，承载 cancel/守卫信号）
-#   - assert_called_with / assert_called_once_with：参数判定在 _is_mock_call_assertion（全字面量→拦截，含变量→放行）
+#   - assert_called_with / assert_called_once_with：参数承载"以何参数调用"的契约信号
+#     （实际测试中几乎总是验证被测代码构建的 URL/JSON/标志位，mock 替换测试不成立）
+# 经验验证：本仓库 tests/ 实际仅使用 assert_called_once_with(16)/assert_not_called(5)/
+# assert_called_once(4)，无 assert_called/any_call/has_calls 用例，故拦截集保持最小。
 BARE_MOCK_ASSERTIONS = frozenset(
     {
         "assert_called",
         "assert_any_call",
         "assert_has_calls",
-    }
-)
-# 这些方法需结合参数判定：全字面量期望 → 拦截（无转换信号）；含变量/调用 → 放行（参数承载转换信号）
-PARAM_DEPENDENT_MOCK_ASSERTIONS = frozenset(
-    {
-        "assert_called_with",
-        "assert_called_once_with",
     }
 )
 
@@ -87,32 +83,18 @@ def _is_mock_call_assertion(node: ast.Call) -> str | None:
     """判断 CallExpression 是否为应拦截的 mock 调用断言，返回方法名或 None。
 
     精炼判定（cleanup-test-quality-backlog Phase A）：
-    - BARE_MOCK_ASSERTIONS（assert_called / assert_any_call / assert_has_calls）：始终拦截（裸调用无信号）
-    - PARAM_DEPENDENT_MOCK_ASSERTIONS（assert_called_with / assert_called_once_with）：
-      参数全为字面量（ast.Constant）→ 拦截（仅"被以这些参数调用过"，无转换信号）；
-      含变量/调用/属性访问 → 放行（参数承载转换信号，与前端 toHaveBeenCalledWith 对齐）
-    - assert_called_once / assert_called_once_with / assert_not_called：放行（不在集合内，
-      "恰好一次"/"未触发"承载信号）
+    仅 BARE_MOCK_ASSERTIONS（assert_called / assert_any_call / assert_has_calls）拦截——
+    这些是"裸调用"断言，无次数/参数信息。
+    assert_called_once/once_with（"恰好一次"）、assert_not_called（"未触发"）、
+    assert_called_with/once_with（参数契约）均承载信号，放行。
 
     形态：node.func = Attribute(value=<mock expr>, attr="assert_called...")
     """
     callee = node.func
     if not isinstance(callee, ast.Attribute):
         return None
-
     if callee.attr in BARE_MOCK_ASSERTIONS:
         return callee.attr
-
-    if callee.attr in PARAM_DEPENDENT_MOCK_ASSERTIONS:
-        # 参数判定：全字面量期望 → 拦截；含变量/调用 → 放行
-        args = node.args
-        if not args:
-            return callee.attr  # 无参数的 assert_called_with() 罕见，保守拦截
-        all_literal = all(isinstance(a, ast.Constant) for a in args)
-        if all_literal:
-            return callee.attr  # 全字面量：无转换信号，拦截
-        return None  # 含变量/调用：参数承载信号，放行
-
     return None
 
 

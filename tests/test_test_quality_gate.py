@@ -72,10 +72,11 @@ def test_not_called():
     assert scan_source(code) == []
 
 
-def test_bare_assert_called_with_literal_reported():
-    """assert_called_with(<全字面量>) → 拦截（参数无转换信号）。
+def test_bare_assert_called_with_literal_passes():
+    """assert_called_with(...) → 放行（参数承载"以何参数调用"的契约信号）。
 
-    精炼后（Phase A）：仅当参数全为字面量时拦截；含变量/调用则放行。
+    精炼后（Phase A）：assert_called_with/once_with 一律放行，与前端 toHaveBeenCalledWith
+    对齐。实际测试中参数几乎总是验证被测代码构建的 URL/JSON/标志位（mock 替换测试不成立）。
     """
     code = """
 def test_bare():
@@ -83,29 +84,27 @@ def test_bare():
     m(1, 2)
     m.assert_called_with(1, 2)
 """
-    violations = scan_source(code)
-    assert len(violations) == 1
-
-
-def test_assert_called_with_variable_passes():
-    """assert_called_with(<变量>) → 放行（参数承载转换信号，与前端 toHaveBeenCalledWith 对齐）。"""
-    code = """
-def test_with_var():
-    v = compute()
-    m = Mock()
-    m(v)
-    m.assert_called_with(v)
-"""
     assert scan_source(code) == []
 
 
-def test_assert_called_once_with_literal_reported():
-    """assert_called_once_with(<全字面量>) → 拦截（参数无转换信号）。"""
+def test_assert_called_once_with_passes():
+    """assert_called_once_with(...) → 放行（"恰好一次 + 参数契约"，承载双重信号）。"""
     code = """
 def test_bare():
     m = Mock()
     m(1)
     m.assert_called_once_with(1)
+"""
+    assert scan_source(code) == []
+
+
+def test_assert_any_call_reported():
+    """assert_any_call(...) 仍拦截（调用历史检查，不承载"恰好一次"不变量）。"""
+    code = """
+def test_bare():
+    m = Mock()
+    m(1)
+    m.assert_any_call(1)
 """
     violations = scan_source(code)
     assert len(violations) == 1
@@ -114,7 +113,7 @@ def test_bare():
 def test_multiple_mock_assertions_in_one_function_reported_once():
     """同一函数内多个裸 mock 调用断言合并为一条违规。
 
-    注：assert_called_once 精炼后放行，故本用例只收集 assert_called（1 个方法）。
+    注：assert_called_once/once_with/not_called 精炼后放行，故本用例只收集裸调用家族。
     """
     code = """
 def test_multi():
