@@ -58,6 +58,6 @@
 ## 9. 全量验证与归档准备
 
 - [x] 9.1 完整执行 `AGENTS.md` 7 步验证流程（含新增 lint:test-quality），全部通过（pytest 971 / npm test 1217 / tsc / eslint / ruff / black / lint:test-quality 全绿）。
-- [ ] 9.2 确认 `openspec-cn status --change "cleanup-test-quality-backlog"` 所有 applyRequires 产出物完成。
+- [x] 9.2 确认 `openspec-cn status --change "cleanup-test-quality-backlog"` 所有 applyRequires 产出物完成。
 - [x] 9.3 手动验证闸门拦截：临时加 `expect(vi.fn()).toHaveBeenCalled()` 单独断言，确认 `npm run lint` 失败（error 级别，exit 1）；加 `expect(vi.fn()).toHaveBeenCalledTimes(1)` 确认放行；Python `assert_called` 经 npm wrapper 确认 exit 1；移除后确认通过。
-- [ ] 9.4 确认 `test-discipline-gate` 变更的 Phase 2b 已由本变更闭环；两变更可按序归档。
+- [x] 9.4 确认 `test-discipline-gate` 变更的 Phase 2b 已由本变更闭环；两变更可按序归档。
