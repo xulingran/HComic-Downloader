@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComicInfo } from '@shared/types'
 
@@ -92,6 +92,19 @@ vi.mock('@/components/common/ComicCard', () => ({
 
 // Import the component AFTER mocks
 import { FavouritesPage } from '@/pages/FavouritesPage'
+
+interface FavouritesResult {
+  comics: ComicInfo[]
+  pagination?: { currentPage: number; totalPages: number; totalItems: number }
+  needsLogin?: boolean
+}
+
+// 控制某次 getFavourites 的返回时机，用于模拟迟到完成的预加载请求
+function createDeferredFavourites() {
+  let resolve!: (value: FavouritesResult) => void
+  const promise = new Promise<FavouritesResult>((res) => { resolve = res })
+  return { promise, resolve }
+}
 
 describe('FavouritesPage', () => {
   beforeEach(() => {
@@ -219,6 +232,50 @@ describe('FavouritesPage', () => {
     await screen.findByText('Current Favourite')
     // 相邻页预加载：非交互（allowInteractiveChallenge=false）
     await waitFor(() => expect(mockGetFavourites).toHaveBeenCalledWith(6, 'hcomic', false))
+  })
+
+  it('does not commit stale preload results after switching source', async () => {
+    // 回归：来源 A 的相邻页预加载请求在切换到来源 B 后才返回时，必须被丢弃，
+    // 既不写入 preloadedPagesRef，也不经 commitPage 提交到 favourites 缓存（setPage）。
+    // 用「来源 + 页码」键控 getFavourites mock：
+    // - 来源 hcomic 第 1 页（首屏）立即返回
+    // - 来源 hcomic 第 2 页（预加载）挂起，模拟网络往返迟到
+    // - 来源 moeimg 任意页立即返回空（切换后首屏）
+    const deferredPage2 = createDeferredFavourites()
+    mockGetFavourites.mockImplementation((page: number, source?: string) => {
+      if (source === 'hcomic' && page === 2) return deferredPage2.promise
+      if (source === 'hcomic') {
+        return Promise.resolve({
+          comics: [{ id: '1', title: 'Page1 Fav', url: '', coverUrl: '', source: 'test' }],
+          pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+          needsLogin: false,
+        })
+      }
+      return Promise.resolve({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+    })
+
+    render(<FavouritesPage />)
+    await screen.findByText('Page1 Fav')
+    // 等到来源 hcomic 的第 2 页预加载请求已发出（仍挂起）
+    await waitFor(() => expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic', false))
+
+    // 切换到来源 moeimg——contextKey 变化，旧来源预加载被中断
+    const sourceSelect = screen.getByDisplayValue('HComic')
+    await userEvent.selectOptions(sourceSelect, 'moeimg')
+
+    // 让来源 hcomic 的迟到预加载请求返回
+    deferredPage2.resolve({
+      comics: [{ id: '2', title: 'Stale HComic Page 2', url: '', coverUrl: '', source: 'test' }],
+      pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+      needsLogin: false,
+    })
+    await act(async () => { await deferredPage2.promise })
+
+    // 断言：迟到结果未提交到 favourites 缓存——来源 hcomic 的第 2 页永不出现在 setPage 调用里
+    const committedPage2ForHcomic = mockFavouritesStore.setPage.mock.calls.filter(
+      ([source, page]) => source === 'hcomic' && page === 2,
+    )
+    expect(committedPage2ForHcomic).toHaveLength(0)
   })
 
   // 回归：封面从左上角飞入 bug 修复（与 SearchPage 同源）。

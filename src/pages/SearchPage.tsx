@@ -24,7 +24,7 @@ import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore, createSearchContextKey, type SearchPageCache } from '../stores/useSearchCacheStore'
-import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
+import { usePaginatedPreloader, type PreloadReason } from '../hooks/usePaginatedPreloader'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { sourceSupportsRandom, sourceSupportsTagRecommendation, sourceSupportsTagList, normalizeSourceKey } from '../utils/source'
@@ -580,7 +580,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     await downloadWithConflictCheck(comic)
   }
 
-  const preloadSearchPage = useCallback(async (page: number) => {
+  const preloadSearchPage = useCallback(async (page: number, _reason: PreloadReason, signal: AbortSignal) => {
     const contextKey = createSearchContextKey({
       query: queryRef.current,
       mode: modeRef.current,
@@ -588,6 +588,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       searchTags: searchTagsRef.current,
     })
     const result = await search(queryRef.current, modeRef.current, page, sourceRef.current, searchTagsRef.current || undefined)
+    // 切换来源/查询词/模式/标签后旧 contextKey 的迟到结果必须丢弃，避免脏写。
+    if (signal.aborted) return
     preloadedPagesRef.current.set(`${contextKey}:${page}`, {
       query: queryRef.current,
       mode: modeRef.current,

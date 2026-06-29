@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComicInfo } from '@shared/types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
@@ -146,6 +146,18 @@ vi.mock('@/components/common/ComicCard', () => ({
 
 // Import the component AFTER mocks
 import { SearchPage } from '@/pages/SearchPage'
+
+interface SearchResult {
+  comics: ComicInfo[]
+  pagination?: { currentPage: number; totalPages: number; totalItems: number }
+}
+
+// 控制某次 search 的返回时机，用于模拟迟到完成的预加载请求
+function createDeferredSearch() {
+  let resolve!: (value: SearchResult) => void
+  const promise = new Promise<SearchResult>((res) => { resolve = res })
+  return { promise, resolve }
+}
 
 describe('SearchPage', () => {
   beforeEach(() => {
@@ -479,6 +491,55 @@ describe('SearchPage', () => {
 
     await screen.findByText('Page 5 Comic')
     await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 6, 'hcomic', undefined))
+  })
+
+  it('does not commit stale preload results after switching source', async () => {
+    // 回归：来源 A 的相邻页预加载请求在切换到来源 B 后才返回时，必须被丢弃，
+    // 既不写入 preloadedPagesRef，也不经 commitPage 提交到 search 缓存（setPage）。
+    mockStoreState.comics = [
+      { id: '1', title: 'Page 1 Comic', url: 'https://example.com/1', coverUrl: '', source: 'test' },
+    ]
+    mockStoreState.pagination = { currentPage: 1, totalPages: 3, totalItems: 30 }
+
+    // 用「来源 + 页码」键控 search mock：
+    // - 来源 hcomic 第 1 页（首屏）立即返回
+    // - 来源 hcomic 第 2 页（预加载）挂起，模拟网络往返迟到
+    // - 来源 moeimg 任意页立即返回空（切换后首屏）
+    const deferredPage2 = createDeferredSearch()
+    mockSearch.mockImplementation((_query: string, _mode: string, page: number, source?: string) => {
+      if (source === 'hcomic' && page === 2) return deferredPage2.promise
+      if (source === 'hcomic') {
+        return Promise.resolve({
+          comics: [{ id: '1', title: 'Page 1 Comic', url: '', coverUrl: '', source: 'test' }],
+          pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+        })
+      }
+      return Promise.resolve({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+    })
+
+    render(<SearchPage />)
+    await screen.findByText('Page 1 Comic')
+    // 等到来源 hcomic 的第 2 页预加载请求已发出（仍挂起）
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined))
+
+    // 切换到来源 moeimg——contextKey 变化，旧来源预加载被中断
+    const sourceSelect = screen.getByDisplayValue('HComic')
+    await userEvent.selectOptions(sourceSelect, 'moeimg')
+
+    // 让来源 hcomic 的迟到预加载请求返回
+    deferredPage2.resolve({
+      comics: [{ id: '2', title: 'Stale HComic Page 2', url: '', coverUrl: '', source: 'test' }],
+      pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+    })
+    await act(async () => { await deferredPage2.promise })
+
+    // 断言：迟到结果未提交到 search 缓存——来源 hcomic 的第 2 页永不出现在 setPage 调用里
+    // （hcomic 第 1 页首屏提交是正常的，必须区分页号精确断言）
+    const hcomicContextKey = ['hcomic', 'keyword', '', ''].join('\u001f')
+    const committedPage2ForHcomic = mockSearchCacheStore.setPage.mock.calls.filter(
+      ([contextKey, page]) => contextKey === hcomicContextKey && page === 2,
+    )
+    expect(committedPage2ForHcomic).toHaveLength(0)
   })
 
   describe('container layout by cardStyle', () => {

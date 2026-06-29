@@ -14,7 +14,7 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useToastStore } from '../stores/useToastStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useHistoryStore, type HistoryPageCache } from '../stores/useHistoryStore'
-import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
+import { usePaginatedPreloader, type PreloadReason } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useCoverImage } from '../hooks/useCoverImage'
@@ -205,9 +205,11 @@ export function HistoryPage() {
 
   const historyContextKey = `history:${cacheVersion}`
 
-  const preloadHistoryPage = useCallback(async (page: number) => {
+  const preloadHistoryPage = useCallback(async (page: number, _reason: PreloadReason, signal: AbortSignal) => {
     const result = await getHistory(page)
     const resolvedPage = result.pagination?.currentPage ?? page
+    // 切换筛选条件后旧 contextKey 的迟到结果必须丢弃，避免脏写。
+    if (signal.aborted) return
     preloadedPagesRef.current.set(`${historyContextKey}:${resolvedPage}`, {
       items: result.items,
       pagination: result.pagination ?? null,

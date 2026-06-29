@@ -17,7 +17,7 @@ import { SourcePickerModal } from '../components/common/SourcePickerModal'
 import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore, type FavouritesPageCache } from '../stores/useFavouritesStore'
-import { usePaginatedPreloader } from '../hooks/usePaginatedPreloader'
+import { usePaginatedPreloader, type PreloadReason } from '../hooks/usePaginatedPreloader'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useSources } from '../hooks/useSourceOptions'
@@ -301,10 +301,12 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     await downloadWithConflictCheck(comic)
   }
 
-  const preloadFavouritesPage = useCallback(async (page: number) => {
+  const preloadFavouritesPage = useCallback(async (page: number, _reason: PreloadReason, signal: AbortSignal) => {
     // 相邻页预加载：后台非交互，挑战失败静默吞掉
     const result = await getFavourites(page, source, false)
     const statusResult = await checkDownloadedStatus(result.comics).catch(() => ({ statusMap: {} }))
+    // 切换来源后旧来源的迟到结果必须丢弃，避免脏写。
+    if (signal.aborted) return
     preloadedPagesRef.current.set(`favourites:${source}:${page}`, {
       comics: result.comics,
       pagination: result.pagination ?? null,

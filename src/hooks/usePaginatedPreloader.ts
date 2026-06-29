@@ -8,7 +8,9 @@ interface UsePaginatedPreloaderArgs {
   contextKey: string
   enabled: boolean
   hasPage: (page: number) => boolean
-  loadPage: (page: number, reason: PreloadReason) => Promise<void>
+  // signal: 当前 contextKey 的 AbortSignal，contextKey 变化或卸载时 abort()。
+  // loadPage 实现必须在 IPC await 完成后、写入缓存前检查 signal.aborted 并丢弃结果。
+  loadPage: (page: number, reason: PreloadReason, signal: AbortSignal) => Promise<void>
   commitPage?: (page: number, contextKey: string) => void | Promise<void>
   onPreloadError?: (page: number, error: unknown) => void
   concurrency?: number
@@ -25,7 +27,7 @@ interface PreloadState {
   contextKey: string
   enabled: boolean
   hasPage: (page: number) => boolean
-  loadPage: (page: number, reason: PreloadReason) => Promise<void>
+  loadPage: (page: number, reason: PreloadReason, signal: AbortSignal) => Promise<void>
   commitPage?: (page: number, contextKey: string) => void | Promise<void>
   onPreloadError?: (page: number, error: unknown) => void
   concurrency: number
@@ -49,6 +51,9 @@ export function usePaginatedPreloader({
   const generationRef = useRef(0)
   const latestStateRef = useRef<PreloadState | null>(null)
   const drainRef = useRef<() => void>(() => {})
+  // 当前 contextKey 的 AbortController，每个 contextKey 拥有一个共享 signal；
+  // contextKey 变化或卸载时 abort()，让 loadPage 在写入缓存前丢弃迟到结果。
+  const abortControllerRef = useRef<AbortController>(new AbortController())
 
   const drain = useCallback(() => {
     const state = latestStateRef.current
@@ -70,7 +75,7 @@ export function usePaginatedPreloader({
 
       void (async () => {
         try {
-          await state.loadPage(page, 'preload')
+          await state.loadPage(page, 'preload', abortControllerRef.current.signal)
           if (!state.cancelled && state.generation === generationRef.current) {
             await state.commitPage?.(page, state.contextKey)
           }
@@ -98,6 +103,13 @@ export function usePaginatedPreloader({
     generationRef.current += 1
     inFlightRef.current.clear()
     pendingPagesRef.current = []
+    // 中断旧 contextKey 的所有 in-flight 请求，并为新 contextKey 创建全新 signal。
+    abortControllerRef.current.abort()
+    abortControllerRef.current = new AbortController()
+    return () => {
+      // 卸载时中断当前 contextKey 残留的 in-flight 请求，防止迟到结果写入。
+      abortControllerRef.current.abort()
+    }
   }, [contextKey])
 
   useEffect(() => {

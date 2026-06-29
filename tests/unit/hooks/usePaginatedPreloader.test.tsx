@@ -47,10 +47,11 @@ describe('usePaginatedPreloader', () => {
       loadPage,
     }))
 
+    const anySignal = expect.any(AbortSignal)
     await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(3))
-    expect(loadPage).toHaveBeenNthCalledWith(1, 6, 'preload')
-    expect(loadPage).toHaveBeenNthCalledWith(2, 7, 'preload')
-    expect(loadPage).toHaveBeenNthCalledWith(3, 3, 'preload')
+    expect(loadPage).toHaveBeenNthCalledWith(1, 6, 'preload', anySignal)
+    expect(loadPage).toHaveBeenNthCalledWith(2, 7, 'preload', anySignal)
+    expect(loadPage).toHaveBeenNthCalledWith(3, 3, 'preload', anySignal)
   })
 
   it('does not preload when disabled', async () => {
@@ -201,8 +202,8 @@ describe('usePaginatedPreloader', () => {
     )
 
     await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
-    expect(loadPage).toHaveBeenNthCalledWith(1, 6, 'preload')
-    expect(loadPage).toHaveBeenNthCalledWith(2, 4, 'preload')
+    expect(loadPage).toHaveBeenNthCalledWith(1, 6, 'preload', expect.any(AbortSignal))
+    expect(loadPage).toHaveBeenNthCalledWith(2, 4, 'preload', expect.any(AbortSignal))
 
     rerender({ currentPage: 8 })
     await new Promise(resolve => setTimeout(resolve, 0))
@@ -215,7 +216,7 @@ describe('usePaginatedPreloader', () => {
       await requests.get(6)?.promise
     })
 
-    await waitFor(() => expect(loadPage).toHaveBeenCalledWith(9, 'preload'))
+    await waitFor(() => expect(loadPage).toHaveBeenCalledWith(9, 'preload', expect.any(AbortSignal)))
     expect(maxActive).toBeLessThanOrEqual(2)
 
     await act(async () => {
@@ -245,7 +246,7 @@ describe('usePaginatedPreloader', () => {
       { initialProps: { currentPage: 5 } },
     )
 
-    await waitFor(() => expect(loadPage).toHaveBeenCalledWith(6, 'preload'))
+    await waitFor(() => expect(loadPage).toHaveBeenCalledWith(6, 'preload', expect.any(AbortSignal)))
     rerender({ currentPage: 4 })
     await new Promise(resolve => setTimeout(resolve, 0))
 
@@ -371,6 +372,106 @@ describe('usePaginatedPreloader', () => {
 
     await waitFor(() => expect(commitPage).toHaveBeenCalledWith(2, 'search:second'))
     expect(commitPage).toHaveBeenCalledTimes(1)
+  })
+
+  it('aborts the AbortSignal passed to loadPage when contextKey changes', async () => {
+    const signals: AbortSignal[] = []
+    const deferred = createDeferred()
+    const loadPage = vi.fn(async (_page: number, _reason: string, signal: AbortSignal) => {
+      signals.push(signal)
+      await deferred.promise
+    })
+
+    const { rerender } = renderHook(
+      ({ contextKey }) => usePaginatedPreloader({
+        currentPage: 1,
+        totalPages: 2,
+        contextKey,
+        enabled: true,
+        hasPage: () => false,
+        loadPage,
+      }),
+      { initialProps: { contextKey: 'search:first' } },
+    )
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(1))
+    expect(signals).toHaveLength(1)
+    expect(signals[0].aborted).toBe(false)
+
+    rerender({ contextKey: 'search:second' })
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(2))
+
+    // 旧 contextKey 的请求拿到的 signal 必须已被 abort
+    expect(signals[0].aborted).toBe(true)
+    // 新 contextKey 的请求拿到全新的、未中断的 signal
+    expect(signals[1].aborted).toBe(false)
+
+    await act(async () => {
+      deferred.resolve()
+      await deferred.promise
+    })
+  })
+
+  it('aborts the AbortSignal passed to loadPage when the hook unmounts', async () => {
+    const signals: AbortSignal[] = []
+    const deferred = createDeferred()
+    const loadPage = vi.fn(async (_page: number, _reason: string, signal: AbortSignal) => {
+      signals.push(signal)
+      await deferred.promise
+    })
+
+    const { unmount } = renderHook(() =>
+      usePaginatedPreloader({
+        currentPage: 1,
+        totalPages: 2,
+        contextKey: 'search:first',
+        enabled: true,
+        hasPage: () => false,
+        loadPage,
+      }),
+    )
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalledTimes(1))
+    expect(signals[0].aborted).toBe(false)
+
+    unmount()
+
+    // 卸载后，仍挂起的请求拿到的 signal 必须已被 abort
+    expect(signals[0].aborted).toBe(true)
+
+    await act(async () => {
+      deferred.resolve()
+      await deferred.promise.catch(() => undefined)
+    })
+  })
+
+  it('does not abort the AbortSignal while contextKey stays the same', async () => {
+    const signals: AbortSignal[] = []
+    const loadPage = vi.fn(async (_page: number, _reason: string, signal: AbortSignal) => {
+      signals.push(signal)
+    })
+
+    const { rerender } = renderHook(
+      ({ currentPage }) => usePaginatedPreloader({
+        currentPage,
+        totalPages: 10,
+        contextKey: 'search:first',
+        enabled: true,
+        hasPage: () => false,
+        loadPage,
+      }),
+      { initialProps: { currentPage: 5 } },
+    )
+
+    await waitFor(() => expect(loadPage).toHaveBeenCalled())
+    const firstBatchCount = signals.length
+    expect(signals.every((s) => !s.aborted)).toBe(true)
+
+    // 仅换 currentPage、不换 contextKey —— signal 不应被中断
+    rerender({ currentPage: 6 })
+    await waitFor(() => expect(loadPage).toHaveBeenCalled())
+    expect(signals.every((s) => !s.aborted)).toBe(true)
+    expect(signals.length).toBeGreaterThan(firstBatchCount)
   })
 
   it('starts a new generation when context changes', async () => {
