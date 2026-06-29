@@ -265,7 +265,8 @@ describe('preload.ts', () => {
 
         it('accepts valid credential pair and invokes IPC', () => {
           exposedApi[method]('user', 'pass')
-          expect(mockInvoke).toHaveBeenCalled()
+          // 断言性次数：合法凭据恰好触发一次 IPC 调用（校验通过后转发一次，不重复/不漏）
+          expect(mockInvoke).toHaveBeenCalledTimes(1)
         })
       })
     }
@@ -302,7 +303,8 @@ describe('preload.ts', () => {
 
         it('accepts valid comicId + source and invokes IPC', () => {
           exposedApi[method]('id', 'hcomic')
-          expect(mockInvoke).toHaveBeenCalled()
+          // 断言性次数：合法 comicId+source 恰好触发一次 IPC 调用
+          expect(mockInvoke).toHaveBeenCalledTimes(1)
         })
       })
     }

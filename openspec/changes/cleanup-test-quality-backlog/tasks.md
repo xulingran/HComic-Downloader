@@ -24,29 +24,29 @@
 
 ## 4. Phase B — 清理前端真同义反复（重灾区文件）
 
-- [ ] 4.1 `tests/unit/main/python-bridge.test.ts`（精炼后剩余违规）：逐条评估缓冲区溢出/重启相关用例——`toHaveBeenCalled` 类补强为状态/次数断言或删除；保留 `toHaveBeenCalledTimes(2)` 等已放行的。记录每条理由。
-- [ ] 4.2 `tests/unit/main/notification-manager.test.ts`（剩余）：批量通知触发逻辑用例——`toHaveBeenCalled` 补强为通知内容/次数断言。
-- [ ] 4.3 `tests/unit/lib/scheduler.test.ts`（剩余）：调度/cancel 逻辑——确认 `not.toHaveBeenCalled` 已被 Phase A 放行；剩余 `toHaveBeenCalled` 类评估删除或补强。
-- [ ] 4.4 `tests/unit/main/main.test.ts`（剩余）：生命周期监听器注册类——多为 `toHaveBeenCalled` 副作用断言，评估删除（若已有配对状态断言）或补强。
+- [x] 4.1 `tests/unit/main/python-bridge.test.ts`：缓冲区溢出 kill 用例从 `toHaveBeenCalled` 补强为 `toHaveBeenCalledTimes(1)`（断言恰好 kill 一次，不重复/不漏）。
+- [x] 4.2 `tests/unit/main/main.test.ts`：will-navigate 安全断言 + 退出确认 app.quit 均补强为 `toHaveBeenCalledTimes(1)`（安全/生命周期行为的精确触发）。
+- [x] 4.3 `tests/unit/lib/scheduler.test.ts`：精炼后（Phase A）所有违规已消除（`toHaveBeenCalledTimes(1)` / `not.toHaveBeenCalled` 现放行），无需改动。
+- [x] 4.4 `tests/unit/main/notification-manager.test.ts`：精炼后所有违规已消除（`toHaveBeenCalledTimes(1)` 断言性次数现放行），无需改动。
 
 ## 5. Phase B — 清理前端真同义反复（其余文件，按目录分组）
 
-- [ ] 5.1 `tests/unit/components/**`（ChapterDownloadDialog、DuplicateBlacklistManager、MissingBlacklistManager、common/Modal、AlbumNameDialog、SourcePickerModal、ComicReaderModal）：逐条处理回调触发类 `toHaveBeenCalled`。
-- [ ] 5.2 `tests/unit/hooks/usePaginatedPreloader.test.tsx`（混合违规 6 处）：预加载边界逻辑——评估哪些是真派生（加 `[derived]`）、哪些补强为预加载状态断言。
-- [ ] 5.3 `tests/unit/pages/**`（SearchPage、DownloadPage、FavouritesPage、FavouritesPage.sourcePicker）：mount/交互触发类——多数删除（mount 类无信号），少数补强。
-- [ ] 5.4 `tests/unit/main/login-window.test.ts` + `tests/unit/preload/preload.test.ts` + `tests/unit/App.test.tsx` + `Toast.test.tsx` + `PreviewRetryToast.test.tsx`：逐条处理。
-- [ ] 5.5 `tests/unit/stores/**`（fatalErrorStore、settingsStore 剩余 3 处 store CRUD）：settingsStore 的"切换主题模式"参数化用例若仍触发，评估加 `[derived]` 或补强；fatalErrorStore 的 setError/clear 评估补强或删除。
+- [x] 5.1 `tests/unit/components/**`：ChapterDownloadDialog cancel、ComicReaderModal close 补强为 `toHaveBeenCalledTimes(1)`。
+- [x] 5.2 `tests/unit/hooks/usePaginatedPreloader.test.tsx`：精炼后违规已消除（混合用例含 `toHaveBeenCalledTimes` 字面量），无需改动。
+- [x] 5.3 `tests/unit/pages/**`：DownloadPage、FavouritesPage 的 "calls getX on mount" 删除（裸调用，mount 意图已由渲染数据用例覆盖）。
+- [x] 5.4 `tests/unit/preload/preload.test.ts`：credential/favourites 合法输入用例补强为 `toHaveBeenCalledTimes(1)`；App.test/Toast/PreviewRetryToast 精炼后已消除，无需改动。
+- [x] 5.5 `tests/unit/stores/**`：fatalErrorStore 删除两个 setError CRUD 往返用例（保留 clear/最小错误）；settingsStore 主题切换用例加 `[derived]` 标记（枚举值集合契约）。
 
 ## 6. Phase B — 清理 Python 真同义反复
 
-- [ ] 6.1 `tests/test_jm_favourites.py`（精炼后剩余）：`assert_called` / `assert_called_with(字面量)` 类——逐条评估删除（若已有 DOM/状态断言覆盖）或补强。
-- [ ] 6.2 `tests/test_parser_favourites.py` + `tests/test_ipc_async_main_loop.py`（剩余各 1 处）：同上逐条处理。
+- [x] 6.1 `tests/test_jm_favourites.py`：精炼后违规已消除（assert_called_once 现放行），无需改动。
+- [x] 6.2 `tests/test_parser_favourites.py` + `tests/test_ipc_async_main_loop.py`：精炼后违规已消除（assert_called_once_with 现放行，参数承载契约信号），无需改动。
 
 ## 7. Phase B 验证
 
-- [ ] 7.1 运行 `npm run lint:test-quality`（前端+Python），确认零报告（backlog 清零）。
-- [ ] 7.2 运行 `npm test` + `pytest` + `npx tsc --noEmit` + `npm run lint` + `npm run lint:py` + `black --check .`，全部通过。
-- [ ] 7.3 提交 Phase B（可按文件组多个 commit），每个 commit 列出处理清单与理由。
+- [x] 7.1 运行 `npm run lint:test-quality`（前端+Python），确认**零报告**（前端 0、Python 0；backlog 清零）。
+- [x] 7.2 运行 `npm test`（1217 passed）+ `pytest`（971 passed）+ `npx tsc --noEmit` + `npm run lint` + `npm run lint:py` + `black --check .`，全部通过。
+- [x] 7.3 提交 Phase B（commit），列出处理清单与理由。
 
 ## 8. Phase C — 闸门转 error 并接入流程
 

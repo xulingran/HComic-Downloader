@@ -42,6 +42,7 @@ describe('ChapterDownloadDialog', () => {
     const onCancel = vi.fn()
     render(<ChapterDownloadDialog chapters={chapters} open onConfirm={vi.fn()} onCancel={onCancel} />)
     fireEvent.click(screen.getByText('取消'))
-    expect(onCancel).toHaveBeenCalled()
+    // 断言性次数：cancel 按钮点击恰好触发一次 onCancel（不重复、不漏触发）
+    expect(onCancel).toHaveBeenCalledTimes(1)
   })
 })

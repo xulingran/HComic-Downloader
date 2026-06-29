@@ -153,11 +153,10 @@ describe('FavouritesPage', () => {
     await screen.findByText('Failed to load')
   })
 
-  it('calls getFavourites on mount', () => {
-    render(<FavouritesPage />)
-
-    expect(mockGetFavourites).toHaveBeenCalled()
-  })
+  // 已删除 'calls getFavourites on mount'（cleanup-test-quality-backlog Phase B）：
+  // 原仅断言 mockGetFavourites.toHaveBeenCalled()，是裸 mock 调用断言。mount 触发数据
+  // 加载的意图已由同文件"渲染收藏/Failed to load"等用例通过真实渲染结果覆盖。
+  // 无独立信号，删除。
 
   it('can trigger refresh', async () => {
     mockGetFavourites.mockResolvedValue({ comics: [] })

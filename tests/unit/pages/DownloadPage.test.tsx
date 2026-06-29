@@ -197,11 +197,10 @@ describe('DownloadPage', () => {
     expect(screen.getByText('Network timeout')).toBeInTheDocument()
   })
 
-  it('calls getDownloads on mount', () => {
-    render(<DownloadPage />)
-
-    expect(mockGetDownloads).toHaveBeenCalled()
-  })
+  // 已删除 'calls getDownloads on mount'（cleanup-test-quality-backlog Phase B）：
+  // 原仅断言 mockGetDownloads.toHaveBeenCalled()，是裸 mock 调用断言。mount 触发数据
+  // 加载的意图已由同文件"渲染数据/Failed to load"等用例通过真实渲染结果覆盖——
+  // 若 getDownloads 不调用，列表不会渲染。无独立信号，删除。
 
   it('can trigger refresh', async () => {
     render(<DownloadPage />)

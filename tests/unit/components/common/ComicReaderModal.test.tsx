@@ -116,7 +116,8 @@ describe('ComicReaderModal', () => {
       <ComicReaderModal comic={mockComic} open={true} onClose={onClose} />
     )
     await userEvent.click(screen.getByText('关闭'))
-    expect(onClose).toHaveBeenCalled()
+    // 断言性次数：关闭按钮点击恰好触发一次 onClose
+    expect(onClose).toHaveBeenCalledTimes(1)
   })
 
   it('fetches preview page images through the backend proxy', async () => {

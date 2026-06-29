@@ -770,7 +770,8 @@ describe('main.ts', () => {
       const willNavigateCall = wcOnCalls.find((c: unknown[]) => c[0] === 'will-navigate')
       const event = { preventDefault: vi.fn() }
       willNavigateCall[1](event, 'https://evil.com')
-      expect(event.preventDefault).toHaveBeenCalled()
+      // 断言性次数：will-navigate 对外部 URL 恰好阻止一次（安全行为，防导航绕过）
+      expect(event.preventDefault).toHaveBeenCalledTimes(1)
     })
   })
 
@@ -1132,7 +1133,8 @@ describe('main.ts', () => {
       const mockEvent = { preventDefault: vi.fn() }
       await closeHandler(mockEvent)
 
-      expect(app.quit).toHaveBeenCalled()
+      // 断言性次数：用户确认退出（有活跃下载）恰好触发一次 app.quit
+      expect(app.quit).toHaveBeenCalledTimes(1)
     })
   })
 
