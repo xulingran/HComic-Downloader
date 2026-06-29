@@ -24,7 +24,7 @@ import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore, createSearchContextKey, type SearchPageCache } from '../stores/useSearchCacheStore'
-import { usePaginatedPreloader, type PreloadReason } from '../hooks/usePaginatedPreloader'
+import { useSearchPreloader } from '../hooks/useSearchPreloader'
 import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { sourceSupportsRandom, sourceSupportsTagRecommendation, sourceSupportsTagList, normalizeSourceKey } from '../utils/source'
@@ -122,7 +122,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   modeRef.current = mode // eslint-disable-line react-hooks/refs
   const sourceRef = useRef(source)
   sourceRef.current = source // eslint-disable-line react-hooks/refs
-  const preloadedPagesRef = useRef(new Map<string, SearchPageCache>())
 
   const searchContextKey = useMemo(() => createSearchContextKey({
     query,
@@ -580,51 +579,20 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     await downloadWithConflictCheck(comic)
   }
 
-  const preloadSearchPage = useCallback(async (page: number, _reason: PreloadReason, signal: AbortSignal) => {
-    const contextKey = createSearchContextKey({
-      query: queryRef.current,
-      mode: modeRef.current,
-      source: sourceRef.current,
-      searchTags: searchTagsRef.current,
-    })
-    const result = await search(queryRef.current, modeRef.current, page, sourceRef.current, searchTagsRef.current || undefined)
-    // 切换来源/查询词/模式/标签后旧 contextKey 的迟到结果必须丢弃，避免脏写。
-    if (signal.aborted) return
-    preloadedPagesRef.current.set(`${contextKey}:${page}`, {
-      query: queryRef.current,
-      mode: modeRef.current,
-      source: sourceRef.current,
-      searchTags: searchTagsRef.current,
-      comics: result.comics,
-      pagination: result.pagination ?? null,
-    })
-  }, [search])
-
-  const commitPreloadedSearchPage = useCallback((page: number, contextKey: string) => {
-    const requestKey = `${contextKey}:${page}`
-    const cached = preloadedPagesRef.current.get(requestKey)
-    if (!cached) return
-    preloadedPagesRef.current.delete(requestKey)
-    cacheSearchPage(contextKey, page, cached, false)
-  }, [cacheSearchPage])
-
-  useEffect(() => {
-    preloadedPagesRef.current.clear()
-  }, [searchContextKey])
-
-  const hasSearchPage = useCallback((page: number) =>
-    searchCacheRef.current.hasPage(searchContextKey, page),
-    [searchContextKey],
-  )
-
-  usePaginatedPreloader({
+  // 预加载链路已抽到 useSearchPreloader：preloadSearchPage（含 signal.aborted 检查）、
+  // consumePreloaded（中转 → 持久层搬运）、hasPage、usePaginatedPreloader 装配均在 hook 内。
+  // signal.aborted 检查这一行由 useSearchPreloader.test.tsx 集成测试守护（commit 2a1d3b2）。
+  // cacheSearchPage 作为搬运注入点传入；searchContextKey 仍由本组件 useMemo 持有（9 处非预加载用途共享）。
+  useSearchPreloader({
+    query,
+    mode,
+    source,
+    searchTags,
+    searchFn: search,
     currentPage: pagination?.currentPage ?? 1,
     totalPages: pagination?.totalPages ?? 1,
-    contextKey: searchContextKey,
     enabled: !needsLogin && !isLoading && Boolean(pagination && pagination.totalPages > 1),
-    hasPage: hasSearchPage,
-    loadPage: preloadSearchPage,
-    commitPage: commitPreloadedSearchPage,
+    cacheSearchPage,
   })
 
   const isLoadingRef = useRef(isLoading)
