@@ -40,18 +40,26 @@ import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-# 被拦截的 mock 调用断言方法名（assert_called* 家族）。
-# 注：assert_not_called 也是 mock 计数断言——它断言"未被调用"，仍属同义反复
-# （mock 替换测试：换真实实现，"未被调用"的语义由调用方控制，断言不承载被测代码信号）。
-MOCK_CALL_ASSERTIONS = frozenset(
+# 被拦截的 mock 调用断言方法名（cleanup-test-quality-backlog Phase A 精炼）。
+# 仅保留"裸调用"语义（无信号）的方法：
+#   - assert_called：仅"被调用过"
+#   - assert_any_call / assert_has_calls：调用历史检查，参数判定在 _is_mock_call_assertion
+# 移除的（承载信号，放行）：
+#   - assert_called_once / assert_called_once_with：断言"恰好一次"（与前端 toHaveBeenCalledTimes(1) 对齐）
+#   - assert_not_called：断言"未触发"（与前端 not.toHaveBeenCalled 对齐，承载 cancel/守卫信号）
+#   - assert_called_with / assert_called_once_with：参数判定在 _is_mock_call_assertion（全字面量→拦截，含变量→放行）
+BARE_MOCK_ASSERTIONS = frozenset(
     {
         "assert_called",
-        "assert_called_once",
-        "assert_called_with",
-        "assert_called_once_with",
         "assert_any_call",
         "assert_has_calls",
-        "assert_not_called",
+    }
+)
+# 这些方法需结合参数判定：全字面量期望 → 拦截（无转换信号）；含变量/调用 → 放行（参数承载转换信号）
+PARAM_DEPENDENT_MOCK_ASSERTIONS = frozenset(
+    {
+        "assert_called_with",
+        "assert_called_once_with",
     }
 )
 
@@ -76,18 +84,36 @@ class Violation:
 
 
 def _is_mock_call_assertion(node: ast.Call) -> str | None:
-    """判断 CallExpression 是否为 mock.assert_called*() 调用，返回方法名或 None。
+    """判断 CallExpression 是否为应拦截的 mock 调用断言，返回方法名或 None。
 
-    形态：node.callee = Attribute(value=<mock expr>, attr="assert_called...")
+    精炼判定（cleanup-test-quality-backlog Phase A）：
+    - BARE_MOCK_ASSERTIONS（assert_called / assert_any_call / assert_has_calls）：始终拦截（裸调用无信号）
+    - PARAM_DEPENDENT_MOCK_ASSERTIONS（assert_called_with / assert_called_once_with）：
+      参数全为字面量（ast.Constant）→ 拦截（仅"被以这些参数调用过"，无转换信号）；
+      含变量/调用/属性访问 → 放行（参数承载转换信号，与前端 toHaveBeenCalledWith 对齐）
+    - assert_called_once / assert_called_once_with / assert_not_called：放行（不在集合内，
+      "恰好一次"/"未触发"承载信号）
+
+    形态：node.func = Attribute(value=<mock expr>, attr="assert_called...")
     """
     callee = node.func
     if not isinstance(callee, ast.Attribute):
         return None
-    if callee.attr not in MOCK_CALL_ASSERTIONS:
-        return None
-    # callee.value 是 mock 对象表达式（如 mock_db.update_output_path 或 self.parser.session.get）
-    # 仅需确认它是属性访问/名称（即确实是某个 mock 的方法调用），不强制形态
-    return callee.attr
+
+    if callee.attr in BARE_MOCK_ASSERTIONS:
+        return callee.attr
+
+    if callee.attr in PARAM_DEPENDENT_MOCK_ASSERTIONS:
+        # 参数判定：全字面量期望 → 拦截；含变量/调用 → 放行
+        args = node.args
+        if not args:
+            return callee.attr  # 无参数的 assert_called_with() 罕见，保守拦截
+        all_literal = all(isinstance(a, ast.Constant) for a in args)
+        if all_literal:
+            return callee.attr  # 全字面量：无转换信号，拦截
+        return None  # 含变量/调用：参数承载信号，放行
+
+    return None
 
 
 def _node_contains_real_assertion(node: ast.AST) -> bool:

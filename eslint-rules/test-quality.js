@@ -113,6 +113,55 @@ function isExpectCall(callNode) {
   return false
 }
 
+/**
+ * 判断一个 expect(x)[.not].matcher(args) 整体调用节点的"信号类别"。
+ *
+ * 用于 no-bare-mock-assertion 规则的精炼判定（cleanup-test-quality-backlog Phase A）。
+ * 区分"裸调用"（无信号，拦截）与"断言性次数/否定断言"（承载信号，放行）。
+ *
+ * @param {import('estree').CallExpression} callNode - expect(x).matcher(args) 整体调用
+ * @returns {'real' | 'mockOnly' | null} 'real' = 承载真实信号；'mockOnly' = 裸调用无信号；null = 非 mock 调用断言
+ */
+function classifyExpectAssertion(callNode) {
+  const callee = callNode.callee
+  if (!callee || callee.type !== 'MemberExpression') return null
+  const matcher = callee.property
+  if (!matcher || matcher.type !== 'Identifier') return null
+  const name = matcher.name
+
+  // 检测 .not 修饰：expect(x).not.matcher() —— callee.object 是 MemberExpression(.not)
+  // 否定断言承载"未触发"信号（cancel/守卫/短路），一律放行
+  const hasNotModifier =
+    callee.object && callee.object.type === 'MemberExpression' && callee.object.property &&
+    callee.object.property.type === 'Identifier' && callee.object.property.name === 'not'
+
+  // toHaveBeenCalledWith(transformedArg) —— 参数承载信号，放行（既有行为，保留）
+  if (name === 'toHaveBeenCalledWith') return 'real'
+
+  // 否定 mock 调用断言：not.toHaveBeenCalled() / not.toHaveBeenCalledTimes(n) —— 放行
+  if (hasNotModifier && (name === 'toHaveBeenCalled' || name === 'toHaveBeenCalledTimes')) {
+    return 'real'
+  }
+
+  // toHaveBeenCalledTimes(<字面量>) —— 断言性次数（"触发 N 次"），承载信号，放行
+  // toHaveBeenCalledTimes(<非字面量>) —— 如 expect.any(Number) / 变量，等价"被调用过"，拦截
+  if (name === 'toHaveBeenCalledTimes') {
+    const arg = callNode.arguments && callNode.arguments[0]
+    if (arg && arg.type === 'Literal') {
+      return 'real' // 字面量次数承载确定的"触发 N 次"信号
+    }
+    return 'mockOnly' // 非字面量次数（expect.any / 变量）无确定信号
+  }
+
+  // 裸调用断言家族：toHaveBeenCalled / toHaveBeenCalledBefore / toHaveBeenCalledAfter
+  // （无参，仅"被调用过"），拦截
+  const bareMock = new Set(['toHaveBeenCalled', 'toHaveBeenCalledBefore', 'toHaveBeenCalledAfter'])
+  if (bareMock.has(name)) return 'mockOnly'
+
+  // 其余 expect matcher（toBe/toEqual/toMatch/toContain/toThrow/...）均为真实行为断言
+  return null
+}
+
 /** @type {Record<string, import('eslint').Rule.RuleModule>} */
 const rules = {
   'no-bare-mock-assertion': {
@@ -171,18 +220,20 @@ const rules = {
           if (isExpectCall(node)) {
             const frame = stack[stack.length - 1]
             if (frame) {
-              /** @type {string|null} */
-              let matcherName = null
-              if (callee && callee.type === 'MemberExpression' && callee.property && callee.property.type === 'Identifier') {
-                matcherName = callee.property.name
-              }
-              const bareMock = new Set(['toHaveBeenCalled', 'toHaveBeenCalledTimes', 'toHaveBeenCalledBefore', 'toHaveBeenCalledAfter'])
-              if (matcherName && bareMock.has(matcherName)) {
+              // 精炼判定（cleanup-test-quality-backlog Phase A）：
+              // 区分"断言性次数/否定断言"（real，放行）与"裸调用"（mockOnly，拦截）
+              const klass = classifyExpectAssertion(node)
+              if (klass === 'mockOnly') {
+                const matcherName = callee.property.name
                 frame.hasMockOnly = true
                 frame.mockMatchers.push(matcherName)
                 frame.mockCallNodes.push(node)
-              } else {
-                // 其余 expect 断言（含 toHaveBeenCalledWith —— 参数承载信号）均为真实行为
+              } else if (klass === 'real') {
+                // 断言性次数 / 否定断言 / toHaveBeenCalledWith —— 承载信号，计入真实断言
+                frame.hasReal = true
+              }
+              // klass === null：其他真实行为 matcher（toBe/toEqual/...），计入真实断言
+              else if (klass === null) {
                 frame.hasReal = true
               }
             }

@@ -48,24 +48,34 @@ def test_bare():
     assert "assert_called" in violations[0].mock_methods
 
 
-def test_bare_assert_called_once_reported():
-    """仅 assert_called_once() → 报告。"""
+def test_assert_called_once_passes():
+    """assert_called_once() 断言"恰好一次"，承载信号 → 放行（Phase A 精炼）。
+
+    与前端 toHaveBeenCalledTimes(1) 对齐：mock 替换测试不成立（次数由被测代码决定）。
+    """
     code = """
-def test_bare():
+def test_once():
     m = Mock()
     m()
     m.assert_called_once()
 """
-    violations = scan_source(code)
-    assert len(violations) == 1
+    assert scan_source(code) == []
 
 
-def test_bare_assert_called_with_reported():
-    """assert_called_with(...) 在本规则下也视为 mock 调用断言。
+def test_assert_not_called_passes():
+    """assert_not_called() 断言"未触发"，承载 cancel/守卫信号 → 放行（Phase A 精炼）。"""
+    code = """
+def test_not_called():
+    m = Mock()
+    m.assert_not_called()
+"""
+    assert scan_source(code) == []
 
-    注：与前端不同（前端 toHaveBeenCalledWith 因参数承载信号而放行），
-    Python 侧 assert_called_with(args) 的 args 通常是字面量期望值，
-    不一定是被测代码的转换结果。保守报告，由开发者判定是否补真实断言。
+
+def test_bare_assert_called_with_literal_reported():
+    """assert_called_with(<全字面量>) → 拦截（参数无转换信号）。
+
+    精炼后（Phase A）：仅当参数全为字面量时拦截；含变量/调用则放行。
     """
     code = """
 def test_bare():
@@ -77,14 +87,41 @@ def test_bare():
     assert len(violations) == 1
 
 
+def test_assert_called_with_variable_passes():
+    """assert_called_with(<变量>) → 放行（参数承载转换信号，与前端 toHaveBeenCalledWith 对齐）。"""
+    code = """
+def test_with_var():
+    v = compute()
+    m = Mock()
+    m(v)
+    m.assert_called_with(v)
+"""
+    assert scan_source(code) == []
+
+
+def test_assert_called_once_with_literal_reported():
+    """assert_called_once_with(<全字面量>) → 拦截（参数无转换信号）。"""
+    code = """
+def test_bare():
+    m = Mock()
+    m(1)
+    m.assert_called_once_with(1)
+"""
+    violations = scan_source(code)
+    assert len(violations) == 1
+
+
 def test_multiple_mock_assertions_in_one_function_reported_once():
-    """同一函数内多个 mock 调用断言合并为一条违规。"""
+    """同一函数内多个裸 mock 调用断言合并为一条违规。
+
+    注：assert_called_once 精炼后放行，故本用例只收集 assert_called（1 个方法）。
+    """
     code = """
 def test_multi():
     m = Mock()
     m()
     m.assert_called()
-    m.assert_called_once()
+    m.assert_any_call('x')
 """
     violations = scan_source(code)
     assert len(violations) == 1
