@@ -99,6 +99,11 @@ npm run lint:py:fix                 # 自动修复
 # macOS/Linux: venv/bin/black --check .
 black --check .                     # 仅检查
 black .                             # 格式化
+
+# 测试质量闸门（openspec test-quality-gate 规范）
+# 拦截"仅断言 mock 被调用而不同时验证真实行为"的测试（裸 toHaveBeenCalled /
+# assert_called）、纯 store CRUD 往返。把 test-discipline 的判断标准转为主动门控。
+npm run lint:test-quality           # 前端 ESLint 自定义规则 + Python AST 扫描
 ```
 
 **注意**：`npm run lint:py` 封装了跨平台 ruff 调用（`scripts/lint-py.mjs`），优先使用而非直接调 ruff。
@@ -112,6 +117,7 @@ npm test                 # 3. 前端测试
 npm run lint:py          # 4. Python lint (ruff)
 black --check .          # 5. Python 格式化检查
 npm run lint             # 6. JS/TS lint (ESLint)
+npm run lint:test-quality # 7. 测试质量闸门（拦截裸 mock 调用断言 / 纯 store CRUD 往返，test-quality-gate 规范）
 ```
 
 ## 代码规范

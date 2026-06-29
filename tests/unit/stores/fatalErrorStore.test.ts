@@ -17,22 +17,16 @@ describe('useFatalErrorStore', () => {
     expect(useFatalErrorStore.getState().error).toBeNull()
   })
 
-  it('setError 应设置致命错误', () => {
-    useFatalErrorStore.getState().setError(mockError)
-    expect(useFatalErrorStore.getState().error).toEqual(mockError)
-  })
+  // 已删除 'setError 应设置致命错误' 与 'setError 应覆盖旧错误（单例）'
+  // （cleanup-test-quality-backlog Phase B）：两者均为纯 store CRUD 往返
+  // （setError(e) → getState().error === e），useFatalErrorStore.setError 实现为单行
+  // set({error: e})，验证 Zustand setState 框架基本保证，无项目代码信号。
+  // 保留 clear 与最小错误用例——它们验证状态转换/可选字段传播的派生行为。
 
   it('clear 应清除致命错误', () => {
     useFatalErrorStore.getState().setError(mockError)
     useFatalErrorStore.getState().clear()
     expect(useFatalErrorStore.getState().error).toBeNull()
-  })
-
-  it('setError 应覆盖旧错误（单例）', () => {
-    useFatalErrorStore.getState().setError(mockError)
-    const second: FatalErrorEvent = { message: '重启超限', kind: 'backend-restart-exceeded' }
-    useFatalErrorStore.getState().setError(second)
-    expect(useFatalErrorStore.getState().error).toEqual(second)
   })
 
   it('应支持无 detail/kind 的最小错误', () => {

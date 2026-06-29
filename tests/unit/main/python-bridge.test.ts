@@ -499,7 +499,8 @@ describe('PythonBridge', () => {
       const bigData = Buffer.from('x'.repeat(20 * 1024 * 1024 + 1))
       stdoutCallbacks.forEach(cb => cb(bigData))
 
-      expect(mockProcess.kill).toHaveBeenCalled()
+      // 断言性次数：缓冲区溢出恰好触发一次 kill 旧进程（不重复 kill、不漏 kill）
+      expect(mockProcess.kill).toHaveBeenCalledTimes(1)
     })
 
     it('should trigger restart after buffer overflow', () => {

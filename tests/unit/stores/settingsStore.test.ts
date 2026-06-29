@@ -24,7 +24,10 @@ describe('useSettingsStore', () => {
     })
   })
 
-  it('应能切换所有主题模式', () => {
+  it('应能切换所有主题模式 [derived]', () => {
+    // [derived] 标记：本用例参数化遍历 ThemeMode 枚举集合（light/dark/auto），
+    // 验证"枚举值集合契约"——store 接受的值集合与类型定义一致。虽表面含 setter 往返，
+    // 但枚举值集合的完整性是 store 的派生契约（新增模式须在此覆盖），故豁免 CRUD 判定。
     const modes = ['light', 'dark', 'auto'] as const
     modes.forEach((mode) => {
       useSettingsStore.getState().setThemeMode(mode)

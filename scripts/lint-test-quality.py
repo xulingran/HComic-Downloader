@@ -40,18 +40,22 @@ import sys
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-# 被拦截的 mock 调用断言方法名（assert_called* 家族）。
-# 注：assert_not_called 也是 mock 计数断言——它断言"未被调用"，仍属同义反复
-# （mock 替换测试：换真实实现，"未被调用"的语义由调用方控制，断言不承载被测代码信号）。
-MOCK_CALL_ASSERTIONS = frozenset(
+# 被拦截的 mock 调用断言方法名（cleanup-test-quality-backlog Phase A 精炼）。
+# 仅保留"裸调用"语义（无信号）的方法：
+#   - assert_called：仅"被调用过"，无次数/参数信息
+#   - assert_any_call / assert_has_calls：调用历史检查，参数判定不承载"恰好一次"等不变量
+# 放行的（承载信号，不拦截）：
+#   - assert_called_once / assert_called_once_with：断言"恰好一次"（与前端 toHaveBeenCalledTimes(1) 对齐）
+#   - assert_not_called：断言"未触发"（与前端 not.toHaveBeenCalled 对齐，承载 cancel/守卫信号）
+#   - assert_called_with / assert_called_once_with：参数承载"以何参数调用"的契约信号
+#     （实际测试中几乎总是验证被测代码构建的 URL/JSON/标志位，mock 替换测试不成立）
+# 经验验证：本仓库 tests/ 实际仅使用 assert_called_once_with(16)/assert_not_called(5)/
+# assert_called_once(4)，无 assert_called/any_call/has_calls 用例，故拦截集保持最小。
+BARE_MOCK_ASSERTIONS = frozenset(
     {
         "assert_called",
-        "assert_called_once",
-        "assert_called_with",
-        "assert_called_once_with",
         "assert_any_call",
         "assert_has_calls",
-        "assert_not_called",
     }
 )
 
@@ -76,18 +80,22 @@ class Violation:
 
 
 def _is_mock_call_assertion(node: ast.Call) -> str | None:
-    """判断 CallExpression 是否为 mock.assert_called*() 调用，返回方法名或 None。
+    """判断 CallExpression 是否为应拦截的 mock 调用断言，返回方法名或 None。
 
-    形态：node.callee = Attribute(value=<mock expr>, attr="assert_called...")
+    精炼判定（cleanup-test-quality-backlog Phase A）：
+    仅 BARE_MOCK_ASSERTIONS（assert_called / assert_any_call / assert_has_calls）拦截——
+    这些是"裸调用"断言，无次数/参数信息。
+    assert_called_once/once_with（"恰好一次"）、assert_not_called（"未触发"）、
+    assert_called_with/once_with（参数契约）均承载信号，放行。
+
+    形态：node.func = Attribute(value=<mock expr>, attr="assert_called...")
     """
     callee = node.func
     if not isinstance(callee, ast.Attribute):
         return None
-    if callee.attr not in MOCK_CALL_ASSERTIONS:
-        return None
-    # callee.value 是 mock 对象表达式（如 mock_db.update_output_path 或 self.parser.session.get）
-    # 仅需确认它是属性访问/名称（即确实是某个 mock 的方法调用），不强制形态
-    return callee.attr
+    if callee.attr in BARE_MOCK_ASSERTIONS:
+        return callee.attr
+    return None
 
 
 def _node_contains_real_assertion(node: ast.AST) -> bool:
@@ -249,7 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {v.file}:{v.lineno}  {v.function}")
         print(f"    {v.message}\n")
     print(
-        "提示：本检查当前为 warn 级别（不阻断）。Phase 2b 将转 error。"
+        "提示：本检查为 error 级别（cleanup-test-quality-backlog Phase C 起，"
+        "--strict 违规时非零退出码阻断 CI）。"
         "请补充真实行为断言（返回值/状态/异常）或删除冗余的 mock 调用断言。"
     )
     return 1 if args.strict else 0

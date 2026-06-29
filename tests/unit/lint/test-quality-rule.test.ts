@@ -34,20 +34,47 @@ describe('no-bare-mock-assertion', () => {
       expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(1)
     })
 
-    it('裸 toHaveBeenCalledTimes 不同时验证行为', () => {
-      const code = `it('bare', () => { const m = vi.fn(); m(); m(); expect(m).toHaveBeenCalledTimes(2) })`
+    it('裸 toHaveBeenCalledTimes(非字面量) 仍被拦截', () => {
+      // 精炼后（Phase A）：expect.any(Number) 等价"任意次数"，无确定信号，仍拦截
+      const code = `it('bare', () => { const m = vi.fn(); m(); expect(m).toHaveBeenCalledTimes(expect.any(Number)) })`
       expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(1)
     })
 
-    it('多个裸 mock 断言组合仍被报告', () => {
-      const code = `it('bare', () => { const m = vi.fn(); m(); expect(m).toHaveBeenCalled(); expect(m).toHaveBeenCalledTimes(1) })`
-      expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(2)
+    it('裸 toHaveBeenCalledTimes(变量) 仍被拦截', () => {
+      // 变量次数不承载确定的"触发 N 次"信号
+      const code = `it('bare', () => { const m = vi.fn(); m(); const n = 1; expect(m).toHaveBeenCalledTimes(n) })`
+      expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(1)
+    })
+
+    it('裸 toHaveBeenCalled 与断言性次数混存时，整块放行（伴随行为断言规则）', () => {
+      // 精炼后：toHaveBeenCalledTimes(1) 为真实行为断言，裸 toHaveBeenCalled 降级为副信号。
+      // 符合规范"伴随行为断言的 mock 断言被放行"——mock 替换测试：换真实实现，
+      // toHaveBeenCalledTimes(1) 仍验证"恰好一次"，整块承载信号。
+      const code = `it('mixed', () => { const m = vi.fn(); m(); expect(m).toHaveBeenCalled(); expect(m).toHaveBeenCalledTimes(1) })`
+      expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(0)
     })
   })
 
   describe('正例（应被放行）', () => {
     it('纯真实断言（无 mock）', () => {
       const code = `it('real', () => { expect(1).toBe(1) })`
+      expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(0)
+    })
+
+    it('断言性次数 toHaveBeenCalledTimes(字面量) 放行（Phase A 精炼）', () => {
+      // 字面量次数承载"触发 N 次"的真实不变量信号（如"批量通知恰好一次"）
+      const code = `it('times', () => { const m = vi.fn(); m(); m(); expect(m).toHaveBeenCalledTimes(2) })`
+      expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(0)
+    })
+
+    it('否定断言 not.toHaveBeenCalled 放行（Phase A 精炼）', () => {
+      // 否定断言承载"未触发"信号（cancel/守卫/短路逻辑）
+      const code = `it('not-called', () => { const m = vi.fn(); expect(m).not.toHaveBeenCalled() })`
+      expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(0)
+    })
+
+    it('否定次数断言 not.toHaveBeenCalledTimes(0) 放行', () => {
+      const code = `it('not-times', () => { const m = vi.fn(); expect(m).not.toHaveBeenCalledTimes(0) })`
       expect(runRule({ ruleName: 'no-bare-mock-assertion', code })).toBe(0)
     })
 
