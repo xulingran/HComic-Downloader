@@ -20,6 +20,6 @@
 
 ## 4. 提交与归档
 
-- [ ] 4.1 提交代码清理 + 主规范目的补全（独立 commit），commit message 说明清理项与对应来源（死代码源于 Phase A 精炼、注释残骸源于 Phase B、规范目的占位源于归档工具未填）。
-- [ ] 4.2 运行 `openspec-cn archive fix-test-quality-gate-residue`，将 delta spec（MODIFIED 需求：`assert_called_with` 全部放行）同步到主规范。
-- [ ] 4.3 归档后再次 `openspec-cn validate test-quality-gate` + `openspec-cn list`（活动变更清空），确认归档干净。
+- [x] 4.1 提交代码清理 + 主规范目的补全（独立 commit `c1b1491`），commit message 说明清理项与对应来源（死代码源于 Phase A 精炼、注释残骸源于 Phase B、规范目的占位源于归档工具未填）。
+- [x] 4.2 运行 `openspec-cn archive fix-test-quality-gate-residue`，将 delta spec（MODIFIED 需求：`assert_called_with` 全部放行）同步到主规范。
+- [x] 4.3 归档后再次 `openspec-cn validate test-quality-gate`（通过）+ `openspec-cn list`（活动变更清空），确认归档干净。
