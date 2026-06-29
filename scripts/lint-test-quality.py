@@ -257,7 +257,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {v.file}:{v.lineno}  {v.function}")
         print(f"    {v.message}\n")
     print(
-        "提示：本检查当前为 warn 级别（不阻断）。Phase 2b 将转 error。"
+        "提示：本检查为 error 级别（cleanup-test-quality-backlog Phase C 起，"
+        "--strict 违规时非零退出码阻断 CI）。"
         "请补充真实行为断言（返回值/状态/异常）或删除冗余的 mock 调用断言。"
     )
     return 1 if args.strict else 0

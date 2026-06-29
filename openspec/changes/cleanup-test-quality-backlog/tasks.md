@@ -50,14 +50,14 @@
 
 ## 8. Phase C — 闸门转 error 并接入流程
 
-- [ ] 8.1 确认 Phase A + Phase B 已合并、`lint:test-quality` 零报告、CI 绿。
-- [ ] 8.2 更新 `eslint.config.js`：`test-quality/no-bare-mock-assertion` 与 `test-quality/no-pure-store-crud-roundtrip` 规则级别 `warn` → `error`。
-- [ ] 8.3 更新 `scripts/lint-test-quality.mjs`：Python 调用加 `--strict`（检测到违规非零退出）。
-- [ ] 8.4 更新 `AGENTS.md` "完整验证流程"：在第 6 步 `npm run lint` 后新增第 7 步 `npm run lint:test-quality`（测试质量闸门）。同步"代码检查与格式化"小节说明命令作用。
+- [x] 8.1 确认 Phase A + Phase B 已合并、`lint:test-quality` 零报告、CI 绿。
+- [x] 8.2 更新 `eslint.config.js`：`test-quality/no-bare-mock-assertion` 与 `test-quality/no-pure-store-crud-roundtrip` 规则级别 `warn` → `error`。
+- [x] 8.3 更新 `scripts/lint-test-quality.mjs`：Python 调用加 `--strict`（检测到违规非零退出）；修复 `runPythonGate` 误返回 0 忽略 `result.status` 的 bug（手动验证捕获）。
+- [x] 8.4 更新 `AGENTS.md` "完整验证流程"：在第 6 步 `npm run lint` 后新增第 7 步 `npm run lint:test-quality`（测试质量闸门）。同步"代码检查与格式化"小节说明命令作用。
 
 ## 9. 全量验证与归档准备
 
-- [ ] 9.1 完整执行 `AGENTS.md` 7 步验证流程（含新增 lint:test-quality），全部通过。
+- [x] 9.1 完整执行 `AGENTS.md` 7 步验证流程（含新增 lint:test-quality），全部通过（pytest 971 / npm test 1217 / tsc / eslint / ruff / black / lint:test-quality 全绿）。
 - [ ] 9.2 确认 `openspec-cn status --change "cleanup-test-quality-backlog"` 所有 applyRequires 产出物完成。
-- [ ] 9.3 手动验证闸门拦截：临时在测试加 `expect(vi.fn()).toHaveBeenCalled()` 单独断言，确认 `npm run lint` 失败（error 级别）；加 `expect(vi.fn()).toHaveBeenCalledTimes(1)` 确认放行；移除后确认通过。
+- [x] 9.3 手动验证闸门拦截：临时加 `expect(vi.fn()).toHaveBeenCalled()` 单独断言，确认 `npm run lint` 失败（error 级别，exit 1）；加 `expect(vi.fn()).toHaveBeenCalledTimes(1)` 确认放行；Python `assert_called` 经 npm wrapper 确认 exit 1；移除后确认通过。
 - [ ] 9.4 确认 `test-discipline-gate` 变更的 Phase 2b 已由本变更闭环；两变更可按序归档。

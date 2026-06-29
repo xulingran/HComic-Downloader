@@ -49,13 +49,14 @@ export default tseslint.config(
     },
   },
   {
-    // 测试质量闸门（openspec/changes/test-discipline-gate / test-quality-gate 规范）
+    // 测试质量闸门（openspec test-quality-gate 规范）
     // 把 test-discipline 的判断标准从被动文档转为主动门控。
-    // Phase 2a：先以 'warn' 注册，不阻断；Phase 1 合并后 Phase 2b 转 'error'。
+    // 转 'error'（cleanup-test-quality-backlog Phase C）：backlog 已清零，
+    // 新引入的裸 mock 调用断言 / 纯 store CRUD 往返会被 CI 阻断。
     files: ["tests/unit/**/*.test.ts", "tests/unit/**/*.test.tsx"],
     plugins: { "test-quality": testQuality },
     rules: {
-      "test-quality/no-bare-mock-assertion": "warn",
+      "test-quality/no-bare-mock-assertion": "error",
     },
   },
   {
@@ -64,7 +65,7 @@ export default tseslint.config(
     files: ["tests/unit/stores/**/*.test.ts"],
     plugins: { "test-quality": testQuality },
     rules: {
-      "test-quality/no-pure-store-crud-roundtrip": "warn",
+      "test-quality/no-pure-store-crud-roundtrip": "error",
     },
   },
   {

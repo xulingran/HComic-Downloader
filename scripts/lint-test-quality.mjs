@@ -26,16 +26,17 @@ function runPythonGate() {
     ? path.join(projectRoot, 'venv', 'Scripts', 'python.exe')
     : path.join(projectRoot, 'venv', 'bin', 'python')
   const script = path.join(projectRoot, 'scripts', 'lint-test-quality.py')
-  // Phase 2a：不加 --strict，warn 级别（退出码始终 0）
-  const pyArgs = [script, '--root', 'tests', ...passThrough.filter(a => a !== '--strict')]
+  // Phase C（cleanup-test-quality-backlog）：加 --strict，违规时非零退出（error 级别）。
+  // backlog 已清零，新引入的裸 mock 调用断言会被 CI 阻断。
+  const pyArgs = [script, '--root', 'tests', '--strict', ...passThrough.filter(a => a !== '--strict')]
   console.log('▶ Python 测试质量扫描（lint-test-quality.py）')
   const result = spawnSync(pyExe, pyArgs, { stdio: 'inherit', cwd: projectRoot })
-  // Phase 2a 不阻断；Phase 2b 由调用方加 --strict
+  // Phase C：违规非零退出码透传（--strict 时 Python 脚本返回 1），阻断 CI
   if (result.error) {
     console.error('Python 闸门执行失败：', result.error.message)
     return 1
   }
-  return 0
+  return result.status ?? 0
 }
 
 // ── 前端侧：ESLint 仅启用 test-quality 规则 ─────────────────────────
