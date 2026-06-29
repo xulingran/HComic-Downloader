@@ -88,8 +88,6 @@ installMainWorldCompatibility()
 //       main world 共享，故 shadow host 真实出现在页面上。
 
 const OVERLAY_HOST_ID = 'hcomic-login-overlay'
-/** 拖动位移阈值（px）：低于此值视为 click，超过视为拖动 */
-const DRAG_THRESHOLD_PX = 4
 /** 倒数起始秒数 */
 const COUNTDOWN_START = 3
 const WINDOW_MODE = process.argv.includes('--hcomic-window-mode=challenge') ? 'challenge' : 'login'
@@ -144,8 +142,7 @@ const OVERLAY_STYLES = `
     box-shadow: 0 8px 24px rgba(0,0,0,.4);
     color: #f9fafb; padding: 14px; user-select: none;
   }
-  .head { display: flex; align-items: center; justify-content: space-between; cursor: grab; margin-bottom: 8px; }
-  .head:active { cursor: grabbing; }
+  .head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
   .head-title { font-size: 12px; font-weight: 600; opacity: .8; }
   .close { cursor: pointer; font-size: 16px; line-height: 1; opacity: .6; border: none; background: none; color: inherit; padding: 0 2px; }
   .close:hover { opacity: 1; }
@@ -193,7 +190,6 @@ function buildOverlay(source: string, mode: WindowMode): void {
     const dot = document.createElement('div')
     dot.className = 'dot'
     dot.textContent = '✓'
-    bindDrag(host, dot)
     dot.addEventListener('click', () => {
       if (state === 'idle') setState('expanded')
     })
@@ -224,7 +220,6 @@ function buildOverlay(source: string, mode: WindowMode): void {
     closeBtn.addEventListener('click', () => setState('idle'))
     head.appendChild(title)
     head.appendChild(closeBtn)
-    bindDrag(host, head)
     card.appendChild(head)
 
     const hint = document.createElement('div')
@@ -375,57 +370,6 @@ function buildOverlay(source: string, mode: WindowMode): void {
     clearTimer()
     if (resultCleanup) resultCleanup()
   })
-}
-
-/**
- * 为 host 绑定拖动（pointer 事件）。dragHandle 是触发拖动的子元素（圆点/卡片顶栏）。
- * 位移阈值区分 click 与拖动：超阈值更新 host.top/left 并标记吞掉后续 click。
- */
-function bindDrag(host: HTMLElement, dragHandle: HTMLElement): void {
-  let startX = 0
-  let startY = 0
-  let dragging = false
-  let moved = false
-
-  dragHandle.addEventListener('pointerdown', (e: PointerEvent) => {
-    // 仅响应主键；不抢占按钮/链接的交互
-    if (e.button !== 0) return
-    startX = e.clientX
-    startY = e.clientY
-    dragging = true
-    moved = false
-  })
-
-  dragHandle.addEventListener('pointermove', (e: PointerEvent) => {
-    if (!dragging) return
-    const dx = e.clientX - startX
-    const dy = e.clientY - startY
-    if (!moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
-    moved = true
-    // host 左上角跟随指针移动量；改 left 锚定，清除 right 避免拉伸
-    const rect = host.getBoundingClientRect()
-    host.style.left = `${rect.left + dx}px`
-    host.style.top = `${rect.top + dy}px`
-    host.style.right = 'auto'
-    startX = e.clientX
-    startY = e.clientY
-  })
-
-  const endDrag = () => {
-    if (!dragging) return
-    dragging = false
-    // 若发生过拖动，阻止紧随其后的 click（防止拖动结束误触展开/收起）
-    if (moved) {
-      const swallow = (ev: Event) => {
-        ev.stopPropagation()
-        ev.preventDefault()
-        dragHandle.removeEventListener('click', swallow, true)
-      }
-      dragHandle.addEventListener('click', swallow, true)
-    }
-  }
-  dragHandle.addEventListener('pointerup', endDrag)
-  dragHandle.addEventListener('pointercancel', endDrag)
 }
 
 // preload 顶层执行：注入叠层

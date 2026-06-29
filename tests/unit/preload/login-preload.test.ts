@@ -176,33 +176,35 @@ describe('login-preload: overlay state machine', () => {
   })
 })
 
-describe('login-preload: overlay drag', () => {
+describe('login-preload: overlay fixed (undraggable)', () => {
   beforeEach(async () => {
     document.getElementById(OVERLAY_HOST_ID)?.remove()
     await loadPreload()
   })
 
-  it('drag beyond threshold moves host (left set) and keeps idle', () => {
+  it('pointer drag does not move host (stays fixed at top/right)', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
     const dot = queryShadow(host, '.dot') as HTMLElement
-    // pointerdown → 超阈值 move → pointerup
+    // 初始定位锚：固定右上角
+    expect(host.style.top).toBe('12px')
+    expect(host.style.right).toBe('12px')
+    expect(host.style.left).toBe('')
+    // 模拟大幅指针拖动（曾超过位移阈值）→ host 定位禁止改变
     dot.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointermove', { clientX: 150, clientY: 110, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointerup', { clientX: 150, clientY: 110, bubbles: true }))
-    // host 已被定位（left 不为空，right 改为 auto）
-    expect(host.style.left).not.toBe('')
-    // 仍为收起态（拖动吞掉了 click，未展开）
-    expect(queryShadow(host, '.dot')).not.toBeNull()
-    expect(queryShadow(host, '.card')).toBeNull()
+    dot.dispatchEvent(new PointerEvent('pointermove', { clientX: 250, clientY: 200, bubbles: true }))
+    dot.dispatchEvent(new PointerEvent('pointerup', { clientX: 250, clientY: 200, bubbles: true }))
+    expect(host.style.top).toBe('12px')
+    expect(host.style.right).toBe('12px')
+    expect(host.style.left).toBe('')
   })
 
-  it('pointer within threshold → click expands', () => {
+  it('click on dot expands directly (no drag swallow)', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
     const dot = queryShadow(host, '.dot') as HTMLElement
-    // 阈值内位移
+    // 即便指针发生过移动，点击圆点也必须直接展开（无吞咽 click 的逻辑）
     dot.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointermove', { clientX: 102, clientY: 101, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointerup', { clientX: 102, clientY: 101, bubbles: true }))
+    dot.dispatchEvent(new PointerEvent('pointermove', { clientX: 120, clientY: 105, bubbles: true }))
+    dot.dispatchEvent(new PointerEvent('pointerup', { clientX: 120, clientY: 105, bubbles: true }))
     dot.click()
     expect(queryShadow(host, '.card')).not.toBeNull()
   })
