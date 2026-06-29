@@ -26,7 +26,7 @@
 - [x] 4.1 运行 `pytest`，确认删除/降级后全部通过（删除测试不应使其他测试失败）。
 - [x] 4.2 运行 `npm test`，确认前端测试通过。
 - [x] 4.3 运行 `npx tsc --noEmit` + `npm run lint` + `npm run lint:py` + `black --check .`，确认无新增 lint/类型错误（删除文件可能触发 unused import 等）。
-- [ ] 4.4 提交 Phase 1（独立 commit / PR），PR 描述列出删除清单 + 每条理由，便于审查。
+- [x] 4.4 提交 Phase 1（独立 commit / PR），PR 描述列出删除清单 + 每条理由，便于审查。（已提交于 commit `d2cf58f`）
 
 ## 5. Phase 2a — 前端闸门实现（warning 阶段）
 
@@ -50,14 +50,14 @@
 > 现阶段转 error 会让 CI 立即红。本节任务**推迟到后续 backlog 清理变更完成后**执行。
 > 本次变更只交付闸门机制（warn 级别）。下列任务作为后续变更的占位，本次**不执行**。
 
-- [ ] 7.1 确认后续清理变更已合并、CI 绿、闸门 warn 报告清零。将前端 ESLint 规则从 `warn` 升为 `error`；Python 脚本调用方加 `--strict`。
-- [ ] 7.2 更新 `AGENTS.md` "完整验证流程"：在第 6 步 `npm run lint` 后新增第 7 步 `npm run lint:test-quality`（测试质量闸门）。同步更新"代码检查与格式化"小节说明该命令的作用。
-- [ ] 7.3 更新 `eslint.config.js` 的规则级别为 `error`；确认 `npm run lint` 现在会因测试质量问题失败。
-- [ ] 7.4 在后续清理变更的 PR 描述中说明：自此 PR 起，新引入的裸 mock 调用断言 / 纯 store CRUD 往返会被闸门拦截，引用 `test-discipline` 与 `test-quality-gate` 规范。
+- [x] 7.1 确认后续清理变更已合并、CI 绿、闸门 warn 报告清零。将前端 ESLint 规则从 `warn` 升为 `error`；Python 脚本调用方加 `--strict`。（由 cleanup-test-quality-backlog Phase C 闭环，见 `eslint.config.js` + `lint-test-quality.mjs`）
+- [x] 7.2 更新 `AGENTS.md` "完整验证流程"：在第 6 步 `npm run lint` 后新增第 7 步 `npm run lint:test-quality`（测试质量闸门）。同步更新"代码检查与格式化"小节说明该命令的作用。（由 cleanup-test-quality-backlog Phase C 闭环）
+- [x] 7.3 更新 `eslint.config.js` 的规则级别为 `error`；确认 `npm run lint` 现在会因测试质量问题失败。（由 cleanup-test-quality-backlog Phase C 闭环）
+- [x] 7.4 在后续清理变更的 PR 描述中说明：自此 PR 起，新引入的裸 mock 调用断言 / 纯 store CRUD 往返会被闸门拦截，引用 `test-discipline` 与 `test-quality-gate` 规范。（cleanup-test-quality-backlog 的 commit message 已说明）
 
 ## 8. 全量验证与归档准备
 
 - [x] 8.1 本次变更范围（Phase 1 + Phase 2a）验证通过：`pytest` 全绿、`npm test` 全绿、`npx tsc --noEmit` / `npm run lint` / `npm run lint:py` / `black --check .` 全绿、`npm run lint:test-quality` 可跑通（warn 报告存量 backlog）。
-- [ ] 8.2 确认 `openspec-cn status --change "test-discipline-gate"` 显示所有 applyRequires 产出物完成。
+- [x] 8.2 确认 `openspec-cn status --change "test-discipline-gate"` 显示所有 applyRequires 产出物完成。（`isComplete: true`，artifacts 全 done）
 - [x] 8.3 验证 `test-quality-gate` 规范的每个场景有对应的闸门行为覆盖（自我验证测试 `tests/unit/lint/test-quality-rule.test.ts` 14 用例 + `tests/test_test_quality_gate.py` 13 用例覆盖决策 1/2/3）；验证 `test-discipline` 新增需求的场景被满足。
 - [x] 8.4 归档变更前，运行"故意引入违规用例"的手动验证：临时在某个测试加 `expect(vi.fn()).toHaveBeenCalled()` 单独断言，确认闸门报告；移除后确认通过。（已通过自我验证测试的合成反例覆盖，等效验证）
