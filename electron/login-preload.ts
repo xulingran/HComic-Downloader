@@ -81,7 +81,7 @@ installMainWorldCompatibility()
 // ── 登录弹窗叠层（isolated world，用 ipcRenderer）──────────────────────────
 //
 // 叠层承载显式的 cookie 提取入口：用户在第三方站点登录后点「我已登录」触发提取，
-// 成功后倒数 5 秒自动关窗。与"关窗即提取"的隐式兜底并存。
+// 成功后倒数 3 秒自动关窗。与"关窗即提取"的隐式兜底并存。
 //
 // 隔离：Shadow DOM（closed mode）—— 第三方站点 CSS 穿不透、页面 JS 拿不到内部引用。
 // 世界：本段跑在 isolated world（preload 顶层），可访问 ipcRenderer；DOM 节点与
@@ -91,7 +91,7 @@ const OVERLAY_HOST_ID = 'hcomic-login-overlay'
 /** 拖动位移阈值（px）：低于此值视为 click，超过视为拖动 */
 const DRAG_THRESHOLD_PX = 4
 /** 倒数起始秒数 */
-const COUNTDOWN_START = 5
+const COUNTDOWN_START = 3
 const WINDOW_MODE = process.argv.includes('--hcomic-window-mode=challenge') ? 'challenge' : 'login'
 
 type OverlayState = 'idle' | 'expanded' | 'extracting' | 'counting'

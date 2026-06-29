@@ -126,14 +126,14 @@ describe('login-preload: overlay state machine', () => {
     expect(queryShadow(host, '.card')).toBeNull()
   })
 
-  it('extract result success → counting state with countdown number 5', () => {
+  it('extract result success → counting state with countdown number 3', () => {
     vi.useFakeTimers()
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
     ;(queryShadow(host, '.dot') as HTMLElement).click()
     ;(queryShadow(host, '.btn') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: true, message: 'ok' })
     const num = queryShadow(host, '.count-num') as HTMLElement
-    expect(num.textContent).toBe('5')
+    expect(num.textContent).toBe('3')
     vi.useRealTimers()
   })
 
@@ -155,7 +155,7 @@ describe('login-preload: overlay state machine', () => {
     ;(queryShadow(host, '.btn') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: true, message: 'ok' })
     mockInvoke.mockClear()
-    await vi.advanceTimersByTimeAsync(5_000)
+    await vi.advanceTimersByTimeAsync(3_000)
     expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_FINISH)
     vi.useRealTimers()
   })
@@ -291,7 +291,7 @@ describe('login-preload: challenge mode overlay', () => {
     expect(queryShadow(host, '.count-num')).toBeNull()
   })
 
-  it('verification success → counting state with countdown 5', () => {
+  it('verification success → counting state with countdown 3', () => {
     vi.useFakeTimers()
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
     ;(queryShadow(host, '.dot') as HTMLElement).click()
@@ -303,7 +303,7 @@ describe('login-preload: challenge mode overlay', () => {
     const hint = queryShadow(host, '.hint') as HTMLElement
     expect(hint.textContent).toContain('验证成功')
     const num = queryShadow(host, '.count-num') as HTMLElement
-    expect(num.textContent).toBe('5')
+    expect(num.textContent).toBe('3')
     vi.useRealTimers()
   })
 
@@ -317,7 +317,7 @@ describe('login-preload: challenge mode overlay', () => {
       message: '人机验证已完成',
     })
     mockInvoke.mockClear()
-    await vi.advanceTimersByTimeAsync(5_000)
+    await vi.advanceTimersByTimeAsync(3_000)
     expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_FINISH)
     vi.useRealTimers()
   })

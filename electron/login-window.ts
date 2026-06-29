@@ -12,7 +12,7 @@ import { IPC_CHANNELS, NOTIFICATION_CHANNELS } from '../shared/types'
 const LOGIN_WINDOW_TIMEOUT_MS = 5 * 60 * 1_000
 const HIDDEN_CHALLENGE_CAPTURE_TIMEOUT_MS = 8_000
 /** 叠层成功后，主进程等待渲染端 LOGIN_FINISH 的兜底超时。
- *  渲染端倒数默认 5s；此值取 10s 留足余量，避免正常倒数路径误触发。
+ *  渲染端倒数默认 3s；此值取 10s 留足余量，避免正常倒数路径误触发。
  *  渲染进程崩溃 / 导航丢失状态 / 用户拖很久不放手时由它收尾。 */
 const LOGIN_FINISH_FALLBACK_MS = 10_000
 const LOGIN_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
