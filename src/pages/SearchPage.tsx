@@ -949,14 +949,20 @@ function BlockedPlaceholder({ comic, cardStyle }: { comic: ComicInfo; cardStyle:
           <span className="text-xs">已屏蔽</span>
         </div>
       </div>
-      <div className="p-3">
+      {/* 内容区结构（padding / 标题 min-h / 作者占位行）必须与 CoverCard 对齐，
+          否则屏蔽卡片会比同行正常卡片矮一行，破坏网格行对齐。
+          占位行仅占高度，不渲染作者文字（屏蔽卡片是简化占位符）。 */}
+      <div className="p-2">
         <h3
           onClick={(e) => { e.stopPropagation(); openDrawer(comic) }}
-          className="text-sm font-medium text-[var(--text-secondary)] cursor-pointer line-clamp-2 line-through"
+          className="text-sm font-medium text-[var(--text-secondary)] cursor-pointer line-clamp-2 min-h-[2.5rem] line-through"
           title={comic.title}
         >
           {comic.title}
         </h3>
+        <p className="text-xs text-[var(--text-secondary)] mt-0.5 h-4 truncate select-none">
+          {'\u00A0'}
+        </p>
       </div>
     </div>
   )

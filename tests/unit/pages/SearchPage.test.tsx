@@ -922,6 +922,54 @@ describe('SearchPage', () => {
       expect(screen.queryAllByTestId('comic-card')).toHaveLength(0)
     })
 
+    it('屏蔽占位符封面变体内容区结构与正常 CoverCard 对齐（防止网格行高错乱）', async () => {
+      // 屏蔽占位符的高度必须与正常 CoverCard 一致，否则同行的屏蔽卡片会矮一行，
+      // 破坏 CSS Grid 行对齐。校验 padding / 标题 min-h / 作者占位行三处结构。
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        filterEnabled: true,
+        favouriteTagHighlight: false,
+        tagBlacklist: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
+      mockStoreState.comics = [
+        { id: '1', title: '被屏蔽的漫画', url: '', coverUrl: '', source: 'hcomic', tags: ['NTR'] },
+      ]
+
+      render(<SearchPage />)
+      const title = await screen.findByText('被屏蔽的漫画')
+
+      // 内容区容器：p-2（非 p-3），与 CoverCard 一致
+      const contentBox = title.closest('div')
+      expect(contentBox?.className).toContain('p-2')
+      expect(contentBox?.className).not.toContain('p-3')
+      // 标题最小高度：min-h-[2.5rem]，与 CoverCard 一致
+      expect(title.className).toContain('min-h-[2.5rem]')
+      // 标题下方作者占位行：h-4 + mt-0.5，仅含 \u00A0 不渲染作者文字
+      const placeholder = contentBox?.querySelector('p.h-4')
+      expect(placeholder).not.toBeNull()
+      expect(placeholder?.className).toContain('mt-0.5')
+      expect(placeholder?.textContent).toBe('\u00A0')
+    })
+
+    it('屏蔽占位符保留简化视觉语义（line-through 标题、无作者信息）', async () => {
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        filterEnabled: true,
+        favouriteTagHighlight: false,
+        tagBlacklist: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
+      mockStoreState.comics = [
+        { id: '1', title: '屏蔽项', url: '', coverUrl: '', source: 'hcomic', author: '某作者', pages: 100, tags: ['NTR'] },
+      ]
+
+      render(<SearchPage />)
+      await screen.findByText('屏蔽项')
+
+      // 标题保留删除线
+      expect(screen.getByText('屏蔽项').className).toContain('line-through')
+      // 屏蔽卡片是简化占位符：不展示作者 / 页数等元信息
+      expect(screen.queryByText('某作者')).not.toBeInTheDocument()
+      expect(screen.queryByText(/100\s*页/)).not.toBeInTheDocument()
+    })
+
     it('不支持标签推荐的来源（copymanga）不请求标签也不高亮', async () => {
       // source 经 getConfig 设为 copymanga。setComics 是 no-op mock，故直接预置 comics
       // 作为渲染源；挂载 auth 分支需 verifyAuth 返回有效，mockSearch 返回同数据保持一致。
