@@ -18,54 +18,6 @@
  */
 
 /**
- * 判断一个 AST 节点是否为"真实行为断言"（承载项目代码信号）。
- * 真实行为断言形态：
- *   - expect(...).toEqual/toBe/toMatch/... （非 toHaveBeenCalled* 家族）
- *   - expect(await fn()).resolves / .rejects.toThrow
- *   - expect(x).toHaveBeenCalledWith(transformedArg) —— 参数本身承载信号
- *   - await expect(...).rejects.toThrow
- *
- * 非真实断言（仅 mock 调用计数）：
- *   - expect(mock).toHaveBeenCalled()
- *   - expect(mock).toHaveBeenCalledTimes(n)
- *
- * @param {import('estree').Node} node - CallExpression 节点（应为 expect(...) 调用）
- * @returns {boolean} 是否为真实行为断言
- */
-function isRealBehaviorAssertion(node) {
-  // expect(...) 调用返回 MemberExpression（.method）再调用
-  // 结构：CallExpression(callee=MemberExpression(object=CallExpression(expect), property=matcher))
-  // 我们在这里检查外层 matcher 是否属于"真实行为"家族。
-  // 注意：本函数预期被传入 expect(...) 的返回值的 .matcher 调用节点。
-  if (!node) return false
-  // node 是 expect(x).matcher() 整体 CallExpression
-  const callee = node.callee
-  if (!callee || callee.type !== 'MemberExpression') return false
-  const matcher = callee.property
-  if (!matcher || matcher.type !== 'Identifier') return false
-  const name = matcher.name
-
-  // toHaveBeenCalledWith(transformedArg) —— 参数承载信号，放行（即使伴随 mock）
-  // 但 toHaveBeenCalled() / toHaveBeenCalledTimes(n) 不放行（纯计数）
-  if (name === 'toHaveBeenCalledWith') return true
-
-  // 纯 mock 计数断言 —— 非真实行为
-  const bareMockMatchers = new Set([
-    'toHaveBeenCalled',
-    'toHaveBeenCalledTimes',
-    'toHaveBeenCalledBefore',
-    'toHaveBeenCalledAfter',
-    'toHaveBeenCalledWith', // 已在上方放行，此处保留仅为文档完整
-  ])
-  bareMockMatchers.delete('toHaveBeenCalledWith') // 已放行
-
-  if (bareMockMatchers.has(name)) return false
-
-  // 其余 matcher（toBe/toEqual/toMatch/toContain/toBeNull/toThrow/...）均为真实行为断言
-  return true
-}
-
-/**
  * 遍历一个节点的所有后代 CallExpression。
  * @param {import('estree').Node} node
  * @param {(callNode: import('estree').CallExpression) => void} visit

@@ -1,7 +1,8 @@
 # test-quality-gate 规范
 
 ## 目的
-待定 - 由归档变更 test-discipline-gate 创建。归档后请更新目的。
+
+把 `test-discipline` 定义的价值判定准则（裸 mock 调用断言、纯框架 CRUD 往返、时序断言）从被动文档转为自动化主动门控。本规范定义测试质量闸门（前端 ESLint 自定义规则 `test-quality` + Python `scripts/lint-test-quality.py` AST 扫描）**必须**满足的判定准则与执行要求：拦截哪些同义反复形态、放行哪些承载信号的形态、闸门自身如何被自我验证测试守护，以及闸门如何作为提交前必过步骤接入验证流程。`test-discipline` 回答"什么样的测试是同义反复"，本规范回答"如何自动化拦截同义反复测试"。
 ## 需求
 ### 需求:CI 闸门必须拦截新增的裸 mock 调用断言
 
