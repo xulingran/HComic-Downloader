@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { renderHook } from '@testing-library/react'
-import { useIpc } from '@/hooks/useIpc'
+import { renderHook, act } from '@testing-library/react'
+import { useIpc, useFavouriteTagsProgress } from '@/hooks/useIpc'
 import { createMockHcomic } from '../../__mocks__/ipc'
+import type { FavouriteTagsProgressEvent } from '@shared/types'
 
 describe('useIpc', () => {
   beforeEach(() => {
@@ -74,5 +75,64 @@ describe('useIpc', () => {
     const response = await result.current.invoke(() => window.hcomic!.getConfig())
 
     expect(response).toEqual(complexResult)
+  })
+})
+
+describe('useFavouriteTagsProgress', () => {
+  // 可控订阅：捕获注册的 callback，测试可主动推送进度事件
+  let subscribedCallback: ((data: FavouriteTagsProgressEvent) => void) | null = null
+  const mockUnsubscribe = vi.fn()
+
+  beforeEach(() => {
+    subscribedCallback = null
+    mockUnsubscribe.mockClear()
+    delete (window as unknown as Record<string, unknown>).hcomic
+    Object.defineProperty(window, 'hcomic', {
+      value: {
+        onFavouriteTagsProgress: vi.fn((cb: (data: FavouriteTagsProgressEvent) => void) => {
+          subscribedCallback = cb
+          return mockUnsubscribe
+        }),
+      },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('切换来源时清空上一来源的残留进度，避免展示错误来源的错误帧', () => {
+    // hcomic 同步报错后切到 jm，progress 必须被清空，不得保留 hcomic 的 error 帧
+    const { result, rerender } = renderHook(({ source }) => useFavouriteTagsProgress(source), {
+      initialProps: { source: 'hcomic' },
+    })
+
+    // 模拟后端推送 hcomic 的 error 进度
+    act(() => {
+      subscribedCallback!({ source: 'hcomic', phase: 'error', current: 0, total: 1, message: '未登录' })
+    })
+    expect(result.current.progress?.phase).toBe('error')
+    expect(result.current.progress?.source).toBe('hcomic')
+
+    // 切换到 jm：source 变化触发 effect 重跑，必须清空旧进度
+    rerender({ source: 'jm' })
+
+    // 关键不变量：切到 jm 后 progress 必须为 null，禁止残留 hcomic 的错误帧
+    expect(result.current.progress).toBeNull()
+  })
+
+  it('仅接受匹配当前来源的进度事件', () => {
+    const { result } = renderHook(() => useFavouriteTagsProgress('hcomic'))
+
+    // 推送 jm 来源的事件，必须被忽略（不写入 hcomic 的 progress）
+    act(() => {
+      subscribedCallback!({ source: 'jm', phase: 'fetching', current: 1, total: 5 })
+    })
+    expect(result.current.progress).toBeNull()
+
+    // 推送 hcomic 来源的事件，必须被接受
+    act(() => {
+      subscribedCallback!({ source: 'hcomic', phase: 'fetching', current: 2, total: 5 })
+    })
+    expect(result.current.progress?.source).toBe('hcomic')
+    expect(result.current.progress?.current).toBe(2)
   })
 })
