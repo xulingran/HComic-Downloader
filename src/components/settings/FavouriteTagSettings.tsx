@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
-import { TAG_RECOMMENDATION_SOURCES, SOURCE_LABELS } from '@shared/types'
-import { useFavouriteTags } from '../../hooks/useIpc'
+import { useState, useEffect, useCallback, useMemo } from 'react'
+import { TAG_RECOMMENDATION_SOURCES, SOURCE_LABELS, FavouriteTagsProgressEvent } from '@shared/types'
+import { useFavouriteTags, useFavouriteTagsProgress } from '../../hooks/useIpc'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { normalizeSourceKey } from '../../utils/source'
 
@@ -22,17 +22,25 @@ export function FavouriteTagSettings() {
   const [detectedTags, setDetectedTags] = useState<TagItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
-  const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [syncedCount, setSyncedCount] = useState<number | null>(null)
   const [showAllDetected, setShowAllDetected] = useState(false)
   const [manualInput, setManualInput] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
-  const [opToast, setOpToast] = useState<string | null>(null)
+  // 标签操作提示：message 与 visible 拆分，由 effect 持有定时器并 cleanup，
+  // 避免组件卸载后 setState（与 ComicInfoDrawer 的 toast 模式一致）。
+  const [opToastMessage, setOpToastMessage] = useState('')
+  const [showOpToast, setShowOpToast] = useState(false)
 
   const sourceKey = normalizeSourceKey(source)
   const myTagList = myTags[sourceKey] ?? []
   const blacklistSet = new Set(tagBlacklist[sourceKey].map(t => t.toLowerCase()))
   const myTagSet = new Set(myTagList.map(t => t.toLowerCase()))
+
+  // 同步进度按来源订阅，避免不同来源切换时串显示；
+  // 同步未进行时 progress 用于在按钮旁展示上一帧完成/错误状态。
+  const { progress: syncProgress, clear: clearSyncProgress } = useFavouriteTagsProgress(source)
+
+  const syncLabel = useMemo(() => formatSyncLabel(syncProgress), [syncProgress])
 
   const loadDetectedTags = useCallback(async () => {
     setIsLoading(true)
@@ -54,24 +62,29 @@ export function FavouriteTagSettings() {
   const handleSync = async () => {
     setIsSyncing(true)
     setSyncedCount(null)
-    setSyncProgress('正在同步...')
+    clearSyncProgress()
     try {
       const result = await syncFavouriteTags(source)
       setSyncedCount(result.totalComics)
       setDetectedTags(result.tags)
-      setSyncProgress(null)
     } catch {
       setSyncedCount(null)
-      setSyncProgress(null)
     } finally {
       setIsSyncing(false)
     }
   }
 
+  // showToast 仅翻转 visible 与刷新文案；定时器由下方 effect 持有并在卸载/重触发时 cleanup。
   const showToast = (msg: string) => {
-    setOpToast(msg)
-    setTimeout(() => setOpToast(null), 2500)
+    setOpToastMessage(msg)
+    setShowOpToast(true)
   }
+
+  useEffect(() => {
+    if (!showOpToast) return
+    const timer = setTimeout(() => setShowOpToast(false), 2500)
+    return () => clearTimeout(timer)
+  }, [showOpToast])
 
   const handleAddManual = () => {
     const trimmed = manualInput.trim()
@@ -251,12 +264,15 @@ export function FavouriteTagSettings() {
             className="px-3 py-1 rounded-lg bg-[var(--accent)]/10 text-[var(--accent)] text-xs
                        disabled:opacity-50 hover:bg-[var(--accent)]/20 transition-colors"
           >
-            {isSyncing ? (syncProgress ?? '同步中...') : '从收藏夹同步'}
+            {isSyncing ? (syncLabel ?? '同步中...') : '从收藏夹同步'}
           </button>
         </div>
         <p className="text-xs text-[var(--text-secondary)]">
           基于收藏夹漫画统计的高频标签，点击挑选加入推荐。
           {syncedCount !== null && <span className="ml-1">已同步 {syncedCount} 本漫画。</span>}
+          {!isSyncing && syncProgress?.phase === 'error' && syncProgress.message && (
+            <span className="ml-1 text-[var(--error)]">同步出错：{syncProgress.message}</span>
+          )}
         </p>
         {isLoading ? (
           <p className="text-sm text-[var(--text-secondary)] py-4 text-center">加载中...</p>
@@ -267,27 +283,17 @@ export function FavouriteTagSettings() {
         ) : (
           <>
             <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto content-start">
-              {detectedTags.slice(0, 10).map(({ tag, count }) => {
-                const picked = myTagSet.has(tag.toLowerCase())
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => picked ? handleRemoveMyTag(tag) : handlePickDetected(tag)}
-                    disabled={!picked && blacklistSet.has(tag.toLowerCase())}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                      picked
-                        ? 'bg-amber-500/15 text-amber-600/60 cursor-pointer opacity-60'
-                        : blacklistSet.has(tag.toLowerCase())
-                          ? 'bg-[var(--error)]/5 text-[var(--text-secondary)]/40 cursor-not-allowed line-through'
-                          : 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 cursor-pointer'
-                    }`}
-                    title={picked ? '已加入推荐，点击移除' : blacklistSet.has(tag.toLowerCase()) ? '该标签已被屏蔽' : '点击加入推荐'}
-                  >
-                    {picked && '✓ '}{tag}
-                    <span className="text-xs opacity-60">({count})</span>
-                  </button>
-                )
-              })}
+              {detectedTags.slice(0, 10).map(({ tag, count }) => (
+                <DetectedTagChip
+                  key={tag}
+                  tag={tag}
+                  count={count}
+                  picked={myTagSet.has(tag.toLowerCase())}
+                  blacklisted={blacklistSet.has(tag.toLowerCase())}
+                  onPick={handlePickDetected}
+                  onRemove={handleRemoveMyTag}
+                />
+              ))}
             </div>
             {detectedTags.length > 10 && (
               <button
@@ -320,38 +326,87 @@ export function FavouriteTagSettings() {
               </button>
             </div>
             <div className="flex flex-wrap gap-2 max-h-[60vh] overflow-y-auto content-start">
-              {detectedTags.map(({ tag, count }) => {
-                const picked = myTagSet.has(tag.toLowerCase())
-                return (
-                  <button
-                    key={tag}
-                    onClick={() => picked ? handleRemoveMyTag(tag) : handlePickDetected(tag)}
-                    disabled={!picked && blacklistSet.has(tag.toLowerCase())}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
-                      picked
-                        ? 'bg-amber-500/15 text-amber-600/60 cursor-pointer opacity-60'
-                        : blacklistSet.has(tag.toLowerCase())
-                          ? 'bg-[var(--error)]/5 text-[var(--text-secondary)]/40 cursor-not-allowed line-through'
-                          : 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 cursor-pointer'
-                    }`}
-                    title={picked ? '已加入推荐，点击移除' : blacklistSet.has(tag.toLowerCase()) ? '该标签已被屏蔽' : '点击加入推荐'}
-                  >
-                    {picked && '✓ '}{tag}
-                    <span className="text-xs opacity-60">({count})</span>
-                  </button>
-                )
-              })}
+              {detectedTags.map(({ tag, count }) => (
+                <DetectedTagChip
+                  key={tag}
+                  tag={tag}
+                  count={count}
+                  picked={myTagSet.has(tag.toLowerCase())}
+                  blacklisted={blacklistSet.has(tag.toLowerCase())}
+                  onPick={handlePickDetected}
+                  onRemove={handleRemoveMyTag}
+                />
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {opToast && (
+      {showOpToast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg
                         bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-sm shadow-lg border border-[var(--border)]">
-          {opToast}
+          {opToastMessage}
         </div>
       )}
     </div>
   )
+}
+
+/**
+ * 检测标签三态 chip：已选（点击移除）/ 已屏蔽（禁用）/ 可选（点击加入推荐）。
+ * inline slice(0,10) 区与「全部检测标签」弹窗共用，消除两处渲染重复。
+ * 根元素必须为 <button>（测试通过 closest('button') 定位）；保留 disabled + line-through + ✓ 标记。
+ */
+interface DetectedTagChipProps {
+  tag: string
+  count: number
+  picked: boolean
+  blacklisted: boolean
+  onPick: (tag: string) => void
+  onRemove: (tag: string) => void
+}
+
+function DetectedTagChip({ tag, count, picked, blacklisted, onPick, onRemove }: DetectedTagChipProps) {
+  return (
+    <button
+      key={tag}
+      onClick={() => (picked ? onRemove(tag) : onPick(tag))}
+      disabled={!picked && blacklisted}
+      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
+        picked
+          ? 'bg-amber-500/15 text-amber-600/60 cursor-pointer opacity-60'
+          : blacklisted
+            ? 'bg-[var(--error)]/5 text-[var(--text-secondary)]/40 cursor-not-allowed line-through'
+            : 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 cursor-pointer'
+      }`}
+      title={picked ? '已加入推荐，点击移除' : blacklisted ? '该标签已被屏蔽' : '点击加入推荐'}
+    >
+      {picked && '✓ '}{tag}
+      <span className="text-xs opacity-60">({count})</span>
+    </button>
+  )
+}
+
+/** 根据同步进度阶段生成按钮文案，返回 null 表示使用兜底「同步中...」。 */
+function formatSyncLabel(progress: FavouriteTagsProgressEvent | null): string | null {
+  if (!progress) return null
+  switch (progress.phase) {
+    case 'fetching': {
+      const totalPages = progress.totalPages ?? progress.total
+      const page = progress.currentPage ?? progress.current
+      const comicsSuffix = progress.totalComics != null ? `，已扫描 ${progress.totalComics} 本` : ''
+      return totalPages > 0 ? `同步收藏夹 ${page}/${totalPages} 页${comicsSuffix}` : '同步收藏夹...'
+    }
+    case 'enriching': {
+      const total = progress.total
+      const current = progress.current
+      return total > 0 ? `补全标签 ${current}/${total}` : '补全标签...'
+    }
+    case 'completed':
+      return '同步完成'
+    case 'error':
+      return '同步出错'
+    default:
+      return null
+  }
 }

@@ -10,6 +10,23 @@ import { drawerPresenceVariants, overlayPresenceVariants, reduceSafe, tagListVar
 import { isAuthError } from '../utils/auth'
 import { normalizeSourceKey, sourceSupportsFavourites, sourceSupportsTagRecommendation, sourceNeedsDetailEnrich } from '../utils/source'
 
+// 标签操作四态：block/unblock（屏蔽）/favourite/unfavourite（推荐）。
+// favourite 分支弹窗内还会派生 block 作为次级操作。
+type TagConfirmAction = 'block' | 'unblock' | 'favourite' | 'unfavourite'
+
+// 单操作确认弹窗配置：unfavourite / unblock 两态结构同构，仅文案与执行 action 不同，
+// 用配置表驱动避免两段几乎相同的 JSX。favourite 分支（双操作选择器）结构不同，不在此表内。
+const SINGLE_CONFIRM_LAYOUT: Record<'unfavourite' | 'unblock', { desc: string; confirmLabel: string }> = {
+  unfavourite: {
+    desc: '该标签已是推荐标签。取消后将不再高亮命中该标签的漫画。',
+    confirmLabel: '取消推荐',
+  },
+  unblock: {
+    desc: '该标签已被屏蔽。取消后包含该标签的漫画将恢复显示。',
+    confirmLabel: '取消屏蔽',
+  },
+}
+
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
   const { tagBlacklist, myTags, favouriteTagHighlight, addTag, removeTag, addMyTag, removeMyTag } = useSettingsStore()
@@ -21,7 +38,7 @@ export function ComicInfoDrawer() {
   // Toast 在 AnimatePresence 之外（避免 Drawer 关闭时 Toast 被 unmount）。
   const reduceMotion = useReducedMotionPreference()
   const drawerVariants = reduceMotion ? reduceSafe(drawerPresenceVariants) : drawerPresenceVariants
-  const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' | 'favourite' | 'unfavourite' } | null>(null)
+  const [confirmTag, setConfirmTag] = useState<{ tag: string; action: TagConfirmAction } | null>(null)
   const [favouritesState, setFavouritesState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [favToastMessage, setFavToastMessage] = useState('')
   const [showFavToast, setShowFavToast] = useState(false)
@@ -173,27 +190,30 @@ export function ComicInfoDrawer() {
   }, [])
 
   // 执行标签操作（加入/取消 推荐 或 屏蔽），处理互斥冲突的可见反馈。
-  // addTag/addMyTag 返回 false 表示冲突（已是对立面）或重复，据此提示用户。
-  const handleConfirmTagAction = (tag: string, action: 'block' | 'unblock' | 'favourite' | 'unfavourite') => {
-    if (action === 'block') {
-      const ok = addTag(comicSource, tag)
-      if (!ok) {
+  // action → handler 映射：写入型（block/favourite）失败返回 false 并自行设置冲突 toast；
+  // 移除型（unblock/unfavourite）无返回值。返回 false 时保留弹窗等用户处理冲突。
+  const tagActionHandlers: Record<TagConfirmAction, (tag: string) => boolean | void> = {
+    block: (tag) => {
+      if (!addTag(comicSource, tag)) {
         setTagOpToastMessage(`无法屏蔽：该标签已是推荐标签，请先取消推荐`)
         setShowTagOpToast(true)
-        return
+        return false
       }
-    } else if (action === 'unblock') {
-      removeTag(comicSource, tag)
-    } else if (action === 'favourite') {
-      const ok = addMyTag(comicSource, tag)
-      if (!ok) {
+    },
+    favourite: (tag) => {
+      if (!addMyTag(comicSource, tag)) {
         setTagOpToastMessage(`无法加入推荐：该标签已被屏蔽，请先取消屏蔽`)
         setShowTagOpToast(true)
-        return
+        return false
       }
-    } else if (action === 'unfavourite') {
-      removeMyTag(comicSource, tag)
-    }
+    },
+    unblock: (tag) => removeTag(comicSource, tag),
+    unfavourite: (tag) => removeMyTag(comicSource, tag),
+  }
+
+  const handleConfirmTagAction = (tag: string, action: TagConfirmAction) => {
+    const ok = tagActionHandlers[action](tag)
+    if (ok === false) return
     setConfirmTag(null)
   }
 
@@ -588,49 +608,34 @@ export function ComicInfoDrawer() {
                   </button>
                 </div>
               </>
-            ) : confirmTag.action === 'unfavourite' ? (
-              // 已推荐态：提供「取消推荐」
-              <>
-                <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  该标签已是推荐标签。取消后将不再高亮命中该标签的漫画。
-                </p>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setConfirmTag(null)}
-                    className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={() => handleConfirmTagAction(confirmTag.tag, 'unfavourite')}
-                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                  >
-                    取消推荐
-                  </button>
-                </div>
-              </>
-            ) : confirmTag.action === 'unblock' ? (
-              // 已屏蔽态：提供「取消屏蔽」
-              <>
-                <p className="text-sm text-[var(--text-secondary)] mb-4">
-                  该标签已被屏蔽。取消后包含该标签的漫画将恢复显示。
-                </p>
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => setConfirmTag(null)}
-                    className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={() => handleConfirmTagAction(confirmTag.tag, 'unblock')}
-                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
-                  >
-                    取消屏蔽
-                  </button>
-                </div>
-              </>
-            ) : null}
+            ) : (
+              // 已推荐 / 已屏蔽态：配置驱动的单操作确认（unfavourite / unblock 结构同构）
+              // 控制流保证此处 action 只可能是 unfavourite / unblock（favourite 已被上一分支处理，
+              // block 仅作 favourite 分支内的次级按钮触发 handleConfirmTagAction，不进入此渲染路径）。
+              (() => {
+                const action = confirmTag.action as 'unfavourite' | 'unblock'
+                const layout = SINGLE_CONFIRM_LAYOUT[action]
+                return (
+                  <>
+                    <p className="text-sm text-[var(--text-secondary)] mb-4">{layout.desc}</p>
+                    <div className="flex justify-end gap-2">
+                      <button
+                        onClick={() => setConfirmTag(null)}
+                        className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+                      >
+                        取消
+                      </button>
+                      <button
+                        onClick={() => handleConfirmTagAction(confirmTag.tag, action)}
+                        className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                      >
+                        {layout.confirmLabel}
+                      </button>
+                    </div>
+                  </>
+                )
+              })()
+            )}
             {/* 兜底关闭按钮（所有态通用） */}
             <div className="flex justify-end mt-4">
               <button

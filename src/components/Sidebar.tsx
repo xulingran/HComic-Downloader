@@ -18,16 +18,42 @@ const menuItems = [
   { id: 'about', label: '关于', icon: 'ℹ️' }
 ]
 
+// 纯数据 variants（仅依赖 DURATION.base），提至模块级避免每次渲染重建。
+const labelVariants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1, transition: { duration: DURATION.base } },
+  exit: { opacity: 0, transition: { duration: DURATION.base } },
+}
+
+/**
+ * 展开态菜单项 / toggle 按钮共用的标签渲染。
+ * reduceMotion 下退化为纯 span 瞬时显示；否则用 AnimatePresence 驱动淡入淡出。
+ * 消费 ui-animation 既有契约（DURATION + variants）。
+ */
+function SidebarLabel({ children }: { children: React.ReactNode }) {
+  const reduceMotion = useReducedMotionPreference()
+  if (reduceMotion) {
+    return <span className="text-sm whitespace-nowrap">{children}</span>
+  }
+  return (
+    <AnimatePresence>
+      <motion.span
+        key="sidebar-label"
+        variants={labelVariants}
+        initial="initial"
+        animate="animate"
+        exit="exit"
+        className="text-sm whitespace-nowrap"
+      >
+        {children}
+      </motion.span>
+    </AnimatePresence>
+  )
+}
+
 export function Sidebar({ activePage, onPageChange }: SidebarProps) {
   const isOpen = useSidebarStore((s) => s.isOpen)
   const toggle = useSidebarStore((s) => s.toggle)
-  const reduceMotion = useReducedMotionPreference()
-
-  const labelVariants = {
-    initial: { opacity: 0 },
-    animate: { opacity: 1, transition: { duration: DURATION.base } },
-    exit: { opacity: 0, transition: { duration: DURATION.base } },
-  }
 
   return (
     <div
@@ -57,24 +83,7 @@ export function Sidebar({ activePage, onPageChange }: SidebarProps) {
             title={isOpen ? undefined : item.label}
           >
             <span className="flex-shrink-0">{item.icon}</span>
-            {isOpen && (
-              reduceMotion
-                ? <span className="text-sm whitespace-nowrap">{item.label}</span>
-                : (
-                  <AnimatePresence>
-                    <motion.span
-                      key="label"
-                      variants={labelVariants}
-                      initial="initial"
-                      animate="animate"
-                      exit="exit"
-                      className="text-sm whitespace-nowrap"
-                    >
-                      {item.label}
-                    </motion.span>
-                  </AnimatePresence>
-                )
-            )}
+            {isOpen && <SidebarLabel>{item.label}</SidebarLabel>}
           </button>
         )
       })}
@@ -91,24 +100,7 @@ export function Sidebar({ activePage, onPageChange }: SidebarProps) {
         aria-label={isOpen ? '收起侧边栏' : '展开侧边栏'}
       >
         <span className="flex-shrink-0">{isOpen ? '«' : '»'}</span>
-        {isOpen && (
-          reduceMotion
-            ? <span className="text-sm whitespace-nowrap">收起</span>
-            : (
-              <AnimatePresence>
-                <motion.span
-                  key="toggle-label"
-                  variants={labelVariants}
-                  initial="initial"
-                  animate="animate"
-                  exit="exit"
-                  className="text-sm whitespace-nowrap"
-                >
-                  收起
-                </motion.span>
-              </AnimatePresence>
-            )
-        )}
+        {isOpen && <SidebarLabel>收起</SidebarLabel>}
       </button>
     </div>
   )

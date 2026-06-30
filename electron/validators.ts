@@ -195,30 +195,35 @@ export function absolutePath(): Validator<string> {
   )
 }
 
-// ── Tag blacklist validator ──────────────────────────────────────────────
+// ── Tag list validators (tagBlacklist / myTags) ──────────────────────────
+// tagBlacklist（屏蔽）与 myTags（推荐）数据结构同构（{ [source]: string[] }），
+// 校验规则完全一致：5 来源对象、每来源字符串数组、去重、长度/数量限制。
+// 仅错误消息前缀不同——label 用字面量联合类型，避免拼写错误导致消息分叉。
 
-export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] }> {
-  return (value): value is { hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] } => {
+type TagListConfig = { hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] }
+
+function tagListValidator(label: 'tagBlacklist' | 'myTags'): Validator<TagListConfig> {
+  return (value): value is TagListConfig => {
     if (typeof value !== 'object' || value === null) {
-      throw new ValidationError('tagBlacklist must be an object')
+      throw new ValidationError(`${label} must be an object`)
     }
     const obj = value as Record<string, unknown>
     for (const key of ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga']) {
       const arr = obj[key]
       if (!Array.isArray(arr)) {
-        throw new ValidationError(`tagBlacklist.${key} must be an array`)
+        throw new ValidationError(`${label}.${key} must be an array`)
       }
       if (arr.length > 500) {
-        throw new ValidationError(`tagBlacklist.${key} must not exceed 500 items`)
+        throw new ValidationError(`${label}.${key} must not exceed 500 items`)
       }
       const seen = new Set<string>()
       for (const item of arr) {
         if (typeof item !== 'string' || item.length === 0 || item.length > 64) {
-          throw new ValidationError(`tagBlacklist.${key} items must be non-empty strings, max 64 chars`)
+          throw new ValidationError(`${label}.${key} items must be non-empty strings, max 64 chars`)
         }
         const lower = item.toLowerCase()
         if (seen.has(lower)) {
-          throw new ValidationError(`tagBlacklist.${key} contains duplicate: ${item}`)
+          throw new ValidationError(`${label}.${key} contains duplicate: ${item}`)
         }
         seen.add(lower)
       }
@@ -227,38 +232,14 @@ export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[]; 
   }
 }
 
-// ── My tags (推荐标签) validator ─────────────────────────────────────────
-// 对称 tagBlacklist：my_tags 是用户主动收藏的「推荐标签」白名单，结构与校验
-// 规则完全一致（5 来源对象、每来源字符串数组、去重、长度/数量限制）。
+/** tagBlacklist 校验：用户屏蔽的标签，命中则从搜索结果隐藏。 */
+export function tagBlacklist(): Validator<TagListConfig> {
+  return tagListValidator('tagBlacklist')
+}
 
-export function myTags(): Validator<{ hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] }> {
-  return (value): value is { hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] } => {
-    if (typeof value !== 'object' || value === null) {
-      throw new ValidationError('myTags must be an object')
-    }
-    const obj = value as Record<string, unknown>
-    for (const key of ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga']) {
-      const arr = obj[key]
-      if (!Array.isArray(arr)) {
-        throw new ValidationError(`myTags.${key} must be an array`)
-      }
-      if (arr.length > 500) {
-        throw new ValidationError(`myTags.${key} must not exceed 500 items`)
-      }
-      const seen = new Set<string>()
-      for (const item of arr) {
-        if (typeof item !== 'string' || item.length === 0 || item.length > 64) {
-          throw new ValidationError(`myTags.${key} items must be non-empty strings, max 64 chars`)
-        }
-        const lower = item.toLowerCase()
-        if (seen.has(lower)) {
-          throw new ValidationError(`myTags.${key} contains duplicate: ${item}`)
-        }
-        seen.add(lower)
-      }
-    }
-    return true
-  }
+/** myTags 校验：用户主动收藏的「推荐标签」白名单，命中则高亮。对称 tagBlacklist。 */
+export function myTags(): Validator<TagListConfig> {
+  return tagListValidator('myTags')
 }
 
 /**
