@@ -36,7 +36,8 @@ vi.mock('@/hooks/useIpc', () => ({
   useFavouriteTags: vi.fn().mockReturnValue({
     getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
     clearFavouriteTags: vi.fn(),
-    removeFavouriteTag: vi.fn()
+    removeFavouriteTag: vi.fn(),
+    syncFavouriteTags: vi.fn().mockResolvedValue({ tags: [], totalComics: 0 }),
   }),
 }))
 
@@ -65,14 +66,19 @@ vi.mock('@/stores/useSettingsStore', () => ({
     sfwMode: false,
     defaultFavouriteSource: '',
     tagBlacklist: { hcomic: [], moeimg: [] },
+    myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
     setThemeMode: mockSetThemeMode,
     setCardStyle: mockSetCardStyle,
     setSfwMode: mockSetSfwMode,
     setDefaultFavouriteSource: mockSetDefaultFavouriteSource,
     addTag: vi.fn(),
     removeTag: vi.fn(),
+    addMyTag: vi.fn(() => true),
+    removeMyTag: vi.fn(),
     favouriteTagHighlight: false,
+    favouriteTagMinMatches: 1,
     setFavouriteTagHighlight: vi.fn(),
+    setFavouriteTagMinMatches: vi.fn(),
   }))
 }))
 

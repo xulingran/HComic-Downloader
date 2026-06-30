@@ -102,7 +102,17 @@ vi.mock('@/stores/useDownloadStore', () => ({
 }))
 
 vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: vi.fn().mockReturnValue({ cardStyle: 'cover', sfwMode: false, tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] }, filterEnabled: true, setFilterEnabled: vi.fn(), favouriteTagHighlight: false, setFavouriteTagHighlight: vi.fn() })
+  useSettingsStore: vi.fn().mockReturnValue({
+    cardStyle: 'cover',
+    sfwMode: false,
+    tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+    myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+    filterEnabled: true,
+    setFilterEnabled: vi.fn(),
+    favouriteTagHighlight: false,
+    favouriteTagMinMatches: 1,
+    setFavouriteTagHighlight: vi.fn(),
+  })
 }))
 
 const { mockSearchCacheStore } = vi.hoisted(() => {
@@ -841,13 +851,13 @@ describe('SearchPage', () => {
   })
 
   describe('推荐标签高亮编排', () => {
-    const favTagsPayload = (tags: string[]) => ({ tags: tags.map(t => ({ tag: t, count: 1 })) })
-
-    // 返回一个完整 enabled 的 settings store mock，可局部覆盖
+    // 返回一个完整 enabled 的 settings store mock，可局部覆盖。
+    // 新逻辑：高亮数据源为 my_tags（用户主动确认），不再读 favourite_tag_index。
     const enabledSettings = (overrides: Record<string, unknown> = {}) => ({
       cardStyle: 'cover',
       sfwMode: false,
       tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
       filterEnabled: true,
       setFilterEnabled: vi.fn(),
       favouriteTagHighlight: true,
@@ -866,118 +876,101 @@ describe('SearchPage', () => {
       }))
 
     beforeEach(() => {
-      mockUseFavouriteTags.mockReset()
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: vi.fn().mockResolvedValue({ tags: [] }),
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
       vi.mocked(useSettingsStore).mockReturnValue(enabledSettings())
     })
 
-    it('命中推荐标签的漫画被高亮', async () => {
-      const mockGetFavTags = vi.fn().mockResolvedValue(favTagsPayload(['NTR']))
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: mockGetFavTags,
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
+    it('命中 my_tags 的漫画被高亮', () => {
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        myTags: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
       mockStoreState.comics = [
         { id: '1', title: '命中', url: '', coverUrl: '', source: 'hcomic', tags: ['NTR'] },
         { id: '2', title: '未命中', url: '', coverUrl: '', source: 'hcomic', tags: ['搞笑'] },
       ]
 
       render(<SearchPage />)
-      await waitFor(() => expect(mockGetFavTags).toHaveBeenCalledWith('hcomic'))
 
       const states = collectCardStates()
       expect(states).toContainEqual(expect.objectContaining({ id: '1', isRecommended: true }))
       expect(states).toContainEqual(expect.objectContaining({ id: '2', isRecommended: false }))
     })
 
-    it('favouriteTagHighlight 关闭时不高亮且不请求标签', () => {
-      const mockGetFavTags = vi.fn()
-      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({ favouriteTagHighlight: false }))
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: mockGetFavTags,
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
+    it('my_tags 为空时即使开关开启也不高亮', () => {
+      // my_tags 初始为空（升级后空启动场景）， favourite_tag_index 有数据但不生效
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
       mockStoreState.comics = [
         { id: '1', title: '命中', url: '', coverUrl: '', source: 'hcomic', tags: ['NTR'] },
       ]
 
       render(<SearchPage />)
 
-      expect(mockGetFavTags).not.toHaveBeenCalled()
       const states = collectCardStates()
       expect(states[0].isRecommended).toBe(false)
       expect(states[0].recTags).toBe('')
     })
 
-    it('最小命中数阈值：未达标的漫画不高亮', async () => {
-      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({ favouriteTagMinMatches: 2 }))
-      const mockGetFavTags = vi.fn().mockResolvedValue(favTagsPayload(['NTR', '魔法少女']))
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: mockGetFavTags,
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
+    it('favouriteTagHighlight 关闭时即使 my_tags 非空也不高亮', () => {
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        favouriteTagHighlight: false,
+        myTags: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
+      mockStoreState.comics = [
+        { id: '1', title: '命中', url: '', coverUrl: '', source: 'hcomic', tags: ['NTR'] },
+      ]
+
+      render(<SearchPage />)
+
+      const states = collectCardStates()
+      expect(states[0].isRecommended).toBe(false)
+      expect(states[0].recTags).toBe('')
+    })
+
+    it('最小命中数阈值：未达标的漫画不高亮', () => {
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        favouriteTagMinMatches: 2,
+        myTags: { hcomic: ['NTR', '魔法少女'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
       mockStoreState.comics = [
         { id: '1', title: '命中2', url: '', coverUrl: '', source: 'hcomic', tags: ['NTR', '魔法少女'] },
         { id: '2', title: '仅命中1', url: '', coverUrl: '', source: 'hcomic', tags: ['NTR'] },
       ]
 
       render(<SearchPage />)
-      await waitFor(() => expect(mockGetFavTags).toHaveBeenCalled())
 
       const states = collectCardStates()
       expect(states).toContainEqual(expect.objectContaining({ id: '1', isRecommended: true }))
       expect(states).toContainEqual(expect.objectContaining({ id: '2', isRecommended: false }))
     })
 
-    it('仅取前 10 个收藏标签参与推荐', async () => {
-      const tags11 = Array.from({ length: 11 }, (_, i) => `tag${i}`)
-      const mockGetFavTags = vi.fn().mockResolvedValue(favTagsPayload(tags11))
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: mockGetFavTags,
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
-      // 仅命中第 11 个标签（被截断，不在前 10），不应高亮
+    it('my_tags 全部参与推荐（无前 10 截断，区别于旧版 favourite_tag_index）', () => {
+      const tags15 = Array.from({ length: 15 }, (_, i) => `tag${i}`)
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        myTags: { hcomic: tags15, moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
+      // 命中第 15 个标签（旧版会被前 10 截断，新版应高亮）
       mockStoreState.comics = [
-        { id: '1', title: '命中前10', url: '', coverUrl: '', source: 'hcomic', tags: ['tag0'] },
-        { id: '2', title: '仅命中第11', url: '', coverUrl: '', source: 'hcomic', tags: ['tag10'] },
+        { id: '1', title: '命中第15', url: '', coverUrl: '', source: 'hcomic', tags: ['tag14'] },
       ]
 
       render(<SearchPage />)
-      await waitFor(() => expect(mockGetFavTags).toHaveBeenCalled())
 
       const states = collectCardStates()
-      const recSet = new Set(states[0].recTags.split(',').filter(Boolean))
-      expect(recSet.size).toBe(10)
-      expect(recSet.has('tag10')).toBe(false)
-      expect(states).toContainEqual(expect.objectContaining({ id: '1', isRecommended: true }))
-      expect(states).toContainEqual(expect.objectContaining({ id: '2', isRecommended: false }))
+      expect(states[0].isRecommended).toBe(true)
     })
 
-    it('被黑名单屏蔽的漫画不高亮', async () => {
+    it('被黑名单屏蔽的漫画不高亮', () => {
       vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
         filterEnabled: true,
         tagBlacklist: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+        myTags: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
       }))
-      const mockGetFavTags = vi.fn().mockResolvedValue(favTagsPayload(['NTR']))
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: mockGetFavTags,
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
       mockStoreState.comics = [
         { id: '1', title: '命中但被屏蔽', url: '', coverUrl: '', source: 'hcomic', tags: ['NTR'] },
       ]
 
       render(<SearchPage />)
-      await waitFor(() => expect(mockGetFavTags).toHaveBeenCalled())
 
       // 被屏蔽的漫画渲染为 BlockedPlaceholder，不渲染 comic-card
       expect(screen.queryAllByTestId('comic-card')).toHaveLength(0)
@@ -1031,7 +1024,7 @@ describe('SearchPage', () => {
       expect(screen.queryByText(/100\s*页/)).not.toBeInTheDocument()
     })
 
-    it('不支持标签推荐的来源（copymanga）不请求标签也不高亮', async () => {
+    it('不支持标签推荐的来源（copymanga）不高亮', async () => {
       // source 经 getConfig 设为 copymanga。setComics 是 no-op mock，故直接预置 comics
       // 作为渲染源；挂载 auth 分支需 verifyAuth 返回有效，mockSearch 返回同数据保持一致。
       mockGetConfig.mockResolvedValue({ config: { defaultSource: 'copymanga' } })
@@ -1043,38 +1036,28 @@ describe('SearchPage', () => {
       mockStoreState.comics = [
         { id: '1', title: 'copymanga漫画', url: '', coverUrl: '', source: 'copymanga', tags: ['NTR'] },
       ]
-      const mockGetFavTags = vi.fn().mockResolvedValue({ tags: [] })
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: mockGetFavTags,
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
+      // copymanga 的 my_tags 即使有值也不应高亮（sourceSupportsTagRecommendation 守卫）
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: ['NTR'], nh: [] },
+      }))
 
       render(<SearchPage />)
       await waitFor(() => expect(screen.getByText('copymanga漫画')).toBeInTheDocument(), { timeout: 2000 })
 
-      // 初始 source='hcomic' 时会调一次；source 切到 copymanga 后不再请求。
-      // 关键断言：从未对 copymanga 请求（sourceSupportsTagRecommendation 守卫生效）。
-      const calledSources = mockGetFavTags.mock.calls.map(c => c[0])
-      expect(calledSources).not.toContain('copymanga')
       const states = collectCardStates()
       expect(states[0].isRecommended).toBe(false)
       expect(states[0].recTags).toBe('')
     })
 
-    it('标签匹配不区分大小写', async () => {
-      const mockGetFavTags = vi.fn().mockResolvedValue(favTagsPayload(['NTR']))
-      mockUseFavouriteTags.mockReturnValue({
-        getFavouriteTags: mockGetFavTags,
-        clearFavouriteTags: vi.fn(),
-        removeFavouriteTag: vi.fn(),
-      })
+    it('标签匹配不区分大小写', () => {
+      vi.mocked(useSettingsStore).mockReturnValue(enabledSettings({
+        myTags: { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+      }))
       mockStoreState.comics = [
         { id: '1', title: '小写标签', url: '', coverUrl: '', source: 'hcomic', tags: ['ntr'] },
       ]
 
       render(<SearchPage />)
-      await waitFor(() => expect(mockGetFavTags).toHaveBeenCalled())
 
       const states = collectCardStates()
       expect(states[0].isRecommended).toBe(true)

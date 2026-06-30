@@ -39,6 +39,7 @@ import {
   assert,
   withOptionalSource,
   tagBlacklist as tagBlacklistValidator,
+  myTags as myTagsValidator,
   duplicateBlacklist as duplicateBlacklistValidator,
   missingBlacklist as missingBlacklistValidator,
 } from './validators'
@@ -245,6 +246,7 @@ const CONFIG_VALIDATORS: Record<string, Validator<unknown>> = {
   sfwMode: boolean(),
   cardStyle: and(string(), oneOf(['cover', 'detailed'] as const)),
   tagBlacklist: tagBlacklistValidator(),
+  myTags: myTagsValidator(),
   duplicateBlacklist: duplicateBlacklistValidator(),
   missingBlacklist: missingBlacklistValidator(),
   previewCacheSizeLimitMB: and(number(), integer(), range(100, 2048)),

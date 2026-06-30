@@ -22,23 +22,34 @@ vi.mock('@/utils/source', () => ({
   // 新 enrich 失败用例通过 vi.mocked(...).mockReturnValue(...) 覆盖为按来源返回。
   sourceNeedsDetailEnrich: vi.fn(() => false),
 }))
-vi.mock('@/stores/useSettingsStore', () => ({
-  useSettingsStore: () => ({
+// 可变 store mock：测试可修改 settingsState 来模拟不同标签状态（已屏蔽/已推荐/未设置）
+const mockAddTag = vi.fn(() => true)
+const mockRemoveTag = vi.fn()
+const mockAddMyTag = vi.fn(() => true)
+const mockRemoveMyTag = vi.fn()
+let settingsState: Record<string, unknown> = {}
+const resetSettingsState = () => {
+  settingsState = {
     tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
+    myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
     favouriteTagHighlight: false,
-    addTag: () => {},
-    removeTag: () => {},
-  }),
+    addTag: mockAddTag,
+    removeTag: mockRemoveTag,
+    addMyTag: mockAddMyTag,
+    removeMyTag: mockRemoveMyTag,
+  }
+}
+resetSettingsState()
+vi.mock('@/stores/useSettingsStore', () => ({
+  useSettingsStore: () => settingsState,
 }))
 const mockCheckFavourite = vi.fn().mockResolvedValue({ isFavourited: false })
 const mockGetComicDetail = vi.fn().mockResolvedValue({ comic: null })
-const mockGetFavouriteTags = vi.fn().mockResolvedValue({ tags: [] })
 vi.mock('@/hooks/useIpc', () => ({
   useAddToFavourites: () => ({ addToFavourites: () => Promise.resolve() }),
   useRemoveFromFavourites: () => ({ removeFromFavourites: () => Promise.resolve() }),
   useCheckFavourite: () => ({ checkFavourite: mockCheckFavourite }),
   useComicDetail: () => ({ getComicDetail: mockGetComicDetail }),
-  useFavouriteTags: () => ({ getFavouriteTags: mockGetFavouriteTags }),
 }))
 
 const { ComicInfoDrawer } = await import('@/components/ComicInfoDrawer')
@@ -76,6 +87,13 @@ const openDrawerWith = (comic: ComicInfo) => {
 beforeEach(() => {
   setPendingSearchSpy.mockClear()
   closeDrawerSpy.mockClear()
+  resetSettingsState()
+  mockAddTag.mockClear()
+  mockAddTag.mockReturnValue(true)
+  mockRemoveTag.mockClear()
+  mockAddMyTag.mockClear()
+  mockAddMyTag.mockReturnValue(true)
+  mockRemoveMyTag.mockClear()
 })
 
 afterEach(() => {
@@ -330,5 +348,105 @@ describe('ComicInfoDrawer - tag enrich 失败兜底', () => {
 
     expect(screen.queryByText('标签加载失败')).not.toBeInTheDocument()
     expect(screen.getByText('成功标签')).toBeInTheDocument()
+  })
+})
+
+describe('ComicInfoDrawer - 标签操作弹窗（推荐/屏蔽四态）', () => {
+  beforeEach(async () => {
+    openDrawerWith(comicWithTags)
+    await settle()
+  })
+
+  // 触发小按钮点击：tag chip 的小按钮在 group-hover 时显示，测试用 title 定位。
+  // 多个 tag chip 可能有相同 title，取第一个（对应 comicWithTags 的 'NTR'）。
+  const clickTagActionButton = async (user: ReturnType<typeof userEvent.setup>, title: string) => {
+    const btn = screen.getAllByTitle(title)[0]
+    await user.click(btn)
+  }
+
+  it('未设置标签：点击小按钮弹出「加入推荐 / 屏蔽」两个选项', async () => {
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '加入推荐 / 屏蔽')
+
+    expect(screen.getByText('★ 加入推荐标签')).toBeInTheDocument()
+    expect(screen.getByText('× 加入屏蔽标签')).toBeInTheDocument()
+  })
+
+  it('未设置标签：点击「加入推荐标签」调用 addMyTag', async () => {
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '加入推荐 / 屏蔽')
+    await user.click(screen.getByText('★ 加入推荐标签'))
+
+    expect(mockAddMyTag).toHaveBeenCalledWith('hcomic', 'NTR')
+  })
+
+  it('未设置标签：点击「加入屏蔽标签」调用 addTag', async () => {
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '加入推荐 / 屏蔽')
+    await user.click(screen.getByText('× 加入屏蔽标签'))
+
+    expect(mockAddTag).toHaveBeenCalledWith('hcomic', 'NTR')
+  })
+
+  it('已推荐标签：小按钮显示 ★，点击弹出「取消推荐」', async () => {
+    settingsState.myTags = { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [] }
+    settingsState.favouriteTagHighlight = true
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '取消推荐')
+
+    expect(screen.getByText(/该标签已是推荐标签/)).toBeInTheDocument()
+    await user.click(screen.getByText('取消推荐'))
+    expect(mockRemoveMyTag).toHaveBeenCalledWith('hcomic', 'NTR')
+  })
+
+  it('已屏蔽标签：小按钮显示 ✓，点击弹出「取消屏蔽」', async () => {
+    settingsState.tagBlacklist = { hcomic: ['NTR'], moeimg: [], jm: [], bika: [], copymanga: [] }
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '取消屏蔽')
+
+    expect(screen.getByText(/该标签已被屏蔽/)).toBeInTheDocument()
+    await user.click(screen.getByText('取消屏蔽'))
+    expect(mockRemoveTag).toHaveBeenCalledWith('hcomic', 'NTR')
+  })
+
+  it('加入推荐时与黑名单互斥冲突：addMyTag 返回 false 显示提示', async () => {
+    mockAddMyTag.mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '加入推荐 / 屏蔽')
+    await user.click(screen.getByText('★ 加入推荐标签'))
+
+    expect(mockAddMyTag).toHaveBeenCalledWith('hcomic', 'NTR')
+    expect(screen.getByText(/已被屏蔽，请先取消屏蔽/)).toBeInTheDocument()
+  })
+
+  it('加入屏蔽时与推荐互斥冲突：addTag 返回 false 显示提示', async () => {
+    mockAddTag.mockReturnValue(false)
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '加入推荐 / 屏蔽')
+    await user.click(screen.getByText('× 加入屏蔽标签'))
+
+    expect(mockAddTag).toHaveBeenCalledWith('hcomic', 'NTR')
+    expect(screen.getByText(/已是推荐标签，请先取消推荐/)).toBeInTheDocument()
   })
 })

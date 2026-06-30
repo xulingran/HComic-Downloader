@@ -227,6 +227,40 @@ export function tagBlacklist(): Validator<{ hcomic: string[]; moeimg: string[]; 
   }
 }
 
+// ── My tags (推荐标签) validator ─────────────────────────────────────────
+// 对称 tagBlacklist：my_tags 是用户主动收藏的「推荐标签」白名单，结构与校验
+// 规则完全一致（5 来源对象、每来源字符串数组、去重、长度/数量限制）。
+
+export function myTags(): Validator<{ hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] }> {
+  return (value): value is { hcomic: string[]; moeimg: string[]; jm: string[]; bika: string[]; copymanga: string[] } => {
+    if (typeof value !== 'object' || value === null) {
+      throw new ValidationError('myTags must be an object')
+    }
+    const obj = value as Record<string, unknown>
+    for (const key of ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga']) {
+      const arr = obj[key]
+      if (!Array.isArray(arr)) {
+        throw new ValidationError(`myTags.${key} must be an array`)
+      }
+      if (arr.length > 500) {
+        throw new ValidationError(`myTags.${key} must not exceed 500 items`)
+      }
+      const seen = new Set<string>()
+      for (const item of arr) {
+        if (typeof item !== 'string' || item.length === 0 || item.length > 64) {
+          throw new ValidationError(`myTags.${key} items must be non-empty strings, max 64 chars`)
+        }
+        const lower = item.toLowerCase()
+        if (seen.has(lower)) {
+          throw new ValidationError(`myTags.${key} contains duplicate: ${item}`)
+        }
+        seen.add(lower)
+      }
+    }
+    return true
+  }
+}
+
 /**
  * 黑名单校验工厂：duplicateBlacklist / missingBlacklist 数据结构同构
  * （{ [source]: { fingerprint, memberCount }[] }），校验规则完全一致，
