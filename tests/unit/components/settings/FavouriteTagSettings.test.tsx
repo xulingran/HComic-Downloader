@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 
@@ -263,4 +263,36 @@ describe('FavouriteTagSettings - 推荐标签 / 检测标签双区', () => {
     await waitFor(() => expect(screen.getByText('从收藏夹同步')).toBeInTheDocument())
     expect(screen.getByText(/同步出错：未登录/)).toBeInTheDocument()
   })
+
+  // --- P2 回归：连续 Toast 必须刷新超时，禁止第一条计时器提前关闭第二条 ---
+
+  it('连续两次操作 Toast：第二条不被第一条计时器提前关闭', async () => {
+    // 使用 fake timers 精确控制 2500ms 计时窗口，验证不变量而非具体时序细节。
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(<FavouriteTagSettings />)
+    await waitFor(() => expect(mockGetFavouriteTags).toHaveBeenCalled())
+
+    const input = screen.getByPlaceholderText('手动添加标签名（可添加 sync 未检测到的标签）')
+
+    // 第一条 toast
+    await user.type(input, '标签A{Enter}')
+    await waitFor(() => expect(screen.getByText('已加入推荐：标签A')).toBeInTheDocument())
+
+    // 第二条 toast（不同文案），紧随其后触发——连续场景
+    await user.type(input, '标签B{Enter}')
+    await waitFor(() => expect(screen.getByText('已加入推荐：标签B')).toBeInTheDocument())
+
+    // 关键不变量：推进到「第一条 toast 的原始 2500ms 计时器」触发点（即第一条触发后 2500ms）。
+    // 旧实现因 [showOpToast] effect 在 true→true 时不重跑、不重置计时器，第一条的定时器
+    // 会在 2500ms 后 setShowOpToast(false)，提前关闭尚未到期的第二条提示。
+    // 修复后第二条经 timer ref 独立计时，推进至此仍应可见——这是 P2 的核心回归点。
+    vi.advanceTimersByTime(2500)
+    expect(screen.getByText('已加入推荐：标签B')).toBeInTheDocument()
+  })
+})
+
+afterEach(() => {
+  // 复位 fake timers，避免泄漏到后续测试（test-discipline: 模块级/全局状态禁止跨测试泄漏）
+  vi.useRealTimers()
 })

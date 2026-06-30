@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { TAG_RECOMMENDATION_SOURCES, SOURCE_LABELS, FavouriteTagsProgressEvent } from '@shared/types'
 import { useFavouriteTags, useFavouriteTagsProgress } from '../../hooks/useIpc'
 import { useSettingsStore } from '../../stores/useSettingsStore'
@@ -26,10 +26,12 @@ export function FavouriteTagSettings() {
   const [showAllDetected, setShowAllDetected] = useState(false)
   const [manualInput, setManualInput] = useState('')
   const [inputError, setInputError] = useState<string | null>(null)
-  // 标签操作提示：message 与 visible 拆分，由 effect 持有定时器并 cleanup，
-  // 避免组件卸载后 setState（与 ComicInfoDrawer 的 toast 模式一致）。
+  // 标签操作提示：message 与 visible 拆分。
+  // 计时器由 timer ref 持有并在每次 showToast 时重置（连续触发不互相提前关闭），
+  // 卸载时 effect cleanup 清掉 ref，避免组件卸载后 setState（与 ComicInfoDrawer 的 toast 模式一致）。
   const [opToastMessage, setOpToastMessage] = useState('')
   const [showOpToast, setShowOpToast] = useState(false)
+  const opToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const sourceKey = normalizeSourceKey(source)
   const myTagList = myTags[sourceKey] ?? []
@@ -74,17 +76,21 @@ export function FavouriteTagSettings() {
     }
   }
 
-  // showToast 仅翻转 visible 与刷新文案；定时器由下方 effect 持有并在卸载/重触发时 cleanup。
+  // showToast 刷新文案并重置计时器：连续触发时先清旧 timer 再起 2500ms 新 timer，
+  // 确保第二条提示不被第一条的计时器提前关闭（旧实现依赖 [showOpToast] effect，
+  // 但 true→true 不重渲染、effect 不重跑，导致连续 toast 提前消失）。
   const showToast = (msg: string) => {
     setOpToastMessage(msg)
     setShowOpToast(true)
+    if (opToastTimerRef.current) clearTimeout(opToastTimerRef.current)
+    opToastTimerRef.current = setTimeout(() => setShowOpToast(false), 2500)
   }
 
   useEffect(() => {
-    if (!showOpToast) return
-    const timer = setTimeout(() => setShowOpToast(false), 2500)
-    return () => clearTimeout(timer)
-  }, [showOpToast])
+    return () => {
+      if (opToastTimerRef.current) clearTimeout(opToastTimerRef.current)
+    }
+  }, [])
 
   const handleAddManual = () => {
     const trimmed = manualInput.trim()

@@ -504,15 +504,32 @@ export function ComicInfoDrawer() {
                   const isRec = !blocked && recommendedTagSet.has(tag.toLowerCase())
                   const Wrapper = animate ? motion.span : 'span'
                   const wrapperProps = animate ? { variants: tagItemVariants } : {}
+                  // 来源能力门控：仅当 sourceSupportsTagRecommendation 为真时才暴露推荐动作。
+                  // 不支持推荐的来源（如 NH / copymanga）下，未设置态退化为「加入屏蔽」(block)，
+                  // 已屏蔽态仍为「取消屏蔽」(unblock)——禁止出现无法生效的 favourite 写入。
+                  const canRecommend = sourceSupportsTagRecommendation(comicSource)
                   // 小按钮状态：已屏蔽→取消屏蔽(✓)；已推荐→取消推荐(★)；未设置→添加(+)
-                  const btnAction = blocked ? 'unblock' : favourited ? 'unfavourite' : 'favourite'
-                  const btnIcon = blocked ? '✓' : favourited ? '★' : '+'
+                  // 不支持推荐来源的未设置态走 'block'（加入屏蔽），避开 favourite 假成功写入。
+                  const btnAction = blocked
+                    ? 'unblock'
+                    : favourited && canRecommend
+                      ? 'unfavourite'
+                      : canRecommend
+                        ? 'favourite'
+                        : 'block'
+                  const btnIcon = blocked ? '✓' : favourited && canRecommend ? '★' : '+'
                   const btnColor = blocked
                     ? 'bg-[var(--accent)] text-white'
-                    : favourited
+                    : favourited && canRecommend
                       ? 'bg-amber-500 text-white'
                       : 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
-                  const btnTitle = blocked ? '取消屏蔽' : favourited ? '取消推荐' : '加入推荐 / 屏蔽'
+                  const btnTitle = blocked
+                    ? '取消屏蔽'
+                    : favourited && canRecommend
+                      ? '取消推荐'
+                      : canRecommend
+                        ? '加入推荐 / 屏蔽'
+                        : '加入屏蔽'
                   return (
                     <Wrapper key={idx} className="relative group" {...wrapperProps}>
                       <button
@@ -586,7 +603,7 @@ export function ComicInfoDrawer() {
               标签「{confirmTag.tag}」
             </h3>
             {confirmTag.action === 'favourite' ? (
-              // 未设置态：提供「加入推荐」与「屏蔽」两个选项
+              // 未设置态（支持推荐的来源）：提供「加入推荐」与「屏蔽」两个选项
               <>
                 <p className="text-sm text-[var(--text-secondary)] mb-4">
                   选择对该标签的操作：
@@ -608,10 +625,33 @@ export function ComicInfoDrawer() {
                   </button>
                 </div>
               </>
+            ) : confirmTag.action === 'block' ? (
+              // 不支持推荐来源的未设置态：仅提供「加入屏蔽」单操作确认
+              // （该来源禁止 favourite，未设置态小按钮直接映射为 block 初始动作）
+              (() => (
+                <>
+                  <p className="text-sm text-[var(--text-secondary)] mb-4">
+                    将屏蔽标签「{confirmTag.tag}」，包含该标签的漫画将从搜索结果隐藏。
+                  </p>
+                  <div className="flex justify-end gap-2">
+                    <button
+                      onClick={() => setConfirmTag(null)}
+                      className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+                    >
+                      取消
+                    </button>
+                    <button
+                      onClick={() => handleConfirmTagAction(confirmTag.tag, 'block')}
+                      className="px-4 py-2 rounded-lg bg-[var(--error)] text-white hover:bg-[var(--error)]/80"
+                    >
+                      加入屏蔽
+                    </button>
+                  </div>
+                </>
+              ))()
             ) : (
               // 已推荐 / 已屏蔽态：配置驱动的单操作确认（unfavourite / unblock 结构同构）
-              // 控制流保证此处 action 只可能是 unfavourite / unblock（favourite 已被上一分支处理，
-              // block 仅作 favourite 分支内的次级按钮触发 handleConfirmTagAction，不进入此渲染路径）。
+              // 控制流保证此处 action 只可能是 unfavourite / unblock（favourite 与 block 已被前两分支处理）。
               (() => {
                 const action = confirmTag.action as 'unfavourite' | 'unblock'
                 const layout = SINGLE_CONFIRM_LAYOUT[action]

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useDrawerStore } from '@/stores/useDrawerStore'
-import { sourceNeedsDetailEnrich } from '@/utils/source'
+import { sourceNeedsDetailEnrich, sourceSupportsTagRecommendation } from '@/utils/source'
 import type { ComicInfo } from '@shared/types'
 
 // --- Mocks（必须用 @/ 别名，相对路径 mock 会失效导致真实模块加载、jsdom 下渲染循环 OOM）---
@@ -17,7 +17,9 @@ vi.mock('@/utils/auth', () => ({
 vi.mock('@/utils/source', () => ({
   normalizeSourceKey: (s: string) => s,
   sourceSupportsFavourites: () => false,
-  sourceSupportsTagRecommendation: () => false,
+  // 默认 true：hcomic/moeimg/jm/bika 真实均支持推荐，让既有 hcomic 用例保留推荐入口行为。
+  // 新增 NH 门控用例通过 vi.mocked(...).mockReturnValue(false) 覆盖为不支持来源。
+  sourceSupportsTagRecommendation: vi.fn(() => true),
   // 默认返回 false（保持现有用例行为：hcomic + 有 tags 不触发 enrich）。
   // 新 enrich 失败用例通过 vi.mocked(...).mockReturnValue(...) 覆盖为按来源返回。
   sourceNeedsDetailEnrich: vi.fn(() => false),
@@ -30,8 +32,8 @@ const mockRemoveMyTag = vi.fn()
 let settingsState: Record<string, unknown> = {}
 const resetSettingsState = () => {
   settingsState = {
-    tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
-    myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [] },
+    tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+    myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
     favouriteTagHighlight: false,
     addTag: mockAddTag,
     removeTag: mockRemoveTag,
@@ -94,6 +96,9 @@ beforeEach(() => {
   mockAddMyTag.mockClear()
   mockAddMyTag.mockReturnValue(true)
   mockRemoveMyTag.mockClear()
+  // 重置来源能力 mock 为默认（支持推荐），防止上一用例 mockReturnValue(false) 泄漏
+  vi.mocked(sourceSupportsTagRecommendation).mockReturnValue(true)
+  vi.mocked(sourceNeedsDetailEnrich).mockReturnValue(false)
 })
 
 afterEach(() => {
@@ -448,5 +453,61 @@ describe('ComicInfoDrawer - 标签操作弹窗（推荐/屏蔽四态）', () => 
 
     expect(mockAddTag).toHaveBeenCalledWith('hcomic', 'NTR')
     expect(screen.getByText(/已是推荐标签，请先取消推荐/)).toBeInTheDocument()
+  })
+
+  // --- P1 回归：不支持推荐的来源（NH）禁止出现推荐入口 ---
+
+  it('NH 来源未设置标签：小按钮标题为「加入屏蔽」，弹窗无推荐选项', async () => {
+    // NH 真实 supportsTagRecommendation === false，模拟该来源能力
+    vi.mocked(sourceSupportsTagRecommendation).mockReturnValue(false)
+    const user = userEvent.setup()
+    openDrawerWith({ ...comicWithTags, sourceSite: 'nh' })
+    await settle()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    // 小按钮退化为「加入屏蔽」（无「加入推荐 / 屏蔽」双选项标题）
+    await clickTagActionButton(user, '加入屏蔽')
+
+    // 弹窗为单操作「加入屏蔽」确认，禁止出现推荐相关文案
+    expect(screen.getByText(/将屏蔽标签/)).toBeInTheDocument()
+    expect(screen.queryByText('★ 加入推荐标签')).not.toBeInTheDocument()
+    expect(screen.getByText('加入屏蔽')).toBeInTheDocument()
+
+    // 确认后调用 addTag（屏蔽），禁止调用 addMyTag（推荐假成功写入）
+    await user.click(screen.getByText('加入屏蔽'))
+    expect(mockAddTag).toHaveBeenCalledWith('nh', 'NTR')
+    expect(mockAddMyTag).not.toHaveBeenCalled()
+  })
+
+  it('NH 来源未设置标签：禁止出现「加入推荐」文案或调用 addMyTag', async () => {
+    vi.mocked(sourceSupportsTagRecommendation).mockReturnValue(false)
+    const user = userEvent.setup()
+    openDrawerWith({ ...comicWithTags, sourceSite: 'nh' })
+    await settle()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '加入屏蔽')
+
+    // 关键不变量：整个交互路径不得触发推荐写入
+    expect(mockAddMyTag).not.toHaveBeenCalled()
+    // 取消关闭弹窗，确保无残留推荐入口
+    await user.click(screen.getByText('取消'))
+  })
+
+  it('支持推荐的来源（hcomic）推荐入口行为不变，防门控误伤', async () => {
+    // hcomic 真实 supportsTagRecommendation === true（mock 默认即 true）
+    const user = userEvent.setup()
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    await clickTagActionButton(user, '加入推荐 / 屏蔽')
+
+    // 推荐选项照常可用
+    expect(screen.getByText('★ 加入推荐标签')).toBeInTheDocument()
+    expect(screen.getByText('× 加入屏蔽标签')).toBeInTheDocument()
+    await user.click(screen.getByText('★ 加入推荐标签'))
+    expect(mockAddMyTag).toHaveBeenCalledWith('hcomic', 'NTR')
   })
 })
