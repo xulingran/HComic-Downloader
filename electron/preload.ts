@@ -497,6 +497,10 @@ contextBridge.exposeInMainWorld('hcomic', {
     return onChannel(NOTIFICATION_CHANNELS.TAG_LIST_PROGRESS, callback)
   },
 
+  onFavouriteTagsProgress: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.FAVOURITE_TAGS_PROGRESS, callback)
+  },
+
   runHealthCheck: (scope?: unknown, comicKeys?: unknown) => {
     if (scope !== undefined && scope !== null && scope !== 'all' && scope !== 'selected') {
       throw new Error('Invalid scope')

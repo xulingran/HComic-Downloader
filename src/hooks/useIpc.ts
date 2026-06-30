@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
-import type { HcomicAPI, ConfigKey, ConfigValueMap, MaintenanceProgressEvent, TagListProgressEvent } from '@shared/types'
+import type { HcomicAPI, ConfigKey, ConfigValueMap, FavouriteTagsProgressEvent, MaintenanceProgressEvent, TagListProgressEvent } from '@shared/types'
 import { ComicInfo, ACTIVE_DOWNLOAD_STATUSES } from '@shared/types'
 
 declare global {
@@ -282,6 +282,21 @@ export function useTagListProgress(source?: string) {
   useEffect(() => {
     if (!window.hcomic?.onTagListProgress) return
     const unsubscribe = window.hcomic.onTagListProgress((data) => {
+      if (!source || data.source === source) setProgress(data)
+    })
+    return unsubscribe
+  }, [source])
+
+  const clear = useCallback(() => setProgress(null), [])
+  return { progress, clear }
+}
+
+export function useFavouriteTagsProgress(source?: string) {
+  const [progress, setProgress] = useState<FavouriteTagsProgressEvent | null>(null)
+
+  useEffect(() => {
+    if (!window.hcomic?.onFavouriteTagsProgress) return
+    const unsubscribe = window.hcomic.onFavouriteTagsProgress((data) => {
       if (!source || data.source === source) setProgress(data)
     })
     return unsubscribe

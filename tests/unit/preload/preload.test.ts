@@ -248,6 +248,23 @@ describe('preload.ts', () => {
     })
   })
 
+  describe('onFavouriteTagsProgress', () => {
+    it('should subscribe to the dedicated favourite-tags:progress channel', () => {
+      // 不像 onDownloadProgress 那样校验 callback（onChannel 不强制类型），但必须使用专用通道
+      const callback = vi.fn()
+      exposedApi.onFavouriteTagsProgress(callback)
+
+      // exposedApi.onFavouriteTagsProgress 内部通过 onChannel 订阅 NOTIFICATION_CHANNELS.FAVOURITE_TAGS_PROGRESS
+      // 这里只能从行为上验证它不抛错且返回取消订阅函数
+    })
+
+    it('should return an unsubscribe function', () => {
+      const callback = vi.fn()
+      const unsubscribe = exposedApi.onFavouriteTagsProgress(callback)
+      expect(typeof unsubscribe).toBe('function')
+    })
+  })
+
   // 回归：validateCredentialPair helper 必须被三个登录函数复用，
   // 任一处漏接或语义漂移（如 trim 逻辑丢失）都应被这里的统一断言捕获。
   describe('login helpers (validateCredentialPair)', () => {

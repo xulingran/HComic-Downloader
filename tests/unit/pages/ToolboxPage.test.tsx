@@ -14,6 +14,7 @@ vi.mock('@/hooks/useIpc', () => ({
     clearFavouriteTags: vi.fn(),
     removeFavouriteTag: vi.fn(),
   }),
+  useFavouriteTagsProgress: () => ({ progress: null, clear: vi.fn() }),
 }))
 
 vi.mock('@/stores/useDrawerStore', () => ({

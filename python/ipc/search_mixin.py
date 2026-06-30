@@ -596,10 +596,23 @@ class SearchMixin:
             self._tag_list_db.upsert_tags(all_new_tags, source)
         return empty_tag_comics
 
-    def _enrich_tags_for_comics(self, comics: list, source: str) -> int:
+    def _enrich_tags_for_comics(
+        self,
+        comics: list,
+        source: str,
+        *,
+        progress_callback: Any | None = None,
+    ) -> int:
         """通过 get_comic_detail 为无标签漫画补全标签。
 
         顺序调用，带随机延迟控制请求频率。
+
+        Args:
+            comics: 待补全标签的漫画列表。
+            source: 来源标识。
+            progress_callback: 可选回调，每处理完一本漫画后以累计已完成数量
+                （含失败）调用一次，用于向前端推送 enrichment 进度。默认 None
+                时行为与历史调用方完全一致。
 
         Returns:
             成功补全标签的漫画数量。
@@ -623,6 +636,11 @@ class SearchMixin:
                     enriched += 1
             except Exception as e:
                 logger.debug("Tag enrichment failed for %s (%s): %s", comic.id, source, e)
+            if progress_callback is not None:
+                try:
+                    progress_callback(i + 1)
+                except Exception as e:  # noqa: BLE001 - 进度回调失败不应中断补全
+                    logger.debug("enrich progress_callback failed: %s", e)
 
         if enriched:
             logger.info("Enriched tags for %d/%d comics (source=%s)", enriched, len(comics), source)

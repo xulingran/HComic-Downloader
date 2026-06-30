@@ -28,12 +28,21 @@ vi.mock('@/stores/useSettingsStore', () => ({
 
 const mockGetFavouriteTags = vi.fn().mockResolvedValue({ tags: [] })
 const mockSyncFavouriteTags = vi.fn().mockResolvedValue({ tags: [], totalComics: 0 })
+// 进度事件订阅：progressState 控制当前返回的进度帧
+let progressState: { progress: unknown; clear: () => void }
+const mockClearProgress = vi.fn()
 vi.mock('@/hooks/useIpc', () => ({
   useFavouriteTags: () => ({
     getFavouriteTags: mockGetFavouriteTags,
     syncFavouriteTags: mockSyncFavouriteTags,
     clearFavouriteTags: vi.fn(),
     removeFavouriteTag: vi.fn(),
+  }),
+  useFavouriteTagsProgress: () => ({
+    get progress() {
+      return progressState.progress
+    },
+    clear: mockClearProgress,
   }),
 }))
 
@@ -48,6 +57,8 @@ describe('FavouriteTagSettings - 推荐标签 / 检测标签双区', () => {
     mockGetFavouriteTags.mockClear()
     mockGetFavouriteTags.mockResolvedValue({ tags: [] })
     mockSyncFavouriteTags.mockClear()
+    progressState = { progress: null, clear: mockClearProgress }
+    mockClearProgress.mockClear()
   })
 
   it('检测标签为空时显示引导文案', async () => {
@@ -193,5 +204,63 @@ describe('FavouriteTagSettings - 推荐标签 / 检测标签双区', () => {
     await user.selectOptions(select, 'jm')
 
     await waitFor(() => expect(mockGetFavouriteTags).toHaveBeenCalledWith('jm'))
+  })
+
+  it('同步中根据 fetching 进度显示页码文案', async () => {
+    const user = userEvent.setup()
+    // syncFavouriteTags 不立即 resolve，确保能看到同步中状态
+    mockSyncFavouriteTags.mockReturnValue(new Promise(() => {}))
+    progressState.progress = {
+      source: 'hcomic',
+      phase: 'fetching',
+      current: 2,
+      total: 5,
+      currentPage: 2,
+      totalPages: 5,
+      totalComics: 48,
+    }
+    render(<FavouriteTagSettings />)
+    await waitFor(() => expect(mockGetFavouriteTags).toHaveBeenCalled())
+
+    await user.click(screen.getByText('从收藏夹同步'))
+
+    expect(screen.getByText(/同步收藏夹 2\/5 页/)).toBeInTheDocument()
+    expect(screen.getByText(/已扫描 48 本/)).toBeInTheDocument()
+  })
+
+  it('同步中根据 enriching 进度显示补全标签文案', async () => {
+    const user = userEvent.setup()
+    mockSyncFavouriteTags.mockReturnValue(new Promise(() => {}))
+    progressState.progress = {
+      source: 'hcomic',
+      phase: 'enriching',
+      current: 3,
+      total: 10,
+    }
+    render(<FavouriteTagSettings />)
+    await waitFor(() => expect(mockGetFavouriteTags).toHaveBeenCalled())
+
+    await user.click(screen.getByText('从收藏夹同步'))
+
+    expect(screen.getByText(/补全标签 3\/10/)).toBeInTheDocument()
+  })
+
+  it('同步失败后显示错误进度且不再停留在同步中', async () => {
+    const user = userEvent.setup()
+    mockSyncFavouriteTags.mockResolvedValue({ tags: [], totalComics: 0 })
+    progressState.progress = {
+      source: 'hcomic',
+      phase: 'error',
+      current: 0,
+      total: 1,
+      message: '未登录',
+    }
+    render(<FavouriteTagSettings />)
+    await waitFor(() => expect(mockGetFavouriteTags).toHaveBeenCalled())
+
+    await user.click(screen.getByText('从收藏夹同步'))
+
+    await waitFor(() => expect(screen.getByText('从收藏夹同步')).toBeInTheDocument())
+    expect(screen.getByText(/同步出错：未登录/)).toBeInTheDocument()
   })
 })

@@ -669,6 +669,10 @@ function registerNotificationHandlers(bridge: Bridge) {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.TAG_LIST_PROGRESS, params)
   })
 
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.FAVOURITE_TAGS_PROGRESS, (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.FAVOURITE_TAGS_PROGRESS, params)
+  })
+
   // 致命错误：后端进程启动失败或重启超限时转发到渲染进程横幅。
   // 复用安全发送模式（检查 mainWindow 存在且未销毁）。
   bridge.onFatal = (payload) => {

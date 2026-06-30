@@ -1138,4 +1138,23 @@ describe('main.ts', () => {
     })
   })
 
+  describe('favourite tags progress forwarding', () => {
+    it('should register favourite_tags_progress notification handler', () => {
+      // registerNotificationHandlers 必须为 favourite_tags_progress 注册专用转发处理器
+      expect(notificationHandlers['favourite_tags_progress']).toBeDefined()
+    })
+
+    it('should forward favourite_tags_progress to FAVOURITE_TAGS_PROGRESS renderer channel', () => {
+      const instance = capturedInstances[0]
+      const callback = notificationHandlers['favourite_tags_progress']
+      const payload = { source: 'hcomic', phase: 'fetching', current: 1, total: 3 }
+
+      callback(payload)
+
+      // 必须转发到专用 FAVOURITE_TAGS_PROGRESS 通道（而非 TAG_LIST_PROGRESS）
+      expect(instance.webContents.send).toHaveBeenCalledWith('favourite-tags:progress', payload)
+      expect(instance.webContents.send).not.toHaveBeenCalledWith('tag-list:progress', payload)
+    })
+  })
+
 })

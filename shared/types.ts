@@ -906,6 +906,7 @@ export interface HcomicAPI {
   cancelAlbum(sourceSite: string, albumId: string): Promise<{ success: boolean; affected: number; skipped: number; notFound: boolean }>
   onAlbumProgress(callback: (data: { sourceSite: string; albumId: string; event: string; outputPath?: string; chaptersOnDisk?: number; totalChapters?: number }) => void): () => void
   onTagListProgress(callback: (data: TagListProgressEvent) => void): () => void
+  onFavouriteTagsProgress(callback: (data: FavouriteTagsProgressEvent) => void): () => void
   runHealthCheck(scope?: 'all' | 'selected', comicKeys?: string[][]): Promise<HealthCheckResponse>
   scanOrphanTemps(): Promise<{ orphans: OrphanTempItem[]; totalSizeBytes: number }>
   cleanupOrphanTemps(paths?: string[]): Promise<CleanupOrphanResult>
@@ -1123,6 +1124,7 @@ export const NOTIFICATION_CHANNELS = {
   ALBUM_PROGRESS: 'album:progress',
   MAINTENANCE_PROGRESS: 'maintenance:progress',
   TAG_LIST_PROGRESS: 'tag-list:progress',
+  FAVOURITE_TAGS_PROGRESS: 'favourite-tags:progress',
   FATAL_ERROR: 'fatal:error',
   DEEP_LINK: 'app:deep-link',
   STARTUP_PROGRESS: 'startup:progress',
@@ -1153,6 +1155,34 @@ export interface TagListProgressEvent {
   message?: string
 }
 
+/**
+ * 收藏夹推荐标签同步进度事件（主进程 → 渲染进程）。
+ *
+ * Python 后端在 sync_favourite_tags 各阶段经 JSON-RPC notification 推送，
+ * 由主进程通过 FAVOURITE_TAGS_PROGRESS 通道转发。phase 区分收藏页扫描
+ * 与无标签漫画详情补全两个阶段；current/total 描述当前阶段进度，
+ * 页码字段仅在 fetching 阶段有意义。
+ */
+export interface FavouriteTagsProgressEvent {
+  source: string
+  /** 当前阶段：fetching=扫描收藏夹页，enriching=补全无标签漫画详情，completed/error=终态 */
+  phase: 'fetching' | 'enriching' | 'completed' | 'error'
+  /** 当前阶段已完成数量（fetching 为已扫描页数，enriching 为已补全漫画数，终态为最终值） */
+  current: number
+  /** 当前阶段总量（fetching 为总页数，enriching 为待补全漫画数，终态为最终值） */
+  total: number
+  /** 收藏夹页码，仅 fetching 阶段保证提供 */
+  currentPage?: number
+  /** 收藏夹总页数，仅 fetching 阶段保证提供 */
+  totalPages?: number
+  /** 已扫描漫画总数 */
+  totalComics?: number
+  /** 当前检测标签数量或 completed 时的最终标签数 */
+  totalTags?: number
+  /** 可显示说明或错误摘要 */
+  message?: string
+}
+
 export const PYTHON_NOTIFICATION_METHODS = {
   DOWNLOAD_PROGRESS: 'download_progress',
   MIGRATION_PROGRESS: 'migration_progress',
@@ -1161,6 +1191,7 @@ export const PYTHON_NOTIFICATION_METHODS = {
   ALBUM_PROGRESS: 'album_progress',
   MAINTENANCE_PROGRESS: 'maintenance_progress',
   TAG_LIST_PROGRESS: 'tag_list_progress',
+  FAVOURITE_TAGS_PROGRESS: 'favourite_tags_progress',
 } as const
 
 export const CONFIG_KEYS = [
