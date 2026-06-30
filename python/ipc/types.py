@@ -41,6 +41,7 @@ CONFIG_KEY_MAP = {
     "sfwMode": "sfw_mode",
     "cardStyle": "card_style",
     "tagBlacklist": "tag_blacklist",
+    "myTags": "my_tags",
     "duplicateBlacklist": "duplicate_blacklist",
     "missingBlacklist": "missing_blacklist",
     "previewCacheSizeLimitMB": "preview_cache_size_limit_mb",

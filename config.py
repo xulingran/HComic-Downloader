@@ -99,6 +99,10 @@ class Config:
     sfw_mode: bool = True  # SFW 模式：开启后将所有漫画封面替换为占位符（默认开启）
     card_style: str = "cover"  # 卡片样式："cover"（封面+标题）| "detailed"（详细列表）
     tag_blacklist: dict[str, list[str]] = field(default_factory=_default_source_list_map)
+    # 用户主动收藏的「推荐标签」白名单（按来源隔离）。
+    # 对称 tag_blacklist：屏蔽是"不想看"，my_tags 是"想关注"。是搜索卡片高亮的唯一生效源。
+    # copymanga 来源不解析标签，对应数组始终为空。
+    my_tags: dict[str, list[str]] = field(default_factory=_default_source_list_map)
     # 重复检测已忽略的组（按来源隔离，每项为 {fingerprint, memberCount}）
     duplicate_blacklist: dict[str, list[dict]] = field(default_factory=_default_source_list_map)
     # 查缺补漏已忽略的组（按来源隔离，每项为 {fingerprint, memberCount}）
@@ -133,6 +137,7 @@ class Config:
         if self.default_favourite_source and self.default_favourite_source not in SOURCES_WITH_FAVOURITES:
             self.default_favourite_source = ""
         self.tag_blacklist = _normalize_source_list_map(self.tag_blacklist)
+        self.my_tags = _normalize_source_list_map(self.my_tags)
         self.duplicate_blacklist = _normalize_source_list_map(self.duplicate_blacklist, structured_entries=True)
         self.missing_blacklist = _normalize_source_list_map(self.missing_blacklist, structured_entries=True)
         # 验证输出格式

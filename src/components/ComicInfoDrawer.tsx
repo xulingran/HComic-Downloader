@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
-import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail, useFavouriteTags } from '../hooks/useIpc'
+import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail } from '../hooks/useIpc'
 import { Toast } from './common/Toast'
 import { Modal } from './common/Modal'
 import { drawerPresenceVariants, overlayPresenceVariants, reduceSafe, tagListVariants, tagItemVariants, useReducedMotionPreference } from '../lib/anim'
@@ -12,20 +12,22 @@ import { normalizeSourceKey, sourceSupportsFavourites, sourceSupportsTagRecommen
 
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
-  const { tagBlacklist, favouriteTagHighlight, addTag, removeTag } = useSettingsStore()
+  const { tagBlacklist, myTags, favouriteTagHighlight, addTag, removeTag, addMyTag, removeMyTag } = useSettingsStore()
   const { addToFavourites } = useAddToFavourites()
   const { removeFromFavourites } = useRemoveFromFavourites()
   const { checkFavourite } = useCheckFavourite()
   const { getComicDetail } = useComicDetail()
-  const { getFavouriteTags } = useFavouriteTags()
   // 变更 2：改用 framer-motion AnimatePresence 驱动抽屉进出场，删除 useModalAnimation。
   // Toast 在 AnimatePresence 之外（避免 Drawer 关闭时 Toast 被 unmount）。
   const reduceMotion = useReducedMotionPreference()
   const drawerVariants = reduceMotion ? reduceSafe(drawerPresenceVariants) : drawerPresenceVariants
-  const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' } | null>(null)
+  const [confirmTag, setConfirmTag] = useState<{ tag: string; action: 'block' | 'unblock' | 'favourite' | 'unfavourite' } | null>(null)
   const [favouritesState, setFavouritesState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   const [favToastMessage, setFavToastMessage] = useState('')
   const [showFavToast, setShowFavToast] = useState(false)
+  // 标签操作冲突提示（如尝试加入推荐但已屏蔽）
+  const [tagOpToastMessage, setTagOpToastMessage] = useState('')
+  const [showTagOpToast, setShowTagOpToast] = useState(false)
   // Tag 点击不关闭抽屉（多选搜索），用独立 toast 提示已加入搜索；
   // 用 ref 持有计时器，支持连续点击多个 tag 时重置计时。
   const [tagToastMessage, setTagToastMessage] = useState('')
@@ -37,14 +39,15 @@ export function ComicInfoDrawer() {
   const [enrichState, setEnrichState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   // retryCount 驱动 enrich effect 重新执行（点击重试时自增），避免把 fetch 逻辑抽成独立函数。
   const [retryCount, setRetryCount] = useState(0)
-  const [drawerFavTags, setDrawerFavTags] = useState<{ tag: string; count: number }[]>([])
 
   const comicSource = drawerComic?.sourceSite || 'hcomic'
 
+  // 推荐态数据源：用户主动确认的 my_tags（取代旧版被动反推的 drawerFavTags）。
   const recommendedTagSet = useMemo(() => {
     if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(comicSource)) return new Set<string>()
-    return new Set(drawerFavTags.slice(0, 10).map(t => t.tag.toLowerCase()))
-  }, [favouriteTagHighlight, comicSource, drawerFavTags])
+    const key = normalizeSourceKey(comicSource)
+    return new Set(myTags[key].map(t => t.toLowerCase()))
+  }, [favouriteTagHighlight, comicSource, myTags])
 
   const displayComic = useMemo(() => {
     if (!drawerComic) return null
@@ -57,14 +60,10 @@ export function ComicInfoDrawer() {
     return tagBlacklist[key].some(t => t.toLowerCase() === tag.toLowerCase())
   }
 
-  useEffect(() => {
-    if (!isOpen || !favouriteTagHighlight || !sourceSupportsTagRecommendation(comicSource)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDrawerFavTags([])
-      return
-    }
-    getFavouriteTags(comicSource).then(result => setDrawerFavTags(result.tags)).catch(() => setDrawerFavTags([]))
-  }, [isOpen, favouriteTagHighlight, comicSource, getFavouriteTags])
+  const isTagFavourited = (tag: string) => {
+    const key = normalizeSourceKey(comicSource)
+    return myTags[key].some(t => t.toLowerCase() === tag.toLowerCase())
+  }
 
   // Fetch full detail for sources where search results lack complete metadata.
   // moeimg/jm search cards omit some fields (full tag set, page count,
@@ -173,6 +172,37 @@ export function ComicInfoDrawer() {
     return () => clearTimeout(tagToastTimerRef.current)
   }, [])
 
+  // 执行标签操作（加入/取消 推荐 或 屏蔽），处理互斥冲突的可见反馈。
+  // addTag/addMyTag 返回 false 表示冲突（已是对立面）或重复，据此提示用户。
+  const handleConfirmTagAction = (tag: string, action: 'block' | 'unblock' | 'favourite' | 'unfavourite') => {
+    if (action === 'block') {
+      const ok = addTag(comicSource, tag)
+      if (!ok) {
+        setTagOpToastMessage(`无法屏蔽：该标签已是推荐标签，请先取消推荐`)
+        setShowTagOpToast(true)
+        return
+      }
+    } else if (action === 'unblock') {
+      removeTag(comicSource, tag)
+    } else if (action === 'favourite') {
+      const ok = addMyTag(comicSource, tag)
+      if (!ok) {
+        setTagOpToastMessage(`无法加入推荐：该标签已被屏蔽，请先取消屏蔽`)
+        setShowTagOpToast(true)
+        return
+      }
+    } else if (action === 'unfavourite') {
+      removeMyTag(comicSource, tag)
+    }
+    setConfirmTag(null)
+  }
+
+  useEffect(() => {
+    if (!showTagOpToast) return
+    const timer = setTimeout(() => setShowTagOpToast(false), 3000)
+    return () => clearTimeout(timer)
+  }, [showTagOpToast])
+
   const handleToggleFavourites = async () => {
     if (!drawerComic?.id || favouritesState === 'loading') return
     const isFavourited = favouritesState === 'success'
@@ -223,6 +253,11 @@ export function ComicInfoDrawer() {
           message={tagToastMessage}
           visible={showTagToast}
           onDismiss={() => setShowTagToast(false)}
+        />
+        <Toast
+          message={tagOpToastMessage}
+          visible={showTagOpToast}
+          onDismiss={() => setShowTagOpToast(false)}
         />
       </div>
       <AnimatePresence>
@@ -445,9 +480,19 @@ export function ComicInfoDrawer() {
                 const tags = displayComic!.tags!
                 const renderTag = (tag: string, idx: number, animate: boolean) => {
                   const blocked = isTagBlocked(tag)
+                  const favourited = isTagFavourited(tag)
                   const isRec = !blocked && recommendedTagSet.has(tag.toLowerCase())
                   const Wrapper = animate ? motion.span : 'span'
                   const wrapperProps = animate ? { variants: tagItemVariants } : {}
+                  // 小按钮状态：已屏蔽→取消屏蔽(✓)；已推荐→取消推荐(★)；未设置→添加(+)
+                  const btnAction = blocked ? 'unblock' : favourited ? 'unfavourite' : 'favourite'
+                  const btnIcon = blocked ? '✓' : favourited ? '★' : '+'
+                  const btnColor = blocked
+                    ? 'bg-[var(--accent)] text-white'
+                    : favourited
+                      ? 'bg-amber-500 text-white'
+                      : 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
+                  const btnTitle = blocked ? '取消屏蔽' : favourited ? '取消推荐' : '加入推荐 / 屏蔽'
                   return (
                     <Wrapper key={idx} className="relative group" {...wrapperProps}>
                       <button
@@ -463,16 +508,12 @@ export function ComicInfoDrawer() {
                         {tag}
                       </button>
                       <button
-                        onClick={() => setConfirmTag({ tag, action: blocked ? 'unblock' : 'block' })}
+                        onClick={() => setConfirmTag({ tag, action: btnAction })}
                         className={`absolute -top-1 -right-1 w-4 h-4 rounded-full text-[10px] flex items-center justify-center
-                                   opacity-0 group-hover:opacity-100 transition-opacity
-                                   ${blocked
-                                     ? 'bg-[var(--accent)] text-white'
-                                     : 'bg-[var(--error)] text-white'
-                                   }`}
-                        title={blocked ? '取消屏蔽' : '屏蔽标签'}
+                                   opacity-0 group-hover:opacity-100 transition-opacity ${btnColor}`}
+                        title={btnTitle}
                       >
-                        {blocked ? '✓' : '×'}
+                        {btnIcon}
                       </button>
                     </Wrapper>
                   )
@@ -522,40 +563,81 @@ export function ComicInfoDrawer() {
         {confirmTag && (
           <>
             <h3 className="text-base font-medium text-[var(--text-primary)] mb-4">
-              {confirmTag.action === 'block'
-                ? `屏蔽标签「${confirmTag.tag}」？`
-                : `取消屏蔽标签「${confirmTag.tag}」？`
-              }
+              标签「{confirmTag.tag}」
             </h3>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">
-              {confirmTag.action === 'block'
-                ? '包含该标签的漫画将从搜索结果中隐藏。'
-                : '包含该标签的漫画将恢复显示在搜索结果中。'
-              }
-            </p>
-            <div className="flex justify-end gap-2">
+            {confirmTag.action === 'favourite' ? (
+              // 未设置态：提供「加入推荐」与「屏蔽」两个选项
+              <>
+                <p className="text-sm text-[var(--text-secondary)] mb-4">
+                  选择对该标签的操作：
+                </p>
+                <div className="flex flex-col gap-2">
+                  <button
+                    onClick={() => handleConfirmTagAction(confirmTag.tag, 'favourite')}
+                    className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm hover:bg-amber-600 transition-colors text-left"
+                  >
+                    ★ 加入推荐标签
+                    <span className="block text-xs opacity-80 mt-0.5">命中该标签的漫画将被高亮</span>
+                  </button>
+                  <button
+                    onClick={() => handleConfirmTagAction(confirmTag.tag, 'block')}
+                    className="px-4 py-2 rounded-lg bg-[var(--error)] text-white text-sm hover:bg-[var(--error)]/80 transition-colors text-left"
+                  >
+                    × 加入屏蔽标签
+                    <span className="block text-xs opacity-80 mt-0.5">包含该标签的漫画将从搜索结果隐藏</span>
+                  </button>
+                </div>
+              </>
+            ) : confirmTag.action === 'unfavourite' ? (
+              // 已推荐态：提供「取消推荐」
+              <>
+                <p className="text-sm text-[var(--text-secondary)] mb-4">
+                  该标签已是推荐标签。取消后将不再高亮命中该标签的漫画。
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setConfirmTag(null)}
+                    className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => handleConfirmTagAction(confirmTag.tag, 'unfavourite')}
+                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                  >
+                    取消推荐
+                  </button>
+                </div>
+              </>
+            ) : confirmTag.action === 'unblock' ? (
+              // 已屏蔽态：提供「取消屏蔽」
+              <>
+                <p className="text-sm text-[var(--text-secondary)] mb-4">
+                  该标签已被屏蔽。取消后包含该标签的漫画将恢复显示。
+                </p>
+                <div className="flex justify-end gap-2">
+                  <button
+                    onClick={() => setConfirmTag(null)}
+                    className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={() => handleConfirmTagAction(confirmTag.tag, 'unblock')}
+                    className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent-hover)]"
+                  >
+                    取消屏蔽
+                  </button>
+                </div>
+              </>
+            ) : null}
+            {/* 兜底关闭按钮（所有态通用） */}
+            <div className="flex justify-end mt-4">
               <button
                 onClick={() => setConfirmTag(null)}
-                className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
+                className="text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
               >
-                取消
-              </button>
-              <button
-                onClick={() => {
-                  if (confirmTag.action === 'block') {
-                    addTag(comicSource, confirmTag.tag)
-                  } else {
-                    removeTag(comicSource, confirmTag.tag)
-                  }
-                  setConfirmTag(null)
-                }}
-                className={`px-4 py-2 rounded-lg text-white ${
-                  confirmTag.action === 'block'
-                    ? 'bg-[var(--error)] hover:bg-[var(--error)]/80'
-                    : 'bg-[var(--accent)] hover:bg-[var(--accent-hover)]'
-                }`}
-              >
-                确认
+                关闭
               </button>
             </div>
           </>

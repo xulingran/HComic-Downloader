@@ -7,6 +7,7 @@ import {
   and,
   noControlChars, noPathSeparators, noPathTraversal, absolutePath,
   tagBlacklist,
+  myTags,
   duplicateBlacklist,
   missingBlacklist,
   assert,
@@ -267,6 +268,63 @@ describe('validators.ts', () => {
       expect(() => tagBlacklist()(valid4({ jm: 'bad' as unknown as string[] }))).toThrow(ValidationError)
       expect(() => tagBlacklist()(valid4({ bika: [''] }))).toThrow(ValidationError)
       expect(tagBlacklist()(valid4({ jm: ['tag'], bika: ['tag'] }))).toBe(true)
+    })
+  })
+
+  describe('myTags()', () => {
+    // 对称 tagBlacklist：my_tags 是推荐标签白名单，结构与校验规则完全一致
+    const valid5 = (overrides: Record<string, string[]> = {}) => ({
+      hcomic: [] as string[], moeimg: [] as string[], jm: [] as string[], bika: [] as string[], copymanga: [] as string[],
+      ...overrides,
+    })
+
+    it('passes for valid my tags', () => {
+      const v = myTags()
+      expect(v(valid5({ jm: ['NTR', '人妻'] }))).toBe(true)
+    })
+
+    it('rejects non-object', () => {
+      expect(() => myTags()(null)).toThrow(ValidationError)
+      expect(() => myTags()('string')).toThrow(ValidationError)
+    })
+
+    it('rejects missing source keys', () => {
+      // 缺少 copymanga 键
+      const incomplete = { hcomic: [], moeimg: [], jm: [], bika: [] }
+      expect(() => myTags()(incomplete)).toThrow(ValidationError)
+    })
+
+    it('rejects non-array values', () => {
+      expect(() => myTags()(valid5({ hcomic: 'not-array' as unknown as string[] }))).toThrow(ValidationError)
+    })
+
+    it('rejects arrays exceeding 500 items', () => {
+      const big = Array(501).fill('tag')
+      expect(() => myTags()(valid5({ hcomic: big }))).toThrow(ValidationError)
+    })
+
+    it('rejects empty strings', () => {
+      expect(() => myTags()(valid5({ hcomic: [''] }))).toThrow(ValidationError)
+    })
+
+    it('rejects strings over 64 chars', () => {
+      expect(() => myTags()(valid5({ hcomic: ['a'.repeat(65)] }))).toThrow(ValidationError)
+    })
+
+    it('rejects duplicates (case-insensitive)', () => {
+      expect(() => myTags()(valid5({ hcomic: ['Tag', 'tag'] }))).toThrow(ValidationError)
+    })
+
+    it('accepts max 500 items', () => {
+      const exact = Array(500).fill(0).map((_, i) => `tag${i}`)
+      expect(myTags()(valid5({ hcomic: exact }))).toBe(true)
+    })
+
+    it('validates all five source keys', () => {
+      expect(() => myTags()(valid5({ jm: 'bad' as unknown as string[] }))).toThrow(ValidationError)
+      expect(() => myTags()(valid5({ bika: [''] }))).toThrow(ValidationError)
+      expect(() => myTags()(valid5({ copymanga: ['x'] }))).not.toThrow()
+      expect(myTags()(valid5({ jm: ['tag'], bika: ['tag'], copymanga: ['tag'] }))).toBe(true)
     })
   })
 

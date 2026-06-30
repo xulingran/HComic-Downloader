@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { COMIC_SOURCES, type TagBlacklist, type DuplicateBlacklist, type DuplicateBlacklistEntry, type MissingBlacklist } from '@shared/types'
-import { useSettingsStore, subscribeToBlacklistChanges, subscribeToDuplicateBlacklistChanges, subscribeToMissingBlacklistChanges, subscribeToFavouriteTagHighlightChanges, subscribeToFavouriteTagMinMatchesChanges, subscribeToDefaultFavouriteSourceChanges } from '../stores/useSettingsStore'
+import { COMIC_SOURCES, type TagBlacklist, type MyTags, type DuplicateBlacklist, type DuplicateBlacklistEntry, type MissingBlacklist } from '@shared/types'
+import { useSettingsStore, subscribeToBlacklistChanges, subscribeToMyTagsChanges, subscribeToDuplicateBlacklistChanges, subscribeToMissingBlacklistChanges, subscribeToFavouriteTagHighlightChanges, subscribeToFavouriteTagMinMatchesChanges, subscribeToDefaultFavouriteSourceChanges } from '../stores/useSettingsStore'
 import { useConfig } from './useIpc'
 
 export function useInitConfig() {
   const {
-    setThemeMode, setCardStyle, setSfwMode, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches, setDefaultFavouriteSource,
+    setThemeMode, setCardStyle, setSfwMode, setTagBlacklist, setMyTags, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches, setDefaultFavouriteSource,
   } = useSettingsStore()
   const { getConfig, setConfig } = useConfig()
   const subscribedRef = useRef(false)
@@ -35,6 +35,15 @@ export function useInitConfig() {
           COMIC_SOURCES.map(s => [s, Array.isArray(raw[s]) ? raw[s] as string[] : []])
         ) as TagBlacklist
         setTagBlacklist(normalized)
+      }
+
+      const rawMyTags = result.config?.myTags
+      if (rawMyTags && typeof rawMyTags === 'object') {
+        const raw = rawMyTags as Record<string, unknown>
+        const normalized: MyTags = Object.fromEntries(
+          COMIC_SOURCES.map(s => [s, Array.isArray(raw[s]) ? raw[s] as string[] : []])
+        ) as MyTags
+        setMyTags(normalized)
       }
 
       const rawDupBlacklist = result.config?.duplicateBlacklist
@@ -98,6 +107,7 @@ export function useInitConfig() {
       if (!subscribedRef.current) {
         subscribedRef.current = true
         const unsubBlacklist = subscribeToBlacklistChanges(setConfig)
+        const unsubMyTags = subscribeToMyTagsChanges(setConfig)
         const unsubDupBlacklist = subscribeToDuplicateBlacklistChanges(setConfig)
         const unsubMissBlacklist = subscribeToMissingBlacklistChanges(setConfig)
         const unsubHighlight = subscribeToFavouriteTagHighlightChanges(setConfig)
@@ -105,6 +115,7 @@ export function useInitConfig() {
         const unsubDefaultFav = subscribeToDefaultFavouriteSourceChanges(setConfig)
         unsubRef.current = () => {
           unsubBlacklist()
+          unsubMyTags()
           unsubDupBlacklist()
           unsubMissBlacklist()
           unsubHighlight()
@@ -125,7 +136,7 @@ export function useInitConfig() {
       unsubRef.current = null
       subscribedRef.current = false
     }
-  }, [setThemeMode, setCardStyle, setSfwMode, setConfig, getConfig, setTagBlacklist, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches, setDefaultFavouriteSource])
+  }, [setThemeMode, setCardStyle, setSfwMode, setConfig, getConfig, setTagBlacklist, setMyTags, setDuplicateBlacklist, setMissingBlacklist, setFavouriteTagHighlight, setFavouriteTagMinMatches, setDefaultFavouriteSource])
 
   return { setSfwMode, setConfig, configLoaded }
 }

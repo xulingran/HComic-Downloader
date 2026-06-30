@@ -122,6 +122,7 @@ export interface AppConfig {
   sfwMode: boolean
   cardStyle: CardStyle
   tagBlacklist: TagBlacklist
+  myTags?: MyTags
   duplicateBlacklist: DuplicateBlacklist
   missingBlacklist: MissingBlacklist
   previewCacheSizeLimitMB: number
@@ -152,6 +153,9 @@ export interface AppConfig {
 }
 
 export type TagBlacklist = Record<ComicSource, string[]>
+
+/** 用户主动收藏的「推荐标签」白名单（分来源隔离），对称 TagBlacklist。 */
+export type MyTags = Record<ComicSource, string[]>
 
 /** 重复检测已忽略条目：指纹 + 忽略时的基线成员数（null 表示未知，旧数据迁移） */
 export interface DuplicateBlacklistEntry {
@@ -355,7 +359,7 @@ export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurre
   | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
   | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
   | 'defaultFavouriteSource'
-  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'duplicateBlacklist' | 'missingBlacklist' | 'previewCacheSizeLimitMB'
+  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'myTags' | 'duplicateBlacklist' | 'missingBlacklist' | 'previewCacheSizeLimitMB'
   | 'jmDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
   | 'bikaImageQuality'
   | 'previewPreloadForward' | 'previewPreloadBackward' | 'previewPreloadConcurrency'
@@ -380,6 +384,7 @@ export type ConfigValueMap = {
   sfwMode: boolean
   cardStyle: CardStyle
   tagBlacklist: TagBlacklist
+  myTags: MyTags
   duplicateBlacklist: DuplicateBlacklist
   missingBlacklist: MissingBlacklist
   previewCacheSizeLimitMB: number

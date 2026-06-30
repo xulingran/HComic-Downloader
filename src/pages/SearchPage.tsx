@@ -25,7 +25,6 @@ import { useDrawerStore } from '../stores/useDrawerStore'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore, createSearchContextKey, type SearchPageCache } from '../stores/useSearchCacheStore'
 import { useSearchPreloader } from '../hooks/useSearchPreloader'
-import { useFavouriteTags } from '../hooks/useIpc'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { sourceSupportsRandom, sourceSupportsTagRecommendation, sourceSupportsTagList, normalizeSourceKey } from '../utils/source'
 import type { DownloadProgressData } from '../hooks/useIpc'
@@ -79,15 +78,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     handleBatchDownloadAsAlbum,
     selectedComics,
   } = useBatchDownload(comics)
-  const { cardStyle, tagBlacklist, filterEnabled, setFilterEnabled } = useSettingsStore()
+  const { cardStyle, tagBlacklist, myTags, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
   // clearPendingSearch also used by handleRandom below
   const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
   const { favouriteTagHighlight, favouriteTagMinMatches } = useSettingsStore()
-  const { getFavouriteTags } = useFavouriteTags()
   const { progress: tagListProgress } = useTagListProgress(source)
-  const [favTags, setFavTags] = useState<Array<{tag: string; count: number}>>([])
   const searchCache = useSearchCacheStore()
   const searchCacheRef = useRef(searchCache)
   searchCacheRef.current = searchCache // eslint-disable-line react-hooks/refs
@@ -285,19 +282,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     })
   }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, tagPanel, cacheSearchPage])
 
-  useEffect(() => {
-    if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(source)) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFavTags([])
-      return
-    }
-    getFavouriteTags(source).then(result => setFavTags(result.tags)).catch(() => setFavTags([]))
-  }, [favouriteTagHighlight, source, getFavouriteTags])
-
+  // 推荐高亮数据源：用户主动确认的 my_tags（取代旧版被动反推的 favourite_tag_index）。
+  // favourite_tag_index 降级为设置页「检测标签」候选池，仅供展示，不再直接驱动高亮。
   const recommendedTags = useMemo(() => {
     if (!favouriteTagHighlight || !sourceSupportsTagRecommendation(source)) return new Set<string>()
-    return new Set(favTags.slice(0, 10).map(t => t.tag.toLowerCase()))
-  }, [favouriteTagHighlight, source, favTags])
+    const key = normalizeSourceKey(source)
+    return new Set(myTags[key].map(t => t.toLowerCase()))
+  }, [favouriteTagHighlight, source, myTags])
 
   const filteredComics = useMemo(() => {
     const key = normalizeSourceKey(source)

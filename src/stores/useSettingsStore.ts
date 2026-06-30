@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import { COMIC_SOURCES, type TagBlacklist, type DuplicateBlacklist, type MissingBlacklist, type CardStyle } from '@shared/types'
+import { COMIC_SOURCES, type TagBlacklist, type MyTags, type DuplicateBlacklist, type MissingBlacklist, type CardStyle } from '@shared/types'
 import { normalizeSourceKey } from '../utils/source'
 
 type ThemeMode = 'light' | 'dark' | 'auto'
@@ -10,6 +10,7 @@ interface SettingsState {
   sfwMode: boolean
   sfwToastDismissed: boolean
   tagBlacklist: TagBlacklist
+  myTags: MyTags
   duplicateBlacklist: DuplicateBlacklist
   missingBlacklist: MissingBlacklist
   filterEnabled: boolean
@@ -20,9 +21,14 @@ interface SettingsState {
   setCardStyle: (style: CardStyle) => void
   setSfwMode: (enabled: boolean) => void
   dismissSfwToast: () => void
-  addTag: (source: string, tag: string) => void
+  // 返回 false 表示未写入（空标签/重复/与 my_tags 互斥冲突），调用方可据此提示。
+  addTag: (source: string, tag: string) => boolean
   removeTag: (source: string, tag: string) => void
   setTagBlacklist: (blacklist: TagBlacklist) => void
+  // 返回 false 表示未写入（空标签/重复/与 tag_blacklist 互斥冲突），调用方可据此提示。
+  addMyTag: (source: string, tag: string) => boolean
+  removeMyTag: (source: string, tag: string) => void
+  setMyTags: (myTags: MyTags) => void
   addDuplicateIgnore: (source: string, fingerprint: string, memberCount: number) => void
   removeDuplicateIgnore: (source: string, fingerprint: string) => void
   confirmMemberCount: (source: string, fingerprint: string, memberCount: number) => void
@@ -41,6 +47,10 @@ const DEFAULT_TAG_BLACKLIST: TagBlacklist = Object.fromEntries(
   COMIC_SOURCES.map(s => [s, [] as string[]])
 ) as TagBlacklist
 
+const DEFAULT_MY_TAGS: MyTags = Object.fromEntries(
+  COMIC_SOURCES.map(s => [s, [] as string[]])
+) as MyTags
+
 const DEFAULT_DUPLICATE_BLACKLIST: DuplicateBlacklist = Object.fromEntries(
   COMIC_SOURCES.map(s => [s, []])
 ) as DuplicateBlacklist
@@ -55,6 +65,7 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   sfwMode: true,
   sfwToastDismissed: false,
   tagBlacklist: { ...DEFAULT_TAG_BLACKLIST },
+  myTags: { ...DEFAULT_MY_TAGS },
   duplicateBlacklist: { ...DEFAULT_DUPLICATE_BLACKLIST },
   missingBlacklist: { ...DEFAULT_MISSING_BLACKLIST },
   filterEnabled: true,
@@ -67,18 +78,21 @@ export const useSettingsStore = create<SettingsState>((set) => ({
   dismissSfwToast: () => set({ sfwToastDismissed: true }),
   addTag: (source, tag) => {
     const trimmed = tag.trim()
-    if (!trimmed) return
-    set((state) => {
-      const key = normalizeSourceKey(source)
-      const list = state.tagBlacklist[key]
-      if (list.some(t => t.toLowerCase() === trimmed.toLowerCase())) return state
-      return {
-        tagBlacklist: {
-          ...state.tagBlacklist,
-          [key]: [...list, trimmed],
-        },
-      }
+    if (!trimmed) return false
+    const key = normalizeSourceKey(source)
+    const state = useSettingsStore.getState()
+    const list = state.tagBlacklist[key]
+    const lower = trimmed.toLowerCase()
+    if (list.some(t => t.toLowerCase() === lower)) return false
+    // 互斥校验：禁止与 my_tags 冲突（同一来源下不可既屏蔽又推荐同一标签）
+    if (state.myTags[key].some(t => t.toLowerCase() === lower)) return false
+    set({
+      tagBlacklist: {
+        ...state.tagBlacklist,
+        [key]: [...list, trimmed],
+      },
     })
+    return true
   },
   removeTag: (source, tag) => {
     set((state) => {
@@ -93,6 +107,37 @@ export const useSettingsStore = create<SettingsState>((set) => ({
     })
   },
   setTagBlacklist: (blacklist) => set({ tagBlacklist: blacklist }),
+  addMyTag: (source, tag) => {
+    const trimmed = tag.trim()
+    if (!trimmed || trimmed.length > 64) return false
+    const key = normalizeSourceKey(source)
+    const state = useSettingsStore.getState()
+    const list = state.myTags[key]
+    const lower = trimmed.toLowerCase()
+    if (list.some(t => t.toLowerCase() === lower)) return false
+    // 互斥校验：禁止与 tag_blacklist 冲突（同一来源下不可既推荐又屏蔽同一标签）
+    if (state.tagBlacklist[key].some(t => t.toLowerCase() === lower)) return false
+    set({
+      myTags: {
+        ...state.myTags,
+        [key]: [...list, trimmed],
+      },
+    })
+    return true
+  },
+  removeMyTag: (source, tag) => {
+    set((state) => {
+      const key = normalizeSourceKey(source)
+      const lower = tag.toLowerCase()
+      return {
+        myTags: {
+          ...state.myTags,
+          [key]: state.myTags[key].filter(t => t.toLowerCase() !== lower),
+        },
+      }
+    })
+  },
+  setMyTags: (myTags) => set({ myTags }),
   addDuplicateIgnore: (source, fingerprint, memberCount) => {
     const fp = fingerprint.trim()
     if (!fp) return
@@ -206,6 +251,17 @@ export function subscribeToBlacklistChanges(setConfig: (key: 'tagBlacklist', val
     if (state.tagBlacklist !== prev) {
       prev = state.tagBlacklist
       setConfig('tagBlacklist', state.tagBlacklist).catch(() => {})
+    }
+  })
+}
+
+/** Subscribe to myTags changes and persist via setConfig. */
+export function subscribeToMyTagsChanges(setConfig: (key: 'myTags', value: MyTags) => Promise<unknown>) {
+  let prev = useSettingsStore.getState().myTags
+  return useSettingsStore.subscribe((state) => {
+    if (state.myTags !== prev) {
+      prev = state.myTags
+      setConfig('myTags', state.myTags).catch(() => {})
     }
   })
 }

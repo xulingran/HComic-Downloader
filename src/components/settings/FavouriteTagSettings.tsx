@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { TAG_RECOMMENDATION_SOURCES, SOURCE_LABELS } from '@shared/types'
 import { useFavouriteTags } from '../../hooks/useIpc'
 import { useSettingsStore } from '../../stores/useSettingsStore'
+import { normalizeSourceKey } from '../../utils/source'
 
 interface TagItem {
   tag: string
@@ -9,24 +10,37 @@ interface TagItem {
 }
 
 export function FavouriteTagSettings() {
-  const { favouriteTagHighlight, setFavouriteTagHighlight, favouriteTagMinMatches, setFavouriteTagMinMatches } = useSettingsStore()
-  const { getFavouriteTags, removeFavouriteTag, syncFavouriteTags } = useFavouriteTags()
+  const {
+    favouriteTagHighlight, setFavouriteTagHighlight,
+    favouriteTagMinMatches, setFavouriteTagMinMatches,
+    myTags, addMyTag, removeMyTag,
+    tagBlacklist,
+  } = useSettingsStore()
+  const { getFavouriteTags, syncFavouriteTags } = useFavouriteTags()
   const [source, setSource] = useState('hcomic')
-  const [tags, setTags] = useState<TagItem[]>([])
+  // 检测标签候选池（来自 favourite_tag_index，仅展示与挑选，不直接生效）
+  const [detectedTags, setDetectedTags] = useState<TagItem[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [isSyncing, setIsSyncing] = useState(false)
   const [syncProgress, setSyncProgress] = useState<string | null>(null)
   const [syncedCount, setSyncedCount] = useState<number | null>(null)
-  const [confirmTag, setConfirmTag] = useState<string | null>(null)
-  const [showAllTags, setShowAllTags] = useState(false)
+  const [showAllDetected, setShowAllDetected] = useState(false)
+  const [manualInput, setManualInput] = useState('')
+  const [inputError, setInputError] = useState<string | null>(null)
+  const [opToast, setOpToast] = useState<string | null>(null)
 
-  const loadTags = useCallback(async () => {
+  const sourceKey = normalizeSourceKey(source)
+  const myTagList = myTags[sourceKey] ?? []
+  const blacklistSet = new Set(tagBlacklist[sourceKey].map(t => t.toLowerCase()))
+  const myTagSet = new Set(myTagList.map(t => t.toLowerCase()))
+
+  const loadDetectedTags = useCallback(async () => {
     setIsLoading(true)
     try {
       const result = await getFavouriteTags(source)
-      setTags(result.tags)
+      setDetectedTags(result.tags)
     } catch {
-      setTags([])
+      setDetectedTags([])
     } finally {
       setIsLoading(false)
     }
@@ -34,8 +48,8 @@ export function FavouriteTagSettings() {
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadTags()
-  }, [loadTags])
+    loadDetectedTags()
+  }, [loadDetectedTags])
 
   const handleSync = async () => {
     setIsSyncing(true)
@@ -44,7 +58,7 @@ export function FavouriteTagSettings() {
     try {
       const result = await syncFavouriteTags(source)
       setSyncedCount(result.totalComics)
-      setTags(result.tags)
+      setDetectedTags(result.tags)
       setSyncProgress(null)
     } catch {
       setSyncedCount(null)
@@ -54,14 +68,48 @@ export function FavouriteTagSettings() {
     }
   }
 
-  const handleRemoveTag = async (tag: string) => {
-    try {
-      await removeFavouriteTag(tag, source)
-      setTags(prev => prev.filter(t => t.tag !== tag))
-    } catch {
-      // Ignore removal errors — user can retry
+  const showToast = (msg: string) => {
+    setOpToast(msg)
+    setTimeout(() => setOpToast(null), 2500)
+  }
+
+  const handleAddManual = () => {
+    const trimmed = manualInput.trim()
+    if (!trimmed) {
+      setInputError('标签不能为空')
+      return
     }
-    setConfirmTag(null)
+    const ok = addMyTag(source, trimmed)
+    if (!ok) {
+      // 区分重复与互斥冲突
+      if (myTagSet.has(trimmed.toLowerCase())) {
+        setInputError('该标签已在推荐列表中')
+      } else if (blacklistSet.has(trimmed.toLowerCase())) {
+        setInputError('该标签已被屏蔽，请先取消屏蔽')
+      } else {
+        setInputError('添加失败（可能超过长度限制）')
+      }
+      return
+    }
+    setManualInput('')
+    setInputError(null)
+    showToast(`已加入推荐：${trimmed}`)
+  }
+
+  const handleRemoveMyTag = (tag: string) => {
+    removeMyTag(source, tag)
+    showToast(`已移除推荐：${tag}`)
+  }
+
+  const handlePickDetected = (tag: string) => {
+    const ok = addMyTag(source, tag)
+    if (!ok) {
+      if (blacklistSet.has(tag.toLowerCase())) {
+        showToast(`「${tag}」已被屏蔽，请先取消屏蔽`)
+      }
+      return
+    }
+    showToast(`已加入推荐：${tag}`)
   }
 
   const handleToggle = () => {
@@ -87,7 +135,7 @@ export function FavouriteTagSettings() {
       </div>
 
       <p className="text-sm text-[var(--text-secondary)]">
-        基于收藏夹中的漫画标签，推荐你可能感兴趣的内容。开启后，搜索结果中包含推荐标签的漫画会被高亮显示。
+        手动收藏你感兴趣的标签，搜索结果中命中推荐标签的漫画会被高亮显示。也可从下方「检测标签」候选池一键挑选。
       </p>
 
       <div className="flex items-center gap-3">
@@ -132,124 +180,176 @@ export function FavouriteTagSettings() {
             <option key={s} value={s}>{SOURCE_LABELS[s]}</option>
           ))}
         </select>
-
-        <button
-          onClick={handleSync}
-          disabled={isSyncing}
-          className="px-4 py-2 rounded-lg bg-[var(--accent)] text-white text-sm
-                     disabled:opacity-50 hover:bg-[var(--accent-hover)] transition-colors"
-        >
-          {isSyncing ? (syncProgress ?? '同步中...') : '从收藏夹同步标签'}
-        </button>
-        {syncedCount !== null && (
-          <span className="text-sm text-[var(--text-secondary)]">
-            已同步 {syncedCount} 本漫画
-          </span>
-        )}
       </div>
 
-      {isLoading ? (
-        <p className="text-sm text-[var(--text-secondary)] py-4 text-center">加载中...</p>
-      ) : tags.length === 0 ? (
-        <p className="text-sm text-[var(--text-secondary)] py-4 text-center">请先同步收藏夹数据以生成推荐标签</p>
-      ) : (
-        <>
-          <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto content-start">
-            {tags.slice(0, 10).map(({ tag, count }) => (
+      {/* ── 推荐标签区（my_tags，高亮生效源）── */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide">
+            推荐标签 ({SOURCE_LABELS[sourceKey as keyof typeof SOURCE_LABELS]})
+          </span>
+          <span className="text-xs text-[var(--text-secondary)]">{myTagList.length} 个</span>
+        </div>
+        <div className="flex flex-wrap gap-2 min-h-[2rem]">
+          {myTagList.length === 0 ? (
+            <span className="text-xs text-[var(--text-secondary)] italic py-1">
+              暂无推荐标签，可手动添加或从下方检测标签挑选
+            </span>
+          ) : (
+            myTagList.map((tag) => (
               <span
                 key={tag}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                           bg-amber-500/10 text-amber-600 text-sm"
+                           bg-amber-500/15 text-amber-600 text-sm"
               >
-                {tag}
-                <span className="text-xs opacity-60">({count})</span>
+                ★ {tag}
                 <button
-                  onClick={() => setConfirmTag(tag)}
+                  onClick={() => handleRemoveMyTag(tag)}
                   className="w-4 h-4 rounded-full text-[10px] flex items-center justify-center
                              text-amber-600/60 hover:text-[var(--error)] hover:bg-[var(--error)]/10 transition-colors"
-                  title="移除"
+                  title="移除推荐"
                 >
                   ✕
                 </button>
               </span>
-            ))}
-          </div>
-          {tags.length > 10 && (
-            <button
-              onClick={() => setShowAllTags(true)}
-              className="text-sm text-[var(--accent)] hover:underline"
-            >
-              管理全部标签 (共 {tags.length} 个)
-            </button>
+            ))
           )}
-        </>
-      )}
+        </div>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={manualInput}
+            onChange={e => { setManualInput(e.target.value); setInputError(null) }}
+            onKeyDown={e => { if (e.key === 'Enter') handleAddManual() }}
+            placeholder="手动添加标签名（可添加 sync 未检测到的标签）"
+            maxLength={64}
+            className="flex-1 px-3 py-1.5 text-sm bg-[var(--bg-secondary)] border border-[var(--border)]
+                       rounded-lg text-[var(--text-primary)] placeholder:text-[var(--text-secondary)]/60"
+          />
+          <button
+            onClick={handleAddManual}
+            className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-sm
+                       hover:bg-amber-600 transition-colors"
+          >
+            添加
+          </button>
+        </div>
+        {inputError && (
+          <p className="text-xs text-[var(--error)]">{inputError}</p>
+        )}
+      </div>
 
-      {showAllTags && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowAllTags(false)}>
+      {/* ── 检测标签区（候选池，来自 favourite_tag_index，仅供挑选）── */}
+      <div className="space-y-2 border-t border-[var(--border)] pt-4">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wide">
+            检测标签（候选池）
+          </span>
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="px-3 py-1 rounded-lg bg-[var(--accent)]/10 text-[var(--accent)] text-xs
+                       disabled:opacity-50 hover:bg-[var(--accent)]/20 transition-colors"
+          >
+            {isSyncing ? (syncProgress ?? '同步中...') : '从收藏夹同步'}
+          </button>
+        </div>
+        <p className="text-xs text-[var(--text-secondary)]">
+          基于收藏夹漫画统计的高频标签，点击挑选加入推荐。
+          {syncedCount !== null && <span className="ml-1">已同步 {syncedCount} 本漫画。</span>}
+        </p>
+        {isLoading ? (
+          <p className="text-sm text-[var(--text-secondary)] py-4 text-center">加载中...</p>
+        ) : detectedTags.length === 0 ? (
+          <p className="text-sm text-[var(--text-secondary)] py-4 text-center">
+            请先同步收藏夹以生成检测标签
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-2 max-h-52 overflow-y-auto content-start">
+              {detectedTags.slice(0, 10).map(({ tag, count }) => {
+                const picked = myTagSet.has(tag.toLowerCase())
+                return (
+                  <button
+                    key={tag}
+                    onClick={() => picked ? handleRemoveMyTag(tag) : handlePickDetected(tag)}
+                    disabled={!picked && blacklistSet.has(tag.toLowerCase())}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
+                      picked
+                        ? 'bg-amber-500/15 text-amber-600/60 cursor-pointer opacity-60'
+                        : blacklistSet.has(tag.toLowerCase())
+                          ? 'bg-[var(--error)]/5 text-[var(--text-secondary)]/40 cursor-not-allowed line-through'
+                          : 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 cursor-pointer'
+                    }`}
+                    title={picked ? '已加入推荐，点击移除' : blacklistSet.has(tag.toLowerCase()) ? '该标签已被屏蔽' : '点击加入推荐'}
+                  >
+                    {picked && '✓ '}{tag}
+                    <span className="text-xs opacity-60">({count})</span>
+                  </button>
+                )
+              })}
+            </div>
+            {detectedTags.length > 10 && (
+              <button
+                onClick={() => setShowAllDetected(true)}
+                className="text-sm text-[var(--accent)] hover:underline"
+              >
+                管理全部检测标签 (共 {detectedTags.length} 个)
+              </button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* ── 全部检测标签弹窗 ── */}
+      {showAllDetected && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setShowAllDetected(false)}>
           <div
             className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-lg w-full"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-medium text-[var(--text-primary)]">
-                全部推荐标签 ({SOURCE_LABELS[source as keyof typeof SOURCE_LABELS]})
+                全部检测标签 ({SOURCE_LABELS[sourceKey as keyof typeof SOURCE_LABELS]})
               </h3>
               <button
-                onClick={() => setShowAllTags(false)}
+                onClick={() => setShowAllDetected(false)}
                 className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors text-lg leading-none"
               >
                 ✕
               </button>
             </div>
             <div className="flex flex-wrap gap-2 max-h-[60vh] overflow-y-auto content-start">
-              {tags.map(({ tag, count }) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full
-                             bg-amber-500/10 text-amber-600 text-sm"
-                >
-                  {tag}
-                  <span className="text-xs opacity-60">({count})</span>
+              {detectedTags.map(({ tag, count }) => {
+                const picked = myTagSet.has(tag.toLowerCase())
+                return (
                   <button
-                    onClick={() => setConfirmTag(tag)}
-                    className="w-4 h-4 rounded-full text-[10px] flex items-center justify-center
-                               text-amber-600/60 hover:text-[var(--error)] hover:bg-[var(--error)]/10 transition-colors"
-                    title="移除"
+                    key={tag}
+                    onClick={() => picked ? handleRemoveMyTag(tag) : handlePickDetected(tag)}
+                    disabled={!picked && blacklistSet.has(tag.toLowerCase())}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm transition-colors ${
+                      picked
+                        ? 'bg-amber-500/15 text-amber-600/60 cursor-pointer opacity-60'
+                        : blacklistSet.has(tag.toLowerCase())
+                          ? 'bg-[var(--error)]/5 text-[var(--text-secondary)]/40 cursor-not-allowed line-through'
+                          : 'bg-amber-500/10 text-amber-600 hover:bg-amber-500/20 cursor-pointer'
+                    }`}
+                    title={picked ? '已加入推荐，点击移除' : blacklistSet.has(tag.toLowerCase()) ? '该标签已被屏蔽' : '点击加入推荐'}
                   >
-                    ✕
+                    {picked && '✓ '}{tag}
+                    <span className="text-xs opacity-60">({count})</span>
                   </button>
-                </span>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>
       )}
 
-      {confirmTag !== null && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center" onClick={() => setConfirmTag(null)}>
-          <div className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-base font-medium text-[var(--text-primary)] mb-4">
-              移除推荐标签「{confirmTag}」？
-            </h3>
-            <p className="text-sm text-[var(--text-secondary)] mb-4">
-              该标签将从推荐列表中移除，不影响收藏夹数据。
-            </p>
-            <div className="flex justify-end gap-2">
-              <button
-                onClick={() => setConfirmTag(null)}
-                className="px-4 py-2 rounded-lg bg-[var(--bg-secondary)] border border-[var(--border)] text-[var(--text-primary)]"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => handleRemoveTag(confirmTag)}
-                className="px-4 py-2 rounded-lg bg-[var(--error)] text-white hover:bg-[var(--error)]/80"
-              >
-                确认
-              </button>
-            </div>
-          </div>
+      {opToast && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-lg
+                        bg-[var(--bg-tertiary)] text-[var(--text-primary)] text-sm shadow-lg border border-[var(--border)]">
+          {opToast}
         </div>
       )}
     </div>
