@@ -17,6 +17,7 @@ import { StartupScreen } from './components/StartupScreen'
 import { useDrawerStore } from './stores/useDrawerStore'
 import { useReaderStore } from './stores/useReaderStore'
 import { useFatalErrorStore } from './stores/useFatalErrorStore'
+import { useSidebarStore } from './stores/useSidebarStore'
 import type { UpdateInfo, FatalErrorEvent } from '@shared/types'
 
 // 代码分割 —— 非首屏页面和模态框（页面均为 named export，需要模块重导出为 default）
@@ -114,6 +115,22 @@ function App() {
       handlePageChange('search')
     }
   }, [pendingSearch, activePage, handlePageChange])
+
+  // Ctrl/Cmd+B：切换侧边栏收起/展开（VS Code 惯例）。
+  // 守卫：忽略文本输入场景与 Shift/Alt 修饰，避免与编辑器/其它快捷键冲突。
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      const isToggleShortcut = (e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && (e.key === 'b' || e.key === 'B')
+      if (!isToggleShortcut) return
+      const target = e.target as HTMLElement | null
+      const tag = target?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return
+      e.preventDefault()
+      useSidebarStore.getState().toggle()
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   const renderPageContent = (page: string) => {
     switch (page) {
