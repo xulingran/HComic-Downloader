@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
-import { useIpc, useFavouriteTagsProgress } from '@/hooks/useIpc'
+import { useIpc, useFavouriteTagsProgress, useTagListProgress } from '@/hooks/useIpc'
 import { createMockHcomic } from '../../__mocks__/ipc'
-import type { FavouriteTagsProgressEvent } from '@shared/types'
+import type { FavouriteTagsProgressEvent, TagListProgressEvent } from '@shared/types'
 
 describe('useIpc', () => {
   beforeEach(() => {
@@ -134,5 +134,83 @@ describe('useFavouriteTagsProgress', () => {
     })
     expect(result.current.progress?.source).toBe('hcomic')
     expect(result.current.progress?.current).toBe(2)
+  })
+})
+
+describe('useTagListProgress', () => {
+  // 可控订阅：捕获注册的 callback，测试可主动推送进度事件
+  let subscribedCallback: ((data: TagListProgressEvent) => void) | null = null
+  const mockUnsubscribe = vi.fn()
+
+  beforeEach(() => {
+    subscribedCallback = null
+    mockUnsubscribe.mockClear()
+    delete (window as unknown as Record<string, unknown>).hcomic
+    Object.defineProperty(window, 'hcomic', {
+      value: {
+        onTagListProgress: vi.fn((cb: (data: TagListProgressEvent) => void) => {
+          subscribedCallback = cb
+          return mockUnsubscribe
+        }),
+      },
+      writable: true,
+      configurable: true,
+    })
+  })
+
+  it('切换来源时清空上一来源的残留进度，避免展示错误来源的错误帧', () => {
+    // hcomic 标签列表报错后切到 jm，progress 必须被清空，不得保留 hcomic 的 error 帧
+    const { result, rerender } = renderHook(({ source }) => useTagListProgress(source), {
+      initialProps: { source: 'hcomic' },
+    })
+
+    // 模拟后端推送 hcomic 的 error 进度
+    act(() => {
+      subscribedCallback!({
+        source: 'hcomic',
+        currentPage: 0,
+        totalPages: 1,
+        totalTags: 0,
+        status: 'error',
+        message: '请求超时',
+      })
+    })
+    expect(result.current.progress?.status).toBe('error')
+    expect(result.current.progress?.source).toBe('hcomic')
+
+    // 切换到 jm：source 变化触发 effect 重跑，必须清空旧进度
+    rerender({ source: 'jm' })
+
+    // 关键不变量：切到 jm 后 progress 必须为 null，禁止残留 hcomic 的错误帧
+    expect(result.current.progress).toBeNull()
+  })
+
+  it('仅接受匹配当前来源的进度事件', () => {
+    const { result } = renderHook(() => useTagListProgress('hcomic'))
+
+    // 推送 jm 来源的事件，必须被忽略（不写入 hcomic 的 progress）
+    act(() => {
+      subscribedCallback!({
+        source: 'jm',
+        currentPage: 1,
+        totalPages: 5,
+        totalTags: 10,
+        status: 'running',
+      })
+    })
+    expect(result.current.progress).toBeNull()
+
+    // 推送 hcomic 来源的事件，必须被接受
+    act(() => {
+      subscribedCallback!({
+        source: 'hcomic',
+        currentPage: 2,
+        totalPages: 5,
+        totalTags: 8,
+        status: 'running',
+      })
+    })
+    expect(result.current.progress?.source).toBe('hcomic')
+    expect(result.current.progress?.currentPage).toBe(2)
   })
 })

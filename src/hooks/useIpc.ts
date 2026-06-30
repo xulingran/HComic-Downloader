@@ -280,6 +280,11 @@ export function useTagListProgress(source?: string) {
   const [progress, setProgress] = useState<TagListProgressEvent | null>(null)
 
   useEffect(() => {
+    // 来源切换时清空上一来源的残留进度：effect 依赖 [source]，每次 source 变化都会重跑，
+    // 此处先置空再订阅，避免 HComic 标签列表报错后切到 JM 仍展示 HComic 的错误帧。
+    // 与 useFavouriteTagsProgress 同模式（切源清空是 effect 的核心职责）。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setProgress(null)
     if (!window.hcomic?.onTagListProgress) return
     const unsubscribe = window.hcomic.onTagListProgress((data) => {
       if (!source || data.source === source) setProgress(data)
