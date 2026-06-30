@@ -355,15 +355,7 @@ export interface DeepLinkTarget {
 export type DiagnosticsReport = string
 
 /** Keys that can be persisted via set-config */
-export type ConfigKey = 'themeMode' | 'outputFormat' | 'downloadDir' | 'concurrentDownloads'
-  | 'timeout' | 'retryTimes' | 'cbzFilenameTemplate' | 'batchDownloadDelay'
-  | 'autoRetryMaxAttempts' | 'notifyOnComplete' | 'notifyWhenForeground' | 'defaultSource'
-  | 'defaultFavouriteSource'
-  | 'fontName' | 'fontSize' | 'sfwMode' | 'cardStyle' | 'tagBlacklist' | 'myTags' | 'duplicateBlacklist' | 'missingBlacklist' | 'previewCacheSizeLimitMB'
-  | 'jmDomain' | 'favouriteTagHighlight' | 'favouriteTagMinMatches' | 'checkUpdateOnStart'
-  | 'bikaImageQuality'
-  | 'previewPreloadForward' | 'previewPreloadBackward' | 'previewPreloadConcurrency'
-  | 'previewPreloadAdaptive'
+export type ConfigKey = typeof CONFIG_KEYS[number]
 
 export type ConfigValueMap = {
   themeMode: 'light' | 'dark' | 'auto'
@@ -1176,7 +1168,7 @@ export const CONFIG_KEYS = [
   'timeout', 'retryTimes', 'cbzFilenameTemplate', 'batchDownloadDelay',
   'autoRetryMaxAttempts', 'notifyOnComplete', 'notifyWhenForeground', 'defaultSource',
   'defaultFavouriteSource',
-  'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'duplicateBlacklist', 'missingBlacklist', 'previewCacheSizeLimitMB',
+  'fontName', 'fontSize', 'sfwMode', 'cardStyle', 'tagBlacklist', 'myTags', 'duplicateBlacklist', 'missingBlacklist', 'previewCacheSizeLimitMB',
   'jmDomain', 'favouriteTagHighlight', 'favouriteTagMinMatches', 'checkUpdateOnStart',
   'bikaImageQuality',
   'previewPreloadForward', 'previewPreloadBackward', 'previewPreloadConcurrency',

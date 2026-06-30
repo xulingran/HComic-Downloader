@@ -130,8 +130,24 @@ describe('preload.ts', () => {
       expect(mockInvoke).toHaveBeenCalledWith('python:set-config', 'themeMode', 'dark')
     })
 
+    it('should accept and forward myTags', async () => {
+      const myTags = {
+        hcomic: ['NTR'],
+        moeimg: [],
+        jm: ['校園'],
+        bika: [],
+        copymanga: [],
+        nh: [],
+      }
+
+      await exposedApi.setConfig('myTags', myTags)
+
+      expect(mockInvoke).toHaveBeenCalledWith('python:set-config', 'myTags', myTags)
+    })
+
     it('should reject unknown config key', () => {
       expect(() => exposedApi.setConfig('evilKey', 'value')).toThrow('Invalid config key')
+      expect(mockInvoke).not.toHaveBeenCalled()
     })
   })
 
