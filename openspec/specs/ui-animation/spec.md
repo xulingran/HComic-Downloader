@@ -131,17 +131,17 @@ Modal 迁移到 AnimatePresence 后，**必须**保留「mousedown 与 click 均
 
 ### 需求: 阅读器 single 与 double 模式必须使用横向滑动翻页过渡
 
-当 displayMode 为 `single` 或 `double` 时，currentPage 变化**必须**触发横向滑动过渡：新页从相反方向滑入、旧页向用户离开方向滑出；过渡时长约 250ms，使用 smooth 曲线（cubic-bezier(0.4, 0, 0.2, 1)），**禁止**使用会 overshoot 的 spring 曲线。
+当 displayMode 为 `single` 或 `double` 时，currentPage 变化**必须**触发横向滑动过渡：新页从相反方向滑入、旧页向用户离开方向滑出；过渡**必须**显式使用 `smoothTransition`（`DURATION.slow`，约 300ms，cubic-bezier(0.4, 0, 0.2, 1)），**禁止**省略 transition 导致 framer-motion 回退到会 overshoot 的默认 spring 曲线。普通动画路径的进入与退出端点**必须**使用轻微 opacity 变化柔化新旧页交替，中心状态保持完全不透明。
 
 #### 场景: single 模式向前翻页
 
 - **当** 用户在 single 模式触发向前翻页（currentPage 增加，direction='forward'）
-- **那么** 旧页向左滑出、新页从右滑入，250ms smooth 曲线
+- **那么** 旧页向左滑出、新页从右滑入，使用约 300ms smooth 曲线，无 overshoot，并带轻微 opacity 柔化
 
 #### 场景: single 模式向后翻页
 
 - **当** 用户触发向后翻页（currentPage 减少，direction='backward'）
-- **那么** 旧页向右滑出、新页从左滑入
+- **那么** 旧页向右滑出、新页从左滑入，使用约 300ms smooth 曲线，无 overshoot，并带轻微 opacity 柔化
 
 #### 场景: double 模式两页整体滑动
 
@@ -152,6 +152,11 @@ Modal 迁移到 AnimatePresence 后，**必须**保留「mousedown 与 click 均
 
 - **当** double 模式且 blankPosition 为 front 或 end，翻页经过空白页位置
 - **那么** 空白页（BlankPage）作为整体的一部分参与滑动，**禁止**半屏闪烁
+
+#### 场景: 翻页 variants 显式声明 transition
+
+- **当** 普通横向翻页 variants 被生成
+- **那么** center 与 exit 变体显式包含 `smoothTransition`，**禁止**缺失 transition
 
 ### 需求: 翻页方向必须由 PageFlipView 内部根据 currentPage 变化推断
 
