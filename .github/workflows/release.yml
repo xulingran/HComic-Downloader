@@ -127,10 +127,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # extract-changelog 需读取 tag，需完整历史
 
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Extract changelog for release notes
+        id: changelog
+        run: |
+          python scripts/extract-changelog.py --version "${{ github.ref_name }}" --out RELEASE_NOTES.md
+          # 若 CHANGELOG 无此版本段落，脚本写入回退文本，此时回落到自动生成
+          if grep -q "详见 \[CHANGELOG.md\]" RELEASE_NOTES.md; then
+            echo "use_auto=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "use_auto=false" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -138,5 +151,7 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           draft: false
-          generate_release_notes: true
+          # CHANGELOG 命中时用提取的正文；未命中回落到自动生成（commit 对比）
+          body_file: ${{ steps.changelog.outputs.use_auto != 'true' && 'RELEASE_NOTES.md' || '' }}
+          generate_release_notes: ${{ steps.changelog.outputs.use_auto == 'true' }}
           files: artifacts/**/*
