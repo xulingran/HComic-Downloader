@@ -27,6 +27,22 @@ const SINGLE_CONFIRM_LAYOUT: Record<'unfavourite' | 'unblock', { desc: string; c
   },
 }
 
+// 标签 chip 小按钮四态：由 blocked / favourited / canRecommend 三输入单次推导出 state，
+// 再从下表一次性取出 action/icon/color/title 四字段，避免四个平行三元表达式各自重复判定
+// （新增状态只改此表 + 推导链，不再需要同步四处）。
+type TagButtonState = 'blocked' | 'favourited' | 'recommendable' | 'plain'
+const TAG_BUTTON_STATE: Record<TagButtonState, { action: TagConfirmAction; icon: string; color: string; title: string }> = {
+  blocked: { action: 'unblock', icon: '✓', color: 'bg-[var(--accent)] text-white', title: '取消屏蔽' },
+  favourited: { action: 'unfavourite', icon: '★', color: 'bg-amber-500 text-white', title: '取消推荐' },
+  recommendable: {
+    action: 'favourite',
+    icon: '+',
+    color: 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]',
+    title: '加入推荐 / 屏蔽',
+  },
+  plain: { action: 'block', icon: '+', color: 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]', title: '加入屏蔽' },
+}
+
 export function ComicInfoDrawer() {
   const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
   const { tagBlacklist, myTags, favouriteTagHighlight, addTag, removeTag, addMyTag, removeMyTag } = useSettingsStore()
@@ -507,29 +523,16 @@ export function ComicInfoDrawer() {
                   // 来源能力门控：仅当 sourceSupportsTagRecommendation 为真时才暴露推荐动作。
                   // 不支持推荐的来源（如 NH / copymanga）下，未设置态退化为「加入屏蔽」(block)，
                   // 已屏蔽态仍为「取消屏蔽」(unblock)——禁止出现无法生效的 favourite 写入。
+                  // 小按钮四态由 blocked/favourited/canRecommend 单次推导后查 TAG_BUTTON_STATE 取字段。
                   const canRecommend = sourceSupportsTagRecommendation(comicSource)
-                  // 小按钮状态：已屏蔽→取消屏蔽(✓)；已推荐→取消推荐(★)；未设置→添加(+)
-                  // 不支持推荐来源的未设置态走 'block'（加入屏蔽），避开 favourite 假成功写入。
-                  const btnAction = blocked
-                    ? 'unblock'
+                  const buttonState: TagButtonState = blocked
+                    ? 'blocked'
                     : favourited && canRecommend
-                      ? 'unfavourite'
+                      ? 'favourited'
                       : canRecommend
-                        ? 'favourite'
-                        : 'block'
-                  const btnIcon = blocked ? '✓' : favourited && canRecommend ? '★' : '+'
-                  const btnColor = blocked
-                    ? 'bg-[var(--accent)] text-white'
-                    : favourited && canRecommend
-                      ? 'bg-amber-500 text-white'
-                      : 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]'
-                  const btnTitle = blocked
-                    ? '取消屏蔽'
-                    : favourited && canRecommend
-                      ? '取消推荐'
-                      : canRecommend
-                        ? '加入推荐 / 屏蔽'
-                        : '加入屏蔽'
+                        ? 'recommendable'
+                        : 'plain'
+                  const { action: btnAction, icon: btnIcon, color: btnColor, title: btnTitle } = TAG_BUTTON_STATE[buttonState]
                   return (
                     <Wrapper key={idx} className="relative group" {...wrapperProps}>
                       <button

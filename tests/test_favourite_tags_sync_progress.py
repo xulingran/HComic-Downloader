@@ -128,7 +128,7 @@ def test_sync_emits_enriching_progress_when_empty_comics_exist(tmp_path):
     assert enriching[-1]["phase"] == "enriching"
 
 
-def test_sync_emits_error_and_reraises_on_first_page_failure(tmp_path):
+def test_sync_emits_error_once_on_first_page_failure(tmp_path):
     db = FavouriteTagsDB(str(tmp_path / "ft.db"))
     parser = MagicMock()
     parser.favourites.side_effect = RuntimeError("boom")
@@ -140,6 +140,32 @@ def test_sync_emits_error_and_reraises_on_first_page_failure(tmp_path):
         mixin.handle_sync_favourite_tags("hcomic")
 
     events = _notifications(mixin)
-    assert events
-    assert events[-1]["phase"] == "error"
-    assert "boom" in events[-1]["message"]
+    error_events = [e for e in events if e["phase"] == "error"]
+    # 契约收紧：第一页失败路径必须恰好推送一次 error（旧行为会双发：内层 + 外层）
+    assert len(error_events) == 1
+    # total_pages 未确定（第一页即失败），total 必须为 0 表达「未知总数」而非误导性的 1
+    assert error_events[0]["total"] == 0
+    assert "boom" in error_events[0]["message"]
+
+
+def test_sync_emits_error_once_on_needs_login(tmp_path):
+    """needs_login 失败路径与第一页网络失败路径行为一致：恰好一次 error。
+
+    两条失败路径推送的 error 事件数量必须相等，避免契约分叉（修复前第一页网络失败
+    会双发、needs_login 只单发）。
+    """
+    db = FavouriteTagsDB(str(tmp_path / "ft.db"))
+    parser = MagicMock()
+    # 第一页请求成功返回，但 needs_login=True
+    parser.favourites.return_value = ([], SimpleNamespace(total_pages=1), True)
+
+    mixin = _StubSyncMixin(db, parser, lambda *a, **k: [], lambda *a, **k: 0)
+
+    with pytest.raises(RuntimeError, match="未登录"):
+        mixin.handle_sync_favourite_tags("hcomic")
+
+    events = _notifications(mixin)
+    error_events = [e for e in events if e["phase"] == "error"]
+    # 与第一页失败路径一致：恰好一次 error
+    assert len(error_events) == 1
+    assert "未登录" in error_events[0]["message"]

@@ -7,6 +7,8 @@ import threading
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
+from config import _default_source_list_map
+
 from .types import CONFIG_KEY_MAP, _get_config_path
 
 if TYPE_CHECKING:
@@ -171,9 +173,7 @@ class ConfigMixin:
             "sfw_mode": getattr(self.config, "sfw_mode", True),
             "card_style": getattr(self.config, "card_style", "cover"),
             "tag_blacklist": getattr(self.config, "tag_blacklist", {"hcomic": [], "moeimg": []}),
-            "my_tags": getattr(
-                self.config, "my_tags", {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []}
-            ),
+            "my_tags": getattr(self.config, "my_tags", _default_source_list_map()),
             "duplicate_blacklist": getattr(self.config, "duplicate_blacklist", {"hcomic": [], "moeimg": [], "jm": []}),
             # 与 duplicate_blacklist 同构但独立存储：查缺补漏的忽略黑名单。
             # 读路径必须返回，否则前端 useInitConfig 拿不到值，重启后忽略列表全部丢失。

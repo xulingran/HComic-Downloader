@@ -280,89 +280,99 @@ class FavouriteTagsMixin:
         self._favourite_tags_db.remove_tag(tag, effective_source)
         return {"success": True}
 
+    def _fetch_favourites_pages(
+        self,
+        source: str,
+        on_page: Any,
+    ) -> tuple[list, int, int, int]:
+        """逐页扫描收藏夹，返回待补全漫画与统计。
+
+        先获取第一页确认可访问，再清空索引，避免未登录时丢失已有数据；
+        随后逐页扫描并推送 ``fetching`` 进度（由调用方注入 ``on_page``）。
+        第一页失败直接 raise——错误事件的统一推送由 ``handle_sync_favourite_tags``
+        的外层兜底负责，本方法不重复推送 error，避免双发。
+
+        Returns:
+            (all_empty, total_comics, total_pages, skipped_pages)
+        """
+        comics, pagination, needs_login = self.parser.favourites(page=1, raise_errors=True, source=source)
+        if needs_login:
+            raise RuntimeError(f"{source} 未登录或会话已过期，请先登录后再同步")
+
+        # 第一页成功后才清空该来源的标签索引
+        self._favourite_tags_db.clear(source)
+
+        all_empty: list = []
+        total_comics = len(comics)
+        total_pages = pagination.total_pages if pagination else 1
+        all_empty.extend(self._update_tags_from_favourites_page(comics, source, collect_empty=True))
+        on_page(1, total_pages, total_comics)
+
+        skipped_pages = 0
+        for page in range(2, total_pages + 1):
+            try:
+                comics, _pagination, _needs_login = self.parser.favourites(
+                    page=page,
+                    raise_errors=False,
+                    source=source,
+                )
+                total_comics += len(comics)
+                all_empty.extend(self._update_tags_from_favourites_page(comics, source, collect_empty=True))
+            except Exception as e:
+                logger.warning("sync_favourite_tags page %d failed: %s", page, e)
+                skipped_pages += 1
+            on_page(page, total_pages, total_comics)
+
+        return all_empty, total_comics, total_pages, skipped_pages
+
+    def _enrich_phase(self, source: str, empty_comics: list, on_progress: Any) -> int:
+        """对无标签漫画做详情补全标签。
+
+        先推送起始 0/total 帧，再逐本调用 ``_enrich_tags_for_comics`` 并经
+        ``on_progress`` 回调推送进度。``empty_comics`` 为空时直接返回 0 不推送，
+        保持与历史调用方一致的行为。
+        """
+        enrich_needed = len(empty_comics)
+        if enrich_needed == 0:
+            return 0
+        on_progress(0, enrich_needed)
+        return self._enrich_tags_for_comics(
+            empty_comics, source, progress_callback=lambda done: on_progress(done, enrich_needed)
+        )
+
     def handle_sync_favourite_tags(self, source: str = "hcomic") -> dict:
         """一站式同步：获取全部收藏 → 清空索引 → 更新有标签漫画 → 补全无标签漫画。
 
-        先获取第一页确认可访问，再清空索引，避免未登录时丢失已有数据。
-        同步过程逐阶段推送 favourite_tags_progress 进度事件，异常路径在
-        推送 error 后重新抛出，保持现有 JSON-RPC 错误行为不变。
+        编排 ``_fetch_favourites_pages`` 与 ``_enrich_phase``，并逐阶段推送
+        ``favourite_tags_progress`` 进度事件。错误事件的推送**唯一**由本方法的
+        外层 ``try/except`` 负责（推送一次 ``phase:"error"`` 后 re-raise），
+        内层助手不再各自推送 error，保证每个失败路径恰好发送一次。
         """
         effective_source = source if source in _TAG_RECOMMENDATION_SOURCES else "hcomic"
-
-        # 2. 逐页获取收藏夹，收集有/无标签漫画
-        all_empty: list = []
+        total_pages: int | None = None
         total_comics = 0
-        skipped_pages = 0
-        total_pages = 1
 
         try:
-            try:
-                comics, pagination, needs_login = self.parser.favourites(
-                    page=1,
-                    raise_errors=True,
-                    source=effective_source,
-                )
-            except Exception as e:
-                logger.error("sync_favourite_tags page 1 failed: %s", e, exc_info=True)
-                self._emit_favourite_tags_progress(effective_source, "error", 0, 1, message=str(e) or "同步失败")
-                raise
-
-            if needs_login:
-                raise RuntimeError(f"{effective_source} 未登录或会话已过期，请先登录后再同步")
-
-            # 1. 第一页成功后才清空该来源的标签索引
-            self._favourite_tags_db.clear(effective_source)
-
-            total_pages = pagination.total_pages if pagination else 1
-            total_comics += len(comics)
-            empty = self._update_tags_from_favourites_page(comics, effective_source, collect_empty=True)
-            all_empty.extend(empty)
-            self._emit_favourite_tags_progress(
+            all_empty, total_comics, total_pages, skipped_pages = self._fetch_favourites_pages(
                 effective_source,
-                "fetching",
-                1,
-                total_pages,
-                current_page=1,
-                total_pages=total_pages,
-                total_comics=total_comics,
-            )
-
-            for page in range(2, total_pages + 1):
-                try:
-                    comics, pagination, _needs_login = self.parser.favourites(
-                        page=page,
-                        raise_errors=False,
-                        source=effective_source,
-                    )
-                    total_comics += len(comics)
-                    empty = self._update_tags_from_favourites_page(comics, effective_source, collect_empty=True)
-                    all_empty.extend(empty)
-                except Exception as e:
-                    logger.warning("sync_favourite_tags page %d failed: %s", page, e)
-                    skipped_pages += 1
-                self._emit_favourite_tags_progress(
+                on_page=lambda page, tp, tc: self._emit_favourite_tags_progress(
                     effective_source,
                     "fetching",
                     page,
-                    total_pages,
+                    tp,
                     current_page=page,
-                    total_pages=total_pages,
-                    total_comics=total_comics,
-                )
+                    total_pages=tp,
+                    total_comics=tc,
+                ),
+            )
+            enriched_count = self._enrich_phase(
+                effective_source,
+                all_empty,
+                on_progress=lambda done, total: self._emit_favourite_tags_progress(
+                    effective_source, "enriching", done, total
+                ),
+            )
 
-            # 3. 对无标签漫画做 enrichment
-            enrich_needed = len(all_empty)
-            if enrich_needed > 0:
-                self._emit_favourite_tags_progress(effective_source, "enriching", 0, enrich_needed)
-
-                def _on_enrich(done: int) -> None:
-                    self._emit_favourite_tags_progress(effective_source, "enriching", done, enrich_needed)
-
-                enriched_count = self._enrich_tags_for_comics(all_empty, effective_source, progress_callback=_on_enrich)
-            else:
-                enriched_count = 0
-
-            # 4. 返回最终标签列表
             tags = self._favourite_tags_db.get_tags(effective_source)
             self._emit_favourite_tags_progress(
                 effective_source,
@@ -376,7 +386,7 @@ class FavouriteTagsMixin:
                 "sync_favourite_tags done: source=%s total=%d enrich_needed=%d enriched=%d skipped=%d",
                 effective_source,
                 total_comics,
-                enrich_needed,
+                len(all_empty),
                 enriched_count,
                 skipped_pages,
             )
@@ -384,16 +394,18 @@ class FavouriteTagsMixin:
                 "tags": tags,
                 "totalComics": total_comics,
                 "enrichedCount": enriched_count,
-                "enrichNeeded": enrich_needed,
+                "enrichNeeded": len(all_empty),
                 "skippedPages": skipped_pages,
             }
         except Exception as e:
-            # 兜底：未被内层捕获的异常也推送 error，保持 UI 不卡在同步中。
-            # 已由内层推送过 error 的异常会再推一次，前端按终态处理无副作用。
+            # 唯一 error 推送点：未被捕获的异常（第一页网络失败 / needs_login /
+            # enrich 异常等）统一推送一次 error 后 re-raise。total 用 0 表达
+            # 「未知总数」（total_pages 为 None 时 first-page 失败语义明确）。
+            logger.error("sync_favourite_tags failed: %s", e, exc_info=True)
             message = str(e) or "同步失败"
             try:
                 self._emit_favourite_tags_progress(
-                    effective_source, "error", 0, total_pages, total_comics=total_comics, message=message
+                    effective_source, "error", 0, total_pages or 0, total_comics=total_comics, message=message
                 )
             except Exception:  # noqa: SIM107 - 推送失败不应掩盖原始同步错误
                 logger.debug("failed to emit favourite tags error progress: %s", e)
