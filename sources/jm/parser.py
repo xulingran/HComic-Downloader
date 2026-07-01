@@ -411,9 +411,11 @@ class JmParser(ParserContextMixin):
 
         url = self._build_search_url(keyword, page=page)
         try:
-            html = self._request_text(url)
+            html = self._request_text_with_challenge_check(url)
             return self._parse_search_results(html, domain=domain)
-        except ParserResponseError:
+        except (ParserResponseError, AntiBotChallengeError):
+            # AntiBotChallengeError 必须向上传播，让 IPC 层序列化为 -32002
+            # 结构化挑战信号，供 Electron 主进程触发恢复链路。
             raise
         except Exception as e:
             logger.error("jm search failed: %s", e, exc_info=True)
@@ -825,6 +827,25 @@ class JmParser(ParserContextMixin):
         domain = self._ensure_domain()
         headers = self._auth_headers({"Referer": f"https://{domain}/"})
         resp = self.session.get(url, timeout=self.timeout, allow_redirects=True, headers=headers)
+        resp.raise_for_status()
+        self._fix_encoding(resp)
+        return resp.text
+
+    def _request_text_with_challenge_check(self, url: str) -> str:
+        """请求文本并检测 Cloudflare 反爬挑战，仅供搜索路径使用。
+
+        与公共 ``_request_text`` 的区别：响应被识别为反爬挑战时抛出
+        ``AntiBotChallengeError(challenge_url=url)``，而非把挑战页正文交给
+        调用方解析（搜索结果解析会把挑战页误判为“无结果”）。
+
+        注意：``_request_text`` 仍被详情页/随机等路径复用，此处不修改公共方法，
+        避免扩大改动面与回归风险。
+        """
+        domain = self._ensure_domain()
+        headers = self._auth_headers({"Referer": f"https://{domain}/"})
+        resp = self.session.get(url, timeout=self.timeout, allow_redirects=True, headers=headers)
+        if self._is_challenge_response(resp):
+            raise AntiBotChallengeError("JM 搜索遇到站点人机验证", challenge_url=url)
         resp.raise_for_status()
         self._fix_encoding(resp)
         return resp.text

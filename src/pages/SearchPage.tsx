@@ -62,6 +62,15 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     if (!requiresAuth(src)) return true
     try {
       const result = await verifyAuth(src)
+      if (!result.valid) {
+        // JM 站点人机验证阻断 verifyAuth 时，不能据此判定 Cookie 失效——
+        // 收藏夹此时仍可经挑战恢复获取数据，搜索也应放行让挑战恢复机制处理。
+        // 否则搜索页会误显示"登录信息已过期"，而收藏夹却正常工作。
+        const msg = result.message || ''
+        if (src === 'jm' && msg.includes('人机验证')) {
+          return true
+        }
+      }
       return result.valid
     } catch {
       return false
@@ -365,7 +374,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       if (cachedPage.pagination) setPagination(cachedPage.pagination)
       setError(null)
       loadedContextKeyRef.current = contextKey
-      search(query, mode, page, source, searchTags || undefined).then((result) => {
+      search(query, mode, page, source, searchTags || undefined, false).then((result) => {
         if (gen !== searchGenRef.current) return
         setComics(result.comics)
         setPagination(result.pagination)
@@ -384,7 +393,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     // 区分新查询与翻页：当前 comics 属于同一搜索上下文（仅页码不同）→ 翻页，保留旧结果 + 遮罩；
     // 否则 → 新查询，清空 + 骨架。
     const isPaging = loadedContextKeyRef.current === contextKey
-    await withLoading(() => search(query, mode, page, source, searchTags || undefined), { keepExisting: isPaging })
+    await withLoading(() => search(query, mode, page, source, searchTags || undefined, true), { keepExisting: isPaging })
   }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search, setComics, setPagination, setError, cacheSearchPage])
 
   const handleRandom = async () => {
@@ -612,6 +621,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         1,
         sourceRef.current,
         newSearchTags || undefined,
+        // 用户主动切换标签触发的搜索，JM 来源遇挑战时应能触发恢复
+        true,
       ))
     }
   }, [tagPanel, withLoading, search, clearSelection])

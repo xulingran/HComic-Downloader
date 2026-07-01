@@ -112,7 +112,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
     })
 
     // 等来源 A 的第 2 页预加载请求发出（在 IPC await 中挂起）。
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
 
     const contextKeyA = result.current.contextKey
 
@@ -172,7 +172,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       cacheSearchPage,
     })
 
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
 
     const contextKeyA = result.current.contextKey
 
@@ -224,7 +224,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       cacheSearchPage,
     })
 
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
 
     const contextKeyA = result.current.contextKey
 
@@ -284,7 +284,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
     })
 
     // 来源 A 的第 2 页预加载正常 resolve（contextKey 未切换）。
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
 
     // 等预加载写入中转缓存 + usePaginatedPreloader 触发 commit（commit 在 resolve 后调度）。
     await act(async () => {

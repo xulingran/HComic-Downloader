@@ -26,6 +26,7 @@ import {
   isJmChallengeError,
   recoverJmChallenge,
   recoverJmFavouritesSilently,
+  recoverJmSearchChallenge,
   resetJmChallengeRecoveryStateForTests,
 } from '../../../electron/jm-challenge-recovery'
 import { IPC_ERROR_CODES } from '../../../shared/types'
@@ -331,5 +332,97 @@ describe('jm-challenge-recovery: recoverJmChallenge (编排)', () => {
       'https://18comic.vip/user/testuser/favorite/albums',
       'jmcomic-zzz.one',
     )
+  })
+})
+
+describe('jm-challenge-recovery: recoverJmSearchChallenge (搜索恢复编排)', () => {
+  beforeEach(() => {
+    mockBridgeCall.mockReset()
+    mockOpenJmChallengeWindow.mockReset()
+    mockCaptureJmFavouritesSnapshotWindow.mockReset()
+    resetJmChallengeRecoveryStateForTests()
+  })
+
+  const ctx = { mainWindow: makeMainWindow(), resolvedDomain: undefined }
+  const searchParams = { query: 'test', mode: 'keyword', page: 1, source: 'jm', tag: '' }
+
+  it('retry success: search retry returns results, no snapshot parsing', async () => {
+    const searchResult = { comics: [{ id: '1' }], pagination: { currentPage: 1, totalPages: 1, totalItems: 1 } }
+    mockOpenJmChallengeWindow.mockResolvedValue({ success: true, message: '人机验证已完成' })
+    mockBridgeCall.mockResolvedValueOnce(searchResult)
+
+    const outcome = await recoverJmSearchChallenge(ctx, makeChallengeError(), searchParams)
+
+    expect(outcome.resolved).toBe(true)
+    expect(outcome.result).toEqual(searchResult)
+    // 重试调用 search，而非 get_favourites；不调用快照解析
+    expect(mockBridgeCall).toHaveBeenCalledTimes(1)
+    expect(mockBridgeCall).toHaveBeenCalledWith('search', expect.objectContaining({ query: 'test', mode: 'keyword', page: 1 }))
+  })
+
+  it('retry still challenged → resolved=false, NO snapshot fallback (search has no snapshot)', async () => {
+    mockOpenJmChallengeWindow.mockResolvedValue({
+      success: true,
+      // 即使窗口返回了快照，搜索恢复也不应调用快照兜底
+      snapshot: { html: '<html></html>', sourceUrl: 'https://18comic.vip/search?search_query=test' },
+    })
+    mockBridgeCall.mockRejectedValueOnce(makeChallengeError()) // 重试仍挑战
+
+    const outcome = await recoverJmSearchChallenge(ctx, makeChallengeError(), searchParams)
+
+    expect(outcome.resolved).toBe(false)
+    expect(outcome.message).toContain('无法获取')
+    // 只调了一次 search 重试，禁止调用 parse_jm_favourites_snapshot
+    expect(mockBridgeCall).toHaveBeenCalledTimes(1)
+    expect(mockBridgeCall).not.toHaveBeenCalledWith('parse_jm_favourites_snapshot', expect.anything())
+    // 禁止递归弹窗
+    expect(mockOpenJmChallengeWindow).toHaveBeenCalledTimes(1)
+  })
+
+  it('user cancel → resolved=false, cancelled=true, no Python retry', async () => {
+    mockOpenJmChallengeWindow.mockResolvedValue({ success: false, message: '已取消' })
+
+    const outcome = await recoverJmSearchChallenge(ctx, makeChallengeError(), searchParams)
+
+    expect(outcome.resolved).toBe(false)
+    expect(outcome.cancelled).toBe(true)
+    expect(mockBridgeCall).not.toHaveBeenCalled()
+  })
+
+  it('forwards original search params (query/mode/page/source/tag) to retry', async () => {
+    mockOpenJmChallengeWindow.mockResolvedValue({ success: true })
+    mockBridgeCall.mockResolvedValueOnce({ comics: [], pagination: { currentPage: 2 } })
+
+    await recoverJmSearchChallenge(ctx, makeChallengeError(), {
+      query: '漫画',
+      mode: 'tag',
+      page: 2,
+      source: 'jm',
+      tag: '百合',
+    })
+
+    expect(mockBridgeCall).toHaveBeenCalledWith('search', {
+      query: '漫画',
+      mode: 'tag',
+      page: 2,
+      source: 'jm',
+      tag: '百合',
+    })
+  })
+
+  it('non-challenge error → resolved=false without opening window', async () => {
+    const outcome = await recoverJmSearchChallenge(ctx, makeChallengeError({ code: -32000 }), searchParams)
+
+    expect(outcome.resolved).toBe(false)
+    expect(mockOpenJmChallengeWindow).not.toHaveBeenCalled()
+  })
+
+  it('challenge window URL validation throws → resolved=false', async () => {
+    mockOpenJmChallengeWindow.mockRejectedValue(new Error('JM 人机验证 URL 不受信任'))
+
+    const outcome = await recoverJmSearchChallenge(ctx, makeChallengeError(), searchParams)
+
+    expect(outcome.resolved).toBe(false)
+    expect(outcome.message).toContain('无效')
   })
 })

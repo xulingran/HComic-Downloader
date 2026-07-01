@@ -816,7 +816,14 @@ export interface DownloadProgressEvent {
 
 /** Narrow API exposed by preload via window.hcomic */
 export interface HcomicAPI {
-  search(query: string, mode: string, page: number, source?: string, tag?: string): Promise<SearchResult>
+  search(
+    query: string,
+    mode: string,
+    page: number,
+    source?: string,
+    tag?: string,
+    allowInteractiveChallenge?: boolean,
+  ): Promise<SearchResult>
   random(source?: string): Promise<SearchResult>
   downloadBatchAsAlbum(comics: ComicInfo[], albumTitle: string, overwrite?: boolean): Promise<DownloadBatchAsAlbumResult>
   download(comicId: string, comicData: ComicInfo, overwrite?: boolean, chapterIds?: string[]): Promise<DownloadResult>

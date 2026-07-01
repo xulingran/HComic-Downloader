@@ -27,9 +27,19 @@ export function useIpc() {
 export function useSearch() {
   const { invoke } = useIpc()
 
-  const search = useCallback(async (query: string, mode: string, page: number, source?: string, tag?: string) => {
-    return invoke(() => window.hcomic!.search(query, mode, page, source, tag))
-  }, [invoke])
+  const search = useCallback(
+    async (
+      query: string,
+      mode: string,
+      page: number,
+      source?: string,
+      tag?: string,
+      allowInteractiveChallenge?: boolean,
+    ) => {
+      return invoke(() => window.hcomic!.search(query, mode, page, source, tag, allowInteractiveChallenge))
+    },
+    [invoke],
+  )
 
   return { search }
 }

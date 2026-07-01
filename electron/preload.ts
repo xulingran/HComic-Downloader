@@ -70,7 +70,14 @@ function onChannel(channel: string, callback: unknown, useData = true) {
 }
 
 contextBridge.exposeInMainWorld('hcomic', {
-  search: (query: unknown, mode: unknown, page: unknown, source?: unknown, tag?: unknown) => {
+  search: (
+    query: unknown,
+    mode: unknown,
+    page: unknown,
+    source?: unknown,
+    tag?: unknown,
+    allowInteractiveChallenge?: unknown,
+  ) => {
     if (typeof query !== 'string' || query.length > 512) throw new Error('Invalid query')
     if (typeof mode !== 'string' || !VALID_SEARCH_MODES.has(mode)) throw new Error('Invalid mode')
     validatePage(page)
@@ -78,7 +85,24 @@ contextBridge.exposeInMainWorld('hcomic', {
     if (source !== undefined && source !== null) {
       if (typeof source !== 'string' || !VALID_SOURCES.has(source)) throw new Error('Invalid source')
     }
-    return ipcRenderer.invoke(IPC_CHANNELS.SEARCH, query, mode, page, source ?? undefined, tag ?? undefined)
+    // 交互挑战恢复开关：仅接受严格布尔，缺省视为 false，禁止其他类型绕过。
+    // 该参数仅供主进程决定是否启动挑战恢复编排，不转发给 Python handler。
+    if (
+      allowInteractiveChallenge !== undefined
+      && allowInteractiveChallenge !== null
+      && typeof allowInteractiveChallenge !== 'boolean'
+    ) {
+      throw new Error('Invalid allowInteractiveChallenge')
+    }
+    return ipcRenderer.invoke(
+      IPC_CHANNELS.SEARCH,
+      query,
+      mode,
+      page,
+      source ?? undefined,
+      tag ?? undefined,
+      allowInteractiveChallenge === true,
+    )
   },
 
   random: (source?: unknown) => {

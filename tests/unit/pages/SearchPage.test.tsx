@@ -255,7 +255,7 @@ describe('SearchPage', () => {
     await userEvent.type(input, 'test query')
     await userEvent.click(screen.getByText('搜索'))
 
-    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic', undefined)
+    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic', undefined, true)
   })
 
   it('auto-searches with empty keyword on mount', async () => {
@@ -287,7 +287,7 @@ describe('SearchPage', () => {
     await userEvent.click(screen.getByText('搜索'))
 
     // 验证按钮点击确实发起了空 query 搜索（而非仅 mount 残留的调用）
-    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic', undefined)
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic', undefined, true)
   })
 
   it('shows pagination when totalPages > 1', () => {
@@ -402,7 +402,7 @@ describe('SearchPage', () => {
     await user.click(await screen.findByText('big breasts'))
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'big breasts')
+      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'big breasts', true)
     })
 
     await user.click(screen.getByText('清除全部'))
@@ -433,7 +433,7 @@ describe('SearchPage', () => {
     await user.click(await screen.findByText('full color'))
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'full color')
+      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'full color', true)
     })
     expect(mockSearch).not.toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh', 'full color')
   })
@@ -463,7 +463,7 @@ describe('SearchPage', () => {
     expect(mockStoreState.setComics).toHaveBeenCalledWith([
       { id: '2', title: 'Cached Page 2 Comic', url: 'https://example.com/2', coverUrl: '', source: 'test' },
     ])
-    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined)
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined, false)
   })
 
   it('restores viewingCategory from cached bika category context on remount', async () => {
@@ -500,7 +500,7 @@ describe('SearchPage', () => {
     render(<SearchPage />)
 
     await screen.findByText('Page 5 Comic')
-    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 6, 'hcomic', undefined))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 6, 'hcomic', undefined, false))
   })
 
   it('does not commit stale preload results after switching source', async () => {
@@ -516,7 +516,7 @@ describe('SearchPage', () => {
     // - 来源 hcomic 第 2 页（预加载）挂起，模拟网络往返迟到
     // - 来源 moeimg 任意页立即返回空（切换后首屏）
     const deferredPage2 = createDeferredSearch()
-    mockSearch.mockImplementation((_query: string, _mode: string, page: number, source?: string) => {
+    mockSearch.mockImplementation((_query: string, _mode: string, page: number, source?: string, _tag?: string, _allowInteractive?: boolean) => {
       if (source === 'hcomic' && page === 2) return deferredPage2.promise
       if (source === 'hcomic') {
         return Promise.resolve({
@@ -530,7 +530,7 @@ describe('SearchPage', () => {
     render(<SearchPage />)
     await screen.findByText('Page 1 Comic')
     // 等到来源 hcomic 的第 2 页预加载请求已发出（仍挂起）
-    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined, false))
 
     // 切换到来源 moeimg——contextKey 变化，旧来源预加载被中断
     const sourceSelect = screen.getByDisplayValue('HComic')
@@ -661,6 +661,26 @@ describe('SearchPage', () => {
       await screen.findByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')
 
       expect(mockSearch).not.toHaveBeenCalled()
+    })
+
+    it('does NOT show login prompt when JM verifyAuth fails due to challenge (放行让搜索处理)', async () => {
+      // 回归：verify_login_status 遇 Cloudflare 挑战返回 {valid:false, message:"...人机验证..."}。
+      // 此时不能判定 Cookie 失效——收藏夹此时仍可经挑战恢复获取数据，
+      // 搜索也应放行让挑战恢复机制处理，而非误显示"登录信息已过期"。
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'jm' } })
+      mockVerifyAuth.mockResolvedValue({
+        valid: false,
+        message: '登录校验被站点人机验证阻断，请稍后重试或检查网络与域名设置',
+      })
+      mockSearch.mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      // 挑战阻断 verifyAuth 时不显示 needsLogin
+      expect(screen.queryByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')).not.toBeInTheDocument()
+      // 而是放行继续搜索（让搜索的挑战恢复机制处理）
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm')
     })
 
     it('shows login prompt when verifyAuth throws', async () => {
