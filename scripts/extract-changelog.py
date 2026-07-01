@@ -150,8 +150,7 @@ def main() -> int:
         fallback = "详见 [CHANGELOG.md](./CHANGELOG.md)。\n"
         out_path.write_text(fallback, encoding="utf-8")
         print(
-            f"[extract-changelog] 警告：CHANGELOG.md 中未找到 [{version}] 段落，"
-            f"已写入回退文本 → {out_path}",
+            f"[extract-changelog] 警告：CHANGELOG.md 中未找到 [{version}] 段落，" f"已写入回退文本 → {out_path}",
             file=sys.stderr,
         )
         return 0
