@@ -94,6 +94,34 @@ describe('shellQuoteForShlex', () => {
 // cookie value 含 ' 时 shlex 抛 No closing quotation。
 import { execFileSync } from 'child_process'
 
+// Python 不可用时跳过：CI 环境应保证 python3 可用，但开发者本地可能无。
+// 注意：Windows 上 %PATH%\WindowsApps\python3*.exe 是 Microsoft Store 占位 stub，
+// `python3 --version` 进程能成功退出却不产生任何输出（真实解释器会打印版本到 stdout）。
+// 因此探测不能只看进程是否抛错，必须执行真实脚本并校验 stdout——否则 stub 会被误判为可用，
+// 后续调用会因 stub 静默吞掉 stdin 而失败。
+// 此外探测与实际调用必须使用**同一个**命令：早期实现探测时遍历 ['python3','python']
+// 找到可用者，但 shlexExtractCookieAndUa 写死 'python3'，导致本地仅有 python 可用时
+// 探测通过、调用却失败。下面解析出的 pythonCmd 复用到探测与调用两处。
+const PYTHON_CANDIDATES = ['python3', 'python']
+
+function resolvePythonCommand(): string | null {
+  for (const cmd of PYTHON_CANDIDATES) {
+    try {
+      const out = execFileSync(cmd, ['-c', 'print("ok")'], {
+        encoding: 'utf-8',
+        timeout: 3000,
+        stdio: ['ignore', 'pipe', 'ignore'],
+      })
+      if (out.trim() === 'ok') return cmd
+    } catch {
+      // 继续尝试下一个候选命令
+    }
+  }
+  return null
+}
+
+const pythonCmd = resolvePythonCommand()
+
 /** 镜像 applyAndVerifyAuth 的 curl 文本构造逻辑 */
 function buildProductionCurlText(cookies: Array<[string, string]>, domain: string, userAgent: string): string {
   const rawCookieStr = cookies.map(([k, v]) => `${k}=${v}`).join('; ')
@@ -102,6 +130,8 @@ function buildProductionCurlText(cookies: Array<[string, string]>, domain: strin
 }
 
 function shlexExtractCookieAndUa(curlText: string): { cookie: string; userAgent: string } {
+  // 仅在 pythonCmd 解析成功后调用（describe 内已用 if (pythonCmd) 守卫），此处断言以满足类型。
+  if (!pythonCmd) throw new Error('python not available')
   // 镜像 auth_parser.py 的关键解析路径：shlex.split + 找 -b / -H User-Agent
   const script = `import shlex,sys
 tokens = shlex.split(sys.stdin.read(), posix=True)
@@ -123,7 +153,7 @@ while i < len(tokens):
     i += 1
 sys.stdout.write(cookie + '\\n' + ua)
 `
-  const out = execFileSync('python3', ['-c', script], {
+  const out = execFileSync(pythonCmd, ['-c', script], {
     input: curlText,
     encoding: 'utf-8',
     timeout: 5000,
@@ -134,20 +164,6 @@ sys.stdout.write(cookie + '\\n' + ua)
 }
 
 describe('shellQuoteForShlex — production curl text round-trip (Python)', () => {
-  // Python 不可用时跳过：CI 环境应保证 python3 可用，但开发者本地可能无。
-  function isPythonAvailable(): boolean {
-    for (const cmd of ['python3', 'python']) {
-      try {
-        execFileSync(cmd, ['--version'], { encoding: 'utf-8', timeout: 3000 })
-        return true
-      } catch {
-        // 继续尝试下一个候选命令
-      }
-    }
-    return false
-  }
-  const pythonAvailable = isPythonAvailable()
-
   // 端到端：模拟真实 cookie 列表 + UA，构造生产 curl 文本，验证 shlex 能还原
   // 每个 case 同时验证 cookie 与 user-agent 两条解析路径。
   const cases = [
@@ -203,7 +219,7 @@ describe('shellQuoteForShlex — production curl text round-trip (Python)', () =
   ]
 
   for (const c of cases) {
-    const itOrSkip = pythonAvailable ? it : it.skip
+    const itOrSkip = pythonCmd ? it : it.skip
     itOrSkip(`round-trips: ${c.name}`, () => {
       const curlText = buildProductionCurlText(c.cookies, 'example.com', c.userAgent)
       const { cookie, userAgent } = shlexExtractCookieAndUa(curlText)
@@ -213,7 +229,7 @@ describe('shellQuoteForShlex — production curl text round-trip (Python)', () =
   }
 
   // 显式回归：旧的失败场景（cookie value 含 '）必须不再抛 shlex 错误
-  if (pythonAvailable) {
+  if (pythonCmd) {
     it('regression: single quote in value no longer raises shlex error', () => {
       const curlText = buildProductionCurlText([['name', "a'b'c"]], 'example.com', "UA'x")
       // 不应抛错（旧实现会因外层引号嵌套导致 ValueError: No closing quotation）
