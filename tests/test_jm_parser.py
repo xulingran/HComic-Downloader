@@ -2,6 +2,8 @@
 
 from pathlib import Path
 
+import pytest
+
 from sources.jm.constants import RANKING_MAPPINGS
 from sources.jm.parser import JmParser
 
@@ -633,7 +635,9 @@ def test_search_keyword_end_to_end(monkeypatch):
     """关键词搜索使用 fixture HTML 验证完整解析流程。"""
     html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
     parser = _make_parser_with_session()
-    monkeypatch.setattr(parser, "_request_text", lambda url: html)
+    # search() 现在走 _request_text_with_challenge_check（带挑战检测），
+    # 而非公共 _request_text（详情页/随机等路径仍用）。
+    monkeypatch.setattr(parser, "_request_text_with_challenge_check", lambda url: html)
 
     comics, pagination = parser.search("心甘晴愿")
 
@@ -719,7 +723,8 @@ def test_search_by_id_fallback_to_keyword_on_failure(monkeypatch):
         captured_urls.append(url)
         return html
 
-    monkeypatch.setattr(parser, "_request_text", fake_request_text)
+    # 关键词搜索走 _request_text_with_challenge_check；详情页仍走 _request_text。
+    monkeypatch.setattr(parser, "_request_text_with_challenge_check", fake_request_text)
     monkeypatch.setattr(parser, "get_comic_detail", lambda comic_id: None)
 
     comics, pagination = parser.search("430371")
@@ -874,3 +879,114 @@ def test_search_ranking_error_returns_empty(monkeypatch):
 
     assert comics == []
     assert pagination is None
+
+
+# ---------------------------------------------------------------------------
+# search() 反爬挑战检测（_request_text_with_challenge_check）
+# ---------------------------------------------------------------------------
+
+from unittest.mock import MagicMock  # noqa: E402
+
+from sources.base import AntiBotChallengeError  # noqa: E402
+
+
+def _make_search_parser(session=None) -> JmParser:
+    """带完整属性的 parser，用于 search() 路径测试。"""
+    parser = JmParser.__new__(JmParser)
+    parser._domain = "test.one"
+    parser._cdn_domain = None
+    parser._cookie = ""
+    parser._cookie_synced = True
+    parser._username = None
+    parser.timeout = 5
+    parser.session = session or MagicMock()
+    return parser
+
+
+def _make_resp(text: str = "", headers=None, status_code=200):
+    resp = MagicMock()
+    resp.text = text
+    resp.headers = headers or {}
+    resp.status_code = status_code
+    resp.encoding = "utf-8"
+    resp.raise_for_status = MagicMock()
+    return resp
+
+
+def test_search_raises_challenge_on_cf_mitigated_header(monkeypatch):
+    """响应头 cf-mitigated: challenge 必须让 search() 抛 AntiBotChallengeError，而非返回空列表。"""
+    parser = _make_search_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+
+    challenge_resp = _make_resp(text="just a moment", headers={"cf-mitigated": "challenge"})
+    parser.session.get = MagicMock(return_value=challenge_resp)
+
+    with pytest.raises(AntiBotChallengeError) as exc_info:
+        parser.search("普通关键词", page=1)
+
+    assert exc_info.value.challenge_url == parser._build_search_url("普通关键词", page=1)
+
+
+def test_search_raises_challenge_on_stable_body_markers(monkeypatch):
+    """正文含稳定挑战标记（just a moment）时 search() 必须抛 AntiBotChallengeError。"""
+    parser = _make_search_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+
+    body = "x" * 6000 + "<title>Just a moment...</title>"
+    challenge_resp = _make_resp(text=body, headers={})
+    parser.session.get = MagicMock(return_value=challenge_resp)
+
+    with pytest.raises(AntiBotChallengeError):
+        parser.search("普通关键词", page=1)
+
+
+def test_search_normal_page_returns_results(monkeypatch):
+    """正常搜索页必须正常解析，不抛挑战。"""
+    parser = _make_search_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+
+    html = (FIXTURES / "jm_search_results.html").read_text(encoding="utf-8")
+    normal_resp = _make_resp(text=html, headers={})
+    parser.session.get = MagicMock(return_value=normal_resp)
+
+    comics, pagination = parser.search("test", page=1)
+    assert len(comics) == 2
+
+
+def test_search_genuinely_empty_not_treated_as_challenge(monkeypatch):
+    """真无结果的正常 HTML（无挑战标记）必须返回空列表，不抛挑战。"""
+    parser = _make_search_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+
+    empty_html = "<html><body>没有找到结果</body></html>" + "x" * 600
+    normal_resp = _make_resp(text=empty_html, headers={})
+    parser.session.get = MagicMock(return_value=normal_resp)
+
+    comics, pagination = parser.search("不存在的词", page=1)
+    assert comics == []
+    assert pagination is None
+
+
+def test_search_non_challenge_exception_falls_back_to_empty(monkeypatch):
+    """非挑战、非 ParserResponseError 的网络异常必须走兜底返回空列表。"""
+    parser = _make_search_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+
+    parser.session.get = MagicMock(side_effect=ConnectionError("network down"))
+
+    comics, pagination = parser.search("test", page=1)
+    assert comics == []
+    assert pagination is None
+
+
+def test_request_text_with_challenge_check_not_used_by_detail(monkeypatch):
+    """公共 _request_text 不抛挑战错误（详情页/随机等路径行为不变）。"""
+    parser = _make_search_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+
+    challenge_resp = _make_resp(text="just a moment", headers={"cf-mitigated": "challenge"})
+    parser.session.get = MagicMock(return_value=challenge_resp)
+
+    # _request_text 不做挑战检测，直接返回正文（保持向后兼容）
+    text = parser._request_text("https://test.one/photo/123")
+    assert "just a moment" in text

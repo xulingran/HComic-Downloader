@@ -36,7 +36,7 @@ describe('preload.ts', () => {
   describe('search', () => {
     it('should invoke python:search with correct args', async () => {
       await exposedApi.search('test', 'keyword', 1)
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined, false)
     })
 
     it('should reject invalid query', () => {
@@ -46,7 +46,7 @@ describe('preload.ts', () => {
 
     it('should allow empty query for homepage search', async () => {
       await exposedApi.search('', 'keyword', 1)
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', '', 'keyword', 1, undefined, undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', '', 'keyword', 1, undefined, undefined, false)
     })
 
     it('should reject invalid mode', () => {
@@ -66,7 +66,24 @@ describe('preload.ts', () => {
 
     it('should pass source when valid', async () => {
       await exposedApi.search('test', 'keyword', 1, 'moeimg')
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'moeimg', undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'moeimg', undefined, false)
+    })
+
+    it('should reject non-boolean allowInteractiveChallenge', () => {
+      expect(() => exposedApi.search('test', 'keyword', 1, undefined, undefined, 'yes' as unknown as boolean)).toThrow(
+        'Invalid allowInteractiveChallenge',
+      )
+    })
+
+    it('should pass allowInteractiveChallenge=true for user-initiated search', async () => {
+      await exposedApi.search('test', 'keyword', 1, 'jm', undefined, true)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'jm', undefined, true)
+    })
+
+    it('should default allowInteractiveChallenge to false when omitted', async () => {
+      await exposedApi.search('test', 'keyword', 1)
+      // 第 7 参数（allowInteractiveChallenge）缺省时归一化为 false，不转发 undefined
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined, false)
     })
   })
 

@@ -17,6 +17,7 @@ export type SearchFn = (
   page: number,
   source?: string,
   tag?: string,
+  allowInteractiveChallenge?: boolean,
 ) => Promise<SearchResult>
 
 /**
@@ -130,6 +131,8 @@ export function useSearchPreloader({
         page,
         sourceRef.current,
         searchTagsRef.current || undefined,
+        // 预加载必须以非交互模式调用：被挑战时静默失败保缓存，禁止弹窗
+        false,
       )
       // 切换来源/查询词/模式/标签后旧 contextKey 的迟到结果必须丢弃，避免脏写。
       // 这一行是切源中断机制的最后一道闸（commit 2a1d3b2），由本 hook 的集成测试守护。

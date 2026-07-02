@@ -288,12 +288,12 @@ class SearchMixin:
                 "pagination": self._pagination_to_dict(pagination, fallback_page=page),
             }
         try:
-            comics, pagination = self.parser.search(
-                effective_query, page=page, source=effective_source, tag=effective_tag
-            )
-        except Exception as e:
-            if self._is_source_auth_error(effective_source, e):
-                raise AuthRequiredError(f"{effective_source} 登录凭证已失效: {e}") from e
+            with self._auth_error_guard(effective_source):
+                comics, pagination = self.parser.search(
+                    effective_query, page=page, source=effective_source, tag=effective_tag
+                )
+        except AntiBotChallengeError:
+            # 反爬挑战：冒泡到 ipc_server 顶层捕获，序列化为 -32002 结构化信号。
             raise
 
         # Incrementally collect tags for supported sources
