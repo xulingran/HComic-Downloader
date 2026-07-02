@@ -648,6 +648,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         1,
         sourceRef.current,
         undefined,
+        // 用户主动清除标签触发的搜索，JM 来源遇挑战时应能触发恢复（与 handleToggleTag 一致）
+        true,
       ))
     }
   }, [tagPanel, withLoading, search, clearSelection])

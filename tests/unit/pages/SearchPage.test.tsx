@@ -407,7 +407,8 @@ describe('SearchPage', () => {
 
     await user.click(screen.getByText('清除全部'))
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenLastCalledWith('', 'tag', 1, 'nh', undefined)
+      // 清除全部标签是用户主动操作，与 handleToggleTag 一致透传 allowInteractiveChallenge=true
+      expect(mockSearch).toHaveBeenLastCalledWith('', 'tag', 1, 'nh', undefined, true)
     })
   })
 
