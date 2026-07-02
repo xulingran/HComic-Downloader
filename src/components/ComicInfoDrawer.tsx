@@ -541,7 +541,7 @@ export function ComicInfoDrawer() {
                           blocked
                             ? 'bg-[var(--error)]/10 text-[var(--error)] line-through opacity-60'
                             : isRec
-                              ? 'bg-amber-500/15 text-amber-600 hover:bg-amber-500/25'
+                              ? 'bg-amber-500/20 text-amber-700 hover:bg-amber-500/30'
                               : 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
                         }`}
                       >

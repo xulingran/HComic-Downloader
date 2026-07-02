@@ -195,7 +195,7 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
       className={`bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200
                  cursor-pointer overflow-hidden group relative
                  ${selected ? 'ring-2 ring-[var(--accent)] shadow-[var(--accent)]/20 shadow-lg' : ''}
-                 ${isRecommended && !selected ? 'bg-amber-500/10 shadow-[inset_0_0_0_2px_rgba(245,158,11,0.8)]' : ''}`}
+                 ${isRecommended && !selected ? 'bg-amber-500/15 shadow-[inset_0_0_0_2px_rgba(217,119,6,0.9)]' : ''}`}
     >
       {batchMode && (
         <div className={`absolute top-2 left-2 z-10 w-5 h-5 rounded-full border-2 flex items-center justify-center
@@ -256,7 +256,7 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
       className={`flex items-center px-4 py-2.5 cursor-pointer transition-colors duration-150
                   border-b border-[var(--border)] hover:bg-[var(--bg-secondary)]
                   ${selected ? 'border-l-2 border-l-[var(--accent)] bg-[var(--accent)]/5' : ''}
-                  ${isRecommended && !selected ? 'border-l-4 border-l-amber-400 bg-amber-500/10' : ''}`}
+                  ${isRecommended && !selected ? 'border-l-4 border-l-amber-500 bg-amber-500/15' : ''}`}
     >
       {batchMode && (
         <div className={`mr-2 w-4 h-4 rounded border-2 flex items-center justify-center flex-shrink-0
@@ -305,7 +305,7 @@ function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onD
               // hover 色匹配各自底色，与详情抽屉的 tag 样式保持一致
               const tagClass = `text-[10px] px-1.5 py-0.5 rounded-full ${
                 isRecTag
-                  ? `bg-amber-500/15 text-amber-600${interactive ? ' hover:bg-amber-500/25 transition-colors' : ''}`
+                  ? `bg-amber-500/20 text-amber-700${interactive ? ' hover:bg-amber-500/30 transition-colors' : ''}`
                   : `bg-[var(--accent)]/10 text-[var(--accent)]${interactive ? ' hover:bg-[var(--accent)]/20 transition-colors' : ''}`
               }${interactive ? ' cursor-pointer' : ''}`
               // 可点击时渲染为 button（触发追加式 tag 搜索）；

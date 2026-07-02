@@ -297,14 +297,14 @@ describe('ComicCard', () => {
       )
       const card = container.firstElementChild as HTMLElement
       // 用 inset shadow 画内描边,避免 ring 溢出视口(卡片紧贴窗口边缘时)
-      expect(card.className).toContain('bg-amber-500/10')
-      expect(card.className).toContain('shadow-[inset_0_0_0_2px_rgba(245,158,11,0.8)]')
+      expect(card.className).toContain('bg-amber-500/15')
+      expect(card.className).toContain('shadow-[inset_0_0_0_2px_rgba(217,119,6,0.9)]')
     })
 
     it('CoverCard: 未推荐时不显示推荐样式', () => {
       const { container } = render(<ComicCard comic={mockComic} />)
       const card = container.firstElementChild as HTMLElement
-      expect(card.className).not.toContain('bg-amber-500/10')
+      expect(card.className).not.toContain('bg-amber-500/15')
       expect(card.className).not.toContain('shadow-[inset_0_0_0_2px')
     })
 
@@ -316,7 +316,7 @@ describe('ComicCard', () => {
       // 选中环优先,推荐内描边与背景色隐藏
       expect(card.className).toContain('ring-2')
       expect(card.className).toContain('ring-[var(--accent)]')
-      expect(card.className).not.toContain('bg-amber-500/10')
+      expect(card.className).not.toContain('bg-amber-500/15')
       expect(card.className).not.toContain('shadow-[inset_0_0_0_2px')
     })
 
@@ -326,10 +326,10 @@ describe('ComicCard', () => {
       const { container } = render(<ComicCard comic={comic} isRecommended={true} />)
       const row = container.firstElementChild as HTMLElement
       expect(row.className).toContain('border-l-4')
-      expect(row.className).toContain('border-l-amber-400')
-      expect(row.className).toContain('bg-amber-500/10')
-      // 近实色边框:不应再带透明度修饰(/80 已移除,直接 amber-400)
-      expect(row.className).not.toContain('border-l-amber-400/')
+      expect(row.className).toContain('border-l-amber-500')
+      expect(row.className).toContain('bg-amber-500/15')
+      // 近实色边框:不应再带透明度修饰(/80 已移除,直接 amber-500)
+      expect(row.className).not.toContain('border-l-amber-500/')
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
 
@@ -341,7 +341,7 @@ describe('ComicCard', () => {
       )
       const row = container.firstElementChild as HTMLElement
       // selected 分支不渲染 amber 边框，而是 accent
-      expect(row.className).not.toContain('border-l-amber-400/70')
+      expect(row.className).not.toContain('border-l-amber-500/70')
       expect(row.className).toContain('border-l-[var(--accent)]')
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
@@ -357,11 +357,11 @@ describe('ComicCard', () => {
       )
       // NTR 命中 -> amber 样式
       const ntrPill = screen.getByText('NTR').closest('span')!
-      expect(ntrPill.className).toContain('bg-amber-500/15')
-      expect(ntrPill.className).toContain('text-amber-600')
+      expect(ntrPill.className).toContain('bg-amber-500/20')
+      expect(ntrPill.className).toContain('text-amber-700')
       // 魔法少女 未命中 -> 默认 accent 样式
       const normalPill = screen.getByText('魔法少女').closest('span')!
-      expect(normalPill.className).not.toContain('bg-amber-500/15')
+      expect(normalPill.className).not.toContain('bg-amber-500/20')
       expect(normalPill.className).toContain('bg-[var(--accent)]/10')
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
@@ -371,7 +371,7 @@ describe('ComicCard', () => {
       const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
       render(<ComicCard comic={comic} recommendedTags={new Set(['ntr'])} />)
       const pill = screen.getByText('NTR').closest('span')!
-      expect(pill.className).toContain('bg-amber-500/15')
+      expect(pill.className).toContain('bg-amber-500/20')
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
 
@@ -380,7 +380,7 @@ describe('ComicCard', () => {
       const comic: ComicInfo = { ...mockComic, tags: ['NTR'] }
       render(<ComicCard comic={comic} />)
       const pill = screen.getByText('NTR').closest('span')!
-      expect(pill.className).not.toContain('bg-amber-500/15')
+      expect(pill.className).not.toContain('bg-amber-500/20')
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
     })
   })
@@ -431,8 +431,8 @@ describe('ComicCard', () => {
       render(<ComicCard comic={comic} onTagClick={onTagClick} recommendedTags={new Set(['ntr'])} />)
       const pill = screen.getByRole('button', { name: 'NTR' })
       // 琥珀底色 + 琥珀 hover（而非 accent hover）
-      expect(pill.className).toContain('bg-amber-500/15')
-      expect(pill.className).toContain('hover:bg-amber-500/25')
+      expect(pill.className).toContain('bg-amber-500/20')
+      expect(pill.className).toContain('hover:bg-amber-500/30')
       expect(pill.className).not.toContain('hover:bg-[var(--accent)]/20')
     })
   })
