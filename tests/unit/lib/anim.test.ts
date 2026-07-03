@@ -36,14 +36,16 @@ describe('reader page flip variants', () => {
     expect(resolveVariant(variants, 'exit', 'backward').transition).toBe(smoothTransition)
   })
 
-  it('softens normal page flip endpoints with slight opacity while keeping center opaque', () => {
+  it('fully fades out exit page so it does not remain visible before unmount', () => {
+    // 修复"上一页飞到一边停住然后突然消失"：exit 端点必须完全透明，
+    // 否则旧页停在 -100%/100% 处仍可见，被卸载时表现为"突然消失"。
     const variants = getDirectionalPageVariants()
 
-    expect(resolveVariant(variants, 'enter', 'forward').opacity).toBe(0.92)
-    expect(resolveVariant(variants, 'enter', 'backward').opacity).toBe(0.92)
+    expect(resolveVariant(variants, 'enter', 'forward').opacity).toBe(0)
+    expect(resolveVariant(variants, 'enter', 'backward').opacity).toBe(0)
     expect(resolveVariant(variants, 'center', 'forward').opacity).toBe(1)
-    expect(resolveVariant(variants, 'exit', 'forward').opacity).toBe(0.92)
-    expect(resolveVariant(variants, 'exit', 'backward').opacity).toBe(0.92)
+    expect(resolveVariant(variants, 'exit', 'forward').opacity).toBe(0)
+    expect(resolveVariant(variants, 'exit', 'backward').opacity).toBe(0)
   })
 
   it('keeps reduced-motion page flip as opacity crossfade without horizontal movement', () => {

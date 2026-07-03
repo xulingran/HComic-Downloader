@@ -136,20 +136,22 @@ export const tagItemVariants: Variants = {
  * 方向感知的翻页 variants。
  * enter/exit 是函数形式，framer-motion 通过 AnimatePresence 的 custom prop
  * 自动注入 direction。forward 时新页从右进、旧页向左出；backward 反之。
+ *
+ * enter/exit 端点 opacity 必须为 0（完全透明）：旧页滑出时同步淡出，动画
+ * 结束时已不可见，被 framer-motion 卸载时不会出现"飞到一边停住然后突然消失"。
+ * 早期版本用 0.92 试图"柔化交替"，但端点几乎不透明，旧页停在终点仍可见，
+ * 卸载瞬间表现为突兀消失。
  */
-/** 普通翻页进入/退出端点的轻微透明度，用于柔化新旧页交替。 */
-const PAGE_FLIP_ENDPOINT_OPACITY = 0.92
-
 export function getDirectionalPageVariants(): Variants {
   return {
     enter: (dir: 'forward' | 'backward') => ({
       x: dir === 'forward' ? '100%' : '-100%',
-      opacity: PAGE_FLIP_ENDPOINT_OPACITY,
+      opacity: 0,
     }),
     center: { x: 0, opacity: 1, transition: smoothTransition },
     exit: (dir: 'forward' | 'backward') => ({
       x: dir === 'forward' ? '-100%' : '100%',
-      opacity: PAGE_FLIP_ENDPOINT_OPACITY,
+      opacity: 0,
       transition: smoothTransition,
     }),
   }
