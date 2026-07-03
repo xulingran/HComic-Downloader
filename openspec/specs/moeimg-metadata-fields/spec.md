@@ -1,7 +1,7 @@
 # moeimg-metadata-fields 规范
 
 ## 目的
-待定 - 由归档变更 moeimg-metadata-enrichment 创建。归档后请更新目的。
+定义 moeimg 来源元数据字段扩展的能力规范。要求 `ComicInfo` 数据类（`models.py`）承载来源返回的原始语言文本（如 "chinese"/"japanese"/"english"）等独立元数据字段，新增字段（如 `language: str | None = None`）必须独立于 `tags` 与 `category`，不得混入其中，以保证来源元数据的结构化保存与下游 ComicInfo.xml 的正确生成。
 ## 需求
 ### 需求:ComicInfo 模型必须承载 language 字段
 

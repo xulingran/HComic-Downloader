@@ -1,7 +1,7 @@
 # album-title-extraction 规范
 
 ## 目的
-待定 - 由归档变更 album-title-from-common-fields 创建。归档后请更新目的。
+定义专辑标题提取的能力规范。提供纯函数 `extractAlbumTitle(titles)`（位于 `src/utils/titleSimilarity.ts`），从一组漫画标题中按分隔符 `/[\s\-—_～~]+/` 分词提取共有字段，作为"下载为专辑"弹窗的默认专辑名建议。函数必须为纯函数（无副作用、相同输入相同输出），禁止访问 React state 或发起 IPC 调用，且必须对原始标题（未经 `normalizeTitle` 去括号处理）操作以适配中文漫画标题的常见格式。
 ## 需求
 ### 需求:从多个漫画标题提取共有字段作为默认专辑名
 

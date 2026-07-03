@@ -1,7 +1,7 @@
 # login-overlay 规范
 
 ## 目的
-待定 - 由归档变更 login-overlay-extract-button 创建。归档后请更新目的。
+定义登录弹窗叠层注入的能力规范。`electron/login-preload.ts` 必须在每个文档加载后注入右上角浮标叠层（host 元素 `id="hcomic-login-overlay"`），承载显式的 cookie 提取入口。叠层必须通过 Shadow DOM（`attachShadow({mode:'closed'})`）实现，与第三方站点 CSS / JS 双向隔离；注入逻辑须用 try/catch 包裹，失败仅记录错误、不阻断页面加载或既有 prototype 补丁逻辑，且同一文档内多次执行须跳过去重。
 ## 需求
 ### 需求:登录弹窗必须注入右上角浮标叠层
 

@@ -1,7 +1,7 @@
 # image-protocol-delivery 规范
 
 ## 目的
-待定 - 由归档变更 optimize-image-memory-pipeline 创建。归档后请更新目的。
+定义自定义协议 `app-image://` 流式交付磁盘缓存图片的能力规范。Electron 主进程注册该协议，将封面与阅读器预览图的磁盘缓存文件以流式响应交付给 Chromium，URL 形如 `app-image://cover/{url_hash}` 或 `app-image://preview/{url_hash}`（`url_hash` 为 `sha256(url)` 64 位十六进制）。图片字节禁止经过渲染进程 JS 堆——`<img>` 直接以协议 URL 为 src，由 Chromium 流式读取并自行管理解码与内存 LRU，避免 base64 编码与 JSON 序列化带来的内存放大。
 ## 需求
 ### 需求:自定义协议 app-image:// 必须流式交付磁盘缓存图片
 

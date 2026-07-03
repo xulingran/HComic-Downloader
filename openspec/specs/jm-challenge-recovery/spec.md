@@ -1,7 +1,7 @@
 # jm-challenge-recovery 规范
 
 ## 目的
-待定 - 由归档变更 fix-jm-favourites-cloudflare-challenge 创建。归档后请更新目的。
+定义 JM（禁漫）反爬挑战识别与恢复的能力规范。覆盖 Cloudflare 挑战响应的可靠识别（优先 `cf-mitigated: challenge` 响应头，辅以稳定强挑战页标记，弱文本 `captcha` 须结合可解析收藏夹内容判定）、收藏夹有界后台恢复（复用 Session / 代理 / Cookie，固定重试上限）、反爬挑战与认证失效的分开报告（专用 IPC 错误码 `-32002` 与结构化挑战信号）、浏览器快照挑战识别（区分强/弱标记），以及搜索请求与挑战恢复编排对同一 Session 与 Cookie 同步的跨界面复用。
 ## 需求
 ### 需求:可靠识别 JM 反爬挑战响应
 
