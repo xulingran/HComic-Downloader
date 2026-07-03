@@ -17,13 +17,23 @@
  */
 import type { BrowserWindow } from 'electron'
 import { getPythonBridge, type PythonBridgeError } from './python-bridge'
-import { captureJmFavouritesSnapshotWindow, openJmChallengeWindow, type JmChallengeSnapshot, type JmChallengeWindowResult } from './login-window'
+import {
+  captureJmFavouritesSnapshotWindow,
+  captureJmHomeSnapshotWindow,
+  captureJmSearchSnapshotWindow,
+  openJmChallengeWindow,
+  type JmChallengeSnapshot,
+  type JmChallengeWindowResult,
+} from './login-window'
 import { IPC_ERROR_CODES, type AntiBotChallengeData } from '../shared/types'
 
 /** 挑战 URL 与 challengeUrl 字段最大长度（与 Python 端 _JM_SNAPSHOT_MAX_URL_LEN 对齐） */
 const CHALLENGE_URL_MAX_LEN = 2048
 let preferSilentSnapshotRecovery = false
 let lastSnapshotSourceUrl: string | null = null
+// 搜索静默快照恢复状态（与收藏夹的 preferSilentSnapshotRecovery 对称）
+let preferSilentSearchSnapshotRecovery = false
+let lastSearchSnapshotParams: { query: string; page: number; mode: string } | null = null
 
 export interface JmChallengeRecoveryContext {
   /** 主窗口引用，用于挂载模态挑战窗口 */
@@ -137,8 +147,12 @@ async function recoverJmChallengeCore(
   let windowResult: JmChallengeWindowResult
   try {
     windowResult = await openJmChallengeWindow(ctx.mainWindow, challengeData.challengeUrl, ctx.resolvedDomain)
-  } catch {
-    // URL 校验失败等不可恢复错误：不再次弹窗，返回可操作错误
+  } catch (err) {
+    // URL 校验失败等不可恢复错误：不再次弹窗，返回可操作错误。
+    // 安全诊断：只记录校验器抛出的错误类别（message 不含完整 URL/query/search_query/Cookie），
+    // 禁止记录 challengeUrl 原文（可能含搜索词）或任何凭据。renderer 继续收到通用文案。
+    const reason = err instanceof Error ? err.message : 'unknown'
+    console.warn(`[JmChallengeRecovery] challenge target rejected: ${reason}`)
     return { resolved: false, message: '人机验证地址无效，请稍后重试' }
   }
 
@@ -235,8 +249,10 @@ export async function recoverJmChallenge(
 /**
  * 运行 JM 搜索交互式人机验证恢复。
  *
- * 与收藏夹恢复共用核心编排，但不走快照兜底（搜索无 parse_jm_search_snapshot 入口）。
- * 验证后 cookie 已同步到全局 parser session，重试用原始搜索参数调 search 一次。
+ * 与收藏夹恢复共用核心编排，并在 Python 重试仍被挑战时走 DOM 快照兜底：
+ *   - 关键词搜索（query 非空或 page > 1）→ parse_jm_search_snapshot
+ *   - 首页空搜索（query 空 + keyword mode + page 1）→ parse_jm_home_snapshot
+ * 快照解析成功后，后续用户主动搜索优先使用静默快照恢复。
  *
  * 调用契约：
  *   - 仅在 source === 'jm' 且 allowInteractiveChallenge === true 且 isJmChallengeError(err) 时调用。
@@ -255,6 +271,15 @@ export async function recoverJmSearchChallenge(
   if (searchParams.source !== undefined) params.source = searchParams.source
   if (searchParams.tag !== undefined && searchParams.tag !== '') params.tag = searchParams.tag
 
+  // 静默快照优先：若此前交互恢复已通过搜索快照成功，先用隐藏窗口捕获快照
+  if (preferSilentSearchSnapshotRecovery) {
+    const silentSnapshot = await captureSilentSearchSnapshot(ctx, searchParams)
+    if (silentSnapshot.success && silentSnapshot.snapshot) {
+      const outcome = await parseSearchSnapshotFallback(getPythonBridge(), silentSnapshot.snapshot, searchParams)
+      if (outcome.resolved) return outcome
+    }
+  }
+
   const core = await recoverJmChallengeCore(ctx, recoveryError, (bridge) => bridge.call('search', params))
 
   if (core.resolved) {
@@ -264,6 +289,20 @@ export async function recoverJmSearchChallenge(
     }
   }
 
+  // 重试仍被挑战且有合格快照 → 走搜索/首页快照兜底（与收藏夹对称）
+  if (core.stillChallenged && core.windowResult?.snapshot) {
+    const outcome = await parseSearchSnapshotFallback(getPythonBridge(), core.windowResult.snapshot, searchParams)
+    if (outcome.resolved) {
+      preferSilentSearchSnapshotRecovery = true
+      lastSearchSnapshotParams = {
+        query: searchParams.query,
+        page: searchParams.page,
+        mode: searchParams.mode,
+      }
+    }
+    return outcome
+  }
+
   return {
     resolved: false,
     cancelled: core.cancelled,
@@ -271,8 +310,95 @@ export async function recoverJmSearchChallenge(
   }
 }
 
+/**
+ * 判断是否为首页空搜索（query 空 + keyword mode + page 1）。
+ * 首页空搜索走 jm_home → 根 URL → parse_jm_home_snapshot；
+ * 关键词搜索走 /search/photos → parse_jm_search_snapshot。
+ */
+function isHomeSearch(searchParams: JmSearchRecoveryParams): boolean {
+  return (
+    searchParams.mode === 'keyword'
+    && (!searchParams.query || !searchParams.query.trim())
+    && searchParams.page === 1
+  )
+}
+
+/**
+ * 根据搜索参数构造目标 URL（供静默快照窗口使用）。
+ */
+function buildSearchSnapshotUrl(searchParams: JmSearchRecoveryParams, domain: string): string {
+  if (isHomeSearch(searchParams)) {
+    return `https://${domain}/`
+  }
+  const query = encodeURIComponent(searchParams.query || '')
+  let url = `https://${domain}/search/photos?main_tag=0&search_query=${query}`
+  if (searchParams.page > 1) {
+    url += `&page=${searchParams.page}`
+  }
+  return url
+}
+
+/**
+ * 用隐藏窗口捕获搜索/首页快照（供静默快照恢复使用）。
+ */
+async function captureSilentSearchSnapshot(
+  ctx: JmChallengeRecoveryContext,
+  searchParams: JmSearchRecoveryParams,
+): Promise<JmChallengeWindowResult> {
+  const domain = ctx.resolvedDomain || '18comic.vip'
+  const url = buildSearchSnapshotUrl(searchParams, domain)
+  if (isHomeSearch(searchParams)) {
+    return captureJmHomeSnapshotWindow(ctx.mainWindow, url, ctx.resolvedDomain)
+  }
+  return captureJmSearchSnapshotWindow(ctx.mainWindow, url, ctx.resolvedDomain)
+}
+
+/**
+ * 将搜索/首页快照交给 Python 解析入口兜底。
+ *
+ * 根据 searchParams 判断是首页空搜索还是关键词搜索，分别调用
+ * parse_jm_home_snapshot / parse_jm_search_snapshot。
+ */
+async function parseSearchSnapshotFallback(
+  bridge: ReturnType<typeof getPythonBridge>,
+  snapshot: JmChallengeSnapshot,
+  searchParams: JmSearchRecoveryParams,
+): Promise<JmSearchRecoveryOutcome> {
+  try {
+    if (isHomeSearch(searchParams)) {
+      const parsed = await bridge.call('parse_jm_home_snapshot', {
+        html: snapshot.html,
+        source_url: snapshot.sourceUrl,
+      })
+      return {
+        resolved: true,
+        result: parsed as { comics: unknown[]; pagination?: unknown; sections?: unknown[] },
+      }
+    }
+    const parsed = await bridge.call('parse_jm_search_snapshot', {
+      html: snapshot.html,
+      source_url: snapshot.sourceUrl,
+      query: searchParams.query,
+      page: searchParams.page,
+    })
+    return {
+      resolved: true,
+      result: parsed as { comics: unknown[]; pagination?: unknown },
+    }
+  } catch {
+    return {
+      resolved: false,
+      message: '已通过人机验证，但无法解析搜索页面，请稍后重试',
+    }
+  }
+}
+
 export function shouldPreferSilentJmSnapshotRecovery(): boolean {
   return preferSilentSnapshotRecovery && lastSnapshotSourceUrl !== null
+}
+
+export function shouldPreferSilentJmSearchSnapshotRecovery(): boolean {
+  return preferSilentSearchSnapshotRecovery && lastSearchSnapshotParams !== null
 }
 
 export function buildSilentJmFavouritesUrl(page: number): string | null {
@@ -301,9 +427,30 @@ export async function recoverJmFavouritesSilently(
   }
 }
 
+/**
+ * 静默搜索快照恢复：用隐藏窗口捕获搜索/首页快照并解析，不打开可见窗口。
+ *
+ * 供 main.ts 搜索 handler 在首次请求前预检使用。
+ */
+export async function recoverJmSearchSilently(
+  ctx: JmChallengeRecoveryContext,
+  searchParams: JmSearchRecoveryParams,
+): Promise<JmSearchRecoveryOutcome> {
+  const silentSnapshot = await captureSilentSearchSnapshot(ctx, searchParams)
+  if (silentSnapshot.success && silentSnapshot.snapshot) {
+    return parseSearchSnapshotFallback(getPythonBridge(), silentSnapshot.snapshot, searchParams)
+  }
+  return {
+    resolved: false,
+    message: silentSnapshot.message || '无法获取搜索页面快照，请稍后重试',
+  }
+}
+
 export function resetJmChallengeRecoveryStateForTests(): void {
   preferSilentSnapshotRecovery = false
   lastSnapshotSourceUrl = null
+  preferSilentSearchSnapshotRecovery = false
+  lastSearchSnapshotParams = null
 }
 
 /**

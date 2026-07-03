@@ -150,6 +150,17 @@ def test_maintenance_handlers_are_registered():
         assert method in server._HANDLER_NAMES, f"handler {method} 未注册"
 
 
+def test_jm_snapshot_handlers_are_registered():
+    """JM 快照解析 handler 必须在 IPCServer 启动时注册到 _HANDLER_NAMES。"""
+    server = _create_test_server()
+    for method in (
+        "parse_jm_favourites_snapshot",
+        "parse_jm_search_snapshot",
+        "parse_jm_home_snapshot",
+    ):
+        assert method in server._HANDLER_NAMES, f"handler {method} 未注册"
+
+
 def test_get_all_records_with_album_returns_pages_key(tmp_path):
     """Critical #1 契约：get_all_records_with_album() 返回的 dict 必须包含 pages 键。
 
@@ -228,3 +239,25 @@ def test_search_returns_structure_matching_search_result_type():
         if not isinstance(pagination[k], t) or (t is int and isinstance(pagination[k], bool))
     ]
     assert not pg_type_mismatches, f"pagination 字段类型不匹配: {pg_type_mismatches}"
+
+
+def test_jm_home_search_sections_only_reference_top_level_comics():
+    """JM 首页扩展契约必须保持顶层漫画唯一，且栏目引用全部可解析。"""
+    from models import ComicInfo
+
+    server = _create_test_server()
+    server._check_source_auth = lambda source: None  # type: ignore[method-assign]
+    first = ComicInfo(id="jm-1", title="A", source_site="jm", comic_source="JM", media_id="jm-1")
+    duplicate = ComicInfo(id="jm-1", title="A duplicate", source_site="jm", comic_source="JM", media_id="jm-1")
+    second = ComicInfo(id="jm-2", title="B", source_site="jm", comic_source="JM", media_id="jm-2")
+    server.parser = SimpleNamespace(
+        jm_home=lambda: [("栏目一", [first, second]), ("栏目二", [duplicate])],
+    )
+
+    result = server.handle_search(query="", mode="keyword", page=1, source="jm")
+
+    top_level_ids = [comic["id"] for comic in result["comics"]]
+    referenced_ids = [comic_id for section in result["sections"] for comic_id in section["comicIds"]]
+    assert top_level_ids == ["jm-1", "jm-2"]
+    assert set(referenced_ids).issubset(set(top_level_ids))
+    assert result["pagination"]["totalPages"] == 1

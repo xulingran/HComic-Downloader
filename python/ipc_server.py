@@ -291,6 +291,8 @@ class IPCServer(
         "check_download_conflict": "handle_check_download_conflict",
         "get_favourites": "handle_get_favourites",
         "parse_jm_favourites_snapshot": "handle_parse_jm_favourites_snapshot",
+        "parse_jm_search_snapshot": "handle_parse_jm_search_snapshot",
+        "parse_jm_home_snapshot": "handle_parse_jm_home_snapshot",
         "add_to_favourites": "handle_add_to_favourites",
         "check_favourite": "handle_check_favourite",
         "remove_from_favourites": "handle_remove_from_favourites",

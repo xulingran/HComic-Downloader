@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ComicInfo, PaginationInfo } from '@shared/types'
+import type { ComicInfo, PaginationInfo, SearchSection } from '@shared/types'
 
 export interface SearchPageCache {
   query: string
@@ -8,6 +8,7 @@ export interface SearchPageCache {
   searchTags: string
   comics: ComicInfo[]
   pagination: PaginationInfo | null
+  sections?: SearchSection[]
 }
 
 export interface SearchContextCache {

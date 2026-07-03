@@ -4,6 +4,27 @@ from models import ComicInfo
 from sources import MultiSourceParser
 
 
+def test_jm_home_reuses_dispatched_parser_instance(monkeypatch):
+    """JM 首页分发必须调用 _get_parser('jm') 返回的唯一懒创建实例。"""
+    parser = MultiSourceParser.__new__(MultiSourceParser)
+    expected = [("最新漫画", [])]
+
+    class FakeJmParser:
+        def home(self) -> list[tuple[str, list[ComicInfo]]]:
+            return expected
+
+    fake_jm = FakeJmParser()
+    requested_sources: list[str] = []
+    monkeypatch.setattr(
+        parser,
+        "_get_parser",
+        lambda source: requested_sources.append(source) or fake_jm,
+    )
+
+    assert parser.jm_home() is expected
+    assert requested_sources == ["jm"]
+
+
 def test_default_source_and_auth_mapping():
     parser = MultiSourceParser(
         timeout=5,
@@ -531,3 +552,39 @@ def test_jm_configure_auth_concurrent_with_lazy_create_is_consistent():
         assert jm._cookie == "remember=RACE"
     finally:
         sources._PARSER_CLASSES.pop("jm", None)
+
+
+def test_parse_jm_search_snapshot_delegates_to_jm_parser(monkeypatch):
+    """parse_jm_search_snapshot 必须委托到 jm parser 实例。"""
+    from models import PaginationInfo
+
+    parser = MultiSourceParser(timeout=5, default_source="hcomic")
+    called: list[dict] = []
+    monkeypatch.setattr(
+        parser.parsers["jm"],
+        "parse_search_snapshot",
+        lambda html="", source_url="", query="", page=1: (
+            called.append({"query": query, "page": page})
+            or ([], PaginationInfo(current_page=1, total_pages=1, total_items=0)),
+        ),
+    )
+    parser.parse_jm_search_snapshot(
+        html="<html></html>",
+        source_url="https://18comic.vip/search/photos?main_tag=0&search_query=test",
+        query="test",
+        page=1,
+    )
+    assert called == [{"query": "test", "page": 1}]
+
+
+def test_parse_jm_home_snapshot_delegates_to_jm_parser(monkeypatch):
+    """parse_jm_home_snapshot 必须委托到 jm parser 实例。"""
+    parser = MultiSourceParser(timeout=5, default_source="hcomic")
+    called: list[bool] = []
+    monkeypatch.setattr(
+        parser.parsers["jm"],
+        "parse_home_snapshot",
+        lambda html="", source_url="": called.append(True) or [],
+    )
+    parser.parse_jm_home_snapshot(html="<html></html>", source_url="https://18comic.vip/")
+    assert called == [True]

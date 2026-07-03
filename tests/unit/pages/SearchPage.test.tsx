@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { ComicInfo } from '@shared/types'
+import type { ComicInfo, SearchSection } from '@shared/types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
 // Hoist mock functions so they are available inside vi.mock factories
@@ -160,6 +160,7 @@ import { SearchPage } from '@/pages/SearchPage'
 interface SearchResult {
   comics: ComicInfo[]
   pagination?: { currentPage: number; totalPages: number; totalItems: number }
+  sections?: SearchSection[]
 }
 
 // 控制某次 search 的返回时机，用于模拟迟到完成的预加载请求
@@ -172,6 +173,9 @@ function createDeferredSearch() {
 describe('SearchPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockSearch.mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+    mockRandom.mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+    mockVerifyAuth.mockResolvedValue({ valid: true })
     mockGetConfig.mockResolvedValue({ config: { defaultSource: 'hcomic' } })
     mockStoreState.comics = []
     mockStoreState.pagination = null
@@ -312,6 +316,38 @@ describe('SearchPage', () => {
     render(<SearchPage />)
 
     expect(screen.queryByText('暂无搜索结果')).not.toBeInTheDocument()
+  })
+
+  it('restores and renders cached JM home results by section', async () => {
+    const first: ComicInfo = {
+      id: '1', title: 'Comic A', url: 'https://example.com/1', coverUrl: '', source: 'JM', sourceSite: 'jm',
+    }
+    const second: ComicInfo = {
+      id: '2', title: 'Comic B', url: 'https://example.com/2', coverUrl: '', source: 'JM', sourceSite: 'jm',
+    }
+    mockStoreState.comics = [first, second]
+    mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 2 }
+    mockSearchCacheStore.currentContextKey = 'jm\u001fkeyword\u001f\u001f'
+    mockSearchCacheStore.getPage.mockReturnValue({
+      query: '',
+      mode: 'keyword',
+      source: 'jm',
+      searchTags: '',
+      comics: [first, second],
+      pagination: { currentPage: 1, totalPages: 1, totalItems: 2 },
+      sections: [
+        { title: '连载更新', comicIds: ['1', '2'] },
+        { title: '最新漫画', comicIds: ['1'] },
+      ],
+    })
+
+    render(<SearchPage />)
+
+    expect(await screen.findByRole('heading', { name: '连载更新' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: '最新漫画' })).toBeInTheDocument()
+    expect(screen.getAllByText('Comic A')).toHaveLength(2)
+    expect(screen.getByText('Comic B')).toBeInTheDocument()
+    expect(screen.queryByText('下一页')).not.toBeInTheDocument()
   })
 
   it('shows NH entry page and opens popular ranking', async () => {
@@ -595,7 +631,7 @@ describe('SearchPage', () => {
       expect(lastCall).toEqual(['', 'keyword', 1, 'moeimg'])
     })
 
-    it('triggers random search when switching to jm source', async () => {
+    it('triggers interactive empty keyword search when switching to jm source', async () => {
       mockSearch.mockResolvedValue({
         comics: [],
         pagination: { currentPage: 1, totalPages: 1, totalItems: 0 }
@@ -609,7 +645,8 @@ describe('SearchPage', () => {
       await userEvent.selectOptions(sourceSelect, 'jm')
 
       expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
-      expect(mockRandom).toHaveBeenCalledWith('jm')
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true)
+      expect(mockRandom).not.toHaveBeenCalled()
     })
 
     it('does not trigger extra search on initial mount', async () => {
@@ -662,6 +699,30 @@ describe('SearchPage', () => {
       await screen.findByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')
 
       expect(mockSearch).not.toHaveBeenCalled()
+    })
+
+    it('caches JM home sections loaded from the default source on mount', async () => {
+      const comic: ComicInfo = {
+        id: '1', title: 'Comic A', url: 'https://example.com/1', coverUrl: '', source: 'JM', sourceSite: 'jm',
+      }
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'jm' } })
+      mockSearch.mockResolvedValue({
+        comics: [comic],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+        sections: [{ title: '最新漫画', comicIds: ['1'] }],
+      })
+
+      render(<SearchPage />)
+
+      await waitFor(() => expect(mockSearchCacheStore.setPage).toHaveBeenCalledWith(
+        'jm\u001fkeyword\u001f\u001f',
+        1,
+        expect.objectContaining({
+          source: 'jm',
+          sections: [{ title: '最新漫画', comicIds: ['1'] }],
+        }),
+        true,
+      ))
     })
 
     it('does NOT show login prompt when JM verifyAuth fails due to challenge (放行让搜索处理)', async () => {
@@ -740,11 +801,11 @@ describe('SearchPage', () => {
       expect(mockRandom).not.toHaveBeenCalled()
     })
 
-    it('shows login prompt when verifyAuth passes but random rejects with auth error', async () => {
+    it('shows login prompt when verifyAuth passes but JM home search rejects with auth error', async () => {
       mockVerifyAuth.mockResolvedValue({ valid: true })
       const authError = new Error('Forbidden') as Error & { code?: number }
       authError.code = -32001
-      mockRandom.mockRejectedValue(authError)
+      mockSearch.mockRejectedValue(authError)
 
       render(<SearchPage />)
       await screen.findByPlaceholderText('输入搜索内容...')
@@ -753,8 +814,23 @@ describe('SearchPage', () => {
       await userEvent.selectOptions(sourceSelect, 'jm')
 
       expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
-      expect(mockRandom).toHaveBeenCalledWith('jm')
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true)
       expect(screen.getByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+    })
+
+    it('keeps the explicit JM random button behavior', async () => {
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'jm')
+      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true))
+      mockRandom.mockClear()
+      mockSearchCacheStore.setPage.mockClear()
+
+      await userEvent.click(screen.getByText('🎲 随机'))
+
+      expect(mockRandom).toHaveBeenCalledWith('jm')
+      expect(mockSearchCacheStore.setPage).not.toHaveBeenCalled()
     })
 
     it('shows login prompt on mount when defaultSource jm, verifyAuth passes, but search rejects with auth error', async () => {

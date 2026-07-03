@@ -144,6 +144,7 @@ export function useSearchPreloader({
         searchTags: searchTagsRef.current,
         comics: result.comics,
         pagination: result.pagination ?? null,
+        sections: result.sections,
       })
     },
     [searchFn],

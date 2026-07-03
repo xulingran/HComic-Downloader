@@ -378,6 +378,10 @@ class MultiSourceParser:
         src = self._resolve_source(source)
         return self._get_parser(src).search(keyword, page=page, tag=tag)
 
+    def jm_home(self) -> list[tuple[str, list[ComicInfo]]]:
+        """返回 JM 首页的分组漫画栏目，复用唯一的懒创建 parser 实例。"""
+        return self._get_parser("jm").home()  # type: ignore[union-attr]
+
     def random(self, source: str | None = None) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = self._resolve_source(source)
         if src == "bika":
@@ -404,6 +408,27 @@ class MultiSourceParser:
         """解析 Electron 捕获的 JM 收藏夹 DOM 快照。"""
         parser = self._get_parser("jm")
         return parser.parse_favourites_snapshot(html=html, source_url=source_url, page=page)  # type: ignore[union-attr]
+
+    def parse_jm_search_snapshot(
+        self,
+        html: str,
+        source_url: str,
+        *,
+        query: str = "",
+        page: int = 1,
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+        """解析 Electron 捕获的 JM 搜索结果页 DOM 快照。"""
+        parser = self._get_parser("jm")
+        return parser.parse_search_snapshot(html=html, source_url=source_url, query=query, page=page)  # type: ignore[union-attr]
+
+    def parse_jm_home_snapshot(
+        self,
+        html: str,
+        source_url: str,
+    ) -> list[tuple[str, list[ComicInfo]]]:
+        """解析 Electron 捕获的 JM 首页 DOM 快照。"""
+        parser = self._get_parser("jm")
+        return parser.parse_home_snapshot(html=html, source_url=source_url)  # type: ignore[union-attr]
 
     def add_to_favourites(self, comic_id: str, source: str | None = None) -> bool:
         src = self._resolve_source(source)

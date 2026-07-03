@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass
 from http.cookies import CookieError, SimpleCookie
 from typing import Any
-from urllib.parse import parse_qs, quote, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 
 import requests
 from lxml import etree
@@ -53,6 +53,10 @@ _WEAK_CHALLENGE_KEYWORDS = ("captcha",)
 _FAVOURITES_CHALLENGE_RETRIES = 2
 _FAVOURITES_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
 _FAVOURITES_PATH_RE = re.compile(r"^/user/[^/?#]+/favorite/albums/?$")
+_HOME_SECTION_LIMIT = 10
+_SEARCH_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
+_SEARCH_PATH_RE = re.compile(r"^/search/photos$")
+_HOME_PATH_RE = re.compile(r"^/?$")
 
 
 class JmParser(ParserContextMixin):
@@ -421,6 +425,19 @@ class JmParser(ParserContextMixin):
             logger.error("jm search failed: %s", e, exc_info=True)
             return [], None
 
+    def home(self) -> list[tuple[str, list[ComicInfo]]]:
+        """获取 JM 首页的默认漫画栏目。"""
+        domain = self._ensure_domain()
+        url = self._build_home_url()
+        try:
+            html = self._request_text_with_challenge_check(url)
+            return self._parse_home_sections(html, domain=domain)
+        except (ParserResponseError, AntiBotChallengeError):
+            raise
+        except Exception as e:
+            logger.error("jm home failed: %s", e, exc_info=True)
+            return []
+
     def random(self) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """随机漫画。"""
         domain = self._ensure_domain()
@@ -663,6 +680,124 @@ class JmParser(ParserContextMixin):
             raise ValueError("JM 收藏夹页面快照页码不匹配")
         return expected_domain
 
+    # ── 搜索 / 首页 DOM 快照解析（与收藏夹快照对称，绕过 Python HTTP 请求）──
+
+    def parse_search_snapshot(
+        self,
+        html: str,
+        source_url: str,
+        *,
+        query: str = "",
+        page: int = 1,
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
+        """解析 Electron 已验证窗口捕获的搜索结果页 DOM，不发起网络请求。
+
+        复用 ``_parse_search_results``——与 live ``search()`` 关键词路径完全一致。
+        """
+        domain = self._validate_search_snapshot(html, source_url, query, page)
+        if self._is_challenge_page(html):
+            raise AntiBotChallengeError(
+                "浏览器页面仍处于 JM 人机验证状态，请完成验证后重试",
+                challenge_url=source_url,
+            )
+        return self._parse_search_results(html, domain=domain)
+
+    def parse_home_snapshot(
+        self,
+        html: str,
+        source_url: str,
+    ) -> list[tuple[str, list[ComicInfo]]]:
+        """解析 Electron 已验证窗口捕获的首页 DOM，不发起网络请求。
+
+        复用 ``_parse_home_sections``——与 live ``home()`` 完全一致。
+        """
+        domain = self._validate_home_snapshot(html, source_url)
+        if self._is_challenge_page(html):
+            raise AntiBotChallengeError(
+                "浏览器页面仍处于 JM 人机验证状态，请完成验证后重试",
+                challenge_url=source_url,
+            )
+        return self._parse_home_sections(html, domain=domain)
+
+    def _validate_search_snapshot(self, html: str, source_url: str, query: str, page: int) -> str:
+        """校验搜索快照输入，返回受信域名。
+
+        与收藏夹快照校验对称，但额外校验 ``search_query`` 解码后必须等于请求的 ``query``，
+        防止快照页面 A 的结果被当作查询 B 的结果返回。
+        """
+        if not isinstance(html, str) or not html.strip():
+            raise ValueError("JM 搜索页面快照为空")
+        if len(html.encode("utf-8")) > _SEARCH_SNAPSHOT_MAX_BYTES:
+            raise ValueError("JM 搜索页面快照超过 5 MiB 限制")
+        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= 1000:
+            raise ValueError("JM 搜索页面快照页码无效")
+        if not isinstance(source_url, str) or len(source_url) > 2048:
+            raise ValueError("JM 搜索页面快照 URL 无效")
+
+        parsed = urlparse(source_url)
+        expected_domain = self._ensure_domain().lower()
+        if (
+            parsed.scheme != "https"
+            or bool(parsed.username or parsed.password)
+            or parsed.port not in (None, 443)
+            or (parsed.hostname or "").lower() != expected_domain
+            or not _SEARCH_PATH_RE.fullmatch(parsed.path)
+            or parsed.fragment
+        ):
+            raise ValueError("JM 搜索页面快照 URL 不受信任")
+
+        query_params = parse_qs(parsed.query, keep_blank_values=True)
+        # 重复参数检测
+        if any(len(values) > 1 for values in query_params.values()):
+            raise ValueError("JM 搜索页面快照查询参数无效")
+        # 白名单：仅允许 main_tag / search_query / page
+        if any(key not in ("main_tag", "search_query", "page") for key in query_params):
+            raise ValueError("JM 搜索页面快照查询参数无效")
+        # main_tag 必须存在且为 0
+        if query_params.get("main_tag", [None])[0] != "0":
+            raise ValueError("JM 搜索页面快照查询参数无效")
+        # search_query 必须存在且解码后等于请求的 query
+        search_query_values = query_params.get("search_query")
+        if search_query_values is None:
+            raise ValueError("JM 搜索页面快照查询参数无效")
+        if unquote(search_query_values[0]) != query:
+            raise ValueError("JM 搜索页面快照搜索词不匹配")
+        # page 可选，存在时必须匹配
+        page_values = query_params.get("page")
+        if page_values is not None:
+            try:
+                page_num = int(page_values[0])
+            except (ValueError, TypeError):
+                raise ValueError("JM 搜索页面快照页码无效") from None
+            if page_num != page:
+                raise ValueError("JM 搜索页面快照页码不匹配")
+        elif page != 1:
+            raise ValueError("JM 搜索页面快照页码不匹配")
+        return expected_domain
+
+    def _validate_home_snapshot(self, html: str, source_url: str) -> str:
+        """校验首页快照输入，返回受信域名。"""
+        if not isinstance(html, str) or not html.strip():
+            raise ValueError("JM 首页快照为空")
+        if len(html.encode("utf-8")) > _SEARCH_SNAPSHOT_MAX_BYTES:
+            raise ValueError("JM 首页快照超过 5 MiB 限制")
+        if not isinstance(source_url, str) or len(source_url) > 2048:
+            raise ValueError("JM 首页快照 URL 无效")
+
+        parsed = urlparse(source_url)
+        expected_domain = self._ensure_domain().lower()
+        if (
+            parsed.scheme != "https"
+            or bool(parsed.username or parsed.password)
+            or parsed.port not in (None, 443)
+            or (parsed.hostname or "").lower() != expected_domain
+            or not _HOME_PATH_RE.fullmatch(parsed.path)
+            or parsed.fragment
+            or parsed.query
+        ):
+            raise ValueError("JM 首页快照 URL 不受信任")
+        return expected_domain
+
     def _parse_favourites_html(
         self,
         html: str,
@@ -819,6 +954,10 @@ class JmParser(ParserContextMixin):
             url += f"&page={page}"
         return url
 
+    def _build_home_url(self) -> str:
+        """构造当前 JM 域名的首页 URL。"""
+        return f"https://{self._ensure_domain()}/"
+
     def _build_random_url(self) -> str:
         domain = self._ensure_domain()
         return RANDOM_URL_TEMPLATE.format(domain=domain)
@@ -832,7 +971,7 @@ class JmParser(ParserContextMixin):
         return resp.text
 
     def _request_text_with_challenge_check(self, url: str) -> str:
-        """请求文本并检测 Cloudflare 反爬挑战，仅供搜索路径使用。
+        """请求文本并检测 Cloudflare 反爬挑战，供搜索与首页路径使用。
 
         与公共 ``_request_text`` 的区别：响应被识别为反爬挑战时抛出
         ``AntiBotChallengeError(challenge_url=url)``，而非把挑战页正文交给
@@ -849,6 +988,89 @@ class JmParser(ParserContextMixin):
         resp.raise_for_status()
         self._fix_encoding(resp)
         return resp.text
+
+    @staticmethod
+    def _classify_home_section(more_href: str, *, recommendation_seen: bool) -> str | None:
+        """根据栏目“看更多”目标识别默认首页栏目，避免依赖动态标题。"""
+        parsed = urlparse(more_href)
+        path = parsed.path.rstrip("/") or "/"
+        query = parse_qs(parsed.query)
+        if path.startswith("/serialization/"):
+            return "serialization"
+        if path == "/search/photos":
+            search_query = " ".join(query.get("search_query", []))
+            if "禁漫" in search_query and ("汉化组" in search_query or "漢化組" in search_query):
+                return "translation"
+        if path == "/albums/hanman":
+            return "hanman"
+        if path.startswith("/promotes/") and not recommendation_seen:
+            return "recommendation"
+        if path == "/albums" and query.get("o") == ["mr"]:
+            return "latest"
+        return None
+
+    def _parse_home_sections(self, html: str, domain: str) -> list[tuple[str, list[ComicInfo]]]:
+        """解析 JM 首页五类默认栏目，并保留页面顺序与动态标题。"""
+        doc = etree.HTML(html)
+        if doc is None:
+            return []
+
+        sections: list[tuple[str, list[ComicInfo]]] = []
+        found_kinds: set[str] = set()
+        recommendation_seen = False
+        headings = doc.xpath('//h4[contains(concat(" ", normalize-space(@class), " "), " talk-title ")]')
+        for heading in headings:
+            title = " ".join("".join(heading.itertext()).split())
+            if not title:
+                continue
+            title_rows = heading.xpath('ancestor::div[contains(concat(" ", normalize-space(@class), " "), " row ")][1]')
+            if not title_rows:
+                continue
+            title_row = title_rows[0]
+            more_hrefs = title_row.xpath(".//a/@href")
+            kind = next(
+                (
+                    classified
+                    for href in more_hrefs
+                    if (
+                        classified := self._classify_home_section(
+                            href,
+                            recommendation_seen=recommendation_seen,
+                        )
+                    )
+                ),
+                None,
+            )
+            if kind is None or kind in found_kinds:
+                continue
+            content_rows = title_row.xpath("./following-sibling::div[1]")
+            if not content_rows:
+                continue
+
+            comics: list[ComicInfo] = []
+            seen_ids: set[str] = set()
+            items = content_rows[0].xpath('.//div[contains(@class,"thumb-overlay")]')
+            for item in items:
+                try:
+                    comic = self._parse_search_item(item, domain=domain)
+                except Exception as e:
+                    logger.debug("Parse jm home item skipped: %s", e)
+                    continue
+                if comic is None or not comic.id or comic.id in seen_ids:
+                    continue
+                seen_ids.add(comic.id)
+                comics.append(comic)
+                if len(comics) >= _HOME_SECTION_LIMIT:
+                    break
+            if not comics:
+                continue
+
+            sections.append((title, comics))
+            found_kinds.add(kind)
+            if kind == "recommendation":
+                recommendation_seen = True
+
+        return sections
 
     def _parse_search_results(self, html: str, domain: str) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """解析搜索结果页面。若响应为详情页则返回单条结果。"""

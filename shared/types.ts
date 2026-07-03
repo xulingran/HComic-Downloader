@@ -34,9 +34,15 @@ export interface PaginationInfo {
   totalItems: number
 }
 
+export interface SearchSection {
+  title: string
+  comicIds: string[]
+}
+
 export interface SearchResult {
   comics: ComicInfo[]
   pagination: PaginationInfo
+  sections?: SearchSection[]
 }
 
 export interface DownloadTask {

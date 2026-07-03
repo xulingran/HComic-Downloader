@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useSearchCacheStore, createSearchContextKey } from '@/stores/useSearchCacheStore'
-import type { ComicInfo, PaginationInfo } from '@shared/types'
+import type { ComicInfo, PaginationInfo, SearchSection } from '@shared/types'
 
 const mockComic: ComicInfo = {
   id: '1',
@@ -15,6 +15,8 @@ const mockPagination: PaginationInfo = {
   totalPages: 10,
   totalItems: 100,
 }
+
+const mockSections: SearchSection[] = [{ title: '最新漫画', comicIds: ['1'] }]
 
 describe('useSearchCacheStore', () => {
   beforeEach(() => {
@@ -41,6 +43,7 @@ describe('useSearchCacheStore', () => {
       searchTags: '',
       comics: [mockComic],
       pagination: mockPagination,
+      sections: mockSections,
     })
 
     const state = useSearchCacheStore.getState()
@@ -48,6 +51,7 @@ describe('useSearchCacheStore', () => {
     expect(state.currentContextKey).toBe(key)
     expect(state.currentPage).toBe(3)
     expect(state.getPage(key, 3)?.comics).toEqual([mockComic])
+    expect(state.getPage(key, 3)?.sections).toEqual(mockSections)
     expect(state.hasPage(key, 3)).toBe(true)
     expect(state.hasPage(key, 4)).toBe(false)
   })

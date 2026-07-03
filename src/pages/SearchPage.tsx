@@ -18,7 +18,8 @@ import { NhEntryGrid } from '../components/NhEntryGrid'
 import { TagDialog } from '../components/TagDialog'
 import { AlbumNameDialog } from '../components/common/AlbumNameDialog'
 import { pickAlbumDefaultName } from '../utils/titleSimilarity'
-import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
+import { PROGRESS_BADGE_STATUSES } from '@shared/types'
+import type { ComicInfo, PaginationInfo, SearchResult, SearchSection } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -95,6 +96,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const { favouriteTagHighlight, favouriteTagMinMatches } = useSettingsStore()
   const { progress: tagListProgress } = useTagListProgress(source)
   const searchCache = useSearchCacheStore()
+  const [sections, setSections] = useState<SearchSection[]>(() => {
+    const contextKey = searchCache.currentContextKey
+    return (contextKey ? searchCache.getPage(contextKey, searchCache.currentPage)?.sections : undefined) ?? []
+  })
   const searchCacheRef = useRef(searchCache)
   searchCacheRef.current = searchCache // eslint-disable-line react-hooks/refs
   const { progress: downloadProgress } = useDownloadProgress()
@@ -145,6 +150,22 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     searchCacheRef.current.setPage(contextKey, page, data, setCurrent)
   }, [])
 
+  const applySearchResult = useCallback((result: {
+    comics: ComicInfo[]
+    pagination: PaginationInfo | null
+    sections?: SearchSection[]
+  }) => {
+    setComics(result.comics)
+    setPagination(result.pagination)
+    setSections(result.sections ?? [])
+  }, [setComics, setPagination])
+
+  const clearSearchResult = useCallback(() => {
+    setComics([])
+    setPagination(null)
+    setSections([])
+  }, [setComics, setPagination])
+
   useEffect(() => {
     const cachedContextKey = searchCacheRef.current.currentContextKey
     const cached = cachedContextKey
@@ -159,8 +180,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         const restored = cached.searchTags.split(',').filter(Boolean)
         tagPanel.setSelectedTags(restored)
       }
-      setComics(cached.comics)
-      if (cached.pagination) setPagination(cached.pagination)
+      applySearchResult(cached)
       // viewingCategory / viewingNhEntry 是本组件局部 state，挂载时会丢失；
       // 这里依据已恢复的 mode/source 同步推导，避免用户从入口页搜索切走再切回后无法返回入口页。
       setViewingCategory(cached.mode === 'category' && cached.source === 'bika')
@@ -193,8 +213,25 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }).then(result => {
       if (cancelled || gen !== searchGenRef.current) return
       if (result) {
-        setComics(result.comics)
-        setPagination(result.pagination)
+        applySearchResult(result)
+        if (result.sections?.length) {
+          const contextKey = createSearchContextKey({
+            query: '',
+            mode,
+            source: mountedSource,
+            searchTags: '',
+          })
+          loadedContextKeyRef.current = contextKey
+          cacheSearchPage(contextKey, 1, {
+            query: '',
+            mode,
+            source: mountedSource,
+            searchTags: '',
+            comics: result.comics,
+            pagination: result.pagination,
+            sections: result.sections,
+          })
+        }
       }
     }).catch(err => {
       if (cancelled || gen !== searchGenRef.current) return
@@ -260,13 +297,12 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setLoading(true)
     setError(null)
     // 抽屉/侧栏触发的搜索属于新查询，清空旧结果以触发骨架渲染
-    setComics([])
+    clearSearchResult()
     loadedContextKeyRef.current = null
 
     search(finalQuery, searchMode === 'tag' && !finalQuery ? 'tag' : searchMode, 1, source, finalTags).then(result => {
       if (gen !== searchGenRef.current) return
-      setComics(result.comics)
-      setPagination(result.pagination)
+      applySearchResult(result)
       const finalMode = searchMode === 'tag' && !finalQuery ? 'tag' : searchMode
       const contextKey = createSearchContextKey({
         query: finalQuery,
@@ -282,6 +318,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         searchTags: finalTags,
         comics: result.comics,
         pagination: result.pagination ?? null,
+        sections: result.sections,
       })
     }).catch(err => {
       if (gen !== searchGenRef.current) return
@@ -289,7 +326,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }).finally(() => {
       if (gen === searchGenRef.current) setLoading(false)
     })
-  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setComics, setPagination, setQuery, setMode, tagPanel, cacheSearchPage])
+  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setQuery, setMode, tagPanel, cacheSearchPage, applySearchResult, clearSearchResult])
 
   // 推荐高亮数据源：用户主动确认的 my_tags（取代旧版被动反推的 favourite_tag_index）。
   // favourite_tag_index 降级为设置页「检测标签」候选池，仅供展示，不再直接驱动高亮。
@@ -313,22 +350,39 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
 
   const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
-  const withLoading = useCallback(async (fn: () => Promise<{ comics: ComicInfo[]; pagination: PaginationInfo | null }>, opts: { keepExisting?: boolean } = {}) => {
+  const visibleSections = useMemo(() => {
+    const comicsById = new Map(filteredComics.map(item => [item.comic.id, item]))
+    return sections.map(section => ({
+      ...section,
+      items: section.comicIds.flatMap(id => {
+        const item = comicsById.get(id)
+        return item ? [item] : []
+      }),
+    })).filter(section => section.items.length > 0)
+  }, [filteredComics, sections])
+
+  const withLoading = useCallback(async (
+    fn: () => Promise<SearchResult>,
+    opts: { keepExisting?: boolean; cacheResult?: boolean } = {},
+  ) => {
     const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
     // 新查询默认清空当前结果 → 触发骨架渲染（filteredComics.length === 0）。
     // 翻页（keepExisting=true）保留旧结果 → 触发遮罩渲染（filteredComics.length > 0 && isLoading）。
     if (!opts.keepExisting) {
-      setComics([])
+      clearSearchResult()
       loadedContextKeyRef.current = null
     }
     try {
       const result = await fn()
       if (gen !== searchGenRef.current) return
       setNeedsLogin(false)
-      setComics(result.comics)
-      if (result.pagination) setPagination(result.pagination)
+      applySearchResult(result)
+      if (opts.cacheResult === false) {
+        loadedContextKeyRef.current = null
+        return
+      }
       const contextKey = createSearchContextKey({
         query: queryRef.current,
         mode: modeRef.current,
@@ -343,6 +397,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         searchTags: searchTagsRef.current,
         comics: result.comics,
         pagination: result.pagination ?? null,
+        sections: result.sections,
       })
     } catch (err) {
       if (gen !== searchGenRef.current) return
@@ -355,7 +410,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     } finally {
       if (gen === searchGenRef.current) setLoading(false)
     }
-  }, [setLoading, setError, setComics, setPagination, cacheSearchPage])
+  }, [setLoading, setError, cacheSearchPage, applySearchResult, clearSearchResult])
 
   const handleSearch = useCallback(async (page: number = 1) => {
     if (requiresAuth(source) && needsLogin) return
@@ -370,14 +425,12 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const cachedPage = searchCacheRef.current.getPage(contextKey, page)
     if (cachedPage) {
       const gen = ++searchGenRef.current
-      setComics(cachedPage.comics)
-      if (cachedPage.pagination) setPagination(cachedPage.pagination)
+      applySearchResult(cachedPage)
       setError(null)
       loadedContextKeyRef.current = contextKey
       search(query, mode, page, source, searchTags || undefined, false).then((result) => {
         if (gen !== searchGenRef.current) return
-        setComics(result.comics)
-        setPagination(result.pagination)
+        applySearchResult(result)
         cacheSearchPage(contextKey, page, {
           query,
           mode,
@@ -385,6 +438,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           searchTags,
           comics: result.comics,
           pagination: result.pagination ?? null,
+          sections: result.sections,
         })
       }).catch((err) => { console.debug('Background search refresh failed:', err) })
       return
@@ -394,7 +448,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     // 否则 → 新查询，清空 + 骨架。
     const isPaging = loadedContextKeyRef.current === contextKey
     await withLoading(() => search(query, mode, page, source, searchTags || undefined, true), { keepExisting: isPaging })
-  }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search, setComics, setPagination, setError, cacheSearchPage])
+  }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search, setError, cacheSearchPage, applySearchResult])
 
   const handleRandom = async () => {
     if (requiresAuth(source) && needsLogin) return
@@ -406,7 +460,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setShowHistory(false)
     setViewingCategory(false)
     setViewingNhEntry(false)
-    await withLoading(() => random(source))
+    await withLoading(() => random(source), { cacheResult: false })
   }
 
   const handleBikaCategory = useCallback(async (categoryTitle: string) => {
@@ -431,10 +485,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setMode('keyword')
     modeRef.current = 'keyword'
     setViewingCategory(false)
-    setComics([])
-    setPagination(null)
+    clearSearchResult()
     setError(null)
-  }, [clearSelection, setComics, setPagination, setError])
+  }, [clearSelection, clearSearchResult, setError])
 
   const handleNhLatest = useCallback(async () => {
     clearSelection()
@@ -499,10 +552,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setMode('keyword')
     modeRef.current = 'keyword'
     setViewingNhEntry(false)
-    setComics([])
-    setPagination(null)
+    clearSearchResult()
     setError(null)
-  }, [clearSelection, tagPanel, setComics, setPagination, setError])
+  }, [clearSelection, tagPanel, clearSearchResult, setError])
 
   const handleSourceChange = async (newSource: string) => {
     setSource(newSource)
@@ -515,6 +567,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setNeedsLogin(false)
     setViewingCategory(false)
     setViewingNhEntry(false)
+    if (newSource === 'jm') {
+      setMode('keyword')
+      modeRef.current = 'keyword'
+    }
     if (newSource === 'copymanga' && mode === 'ranking') {
       setQuery('hot')
       queryRef.current = 'hot'
@@ -537,13 +593,15 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         setNeedsLogin(true)
         return
       }
-      withLoading(() => random(newSource))
+      if (newSource === 'jm') {
+        withLoading(() => search('', 'keyword', 1, 'jm', undefined, true))
+      } else {
+        withLoading(() => random(newSource))
+      }
     } else if (newSource === 'bika') {
-      setComics([])
-      setPagination(null)
+      clearSearchResult()
     } else if (newSource === 'nh') {
-      setComics([])
-      setPagination(null)
+      clearSearchResult()
     } else {
       withLoading(() => search('', mode, 1, newSource))
     }
@@ -578,6 +636,31 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
     await downloadWithConflictCheck(comic)
   }
+
+  const renderComicItem = (
+    { comic, isBlocked, isRecommended }: (typeof filteredComics)[number],
+    index: number,
+    keyPrefix: string = '',
+  ) => (
+    <AnimatedCardWrapper key={`${keyPrefix}${getComicKey(comic)}`} index={index}>
+      {isBlocked ? (
+        <BlockedPlaceholder comic={comic} cardStyle={cardStyle} />
+      ) : (
+        <ComicCard
+          comic={comic}
+          onOpenReader={handleOpenReader}
+          batchMode={batchMode}
+          selected={selectedIds.has(getComicKey(comic))}
+          onToggleSelect={toggleSelect}
+          onDownload={handleDownload}
+          isRecommended={isRecommended}
+          recommendedTags={recommendedTags}
+          activeDownload={activeDownloadMap.get(comic.id)}
+          onTagClick={sourceSupportsTagList(source) ? handleToggleTag : undefined}
+        />
+      )}
+    </AnimatedCardWrapper>
+  )
 
   // 预加载链路已抽到 useSearchPreloader：preloadSearchPage（含 signal.aborted 检查）、
   // consumePreloaded（中转 → 持久层搬运）、hasPage、usePaginatedPreloader 装配均在 hook 内。
@@ -794,32 +877,30 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         <div className="relative">
           <LayoutGroup>
             <AnimatePresence mode="popLayout">
-              <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
-                ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-                : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
-              }>
-                {filteredComics.map(({ comic, isBlocked, isRecommended }, index) => (
-                  <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
-                    {isBlocked ? (
-                      <BlockedPlaceholder comic={comic} cardStyle={cardStyle} />
-                    ) : (
-                      <ComicCard
-                        comic={comic}
-                        onOpenReader={handleOpenReader}
-                        batchMode={batchMode}
-                        selected={selectedIds.has(getComicKey(comic))}
-                        onToggleSelect={toggleSelect}
-                        onDownload={handleDownload}
-                        isRecommended={isRecommended}
-                        recommendedTags={recommendedTags}
-                        activeDownload={activeDownloadMap.get(comic.id)}
-                        // 详细列表下 tag 可点击触发追加式 tag 搜索（仅支持 tag 搜索的来源）
-                        onTagClick={sourceSupportsTagList(source) ? handleToggleTag : undefined}
-                      />
-                    )}
-                  </AnimatedCardWrapper>
-                ))}
-              </div>
+              {visibleSections.length > 0 ? (
+                <div key={`${gridContainerKey}:sections`} data-grid-key={`${gridContainerKey}:sections`} className="space-y-6">
+                  {visibleSections.map((section, sectionIndex) => (
+                    <section key={`${sectionIndex}:${section.title}`} aria-labelledby={`jm-section-${sectionIndex}`}>
+                      <h2 id={`jm-section-${sectionIndex}`} className="mb-3 text-base font-semibold text-[var(--text-primary)]">
+                        {section.title}
+                      </h2>
+                      <div className={cardStyle === 'detailed'
+                        ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+                        : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
+                      }>
+                        {section.items.map((item, index) => renderComicItem(item, index, `${sectionIndex}:`))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              ) : (
+                <div key={gridContainerKey} data-grid-key={gridContainerKey} className={cardStyle === 'detailed'
+                  ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+                  : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3'
+                }>
+                  {filteredComics.map((item, index) => renderComicItem(item, index))}
+                </div>
+              )}
             </AnimatePresence>
           </LayoutGroup>
 

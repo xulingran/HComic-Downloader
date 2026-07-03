@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 _DEFAULT_SOURCE = "hcomic"
 _JM_SNAPSHOT_MAX_BYTES = 5 * 1024 * 1024
 _JM_FAVOURITES_PATH_RE = re.compile(r"^/user/[^/?#]+/favorite/albums/?$")
+_JM_SEARCH_PATH_RE = re.compile(r"^/search/photos$")
+_JM_HOME_PATH_RE = re.compile(r"^/?$")
+_JM_SEARCH_QUERY_MAX_LEN = 256
 _AUTH_KEYWORDS = (
     "401",
     "403",
@@ -256,6 +259,43 @@ class SearchMixin:
         ):
             effective_tag = ""
             effective_query = ""
+        if effective_source == "jm" and mode == "keyword" and not query.strip() and page == 1:
+            with self._auth_error_guard(effective_source):
+                raw_sections = self.parser.jm_home()
+
+            comics = []
+            comic_keys: set[tuple[str, str, str]] = set()
+            section_ids: list[tuple[str, list[str]]] = []
+            for title, section_comics in raw_sections:
+                ids: list[str] = []
+                seen_ids: set[str] = set()
+                for comic in section_comics:
+                    if not comic.id or comic.id in seen_ids:
+                        continue
+                    seen_ids.add(comic.id)
+                    ids.append(comic.id)
+                    key = (comic.source_site, comic.id, comic.comic_source)
+                    if key not in comic_keys:
+                        comic_keys.add(key)
+                        comics.append(comic)
+                if ids:
+                    section_ids.append((title, ids))
+
+            valid_ids = {comic.id for comic in comics}
+            sections = [
+                {"title": title, "comicIds": [comic_id for comic_id in ids if comic_id in valid_ids]}
+                for title, ids in section_ids
+            ]
+            sections = [section for section in sections if section["comicIds"]]
+            return {
+                "comics": [self._comic_to_dict(c) for c in comics],
+                "pagination": {
+                    "currentPage": 1,
+                    "totalPages": 1,
+                    "totalItems": len(comics),
+                },
+                "sections": sections,
+            }
         if effective_source == "bika" and mode == "ranking":
             rank_type = query if query in ("H24", "D7", "D30") else "H24"
             bika_parser = self.parser.parsers.get("bika")
@@ -389,6 +429,114 @@ class SearchMixin:
                 raise ValueError("JM favourites snapshot page mismatch")
         elif query.get("page") != [str(page)]:
             raise ValueError("JM favourites snapshot page mismatch")
+
+    def handle_parse_jm_search_snapshot(self, html: str, source_url: str, query: str = "", page: int = 1) -> dict:
+        """解析来自 Electron 主进程的可信 JM 搜索结果页 DOM 快照。"""
+        self._validate_jm_search_snapshot_input(html, source_url, query, page)
+        with self._auth_error_guard("jm"):
+            comics, pagination = self.parser.parse_jm_search_snapshot(
+                html=html,
+                source_url=source_url,
+                query=query,
+                page=page,
+            )
+            deduped, _ = _dedupe_comics(comics)
+            return {
+                "comics": [self._comic_to_dict(comic) for comic in deduped],
+                "pagination": self._pagination_to_dict(pagination, fallback_page=page),
+            }
+
+    def _validate_jm_search_snapshot_input(self, html: str, source_url: str, query: str, page: int) -> None:
+        if not isinstance(html, str) or not html.strip():
+            raise ValueError("JM search snapshot HTML is required")
+        if len(html.encode("utf-8")) > _JM_SNAPSHOT_MAX_BYTES:
+            raise ValueError("JM search snapshot exceeds 5 MiB")
+        if not isinstance(query, str):
+            raise ValueError("Invalid JM search snapshot query")
+        if len(query) > _JM_SEARCH_QUERY_MAX_LEN:
+            raise ValueError("JM search snapshot query too long")
+        if not isinstance(page, int) or isinstance(page, bool) or not 1 <= page <= 1000:
+            raise ValueError("Invalid JM search snapshot page")
+        if not isinstance(source_url, str) or not 1 <= len(source_url) <= 2048:
+            raise ValueError("Invalid JM search snapshot URL")
+        parsed = urlparse(source_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.username
+            or parsed.password
+            or parsed.port not in (None, 443)
+            or not parsed.hostname
+            or not _JM_SEARCH_PATH_RE.fullmatch(parsed.path)
+            or parsed.fragment
+        ):
+            raise ValueError("Untrusted JM search snapshot URL")
+        query_params = parse_qs(parsed.query, keep_blank_values=True)
+        if any(len(values) > 1 for values in query_params.values()):
+            raise ValueError("Invalid JM search snapshot query params")
+        if any(key not in ("main_tag", "search_query", "page") for key in query_params):
+            raise ValueError("Invalid JM search snapshot query params")
+        if query_params.get("main_tag", [None])[0] != "0":
+            raise ValueError("Invalid JM search snapshot query params")
+        if "search_query" not in query_params:
+            raise ValueError("Invalid JM search snapshot query params")
+
+    def handle_parse_jm_home_snapshot(self, html: str, source_url: str) -> dict:
+        """解析来自 Electron 主进程的可信 JM 首页 DOM 快照。"""
+        self._validate_jm_home_snapshot_input(html, source_url)
+        with self._auth_error_guard("jm"):
+            raw_sections = self.parser.parse_jm_home_snapshot(html=html, source_url=source_url)
+            comics: list = []
+            comic_keys: set[tuple[str, str, str]] = set()
+            section_ids: list[tuple[str, list[str]]] = []
+            for title, section_comics in raw_sections:
+                ids: list[str] = []
+                seen_ids: set[str] = set()
+                for comic in section_comics:
+                    if not comic.id or comic.id in seen_ids:
+                        continue
+                    seen_ids.add(comic.id)
+                    ids.append(comic.id)
+                    key = (comic.source_site, comic.id, comic.comic_source)
+                    if key not in comic_keys:
+                        comic_keys.add(key)
+                        comics.append(comic)
+                if ids:
+                    section_ids.append((title, ids))
+            valid_ids = {comic.id for comic in comics}
+            sections = [
+                {"title": title, "comicIds": [comic_id for comic_id in ids if comic_id in valid_ids]}
+                for title, ids in section_ids
+            ]
+            sections = [section for section in sections if section["comicIds"]]
+            return {
+                "comics": [self._comic_to_dict(c) for c in comics],
+                "pagination": {
+                    "currentPage": 1,
+                    "totalPages": 1,
+                    "totalItems": len(comics),
+                },
+                "sections": sections,
+            }
+
+    def _validate_jm_home_snapshot_input(self, html: str, source_url: str) -> None:
+        if not isinstance(html, str) or not html.strip():
+            raise ValueError("JM home snapshot HTML is required")
+        if len(html.encode("utf-8")) > _JM_SNAPSHOT_MAX_BYTES:
+            raise ValueError("JM home snapshot exceeds 5 MiB")
+        if not isinstance(source_url, str) or not 1 <= len(source_url) <= 2048:
+            raise ValueError("Invalid JM home snapshot URL")
+        parsed = urlparse(source_url)
+        if (
+            parsed.scheme != "https"
+            or parsed.username
+            or parsed.password
+            or parsed.port not in (None, 443)
+            or not parsed.hostname
+            or not _JM_HOME_PATH_RE.fullmatch(parsed.path)
+            or parsed.fragment
+            or parsed.query
+        ):
+            raise ValueError("Untrusted JM home snapshot URL")
 
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         valid_sources = _SOURCES_WITH_FAVOURITES

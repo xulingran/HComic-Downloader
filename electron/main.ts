@@ -6,7 +6,7 @@ import { resolveImageCacheFile } from './image-protocol'
 import { checkForUpdates } from './update-checker'
 import { NotificationManager } from './notification-manager'
 import { openLoginWindow } from './login-window'
-import { isJmChallengeError, recoverJmChallenge, recoverJmFavouritesSilently, recoverJmSearchChallenge, shouldPreferSilentJmSnapshotRecovery, buildSilentJmFavouritesUrl } from './jm-challenge-recovery'
+import { isJmChallengeError, recoverJmChallenge, recoverJmFavouritesSilently, recoverJmSearchChallenge, recoverJmSearchSilently, shouldPreferSilentJmSnapshotRecovery, shouldPreferSilentJmSearchSnapshotRecovery, buildSilentJmFavouritesUrl } from './jm-challenge-recovery'
 import { needsRelaxedCsp } from './csp-relaxed-registry'
 import { initLogging } from './log-init'
 import { buildDiagnostics } from './diagnostics'
@@ -709,6 +709,21 @@ function registerSearchHandlers(bridge: Bridge) {
       params.tag = tag
     }
     // 禁止把 UI 控制参数转发给 Python handler
+    // 静默搜索快照预检：若此前搜索快照恢复已成功，先用隐藏窗口捕获快照，避免先触发必失败的 Python 请求
+    if (
+      interactiveFlag
+      && effectiveSource === 'jm'
+      && shouldPreferSilentJmSearchSnapshotRecovery()
+    ) {
+      const silentOutcome = await recoverJmSearchSilently(
+        { mainWindow, resolvedDomain: jmMainDomain || undefined },
+        { query, mode, page, source: effectiveSource, tag: typeof tag === 'string' ? tag : undefined },
+      )
+      if (silentOutcome.resolved && silentOutcome.result) {
+        return silentOutcome.result
+      }
+      // 静默快照失败 → 回退到正常 Python search + 交互恢复流程
+    }
     try {
       return await bridge.call('search', params)
     } catch (err) {

@@ -37,7 +37,9 @@ class CoverMixin:
         try:
             from curl_cffi import requests as cf_requests
 
-            session = cf_requests.Session(impersonate="chrome136")
+            from sources.jm.constants import IMPERSONATE_BROWSER
+
+            session = cf_requests.Session(impersonate=IMPERSONATE_BROWSER)
         except ImportError:
             import requests as _requests
 

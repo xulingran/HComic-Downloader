@@ -97,6 +97,9 @@ import {
   resolveJmChallengeTarget,
   resolveLoginTarget,
   shellQuoteForShlex,
+  validateJmFavouritesSnapshotUrl,
+  validateJmSearchSnapshotUrl,
+  validateJmHomeSnapshotUrl,
   verifyLoginCookies,
 } from '../../../electron/login-window'
 import { session as electronSession } from 'electron'
@@ -758,8 +761,9 @@ describe('login-window: resolveJmChallengeTarget (URL validator)', () => {
   })
 
   it('rejects non-favourites path', () => {
-    expect(() => resolveJmChallengeTarget('https://18comic.vip/')).toThrow('不受信任')
     expect(() => resolveJmChallengeTarget('https://18comic.vip/user/u/favorite/threads')).toThrow('不受信任')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/albums/hanman')).toThrow('不受信任')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/serialization/xxx')).toThrow('不受信任')
   })
 
   it('rejects fragment', () => {
@@ -784,6 +788,245 @@ describe('login-window: resolveJmChallengeTarget (URL validator)', () => {
   it('rejects malformed URL string', () => {
     expect(() => resolveJmChallengeTarget('not-a-url')).toThrow('无效')
     expect(() => resolveJmChallengeTarget('')).toThrow('无效')
+  })
+})
+
+// ── 任务 3.1：首页根路径挑战窗口目标（公共来源约束扩展） ─────────────────────
+describe('login-window: resolveJmChallengeTarget — home root URL', () => {
+  it('accepts default domain root URL (https://18comic.vip/)', () => {
+    const t = resolveJmChallengeTarget('https://18comic.vip/')
+    expect(t.domain).toBe('18comic.vip')
+    expect(t.url).toBe('https://18comic.vip/')
+    expect(t.title).toBe('JM 人机验证')
+  })
+
+  it('accepts trusted JM mirror domain root URL', () => {
+    const t = resolveJmChallengeTarget('https://jmcomic-zzz.one/')
+    expect(t.domain).toBe('jmcomic-zzz.one')
+    expect(t.url).toBe('https://jmcomic-zzz.one/')
+  })
+
+  it('accepts resolved domain override root URL', () => {
+    const t = resolveJmChallengeTarget('https://custom.jm.example/', 'custom.jm.example')
+    expect(t.domain).toBe('custom.jm.example')
+  })
+
+  it('accepts root URL without trailing slash (empty path)', () => {
+    const t = resolveJmChallengeTarget('https://18comic.vip')
+    expect(t.url).toBe('https://18comic.vip/')
+  })
+
+  it('rejects root URL with any query parameter', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/?foo=1')).toThrow('查询参数无效')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/?page=1')).toThrow('查询参数无效')
+  })
+
+  it('rejects root URL with fragment', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/#section')).toThrow('不受信任')
+  })
+
+  it('rejects root URL with non-https scheme', () => {
+    expect(() => resolveJmChallengeTarget('http://18comic.vip/')).toThrow('不受信任')
+  })
+
+  it('rejects root URL on non-trusted domain', () => {
+    expect(() => resolveJmChallengeTarget('https://evil.example/')).toThrow('不受信任')
+  })
+
+  it('rejects root URL with userinfo', () => {
+    expect(() => resolveJmChallengeTarget('https://user:pass@18comic.vip/')).toThrow('不受信任')
+  })
+
+  it('rejects root URL with non-default port', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip:8443/')).toThrow('不受信任')
+  })
+
+  it('rejects arbitrary trusted-domain path', () => {
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/albums')).toThrow('不受信任')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/blog/post-1')).toThrow('不受信任')
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/user/someone')).toThrow('不受信任')
+  })
+})
+
+// ── 任务 3.2：/search/photos 严格查询参数白名单（表驱动） ─────────────────────
+describe('login-window: resolveJmChallengeTarget — /search/photos params', () => {
+  // 合法搜索 URL 表：合法中文（百分号编码，与 Python quote() 输出一致）/空搜索词/可选页码
+  const validSearchUrls: ReadonlyArray<{ label: string; url: string; expectedDomain: string }> = [
+    { label: 'canonical keyword search (encoded chinese)', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=%E6%BC%AB%E7%94%BB', expectedDomain: '18comic.vip' },
+    { label: 'empty search_query allowed', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=', expectedDomain: '18comic.vip' },
+    { label: 'ascii keyword search', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=abc', expectedDomain: '18comic.vip' },
+    { label: 'with page 2', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=2', expectedDomain: '18comic.vip' },
+    { label: 'page 1000 boundary', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=1000', expectedDomain: '18comic.vip' },
+    { label: 'page 1 boundary', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=1', expectedDomain: '18comic.vip' },
+    { label: 'trusted mirror domain', url: 'https://jmcomic-zzz.one/search/photos?main_tag=0&search_query=test', expectedDomain: 'jmcomic-zzz.one' },
+    { label: 'resolved domain override', url: 'https://custom.jm.example/search/photos?main_tag=0&search_query=test', expectedDomain: 'custom.jm.example' },
+  ]
+
+  for (const { label, url, expectedDomain } of validSearchUrls) {
+    it(`accepts valid search URL: ${label}`, () => {
+      const t = resolveJmChallengeTarget(url, expectedDomain === 'custom.jm.example' ? 'custom.jm.example' : undefined)
+      expect(t.domain).toBe(expectedDomain)
+      // URL 已编码时保持原样；URL.toString() 对已编码内容 round-trip 等价
+      expect(t.url).toBe(url)
+    })
+  }
+
+  it('accepts search URL with decoded chinese chars (normalizes to percent-encoding)', () => {
+    // 未编码中文：URL 规范化会编码为 %E6%BC%AB%E7%94%BB，校验仍应通过
+    const t = resolveJmChallengeTarget('https://18comic.vip/search/photos?main_tag=0&search_query=漫画')
+    expect(t.domain).toBe('18comic.vip')
+    // 规范化后等价（解码 search_query 仍是"漫画"）
+    const parsed = new URL(t.url)
+    expect(parsed.searchParams.get('search_query')).toBe('漫画')
+  })
+
+  // 非法搜索 URL 表
+  const invalidSearchUrls: ReadonlyArray<{ label: string; url: string; expectError: string }> = [
+    { label: 'missing main_tag', url: 'https://18comic.vip/search/photos?search_query=test', expectError: '查询参数无效' },
+    { label: 'main_tag not 0', url: 'https://18comic.vip/search/photos?main_tag=1&search_query=test', expectError: '查询参数无效' },
+    { label: 'missing search_query', url: 'https://18comic.vip/search/photos?main_tag=0', expectError: '查询参数无效' },
+    { label: 'unknown param foo', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&foo=1', expectError: '查询参数无效' },
+    { label: 'duplicate main_tag', url: 'https://18comic.vip/search/photos?main_tag=0&main_tag=0&search_query=test', expectError: '查询参数无效' },
+    { label: 'duplicate search_query', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=a&search_query=b', expectError: '查询参数无效' },
+    { label: 'duplicate page', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=1&page=2', expectError: '查询参数无效' },
+    { label: 'page out of range (0)', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=0', expectError: '页码无效' },
+    { label: 'page out of range (1001)', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=1001', expectError: '页码无效' },
+    { label: 'page non-numeric', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=abc', expectError: '页码无效' },
+    { label: 'search_query over length limit', url: `https://18comic.vip/search/photos?main_tag=0&search_query=${'a'.repeat(257)}`, expectError: '查询参数无效' },
+    { label: 'fragment', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test#top', expectError: '不受信任' },
+    { label: 'non-https', url: 'http://18comic.vip/search/photos?main_tag=0&search_query=test', expectError: '不受信任' },
+    { label: 'non-trusted domain', url: 'https://evil.example/search/photos?main_tag=0&search_query=test', expectError: '不受信任' },
+    { label: 'userinfo', url: 'https://user:pass@18comic.vip/search/photos?main_tag=0&search_query=test', expectError: '不受信任' },
+    { label: 'non-default port', url: 'https://18comic.vip:8443/search/photos?main_tag=0&search_query=test', expectError: '不受信任' },
+  ]
+
+  for (const { label, url, expectError } of invalidSearchUrls) {
+    it(`rejects invalid search URL: ${label}`, () => {
+      expect(() => resolveJmChallengeTarget(url)).toThrow(expectError)
+    })
+  }
+
+  it('preserves original URL encoding (does not re-encode or lose params)', () => {
+    const url = 'https://18comic.vip/search/photos?main_tag=0&search_query=%E6%BC%AB%E7%94%BB'
+    const t = resolveJmChallengeTarget(url)
+    expect(t.url).toBe(url)
+  })
+})
+
+// ── 任务 3.3：收藏夹快照专用边界（首页/搜索可导航但不可作为收藏夹快照） ─────────
+describe('login-window: validateJmFavouritesSnapshotUrl — snapshot boundary', () => {
+  // 既有收藏夹 URL 仍可捕获（回归保护）
+  const validFavouritesUrls: ReadonlyArray<{ label: string; url: string }> = [
+    { label: 'canonical favourites without page', url: 'https://18comic.vip/user/testuser/favorite/albums' },
+    { label: 'favourites with page', url: 'https://18comic.vip/user/testuser/favorite/albums?page=3' },
+    { label: 'favourites on trusted mirror', url: 'https://jmcomic-zzz.one/user/u/favorite/albums' },
+    { label: 'favourites on resolved domain', url: 'https://custom.jm.example/user/u/favorite/albums' },
+  ]
+
+  for (const { label, url } of validFavouritesUrls) {
+    it(`accepts existing favourites URL: ${label}`, () => {
+      expect(() => validateJmFavouritesSnapshotUrl(url, url.includes('custom.jm.example') ? 'custom.jm.example' : undefined)).not.toThrow()
+    })
+  }
+
+  // 首页与搜索 URL 可以导航（resolveJmChallengeTarget 通过），但必须被快照校验拒绝
+  it('rejects home root URL as snapshot (navigation-allowed, snapshot-forbidden)', () => {
+    // 先确认首页根 URL 可作为交互挑战目标（导航允许）
+    expect(() => resolveJmChallengeTarget('https://18comic.vip/')).not.toThrow()
+    // 但快照校验必须拒绝
+    expect(() => validateJmFavouritesSnapshotUrl('https://18comic.vip/')).toThrow('不受信任')
+  })
+
+  it('rejects search URL as snapshot (navigation-allowed, snapshot-forbidden)', () => {
+    const searchUrl = 'https://18comic.vip/search/photos?main_tag=0&search_query=test'
+    // 先确认搜索 URL 可作为交互挑战目标（导航允许）
+    expect(() => resolveJmChallengeTarget(searchUrl)).not.toThrow()
+    // 但快照校验必须拒绝
+    expect(() => validateJmFavouritesSnapshotUrl(searchUrl)).toThrow('不受信任')
+  })
+
+  // 快照专用校验的其他拒绝路径
+  const invalidSnapshotUrls: ReadonlyArray<{ label: string; url: string }> = [
+    { label: 'arbitrary trusted-domain path', url: 'https://18comic.vip/albums' },
+    { label: 'non-trusted domain favourites-like path', url: 'https://evil.example/user/u/favorite/albums' },
+    { label: 'non-https favourites', url: 'http://18comic.vip/user/u/favorite/albums' },
+    { label: 'userinfo', url: 'https://user:pass@18comic.vip/user/u/favorite/albums' },
+    { label: 'non-default port', url: 'https://18comic.vip:8443/user/u/favorite/albums' },
+    { label: 'fragment', url: 'https://18comic.vip/user/u/favorite/albums#frag' },
+    { label: 'unknown query param', url: 'https://18comic.vip/user/u/favorite/albums?foo=1' },
+    { label: 'invalid page value', url: 'https://18comic.vip/user/u/favorite/albums?page=abc' },
+    { label: 'page out of range', url: 'https://18comic.vip/user/u/favorite/albums?page=1001' },
+  ]
+
+  for (const { label, url } of invalidSnapshotUrls) {
+    it(`rejects invalid snapshot URL: ${label}`, () => {
+      expect(() => validateJmFavouritesSnapshotUrl(url)).toThrow()
+    })
+  }
+})
+
+describe('login-window: validateJmSearchSnapshotUrl — search snapshot boundary', () => {
+  const validSearchUrls: ReadonlyArray<{ label: string; url: string }> = [
+    { label: 'canonical', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test' },
+    { label: 'with page', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=test&page=2' },
+    { label: 'empty query', url: 'https://18comic.vip/search/photos?main_tag=0&search_query=' },
+    { label: 'mirror domain', url: 'https://jmcomic-zzz.one/search/photos?main_tag=0&search_query=test' },
+  ]
+
+  for (const { label, url } of validSearchUrls) {
+    it(`accepts valid search snapshot URL: ${label}`, () => {
+      expect(() => validateJmSearchSnapshotUrl(url)).not.toThrow()
+    })
+  }
+
+  it('rejects home root URL (navigation-allowed, search-snapshot-forbidden)', () => {
+    expect(() => validateJmSearchSnapshotUrl('https://18comic.vip/')).toThrow('不受信任')
+  })
+
+  it('rejects favourites URL', () => {
+    expect(() => validateJmSearchSnapshotUrl('https://18comic.vip/user/testuser/favorite/albums')).toThrow('不受信任')
+  })
+
+  it('rejects unknown query param', () => {
+    expect(() => validateJmSearchSnapshotUrl('https://18comic.vip/search/photos?main_tag=0&search_query=test&evil=1')).toThrow()
+  })
+
+  it('rejects missing main_tag', () => {
+    expect(() => validateJmSearchSnapshotUrl('https://18comic.vip/search/photos?search_query=test')).toThrow()
+  })
+
+  it('rejects non-trusted domain', () => {
+    expect(() => validateJmSearchSnapshotUrl('https://evil.example/search/photos?main_tag=0&search_query=test')).toThrow()
+  })
+})
+
+describe('login-window: validateJmHomeSnapshotUrl — home snapshot boundary', () => {
+  const validHomeUrls: ReadonlyArray<{ label: string; url: string }> = [
+    { label: 'root (default domain)', url: 'https://18comic.vip/' },
+    { label: 'root (mirror)', url: 'https://jmcomic-zzz.one/' },
+    { label: 'root without trailing slash', url: 'https://18comic.vip' },
+  ]
+
+  for (const { label, url } of validHomeUrls) {
+    it(`accepts valid home snapshot URL: ${label}`, () => {
+      expect(() => validateJmHomeSnapshotUrl(url)).not.toThrow()
+    })
+  }
+
+  it('rejects search URL', () => {
+    expect(() => validateJmHomeSnapshotUrl('https://18comic.vip/search/photos?main_tag=0&search_query=test')).toThrow('不受信任')
+  })
+
+  it('rejects favourites URL', () => {
+    expect(() => validateJmHomeSnapshotUrl('https://18comic.vip/user/testuser/favorite/albums')).toThrow('不受信任')
+  })
+
+  it('rejects root with query params', () => {
+    expect(() => validateJmHomeSnapshotUrl('https://18comic.vip/?foo=1')).toThrow()
+  })
+
+  it('rejects non-trusted domain', () => {
+    expect(() => validateJmHomeSnapshotUrl('https://evil.example/')).toThrow()
   })
 })
 
@@ -993,6 +1236,51 @@ describe('login-window: openJmChallengeWindow (challenge mode)', () => {
     await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
     const result = await promise
     expect(result.success).toBe(true)
+    expect(result.snapshot?.html).toBe(snapshotHtml)
+    vi.useRealTimers()
+  })
+
+  it('snapshot capture dynamically selects validator when user navigates to different page', async () => {
+    // 挑战窗口加载根 URL（首页挑战），但用户在窗口内导航到收藏夹页面。
+    // 快照校验器必须根据当前 location.href（收藏夹 URL）动态选择，
+    // 而非使用窗口初始目标 URL 的校验器（首页校验器会拒绝收藏夹路径）。
+    vi.useFakeTimers()
+    const homeChallengeUrl = 'https://18comic.vip/'
+    const promise = openJmChallengeWindow(makeMainWindow(), homeChallengeUrl)
+    await Promise.resolve()
+    const win = capturedInstances[0] as {
+      webContents: {
+        send: ReturnType<typeof vi.fn>
+        executeJavaScript: ReturnType<typeof vi.fn>
+        session: { cookies: { get: ReturnType<typeof vi.fn> } }
+        userAgent: string
+      }
+      destroy: ReturnType<typeof vi.fn>
+    }
+    // 用户导航后 location.href 变为收藏夹 URL
+    const navigatedUrl = 'https://18comic.vip/user/testuser/favorite/albums'
+    const snapshotHtml = '<html><body><div class="thumb-overlay"><a href="/album/1"><img title="t"></a></div></body></html>'
+    vi.mocked(win.webContents.executeJavaScript).mockResolvedValue({
+      sourceUrl: navigatedUrl,
+      html: snapshotHtml,
+    })
+    vi.mocked(win.webContents.session.cookies.get).mockResolvedValue([
+      cookie('remember', 'abc'),
+      cookie('AVS', 'def'),
+    ])
+
+    await ipcHandlers[IPC_CHANNELS.LOGIN_EXTRACT]({}, 'jm')
+    await vi.waitFor(() => {
+      expect(win.webContents.send).toHaveBeenCalledWith(
+        NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT,
+        expect.objectContaining({ success: true }),
+      )
+    })
+
+    await ipcHandlers[IPC_CHANNELS.LOGIN_FINISH]()
+    const result = await promise
+    expect(result.success).toBe(true)
+    // 快照成功捕获（收藏夹校验器接受了导航后的收藏夹 URL）
     expect(result.snapshot?.html).toBe(snapshotHtml)
     vi.useRealTimers()
   })

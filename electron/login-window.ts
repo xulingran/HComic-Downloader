@@ -24,6 +24,12 @@ const COPYMANGA_DOMAIN = 'www.2026copy.com'
 const HCOMIC_DOMAIN = 'h-comic.com'
 const JM_DEFAULT_DOMAIN = '18comic.vip'
 const JM_FAVOURITES_PATH_RE = /^\/user\/([^/]+)\/favorite\/albums\/?$/
+/** JM 搜索路径：/search/photos（严格白名单参数由 validateJmSearchParams 校验）。 */
+const JM_SEARCH_PATH = '/search/photos'
+/** 挑战 URL 与 challengeUrl 字段最大长度（与 recovery 端对齐）。 */
+const JM_CHALLENGE_URL_MAX_LEN = 2048
+/** 搜索 search_query 原始值长度上限（防止异常长输入）。 */
+const JM_SEARCH_QUERY_MAX_LEN = 256
 const STRONG_CHALLENGE_MARKERS = [
   'just a moment',
   '/cdn-cgi/challenge-platform/',
@@ -171,6 +177,12 @@ interface LoginWindowContext {
    * LOGIN_FINISH 到达时清除。
    */
   finishFallbackTimer: NodeJS.Timeout | null
+  /**
+   * challenge 模式下挑战窗口加载的目标 URL。triggerExtraction 据此选择
+   * 快照校验器（收藏夹/搜索/首页），避免用收藏夹校验拒绝搜索/首页快照。
+   * login 模式下为 null。
+   */
+  challengeTargetUrl: string | null
 }
 
 // ── Cookie 提取与登录态校验（extractAndApplyCookies 的子组件）─────────────
@@ -341,7 +353,13 @@ async function triggerExtraction(
   diag(`triggerExtraction: source=${source} domain=${domain}`)
 
   const snapshotResult = ctx.mode === 'challenge'
-    ? await captureJmChallengeSnapshot(loginWin, domain)
+    ? await captureJmChallengeSnapshot(
+        loginWin,
+        domain,
+        ctx.challengeTargetUrl
+          ? selectSnapshotValidator(ctx.challengeTargetUrl)
+          : validateJmFavouritesSnapshotUrl,
+      )
     : { success: true as const, snapshot: undefined }
   if (!snapshotResult.success) {
     return { success: false, message: snapshotResult.message }
@@ -379,9 +397,12 @@ const CAPTURE_JM_SNAPSHOT_SCRIPT = `(() => ({
   html: document.documentElement ? document.documentElement.outerHTML : ''
 }))()`
 
+type SnapshotUrlValidator = (challengeUrl: string, resolvedDomain?: string) => void
+
 async function captureJmChallengeSnapshot(
   loginWin: BrowserWindow,
   expectedDomain: string,
+  _urlValidator: SnapshotUrlValidator = validateJmFavouritesSnapshotUrl,
 ): Promise<{ success: true; snapshot: JmChallengeSnapshot } | { success: false; message: string }> {
   if (loginWin.isDestroyed()) return { success: false, message: '验证窗口已关闭' }
   try {
@@ -393,23 +414,28 @@ async function captureJmChallengeSnapshot(
     if (typeof sourceUrl !== 'string' || typeof html !== 'string') {
       return { success: false, message: '无法读取验证页面，请稍后重试' }
     }
-    resolveJmChallengeTarget(sourceUrl, expectedDomain)
+    // 按当前页面 URL（sourceUrl = location.href）动态选择快照校验器。
+    // 用户可在挑战窗口内自由导航（首页→搜索→收藏夹），校验器必须跟随当前 URL，
+    // 而非窗口初始加载时的目标 URL——否则导航后快照必被误拒。
+    // 收藏夹/搜索/首页各自只接受对应路径，禁止跨类放行。
+    const dynamicValidator = selectSnapshotValidator(sourceUrl)
+    dynamicValidator(sourceUrl, expectedDomain)
     const lower = html.toLowerCase()
-    const hasFavouritesContent = /class=["'][^"']*thumb-overlay/i.test(html) || /href=["'][^"']*\/album\/\d+/i.test(html)
+    const hasContent = /class=["'][^"']*thumb-overlay/i.test(html) || /href=["'][^"']*\/album\/\d+/i.test(html)
     if (
       STRONG_CHALLENGE_MARKERS.some(marker => lower.includes(marker))
-      || (!hasFavouritesContent && WEAK_CHALLENGE_MARKERS.some(marker => lower.includes(marker)))
+      || (!hasContent && WEAK_CHALLENGE_MARKERS.some(marker => lower.includes(marker)))
     ) {
       return { success: false, message: '验证尚未完成，请继续完成人机验证' }
     }
     if (Buffer.byteLength(html, 'utf8') > LOGIN_SNAPSHOT_MAX_BYTES) {
       diag(`challenge snapshot discarded: exceeds ${LOGIN_SNAPSHOT_MAX_BYTES} bytes`)
-      return { success: false, message: '收藏夹页面过大，请关闭窗口后重试' }
+      return { success: false, message: '页面过大，请关闭窗口后重试' }
     }
     return { success: true, snapshot: { html, sourceUrl } }
   } catch (err) {
     diag(`challenge snapshot rejected: ${err instanceof Error ? err.message : String(err)}`)
-    return { success: false, message: '当前页面不是可信的 JM 收藏夹，请完成验证后重试' }
+    return { success: false, message: '当前页面不是可信的 JM 页面，请完成验证后重试' }
   }
 }
 
@@ -733,7 +759,13 @@ function tryAutoCompleteChallengeExtraction(
 ): void {
   if (ctx.mode !== 'challenge' || ctx.extractInProgress || ctx.settled || ctx.alreadySucceeded) return
 
-  void captureJmChallengeSnapshot(loginWin, domain)
+  void captureJmChallengeSnapshot(
+    loginWin,
+    domain,
+    ctx.challengeTargetUrl
+      ? selectSnapshotValidator(ctx.challengeTargetUrl)
+      : validateJmFavouritesSnapshotUrl,
+  )
     .then((snapshotResult) => {
       if (!snapshotResult.success || ctx.extractInProgress || ctx.settled || ctx.alreadySucceeded) return
       ctx.extractInProgress = true
@@ -817,8 +849,24 @@ export function resolveLoginTarget(source: string, resolvedDomain?: string): Log
   return { url: `https://${HCOMIC_DOMAIN}`, title: '登录 H-Comic', domain: HCOMIC_DOMAIN }
 }
 
-export function resolveJmChallengeTarget(challengeUrl: string, resolvedDomain?: string): LoginTarget {
-  if (typeof challengeUrl !== 'string' || !challengeUrl || challengeUrl.length > 2048) {
+/**
+ * 构建 JM 可信域集合：resolvedDomain（用户配置的镜像）优先，并并入全部官方镜像。
+ * 收藏夹/搜索/首页挑战目标必须落在该集合内，禁止跨域。
+ */
+function buildJmTrustedDomains(resolvedDomain?: string): Set<string> {
+  return new Set([resolvedDomain || JM_DEFAULT_DOMAIN, ...JM_MIRROR_DOMAINS])
+}
+
+/**
+ * JM 挑战 URL 的公共来源约束（三层校验中的第 1 层）。
+ *
+ * 校验：URL 字符串合法、长度 ≤ 2048、可解析、HTTPS、无 userinfo、默认端口（443 或空）、
+ * 无 fragment、hostname 命中可信域。不校验路径或查询参数——这些由调用方按用途分派。
+ *
+ * 返回解析后的 URL 对象，供第 2/3 层校验复用。任一约束失败抛 'JM 人机验证 URL 不受信任'。
+ */
+function resolveJmOrigin(challengeUrl: string, resolvedDomain?: string): URL {
+  if (typeof challengeUrl !== 'string' || !challengeUrl || challengeUrl.length > JM_CHALLENGE_URL_MAX_LEN) {
     throw new Error('JM 人机验证 URL 无效')
   }
   let parsed: URL
@@ -827,10 +875,46 @@ export function resolveJmChallengeTarget(challengeUrl: string, resolvedDomain?: 
   } catch {
     throw new Error('JM 人机验证 URL 无效')
   }
-  const trustedDomains = new Set([resolvedDomain || JM_DEFAULT_DOMAIN, ...JM_MIRROR_DOMAINS])
+  const trustedDomains = buildJmTrustedDomains(resolvedDomain)
+  if (
+    parsed.protocol !== 'https:'
+    || parsed.username
+    || parsed.password
+    || (parsed.port && parsed.port !== '443')
+    || !trustedDomains.has(parsed.hostname)
+    || parsed.hash
+  ) {
+    throw new Error('JM 人机验证 URL 不受信任')
+  }
+  return parsed
+}
+
+/**
+ * 校验 `page` 查询参数是否为 1..1000 的十进制整数（无前导零、无符号、无空白）。
+ * @param rawValue 原始参数值
+ * @returns 校验通过的页码数字；非法时抛 'JM 人机验证页码无效'
+ */
+function validateJmPageParam(rawValue: string): number {
+  const page = Number(rawValue)
+  if (!Number.isInteger(page) || page < 1 || page > 1000 || String(page) !== rawValue) {
+    throw new Error('JM 人机验证页码无效')
+  }
+  return page
+}
+
+/**
+ * 收藏夹快照专用严格校验（三层校验中的第 3 层，最窄规则）。
+ *
+ * 收藏夹快照会把页面 DOM HTML 送入 Python 解析（parse_jm_favourites_snapshot），
+ * 信任边界最高，必须只接受 `/user/{safe-user}/favorite/albums` 与可选 `page` 参数。
+ * 禁止首页或搜索页 URL 进入快照结果——这些页面可导航但不可作为收藏夹快照。
+ *
+ * @throws 任一约束失败抛 'JM 人机验证 URL 不受信任' / '查询参数无效' / '页码无效'
+ */
+export function validateJmFavouritesSnapshotUrl(challengeUrl: string, resolvedDomain?: string): void {
+  const parsed = resolveJmOrigin(challengeUrl, resolvedDomain)
   const pathMatch = JM_FAVOURITES_PATH_RE.exec(parsed.pathname)
-  // 提取并解码收藏夹用户段：仅用于校验（HTTPS/默认端口/可信域/路径/无控制字符），
-  // 不在返回值中暴露。解码失败或段为空 → 视为不可信 URL。
+  // 解码收藏夹用户段：仅校验安全性，不暴露。解码失败或段为空 → 拒绝。
   let decodedUser = ''
   if (pathMatch) {
     try {
@@ -839,19 +923,9 @@ export function resolveJmChallengeTarget(challengeUrl: string, resolvedDomain?: 
       throw new Error('JM 人机验证 URL 路径无效')
     }
   }
-  const userLooksSafe = decodedUser.length > 0
-    // eslint-disable-next-line no-control-regex
-    && !/[/\\\x00-\x1f\x7f]/.test(decodedUser)
-  if (
-    parsed.protocol !== 'https:'
-    || parsed.username
-    || parsed.password
-    || (parsed.port && parsed.port !== '443')
-    || !trustedDomains.has(parsed.hostname)
-    || !pathMatch
-    || !userLooksSafe
-    || parsed.hash
-  ) {
+  // eslint-disable-next-line no-control-regex
+  const userLooksSafe = decodedUser.length > 0 && !/[/\\\x00-\x1f\x7f]/.test(decodedUser)
+  if (!pathMatch || !userLooksSafe) {
     throw new Error('JM 人机验证 URL 不受信任')
   }
   const entries = [...parsed.searchParams.entries()]
@@ -859,16 +933,150 @@ export function resolveJmChallengeTarget(challengeUrl: string, resolvedDomain?: 
     throw new Error('JM 人机验证 URL 查询参数无效')
   }
   if (entries.length === 1) {
-    const page = Number(entries[0][1])
-    if (!Number.isInteger(page) || page < 1 || page > 1000 || String(page) !== entries[0][1]) {
-      throw new Error('JM 人机验证页码无效')
+    validateJmPageParam(entries[0][1])
+  }
+}
+
+/**
+ * 构造收藏夹快照窗口目标：先经专用校验，再返回原始 URL 与域名。
+ * 与 `validateJmFavouritesSnapshotUrl` 配对使用——调用方必须先校验再取目标。
+ * 首页/搜索页 URL 会被拒绝，确保只有收藏夹路径可进入快照窗口。
+ */
+function resolveJmFavouritesSnapshotTarget(challengeUrl: string, resolvedDomain?: string): LoginTarget {
+  validateJmFavouritesSnapshotUrl(challengeUrl, resolvedDomain)
+  const parsed = new URL(challengeUrl)
+  return {
+    url: parsed.toString(),
+    title: 'JM 收藏夹快照',
+    domain: parsed.hostname,
+  }
+}
+
+/**
+ * 校验 /search/photos 查询参数形状（严格白名单）。
+ *
+ * 仅允许以下参数且每个最多出现一次（用 getAll() 检测重复，禁止 get() 静默忽略攻击性重复值）：
+ * - `main_tag`：必须为 `0`
+ * - `search_query`：必须存在，允许空字符串，长度 ≤ 256
+ * - `page`：可选，必须为 1..1000 十进制整数
+ *
+ * 未知参数名、重复参数、非法值均拒绝。返回时不重新拼接 URL，保持原始受挑战地址。
+ */
+function validateJmSearchParams(parsed: URL): void {
+  const params = parsed.searchParams
+  const allEntries = [...params.entries()]
+  // 重复参数检测：getAll 长度 > 1 即视为攻击性重复
+  for (const key of ['main_tag', 'search_query', 'page']) {
+    if (params.getAll(key).length > 1) {
+      throw new Error('JM 人机验证 URL 查询参数无效')
     }
+  }
+  // 未知参数名：白名单外的任何键直接拒绝
+  for (const [key] of allEntries) {
+    if (key !== 'main_tag' && key !== 'search_query' && key !== 'page') {
+      throw new Error('JM 人机验证 URL 查询参数无效')
+    }
+  }
+  // main_tag 必须存在且恒为 0（与 Python SEARCH_URL_TEMPLATE 一致）
+  if (params.get('main_tag') !== '0') {
+    throw new Error('JM 人机验证 URL 查询参数无效')
+  }
+  // search_query 必须存在（允许空字符串），长度上限防止异常输入
+  const searchQuery = params.get('search_query')
+  if (searchQuery === null || searchQuery.length > JM_SEARCH_QUERY_MAX_LEN) {
+    throw new Error('JM 人机验证 URL 查询参数无效')
+  }
+  // page 可选，存在时必须合法
+  const pageRaw = params.get('page')
+  if (pageRaw !== null) {
+    validateJmPageParam(pageRaw)
+  }
+}
+
+/**
+ * 解析并校验 JM 挑战窗口的可加载目标 URL（三层校验中的第 2 层）。
+ *
+ * 交互挑战窗口只需导航到受挑战页面以获得 Cookie，因此可接受受控的三类目标：
+ *   1. 根路径 `/`：JM 首页空搜索挑战（Python 返回 `https://<可信域>/`），禁止任何 query。
+ *   2. `/search/photos`：普通搜索挑战，查询参数由 validateJmSearchParams 严格白名单校验。
+ *   3. `/user/{safe-user}/favorite/albums`：收藏夹挑战，复用收藏夹专用校验。
+ *
+ * 在公共来源约束（resolveJmOrigin）之上分派；不放宽协议/域/端口/userinfo/fragment。
+ * 返回原始受挑战地址（不重新拼接，避免丢失编码）。
+ */
+export function resolveJmChallengeTarget(challengeUrl: string, resolvedDomain?: string): LoginTarget {
+  const parsed = resolveJmOrigin(challengeUrl, resolvedDomain)
+  const pathname = parsed.pathname
+  if (pathname === '/' || pathname === '') {
+    // 根路径：禁止任何 query 参数
+    if ([...parsed.searchParams.entries()].length > 0) {
+      throw new Error('JM 人机验证 URL 查询参数无效')
+    }
+  } else if (pathname === JM_SEARCH_PATH) {
+    validateJmSearchParams(parsed)
+  } else {
+    // 收藏夹路径（含 page 校验）；与快照校验共用同一规则
+    validateJmFavouritesSnapshotUrl(challengeUrl, resolvedDomain)
   }
   return {
     url: parsed.toString(),
     title: 'JM 人机验证',
     domain: parsed.hostname,
   }
+}
+
+/**
+ * 搜索快照专用校验：仅接受 `/search/photos` + 严格查询参数白名单。
+ *
+ * 搜索快照会把页面 DOM HTML 送入 Python 解析（parse_jm_search_snapshot），
+ * 信任边界与收藏夹快照一致，但路径和参数规则不同。
+ * 禁止首页或收藏夹 URL 进入搜索快照结果。
+ */
+export function validateJmSearchSnapshotUrl(challengeUrl: string, resolvedDomain?: string): void {
+  const parsed = resolveJmOrigin(challengeUrl, resolvedDomain)
+  if (parsed.pathname !== JM_SEARCH_PATH) {
+    throw new Error('JM 人机验证 URL 不受信任')
+  }
+  validateJmSearchParams(parsed)
+}
+
+/**
+ * 首页快照专用校验：仅接受根路径 `/`（无 query）。
+ *
+ * 首页快照会把页面 DOM HTML 送入 Python 解析（parse_jm_home_snapshot）。
+ * 禁止搜索或收藏夹 URL 进入首页快照结果。
+ */
+export function validateJmHomeSnapshotUrl(challengeUrl: string, resolvedDomain?: string): void {
+  const parsed = resolveJmOrigin(challengeUrl, resolvedDomain)
+  const pathname = parsed.pathname
+  if (pathname !== '/' && pathname !== '') {
+    throw new Error('JM 人机验证 URL 不受信任')
+  }
+  if ([...parsed.searchParams.entries()].length > 0) {
+    throw new Error('JM 人机验证 URL 查询参数无效')
+  }
+}
+
+/**
+ * 根据 URL 路径选择快照校验器。
+ *
+ * 挑战窗口捕获快照时，按当前页面 URL 的用途分派到对应的专用校验器，
+ * 避免用收藏夹校验规则拒绝搜索/首页 URL 的合法快照。
+ */
+function selectSnapshotValidator(url: string): (challengeUrl: string, resolvedDomain?: string) => void {
+  try {
+    const parsed = new URL(url)
+    const pathname = parsed.pathname
+    if (pathname === '/' || pathname === '') {
+      return validateJmHomeSnapshotUrl
+    }
+    if (pathname === JM_SEARCH_PATH) {
+      return validateJmSearchSnapshotUrl
+    }
+  } catch {
+    // malformed URL → 默认收藏夹校验器会拒绝
+  }
+  return validateJmFavouritesSnapshotUrl
 }
 
 /**
@@ -896,6 +1104,7 @@ function createLoginContext(
     removePermissionHandlers: null,
     removeOverlayHandlers: null,
     finishFallbackTimer: null,
+    challengeTargetUrl: null,
     done: (result) => {
       diag(`done called: settled=${ctx.settled} success=${result.success}`)
       if (ctx.settled) return
@@ -1026,6 +1235,10 @@ function openSourceWindow(
     const removeCspHandler = setupLoginWindowCSP(loginWin)
 
     const ctx = createLoginContext(loginWin, resolve, removeCspHandler, mode)
+    // challenge 模式记录目标 URL，供 triggerExtraction 选择快照校验器
+    if (mode === 'challenge') {
+      ctx.challengeTargetUrl = target.url
+    }
 
     attachLoginWindowLifecycle(loginWin, ctx, allowedDomains, source, target.domain)
 
@@ -1081,7 +1294,9 @@ export function captureJmFavouritesSnapshotWindow(
   challengeUrl: string,
   resolvedDomain?: string,
 ): Promise<JmChallengeWindowResult> {
-  const target = resolveJmChallengeTarget(challengeUrl, resolvedDomain)
+  // 收藏夹快照入口显式调用专用校验：禁止首页/搜索页 URL 进入快照窗口。
+  // 首页和搜索页虽可作为交互挑战窗口目标，但其 HTML 不可作为收藏夹 DOM 快照。
+  const target = resolveJmFavouritesSnapshotTarget(challengeUrl, resolvedDomain)
   return new Promise<JmChallengeWindowResult>((resolve) => {
     if (!mainWindow) {
       resolve({ success: false, message: '主窗口不存在' })
@@ -1117,6 +1332,95 @@ export function captureJmFavouritesSnapshotWindow(
     win.on('closed', () => done({ success: false, message: '收藏夹页面快照已取消' }))
     loadLoginUrl(win, target.url)
   })
+}
+
+/**
+ * 隐藏窗口捕获 JM 搜索页快照的通用编排。
+ *
+ * 与 captureJmFavouritesSnapshotWindow 结构一致，但使用传入的校验器，
+ * 使搜索页和首页 URL 的 DOM 可被捕获为快照。供静默搜索快照恢复使用。
+ */
+function captureJmSnapshotWindow(
+  mainWindow: BrowserWindow | null,
+  challengeUrl: string,
+  resolvedDomain: string | undefined,
+  urlValidator: SnapshotUrlValidator,
+  title: string,
+  timeoutMessage: string,
+): Promise<JmChallengeWindowResult> {
+  // 先用传入校验器验证 URL，再构造目标
+  urlValidator(challengeUrl, resolvedDomain)
+  const parsed = new URL(challengeUrl)
+  const target: LoginTarget = {
+    url: parsed.toString(),
+    title,
+    domain: parsed.hostname,
+  }
+  return new Promise<JmChallengeWindowResult>((resolve) => {
+    if (!mainWindow) {
+      resolve({ success: false, message: '主窗口不存在' })
+      return
+    }
+    const win = createLoginBrowserWindow(mainWindow, title, 'challenge', false)
+    const allowedDomains = buildAllowedNavigationDomains('jm', target.domain)
+    const removeCspHandler = setupLoginWindowCSP(win)
+    const removePermissionHandlers = setupLoginContentIsolation(win, allowedDomains)
+    let settled = false
+    const timeout = setTimeout(() => done({ success: false, message: timeoutMessage }), HIDDEN_CHALLENGE_CAPTURE_TIMEOUT_MS)
+
+    function done(result: JmChallengeWindowResult): void {
+      if (settled) return
+      settled = true
+      clearTimeout(timeout)
+      removeCspHandler()
+      removePermissionHandlers()
+      if (!win.isDestroyed()) win.destroy()
+      resolve(result)
+    }
+
+    win.webContents.on('did-finish-load', () => {
+      void captureJmChallengeSnapshot(win, target.domain, urlValidator)
+        .then((snapshotResult) => {
+          if (snapshotResult.success) {
+            done({ success: true, message: '页面快照已获取', snapshot: snapshotResult.snapshot })
+          }
+        })
+        .catch(() => { /* keep window alive until timeout */ })
+    })
+    win.webContents.on('render-process-gone', () => done({ success: false, message: '页面加载失败' }))
+    win.on('closed', () => done({ success: false, message: '页面快照已取消' }))
+    loadLoginUrl(win, target.url)
+  })
+}
+
+export function captureJmSearchSnapshotWindow(
+  mainWindow: BrowserWindow | null,
+  challengeUrl: string,
+  resolvedDomain?: string,
+): Promise<JmChallengeWindowResult> {
+  return captureJmSnapshotWindow(
+    mainWindow,
+    challengeUrl,
+    resolvedDomain,
+    validateJmSearchSnapshotUrl,
+    'JM 搜索快照',
+    '搜索页面快照超时',
+  )
+}
+
+export function captureJmHomeSnapshotWindow(
+  mainWindow: BrowserWindow | null,
+  challengeUrl: string,
+  resolvedDomain?: string,
+): Promise<JmChallengeWindowResult> {
+  return captureJmSnapshotWindow(
+    mainWindow,
+    challengeUrl,
+    resolvedDomain,
+    validateJmHomeSnapshotUrl,
+    'JM 首页快照',
+    '首页快照超时',
+  )
 }
 
 /** 仅供单元测试清理模块级单飞状态。 */

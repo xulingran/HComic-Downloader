@@ -178,6 +178,78 @@ def test_parse_search_item_skips_blank_cover():
     assert all("blank.jpg" not in (c.cover_url or "") for c in comics)
 
 
+def test_parse_home_sections_keeps_five_default_sections():
+    """首页应按 DOM 顺序保留五类默认栏目，并使用动态可见标题。"""
+    html = (FIXTURES / "jm_home_sections.html").read_text(encoding="utf-8")
+    parser = _make_parser()
+
+    sections = parser._parse_home_sections(html, domain="test.one")
+
+    assert [title for title, _ in sections] == [
+        "周五連載更新",
+        "禁漫漢化組",
+        "最新韓漫",
+        "C107&推薦本本",
+        "最新漫畫",
+    ]
+    assert len(sections[0][1]) == 10
+    assert sections[0][1][-1].id == "110"
+
+
+def test_parse_home_sections_skips_invalid_content_and_keeps_cross_section_duplicate():
+    """坏卡与非专辑栏目被排除，同一专辑仍可同时属于多个栏目。"""
+    html = (FIXTURES / "jm_home_sections.html").read_text(encoding="utf-8")
+    parser = _make_parser()
+
+    sections = parser._parse_home_sections(html, domain="test.one")
+    ids_by_title = {title: [comic.id for comic in comics] for title, comics in sections}
+
+    assert ids_by_title["周五連載更新"][0] == "101"
+    assert ids_by_title["禁漫漢化組"] == ["101", "201"]
+    assert "禁漫書庫" not in ids_by_title
+    assert "禁漫小說" not in ids_by_title
+
+
+def test_home_requests_root_url_and_parses_sections(monkeypatch):
+    html = (FIXTURES / "jm_home_sections.html").read_text(encoding="utf-8")
+    parser = _make_parser()
+    captured_urls = []
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+    monkeypatch.setattr(
+        parser,
+        "_request_text_with_challenge_check",
+        lambda url: captured_urls.append(url) or html,
+    )
+
+    sections = parser.home()
+
+    assert captured_urls == ["https://test.one/"]
+    assert len(sections) == 5
+
+
+def test_home_propagates_challenge_with_root_url(monkeypatch):
+    parser = _make_search_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+    parser.session.get = MagicMock(return_value=_make_resp(text="<title>Just a moment...</title>", headers={}))
+
+    with pytest.raises(AntiBotChallengeError) as exc_info:
+        parser.home()
+
+    assert exc_info.value.challenge_url == "https://test.one/"
+
+
+def test_home_non_challenge_error_returns_empty(monkeypatch):
+    parser = _make_parser()
+    monkeypatch.setattr(parser, "_ensure_domain", lambda: "test.one")
+    monkeypatch.setattr(
+        parser,
+        "_request_text_with_challenge_check",
+        lambda url: (_ for _ in ()).throw(ConnectionError("network down")),
+    )
+
+    assert parser.home() == []
+
+
 def test_clean_texts_dedupes_and_strips():
     """_clean_texts 应去除空白并按首次出现顺序去重。"""
     assert JmParser._clean_texts(["  a ", "b", "a", "", "  ", "c"]) == ["a", "b", "c"]

@@ -113,3 +113,69 @@ def test_handle_search_non_jm_source_unaffected_by_challenge_logic():
 
     assert len(result["comics"]) == 1
     assert result["pagination"]["currentPage"] == 1
+
+
+def test_handle_search_empty_jm_returns_normalized_home_sections():
+    """JM 空白关键词第一页应返回唯一漫画集合与无悬空栏目引用。"""
+    from unittest.mock import MagicMock
+
+    from models import ComicInfo
+
+    mixin = SearchMixin()
+    mixin.config = MagicMock(default_source="jm")
+    mixin._check_source_auth = lambda source: None  # type: ignore[method-assign]
+    first = ComicInfo(id="1", title="first", comic_source="JM", source_site="jm", media_id="1")
+    duplicate = ComicInfo(id="1", title="first duplicate", comic_source="JM", source_site="jm", media_id="1")
+    second = ComicInfo(id="2", title="second", comic_source="JM", source_site="jm", media_id="2")
+    mixin.parser = MagicMock()
+    mixin.parser.jm_home.return_value = [
+        ("栏目 A", [first, second]),
+        ("栏目 B", [duplicate, first]),
+    ]
+
+    result = mixin.handle_search("   ", mode="keyword", page=1, source="jm")
+
+    assert [comic["id"] for comic in result["comics"]] == ["1", "2"]
+    assert result["sections"] == [
+        {"title": "栏目 A", "comicIds": ["1", "2"]},
+        {"title": "栏目 B", "comicIds": ["1"]},
+    ]
+    assert result["pagination"] == {"currentPage": 1, "totalPages": 1, "totalItems": 2}
+    mixin.parser.search.assert_not_called()
+
+
+def test_handle_search_non_empty_jm_keeps_regular_contract():
+    """非空 JM 搜索不路由首页，也不附加 sections。"""
+    from unittest.mock import MagicMock
+
+    from models import PaginationInfo
+
+    mixin = SearchMixin()
+    mixin.config = MagicMock(default_source="jm")
+    mixin._check_source_auth = lambda source: None  # type: ignore[method-assign]
+    mixin.parser = MagicMock()
+    mixin.parser.search.return_value = ([], PaginationInfo(current_page=1, total_pages=1, total_items=0))
+
+    result = mixin.handle_search("keyword", mode="keyword", page=1, source="jm")
+
+    assert "sections" not in result
+    mixin.parser.jm_home.assert_not_called()
+
+
+def test_handle_search_empty_jm_home_challenge_bubbles_up():
+    """首页挑战必须保持结构化错误，禁止退化为空结果。"""
+    from unittest.mock import MagicMock
+
+    mixin = SearchMixin()
+    mixin.config = MagicMock(default_source="jm")
+    mixin._check_source_auth = lambda source: None  # type: ignore[method-assign]
+    mixin.parser = MagicMock()
+    mixin.parser.jm_home.side_effect = AntiBotChallengeError(
+        "JM 搜索遇到站点人机验证",
+        challenge_url="https://18comic.vip/",
+    )
+
+    with pytest.raises(AntiBotChallengeError) as exc_info:
+        mixin.handle_search("", mode="keyword", page=1, source="jm")
+
+    assert exc_info.value.challenge_url == "https://18comic.vip/"

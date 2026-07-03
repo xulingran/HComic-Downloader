@@ -5,11 +5,13 @@ DEFAULT_DOMAIN = "18comic.vip"
 PUBLISH_URL = "https://jm365.work/mJ8rWd"
 
 # curl_cffi 浏览器指纹模拟标识
-# 需要定期更新以匹配当前主流浏览器版本，过旧版本可能被反爬识别
-IMPERSONATE_BROWSER = "chrome136"
+# 必须与 Electron 运行的 Chromium 主版本号对齐（Electron 42 = Chromium 142），
+# 否则 Cloudflare cf_clearance Cookie 因 TLS 指纹不匹配无法跨进程复用。
+# 升级 Electron 后需同步更新此值 + HEADERS 中的 UA/Sec-Ch-Ua 版本号。
+IMPERSONATE_BROWSER = "chrome142"
 
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36",
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36",
     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8",
     "Accept-Language": "zh-CN,zh;q=0.9",
     "Connection": "keep-alive",
@@ -18,7 +20,7 @@ HEADERS = {
     "Sec-Fetch-Mode": "navigate",
     "Sec-Fetch-Site": "same-origin",
     "Sec-Fetch-User": "?1",
-    "Sec-Ch-Ua": '"Chromium";v="136", "Google Chrome";v="136", "Not.A/Brand";v="99"',
+    "Sec-Ch-Ua": '"Chromium";v="142", "Google Chrome";v="142", "Not.A/Brand";v="99"',
     "Sec-Ch-Ua-Mobile": "?0",
     "Sec-Ch-Ua-Platform": '"Windows"',
     "Priority": "u=0, i",

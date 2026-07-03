@@ -15,7 +15,7 @@ from lxml import etree
 from models import ComicInfo
 from utils import apply_system_proxy_to_session
 
-from .constants import HEADERS
+from .constants import HEADERS, IMPERSONATE_BROWSER
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ def _create_thread_session():
     try:
         from curl_cffi import requests as cf_requests
 
-        return cf_requests.Session(impersonate="chrome136")
+        return cf_requests.Session(impersonate=IMPERSONATE_BROWSER)
     except ImportError:
         import requests
 
