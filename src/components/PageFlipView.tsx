@@ -5,6 +5,20 @@ import { usePageFlipVariants } from '../lib/anim'
 import { buildImageUrl } from '@/lib/image-url'
 import { Skeleton } from './common/Skeleton'
 
+/**
+ * 根据当前页与上一页推断翻页方向。
+ *
+ * 抽出为纯函数便于单测：direction 推断必须在渲染期间同步完成（adjust state while
+ * rendering），否则 AnimatePresence 在首次提交会拿到 stale direction，导致"先下一页、
+ * 再上一页"等回退场景的退出页朝错误方向飞出。
+ *
+ * @returns 'forward' | 'backward'；两页相等时返回 null（无方向变化）。
+ */
+export function inferPageDirection(current: number, previous: number): 'forward' | 'backward' | null {
+  if (current === previous) return null
+  return current > previous ? 'forward' : 'backward'
+}
+
 interface PageFlipViewProps {
   imageUrls: string[]
   totalPages: number
@@ -54,9 +68,16 @@ export function PageFlipView({
 
   // 变更 3：翻页方向感知 + isFlipping 门控。
   // 4 个翻页触发路径（键盘/点击/wheel/滑块）都最终走 setCurrentPage，
-  // 此处统一用 prevPageRef 推断 direction，无需改外部接口。
-  const prevPageRef = useRef(currentPage)
+  // 此处统一在渲染期间推断 direction，无需改外部接口。
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
+  // 关键修复：direction 必须在渲染期间同步推断（React 的 "adjust state while
+  // rendering" 模式）。原实现把 setDirection 放进 useEffect，导致 currentPage 变化
+  // 触发的首次提交里 AnimatePresence 仍带着"旧 direction"启动退出页动画——
+  // 典型表现为"先下一页、再上一页"时旧页依旧向左飞出（应为向右）。
+  // 现在用 state 保存上一页，渲染期间对比 currentPage 与 prevPage 同步 setDirection +
+  // setPrevPage。React 检测到 state 变化会丢弃当前渲染输出并立即用新值重渲染，
+  // AnimatePresence 的 custom 因此在同一提交里就与 key 一致；值稳定后自动退出。
+  const [prevPage, setPrevPage] = useState(currentPage)
   const [isFlipping, setIsFlipping] = useState(false)
 
   const isDoubleMode = displayMode === 'double'
@@ -119,16 +140,26 @@ export function PageFlipView({
     else if (e.deltaY < 0) goPrev()
   }, [goNext, goPrev, isFlipping])
 
-  // Trigger preloading when currentPage changes or on initial render
-  const isFirstRender = useRef(true)
+  // 翻页方向推断：必须在渲染期间同步 setDirection（adjust-state-while-rendering）。
+  // useEffect 内 set 会让 AnimatePresence 在首次提交时拿到 stale direction，
+  // 导致"下一页→上一页"等回退场景的退出页朝错误方向飞出。
+  // prevPage 是 state：渲染期间比较两个 state 安全；调用 setDirection/setPrevPage 后
+  // React 丢弃本次渲染输出并立即以新 state 重渲染，AnimatePresence 的 custom 因此
+  // 在同一提交里就与 key 一致。prevPage 稳定后条件为假，自动退出，无无限循环。
+  if (currentPage !== prevPage) {
+    const inferred = inferPageDirection(currentPage, prevPage)
+    if (inferred) setDirection(inferred)
+    setPrevPage(currentPage)
+  }
+
+  // onPageChange 仍需在每次翻页后触发预加载。上面渲染期间已把 prevPage 追平，
+  // 这里用独立 ref 记录"上次已触发 onPageChange 的页码"，仅作 effect 内提交判断，
+  // 不参与渲染输入，因此读取安全（eslint react-hooks/refs 通过）。
+  // 首次挂载也触发一次（与原 isFirstRender 语义一致），让预加载器拿到初始页。
+  const lastNotifiedPageRef = useRef<number | null>(null)
   useEffect(() => {
-    if (isFirstRender.current || currentPage !== prevPageRef.current) {
-      isFirstRender.current = false
-      // 变更 3：推断翻页方向（首次渲染不推断）
-      if (!isFirstRender.current && currentPage !== prevPageRef.current) {
-        setDirection(currentPage > prevPageRef.current ? 'forward' : 'backward')
-      }
-      prevPageRef.current = currentPage
+    if (currentPage !== lastNotifiedPageRef.current) {
+      lastNotifiedPageRef.current = currentPage
       onPageChange(currentPage)
     }
   }, [currentPage, onPageChange])

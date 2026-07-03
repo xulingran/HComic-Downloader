@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
-import { PageFlipView } from '@/components/PageFlipView'
+import { PageFlipView, inferPageDirection } from '@/components/PageFlipView'
 import type { DisplayMode } from '@/hooks/useReaderSettings'
 
 const mockFetchPreviewImage = vi.fn()
@@ -155,5 +155,39 @@ describe('PageFlipView', () => {
     )
     fireEvent.click(screen.getByLabelText('下一页'))
     expect(setCurrentPage).toHaveBeenCalledWith(3)
+  })
+})
+
+// 回归：翻页方向必须在渲染期间同步推断。
+// 旧实现把 setDirection 放进 useEffect，导致"先下一页、再上一页"时退出页在首次
+// 提交仍朝 forward 方向飞（应为 backward）。inferPageDirection 是抽出的纯函数，
+// 锁定方向推导契约——组件渲染期间调用它，确保 AnimatePresence 的 custom 与 key
+// 在同一提交里一致。
+describe('inferPageDirection', () => {
+  it('returns forward when current > previous', () => {
+    expect(inferPageDirection(3, 2)).toBe('forward')
+  })
+
+  it('returns backward when current < previous', () => {
+    expect(inferPageDirection(2, 3)).toBe('backward')
+  })
+
+  it('returns null when page unchanged', () => {
+    expect(inferPageDirection(3, 3)).toBeNull()
+  })
+
+  // 关键回归场景：next→prev 序列。模拟组件内 prevPage 状态的连续更新，
+  // 断言每次翻页的方向都与真实翻页方向一致，没有上一帧的残留。
+  it('correctly alternates direction across a next-then-prev sequence', () => {
+    // 起点第 2 页
+    let prev = 2
+    // 下一页：2 → 3
+    expect(inferPageDirection(3, prev)).toBe('forward')
+    prev = 3
+    // 上一页：3 → 2，必须得到 backward（旧 bug 这里首次提交仍是 forward）
+    expect(inferPageDirection(2, prev)).toBe('backward')
+    prev = 2
+    // 再上一页：2 → 1
+    expect(inferPageDirection(1, prev)).toBe('backward')
   })
 })
