@@ -1,7 +1,7 @@
 # electron-ipc-contract 规范
 
 ## 目的
-待定 - 由归档变更 electron-ipc-hardening 创建。归档后请更新目的。
+定义 Electron 主进程与渲染进程之间 IPC 通道的契约规范。覆盖主进程对 handler 参数的独立权威运行时校验（不依赖 preload 透传的 TypeScript 类型签名）、防御深度、超长文本与路径遍历拒绝、专用通知通道结构，以及 IPC 契约符号必须与消费方同源提交的构建闸门约束。
 ## 需求
 ### 需求:IPC handler 主进程必须独立权威校验所有参数
 

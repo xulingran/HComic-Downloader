@@ -1,7 +1,7 @@
 # login-window 规范
 
 ## 目的
-待定 - 由归档变更 login-window-refactor 创建。归档后请更新目的。
+定义登录与挑战窗口（`openLoginWindow`）的能力规范。覆盖职责单一的编排子函数、按来源分派的 Cookie 提取与登录态校验、异步批量诊断日志、叠层专用 IPC 通道与 `alreadySucceeded` 互斥、Chromium 内核维持 Cloudflare 兼容，以及受约束的挑战模式（首页/搜索/收藏夹 URL 校验、有界页面快照、隐藏快照窗口、登录与挑战窗口共享生命周期互斥）。
 ## 需求
 ### 需求:登录窗口主流程必须由职责单一的函数编排
 

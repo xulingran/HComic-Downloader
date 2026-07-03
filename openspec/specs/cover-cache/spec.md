@@ -1,7 +1,7 @@
 # cover-cache 规范
 
 ## 目的
-待定 - 由归档变更 startup-optimization-v3 创建。归档后请更新目的。
+定义漫画封面缓存（`CoverCacheDB`）的能力规范。采用与预览缓存一致的混合架构：SQLite 仅存储元数据（`url_hash`、`url`、`file_path`、`size`、`fetched_at`、`last_access`），图片字节以独立文件存放在磁盘目录下，禁止在 SQLite 表内存储 base64 data URI 或任何图片字节内容。
 ## 需求
 ### 需求:封面缓存必须采用文件存储架构
 

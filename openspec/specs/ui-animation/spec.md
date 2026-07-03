@@ -1,7 +1,7 @@
 # ui-animation 规范
 
 ## 目的
-待定 - 由归档变更 animation-foundation 创建。归档后请更新目的。
+定义动画系统的能力规范。要求通过 Tailwind 令牌（`tailwind.config.js` 的 duration / easing / keyframes）与 `src/lib/anim.ts` 的 variants / transition 集中管理动画时长与缓动；所有 framer-motion 容器与 layout 动画禁止常驻 `will-change`，仅在动画即将开始时通过 framer-motion 内置优化或显式 style 提供 hint，并对 `prefers-reduced-motion` 提供全局 CSS 兜底与组件级双层降级。
 ## 需求
 ### 需求: 项目必须通过 Tailwind 令牌集中管理动画时长
 
