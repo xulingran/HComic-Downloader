@@ -119,22 +119,53 @@ def test_apply_auth_preserves_existing_credentials():
     assert hcomic_auth["password"] == "secret"
 
 
-def test_apply_auth_jm_source_no_username_fields():
-    """jm 来源无 username/password 字段，apply_auth 合并写后行为与原实现一致
-    （credential-persistence spec 场景6）。"""
+def test_apply_auth_jm_source_does_not_persist_session_credentials():
+    """jm 会话凭据不落盘（jm-session-cookie spec / credential-persistence 修改后场景）：
+    apply_auth 对 jm 禁止 config.set_source_auth + save，但必须 parser.configure_auth 注入内存。"""
     server = _create_test_server()
+    save_calls = _wrap_save_with_lock_check(server)
 
     server.handle_apply_auth(
         "curl 'https://jmcomic.example/' -H 'Cookie: jmsid=xyz' -H 'User-Agent: UA'",
         source="jm",
     )
 
+    # jm cookie/UA 禁止落盘 config.json
+    assert save_calls == [], "jm 来源不得触发 config.save()"
     jm_auth = server.config.get_source_auth("jm")
-    # jm 来源不维护 username/password 字段
-    assert jm_auth["cookie"] == "jmsid=xyz"
-    # get_source_auth 对 jm 不 setdefault username/password，回填值缺失或为空
+    assert jm_auth.get("cookie", "") != "jmsid=xyz"
+    # jm 不维护 username/password 字段的要求不变
     assert jm_auth.get("username", "") == ""
     assert jm_auth.get("password", "") == ""
+    # 但 cookie/UA 必须注入内存 parser
+    server.parser.configure_auth.assert_called_once()
+    call_kwargs = server.parser.configure_auth.call_args.kwargs
+    assert call_kwargs.get("cookie") == "jmsid=xyz"
+    assert call_kwargs.get("user_agent") == "UA"
+    assert call_kwargs.get("source") == "jm"
+
+
+def test_apply_auth_hcomic_still_persists_session_credentials():
+    """回归保护：非 JM 来源（hcomic）apply_auth 仍走 set_source_auth + save 落盘
+    （jm-session-cookie spec 不得影响其他来源）。"""
+    server = _create_test_server()
+    save_calls = _wrap_save_with_lock_check(server)
+
+    server.handle_apply_auth(
+        "curl 'https://h-comic.link/' -H 'Cookie: sid=abc' -H 'User-Agent: UA'",
+        source="hcomic",
+    )
+
+    # hcomic cookie/UA 必须落盘
+    assert save_calls == [True], "hcomic 来源必须触发 config.save() 且在锁内"
+    hcomic_auth = server.config.get_source_auth("hcomic")
+    assert hcomic_auth["cookie"] == "sid=abc"
+    assert hcomic_auth["user_agent"] == "UA"
+    # 且内存注入同步
+    server.parser.configure_auth.assert_called_once()
+    call_kwargs = server.parser.configure_auth.call_args.kwargs
+    assert call_kwargs.get("cookie") == "sid=abc"
+    assert call_kwargs.get("source") == "hcomic"
 
 
 # ---------------------------------------------------------------------------

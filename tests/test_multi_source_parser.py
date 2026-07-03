@@ -392,3 +392,142 @@ def test_jm_domain_applies_after_lazy_parser_creation(monkeypatch):
     parser = MultiSourceParser(timeout=5, default_source="hcomic", jm_domain="18comic.vip")
     parser.set_source("jm")
     assert applied == ["18comic.vip"]
+
+
+def test_jm_runtime_auth_survives_lazy_parser_creation():
+    """JM 运行期凭据在 parser 懒创建时必须生效（jm-session-cookie spec 核心 P1 回归）。
+
+    真实 JmParser 链路（不发网络）：运行期 configure_auth 发生在 parser 创建前，
+    首次访问 parsers["jm"] 触发懒创建时，注入的 cookie/UA 必须流入实例，
+    禁止被持久化 source_auth 残留或硬编码空串覆盖。
+    """
+    parser = MultiSourceParser(
+        timeout=5,
+        default_source="hcomic",
+        # 持久化残留，必须被忽略
+        source_auth={"jm": {"cookie": "remember=PERSISTED", "user_agent": "PERSISTED-UA"}},
+    )
+    # 运行期登录（parser 尚未创建）
+    parser.configure_auth(cookie="remember=runtime", user_agent="RUNTIME-UA", source="jm")
+    # 首次懒创建
+    jm = parser.parsers["jm"]
+    assert jm._cookie == "remember=runtime"
+    assert jm._user_agent == "RUNTIME-UA"
+
+
+def test_jm_startup_anonymous_ignores_persisted_cookie():
+    """启动时（未运行期登录）即使 source_auth["jm"] 含残留 cookie，
+    parser 创建后必须为匿名（jm-session-cookie spec）。"""
+    parser = MultiSourceParser(
+        timeout=5,
+        default_source="hcomic",
+        source_auth={"jm": {"cookie": "remember=old-session", "user_agent": "OLD-UA"}},
+    )
+    jm = parser.parsers["jm"]
+    assert jm._cookie == ""
+    assert jm._user_agent == ""
+
+
+def test_jm_configure_auth_does_not_pollute_persisted_source_auth():
+    """运行期 configure_auth(source="jm") 禁止写入持久化 source_auth 快照，
+    必须存于独立的 _jm_session_auth（jm-session-cookie spec）。"""
+    parser = MultiSourceParser(
+        timeout=5,
+        default_source="hcomic",
+        source_auth={"jm": {"cookie": "remember=PERSISTED", "user_agent": "PERSISTED-UA"}},
+    )
+    parser.configure_auth(cookie="remember=runtime", user_agent="RUNTIME-UA", source="jm")
+    # 持久化快照保持原残留值，未被运行期注入污染
+    assert parser.source_auth["jm"]["cookie"] == "remember=PERSISTED"
+    assert parser.source_auth["jm"]["user_agent"] == "PERSISTED-UA"
+    # 运行期通道含注入值（bearer_token 默认空串，configure_auth 接收但本次未传）
+    assert parser._jm_session_auth == {"cookie": "remember=runtime", "user_agent": "RUNTIME-UA", "bearer_token": ""}
+
+
+def test_get_runtime_auth_reflects_session_state_for_jm():
+    """get_runtime_auth("jm") 反映运行期登录态，不读持久化残留；
+    非 JM 来源走 source_auth（jm-session-cookie spec）。"""
+    # 未登录：即使有持久化残留，运行期返回空
+    parser = MultiSourceParser(
+        timeout=5,
+        default_source="hcomic",
+        source_auth={
+            "jm": {"cookie": "remember=old", "user_agent": "OLD-UA"},
+            "hcomic": {"cookie": "h=1", "user_agent": "H-UA"},
+        },
+    )
+    assert parser.get_runtime_auth("jm") == ("", "")
+    # 非 JM 来源走 source_auth
+    assert parser.get_runtime_auth("hcomic") == ("h=1", "H-UA")
+    # 运行期登录后返回注入值
+    parser.configure_auth(cookie="remember=runtime", user_agent="RUNTIME-UA", source="jm")
+    assert parser.get_runtime_auth("jm") == ("remember=runtime", "RUNTIME-UA")
+
+
+def test_jm_configure_auth_bearer_token_retained_through_lazy_create():
+    """JM 内存通道保留 cookie/user_agent/bearer_token 三元组，懒创建后通过 _apply_post_init
+    的**完整三元组** configure_auth 注入 parser（JmParser.__init__ 不接受 bearer_token）。
+
+    回归保护：_apply_post_init 禁止只传 bearer_token —— JmParser.configure_auth 的
+    cookie/UA 默认空串会覆盖 factory 刚注入的值，导致实例只剩 Authorization。
+    """
+    parser = MultiSourceParser(timeout=5, default_source="hcomic")
+    parser.configure_auth(cookie="remember=COOKIE", user_agent="RUNTIME-UA", bearer_token="bt-jm", source="jm")
+    assert parser._jm_session_auth["bearer_token"] == "bt-jm"
+    jm = parser.parsers["jm"]
+    # 三项必须同时保留（审查 P1：补 bearer 不得清空 cookie/UA）
+    assert jm._cookie == "remember=COOKIE", f"cookie cleared by bearer injection: {jm._cookie!r}"
+    assert jm._user_agent == "RUNTIME-UA", f"user_agent cleared by bearer injection: {jm._user_agent!r}"
+    assert jm.session.headers.get("Authorization", "") == "Bearer bt-jm"
+
+
+def test_jm_configure_auth_concurrent_with_lazy_create_is_consistent():
+    """[并发回归] configure_auth 与首次懒创建并发时，运行期状态与真实 parser 实例必须一致
+    （jm-session-cookie spec P1：禁止 configure_auth 在 _get_parser 持锁创建期间读到
+    _parsers=None 而 return，导致 runtime 非空但 parser 无凭据）。
+
+    用慢 factory 制造 _get_parser 持锁窗口，期间另一线程调用 configure_auth；
+    修复后 configure_auth 持 _parser_lock，与创建临界区互斥，二者最终一致。
+    """
+    import threading
+    import time
+
+    import sources
+    from sources.jm.parser import JmParser
+
+    parser = MultiSourceParser(timeout=5, default_source="hcomic")
+
+    def slow_jm_factory(*args, **kwargs):
+        time.sleep(0.3)  # 放大 _get_parser 持锁窗口
+        return JmParser(*args, **kwargs)
+
+    sources._PARSER_CLASSES["jm"] = slow_jm_factory
+    try:
+        parser_ref: dict = {}
+        login_done = threading.Event()
+
+        def create_jm():
+            parser_ref["p"] = parser._get_parser("jm")
+
+        def login():
+            time.sleep(0.1)  # 等 _get_parser 进入锁、调起 factory
+            parser.configure_auth(cookie="remember=RACE", user_agent="RACE-UA", source="jm")
+            login_done.set()
+
+        t1 = threading.Thread(target=create_jm)
+        t2 = threading.Thread(target=login)
+        t1.start()
+        t2.start()
+        assert login_done.wait(3), "configure_auth did not complete in time"
+        t1.join(timeout=5)
+        t2.join(timeout=5)
+
+        jm = parser_ref["p"]
+        assert jm is not None
+        # 关键断言：真实 parser 实例的凭据必须与运行期状态一致
+        assert jm._cookie == parser._jm_session_auth["cookie"], (
+            f"race inconsistency: parser._cookie={jm._cookie!r} but runtime=" f"{parser._jm_session_auth['cookie']!r}"
+        )
+        assert jm._cookie == "remember=RACE"
+    finally:
+        sources._PARSER_CLASSES.pop("jm", None)

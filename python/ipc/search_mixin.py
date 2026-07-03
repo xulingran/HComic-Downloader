@@ -150,7 +150,9 @@ class SearchMixin:
 
     def _check_source_auth(self, source: str) -> None:
         """Raise AuthRequiredError if source credentials are not configured."""
-        if source == "jm" and not self.config.source_auth.get("jm", {}).get("cookie"):
+        # JM 鉴权走运行期凭据（jm-session-cookie spec）：不读持久化 source_auth，
+        # 避免运行期登录被误判未登录、或存量残留 cookie 假阳性放行。
+        if source == "jm" and not self.parser.get_runtime_auth("jm")[0]:
             raise AuthRequiredError("jm 未登录，请前往设置页面配置登录凭证")
         if source == "copymanga" and not self.config.source_auth.get("copymanga", {}).get("cookie"):
             raise AuthRequiredError("拷贝漫画未登录，请前往设置页面登录拷贝漫画")

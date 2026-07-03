@@ -57,24 +57,28 @@ class AuthMixin:
         from config import AuthSourceData
 
         cookie, user_agent, bearer_token, domain = extract_auth_from_curl(curl_text.strip())
-        # set_source_auth (字典读改写) + save (原子 os.replace) 必须作为临界区整体串行化，
-        # 网络解析 (extract_auth_from_curl) 留锁外避免长事务。
-        # 合并写：curl 登录不得覆盖既有 username/password（credential-persistence spec）。
-        # 对 jm/copymanga 等无账号密码字段的来源，get_source_auth 不 setdefault 这两键，
-        # 回填值为空串，行为与原实现一致。
-        existing = self.config.get_source_auth(source)
-        with self._config_write_lock:
-            self.config.set_source_auth(
-                source,
-                AuthSourceData(
-                    cookie=cookie,
-                    user_agent=user_agent,
-                    bearer_token=bearer_token,
-                    username=existing.get("username", ""),
-                    password=existing.get("password", ""),
-                ),
-            )
-            self.config.save(_get_config_path())
+        # JM 会话凭据不持久化（jm-session-cookie spec）：cookie/UA 与 Cloudflare 挑战态绑定，
+        # 跨进程复用常失效。仅注入内存 parser（下方 configure_auth），禁止落盘 config.json。
+        # 其他来源仍走 set_source_auth + save 持久化路径（credential-persistence spec）。
+        if source != "jm":
+            # set_source_auth (字典读改写) + save (原子 os.replace) 必须作为临界区整体串行化，
+            # 网络解析 (extract_auth_from_curl) 留锁外避免长事务。
+            # 合并写：curl 登录不得覆盖既有 username/password（credential-persistence spec）。
+            # 对 jm/copymanga 等无账号密码字段的来源，get_source_auth 不 setdefault 这两键，
+            # 回填值为空串，行为与原实现一致。
+            existing = self.config.get_source_auth(source)
+            with self._config_write_lock:
+                self.config.set_source_auth(
+                    source,
+                    AuthSourceData(
+                        cookie=cookie,
+                        user_agent=user_agent,
+                        bearer_token=bearer_token,
+                        username=existing.get("username", ""),
+                        password=existing.get("password", ""),
+                    ),
+                )
+                self.config.save(_get_config_path())
 
         self.parser.configure_auth(
             cookie=cookie,

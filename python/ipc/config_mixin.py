@@ -197,7 +197,9 @@ class ConfigMixin:
         config["hasAuth"] = bool(hcomic_auth.get("cookie") or hcomic_auth.get("bearer_token"))
         config["hcomicUsername"] = hcomic_auth.get("username", "")
         config["hcomicPassword"] = hcomic_auth.get("password", "")
-        config["hasJmAuth"] = bool(self.config.source_auth.get("jm", {}).get("cookie"))
+        # JM 鉴权走运行期凭据（jm-session-cookie spec）：不读持久化 source_auth，
+        # 反映本次进程内是否已通过登录窗口获取 cookie。
+        config["hasJmAuth"] = bool(self.parser.get_runtime_auth("jm")[0])
         config["hasMoeimgAuth"] = bool(self.config.source_auth.get("moeimg", {}).get("cookie"))
         config["moeimgUsername"] = self.config.source_auth.get("moeimg", {}).get("username", "")
         config["moeimgPassword"] = self.config.source_auth.get("moeimg", {}).get("password", "")

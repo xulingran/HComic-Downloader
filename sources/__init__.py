@@ -145,6 +145,11 @@ class MultiSourceParser:
 
         self._bika_image_quality = bika_image_quality
         self._jm_custom_domain = (jm_domain or "").strip()
+        # JM 会话级内存凭据（jm-session-cookie spec）：与持久化 source_auth 彻底分离。
+        # 启动时为空（匿名）；运行期 configure_auth(source="jm") 写入；进程退出即失效。
+        # factory lambda 读此字段注入 JmParser，使运行期登录在懒创建时生效；
+        # 持久化 source_auth["jm"] 的存量残留永不被 factory/post_init 读取。
+        self._jm_session_auth: dict[str, str] = {"cookie": "", "user_agent": ""}
 
         # 工厂函数映射：解析器首次访问时调用对应工厂创建实例。
         # 工厂内部通过 _load_parser_class 按需 import 解析器模块，避免
@@ -163,10 +168,13 @@ class MultiSourceParser:
                 cookie=self.source_auth["moeimg"]["cookie"],
                 user_agent=self.source_auth["moeimg"]["user_agent"],
             ),
+            # JM 会话凭据读运行期内存通道（_jm_session_auth），不读持久化 source_auth（jm-session-cookie spec）：
+            # 启动时为空 → 匿名创建；运行期 configure_auth 写入 → 懒创建时注入生效。
+            # jm_domain 配置在 _apply_post_init 中独立恢复，与认证态正交。
             "jm": lambda: _load_parser_class("jm")(
                 timeout=timeout,
-                cookie=self.source_auth.get("jm", {}).get("cookie", ""),
-                user_agent=self.source_auth.get("jm", {}).get("user_agent", ""),
+                cookie=self._jm_session_auth["cookie"],
+                user_agent=self._jm_session_auth["user_agent"],
             ),
             "bika": lambda: _load_parser_class("bika")(timeout=timeout),
             "copymanga": lambda: _load_parser_class("copymanga")(timeout=timeout),
@@ -219,7 +227,23 @@ class MultiSourceParser:
         parser: HComicParser | MoeImgParser | JmParser | BikaParser | CopyMangaParser | NhParser,
     ) -> None:
         """解析器创建后的后处理 —— 恢复存储的凭据、token、图片质量等。"""
-        # 通用：对所有解析器恢复已存储的 cookie/user_agent/bearer_token
+        # JM 会话凭据不持久化、不恢复持久化 source_auth（jm-session-cookie spec）。
+        # factory 已从 _jm_session_auth 把 cookie/UA 注入构造参数；此处必须用**完整三元组**
+        # 调 configure_auth 补 bearer_token（JmParser.__init__ 不接受 bearer_token）。
+        # 禁止只传 bearer_token —— JmParser.configure_auth 的 cookie/UA 默认空串会覆盖
+        # factory 刚注入的值，导致实例只剩 Authorization 而 cookie/UA 被清空。
+        # configure_session_auth 是幂等覆盖写，重设 cookie/UA 无副作用。
+        if name == "jm":
+            session_auth = self._jm_session_auth
+            parser.configure_auth(
+                cookie=session_auth["cookie"],
+                user_agent=session_auth["user_agent"],
+                bearer_token=session_auth.get("bearer_token", ""),
+            )
+            if self._jm_custom_domain and hasattr(parser, "set_custom_domain"):
+                parser.set_custom_domain(self._jm_custom_domain)
+            return
+        # 通用：对非 JM 解析器恢复已存储的 cookie/user_agent/bearer_token
         auth = self.source_auth.get(name, {})
         cookie = auth.get("cookie", "")
         user_agent = auth.get("user_agent", "")
@@ -250,8 +274,6 @@ class MultiSourceParser:
                 hcomic_auth.get("username", ""),
                 hcomic_auth.get("password", ""),
             )
-        elif name == "jm" and self._jm_custom_domain and hasattr(parser, "set_custom_domain"):
-            parser.set_custom_domain(self._jm_custom_domain)
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
@@ -297,6 +319,20 @@ class MultiSourceParser:
         auth = self.source_auth.get(current, {"cookie": "", "user_agent": ""})
         return auth.get("cookie", ""), auth.get("user_agent", "")
 
+    def get_runtime_auth(self, source: str | None = None) -> tuple[str, str]:
+        """返回来源的**运行期**有效凭据（jm-session-cookie spec）。
+
+        用于鉴权判定（"现在能否发起已认证请求"）：JM 走会话级 _jm_session_auth，
+        其他来源走 source_auth（其持久化即运行期）。区别于 get_auth（读持久化
+        source_auth，用于 settings 回显等非鉴权场景）——JM 在 get_auth 返回空
+        （匿名），在 get_runtime_auth 返回运行期登录值。
+        """
+        current = self._resolve_source(source)
+        if current == "jm":
+            return self._jm_session_auth["cookie"], self._jm_session_auth["user_agent"]
+        auth = self.source_auth.get(current, {})
+        return auth.get("cookie", ""), auth.get("user_agent", "")
+
     def configure_auth(
         self,
         cookie: str = "",
@@ -310,6 +346,18 @@ class MultiSourceParser:
         cookie = (cookie or "").strip()
         user_agent = (user_agent or "").strip()
         bearer_token = (bearer_token or "").strip()
+        # JM 会话凭据走独立内存通道（jm-session-cookie spec）：不写持久化 source_auth，
+        # 不触发 config.save；factory 懒创建时读 _jm_session_auth 注入 parser。
+        # 并发安全：状态更新 + 实例查询 + 即时注入必须与 _get_parser 的创建临界区互斥，
+        # 否则 configure_auth 可能在 _get_parser 持锁创建（已读旧空凭据、未写 _parsers）
+        # 期间读到 _parsers=None 而 return，导致运行期状态非空但真实 parser 无凭据。
+        if current == "jm":
+            with self._parser_lock:
+                self._jm_session_auth = {"cookie": cookie, "user_agent": user_agent, "bearer_token": bearer_token}
+                parser = self._parsers.get(current)
+                if parser is not None:
+                    parser.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+            return
         self.source_auth[current] = {
             "cookie": cookie,
             "user_agent": user_agent,
