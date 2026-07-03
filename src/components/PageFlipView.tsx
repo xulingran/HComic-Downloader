@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import type { DisplayMode, BlankPosition } from '../hooks/useReaderSettings'
 import { usePageFlipVariants } from '../lib/anim'
 import { buildImageUrl } from '@/lib/image-url'
-import { Skeleton } from './common/Skeleton'
+import { ReaderPagePlaceholder } from './common/ReaderPagePlaceholder'
 
 /**
  * 根据当前页与上一页推断翻页方向。
@@ -403,9 +403,10 @@ function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality
   }
 
   if (!urlHash) {
-    // 变更 5：阅读器首屏用骨架屏替代 spinner，占满阅读区。
+    // 加载中：阅读器背景色 + 中心 spinner（见 preview-loading-placeholder 规范）。
+    // 原用 Skeleton 走主题变量，浅色主题下在深色阅读器内形成白色色块。
     return (
-      <Skeleton variant="rect" className="h-full w-full" style={{ aspectRatio: '3/4', maxWidth: '100%' }} />
+      <ReaderPagePlaceholder className="h-full w-full" />
     )
   }
 

@@ -156,6 +156,21 @@ describe('PageFlipView', () => {
     fireEvent.click(screen.getByLabelText('下一页'))
     expect(setCurrentPage).toHaveBeenCalledWith(3)
   })
+
+  // 加载中占位回归（preview-loading-placeholder 规范）：
+  // 翻页模式加载中必须渲染 ReaderPagePlaceholder（阅读器背景色 #1a1a2e + spinner），
+  // 不再渲染走主题变量的 Skeleton（避免浅色主题下阅读器内出现白色色块）。
+  it('renders ReaderPagePlaceholder (not Skeleton) while page is loading', () => {
+    // 让 fetchPreviewImage 永远 pending，卡在加载中态
+    mockFetchPreviewImage.mockReturnValue(new Promise(() => {}))
+    const { container } = render(<PageFlipView {...defaultProps} />)
+    // 占位背景色为阅读器深色 #1a1a2e（rgb(26,26,46)），非主题变量驱动的浅色
+    const placeholder = container.querySelector('[style*="3 / 4"]') as HTMLElement | null
+    expect(placeholder).not.toBeNull()
+    expect(placeholder!.style.backgroundColor).toBe('rgb(26, 26, 46)')
+    // 占位内有 spinner
+    expect(placeholder!.querySelector('svg.animate-spin')).toBeInTheDocument()
+  })
 })
 
 // 回归：翻页方向必须在渲染期间同步推断。

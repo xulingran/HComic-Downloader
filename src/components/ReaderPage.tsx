@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { buildImageUrl } from '@/lib/image-url'
+import { ReaderPagePlaceholder } from './common/ReaderPagePlaceholder'
 
 interface ReaderPageProps {
   url: string
@@ -127,11 +128,10 @@ export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, co
       {(isVisible || priority || urlHash) ? (
         <>
           {!urlHash && (
-            <div className="absolute inset-0 flex items-center justify-center">
-              <svg className="animate-spin h-6 w-6 text-gray-600" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-              </svg>
+            // 加载中：阅读器背景色 + 中心 spinner（见 preview-loading-placeholder 规范）。
+            // 外层 absolute inset-0 让占位填满父级 3/4 比例容器，spinner 居中。
+            <div className="absolute inset-0">
+              <ReaderPagePlaceholder className="h-full w-full" />
             </div>
           )}
           {urlHash && (
@@ -148,6 +148,7 @@ export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, co
           )}
         </>
       ) : (
+        // 未进入视口（懒加载占位）：保留横纹二态区分，避免满屏 spinner 喧闹。
         <div
           className="w-full h-full"
           style={{
