@@ -849,6 +849,122 @@ describe('SearchPage', () => {
     })
   })
 
+  // 加载遮罩分级：翻页用 light 档（旧结果可读），换来源/新查询用 strong 档（几乎不可辨认）。
+  // 文案统一「加载中...」，仅靠 backdrop-blur 像素值与 bg 不透明度区分。
+  describe('加载遮罩分级（light / strong）', () => {
+    const comicsWithResults: ComicInfo[] = [
+      { id: '1', title: 'Comic A', url: 'https://example.com/1', coverUrl: '', source: 'test' }
+    ]
+
+    // 取遮罩容器（含 backdrop-blur class 的 div）。遮罩文案为「加载中」，需排除按钮「搜索中...」。
+    const getOverlay = () => {
+      const overlays = document.querySelectorAll('div.absolute.inset-0')
+      return Array.from(overlays).find(el => el.textContent?.includes('加载中')) ?? null
+    }
+
+    beforeEach(() => {
+      // 让组件内调用的 setLoading 真实更新 mockStoreState.isLoading，使按钮 disabled 逻辑
+      // 与遮罩渲染条件（isLoading && overlayIntensity）能反映真实 loading 态。
+      mockStoreState.setLoading = vi.fn((loading: boolean) => { mockStoreState.isLoading = loading })
+    })
+
+    it('翻页（keepExisting=true）时遮罩为 light 档：backdrop-blur-[2px] + bg/40', async () => {
+      // 挂载首屏返回带 sections 的结果，使挂载 effect 设置 loadedContextKeyRef
+      // （挂载 effect 仅在有 sections 时设此 ref；非 sections 源首次翻页会被判为新查询）。
+      // 随后翻页 isPaging=true → keepExisting=true → light。
+      const deferred = createDeferredSearch()
+      mockSearch.mockImplementation((_q: string, _m: string, page: number, _s?: string) =>
+        page === 2
+          ? deferred.promise
+          : Promise.resolve({
+            comics: comicsWithResults,
+            pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+            sections: [{ title: '最新漫画', comicIds: ['1'] }],
+          })
+      )
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 3, totalItems: 30 }
+
+      render(<SearchPage />)
+      // 等首屏完成（loadedContextKeyRef 在 sections 路径下被设置）
+      await waitFor(() => expect(mockStoreState.isLoading).toBe(false))
+
+      // 点下一页 → handleSearch → isPaging=true → keepExisting=true → light
+      await userEvent.click(screen.getAllByText('下一页')[0])
+
+      const overlay = getOverlay()
+      expect(overlay).not.toBeNull()
+      expect(overlay?.className).toContain('backdrop-blur-[2px]')
+      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/40')
+      expect(overlay?.className).not.toContain('backdrop-blur-[10px]')
+      expect(overlay?.textContent).toContain('加载中')
+
+      deferred.resolve({ comics: [], pagination: { currentPage: 2, totalPages: 3, totalItems: 30 } })
+      await act(async () => { await deferred.promise.catch(() => {}) })
+    })
+
+    it('换来源认证窗口遮罩为 strong 档：backdrop-blur-[10px] + bg/85', async () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+      // verifyAuth 挂起，使认证校验窗口可观测
+      let resolveAuth!: (v: { valid: boolean }) => void
+      const authPromise = new Promise<{ valid: boolean }>((res) => { resolveAuth = res })
+      mockVerifyAuth.mockImplementation(() => authPromise)
+
+      render(<SearchPage />)
+      await screen.findByText('Comic A')
+
+      // 切换到 jm（requiresAuth=true）进入认证校验窗口 → strong
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'jm')
+
+      const overlay = getOverlay()
+      expect(overlay).not.toBeNull()
+      expect(overlay?.className).toContain('backdrop-blur-[10px]')
+      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/85')
+      expect(overlay?.className).not.toContain('backdrop-blur-[2px]')
+
+      resolveAuth({ valid: true })
+      await act(async () => { await authPromise.catch(() => {}) })
+    })
+
+    it('认证校验失败转登录态时遮罩消失、强度不残留', async () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+      mockVerifyAuth.mockResolvedValue({ valid: false })
+
+      render(<SearchPage />)
+      await screen.findByText('Comic A')
+
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'jm')
+
+      // 认证失败 → needsLogin，loading 结束，遮罩消失
+      await screen.findByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')
+      expect(getOverlay()).toBeNull()
+    })
+
+    it('同来源新搜索（随机）遮罩为 strong 档', async () => {
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+      // random 挂起使 loading 可观测
+      const deferredRandom = createDeferredSearch()
+      mockRandom.mockImplementation(() => deferredRandom.promise as Promise<SearchResult>)
+
+      render(<SearchPage />)
+      await screen.findByText('Comic A')
+
+      // 点击随机按钮 → withLoading(无 keepExisting) → strong
+      await userEvent.click(screen.getByText('🎲 随机'))
+
+      const overlay = getOverlay()
+      expect(overlay).not.toBeNull()
+      expect(overlay?.className).toContain('backdrop-blur-[10px]')
+      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/85')
+
+      deferredRandom.resolve({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+      await act(async () => { await deferredRandom.promise.catch(() => {}) })
+    })
+  })
+
   // 回归：封面从左上角飞入 bug 修复。
   // 根因：AnimatedCardWrapper 的 layout + AnimatePresence popLayout 在翻页/新搜索整页全量替换时，
   // 新卡片 mount 测量竞态导致 transform 飞入。修复：grid 容器 key 由「搜索上下文 + 页码」派生，

@@ -38,6 +38,13 @@ interface SearchPageProps {
   onNavigateToSettings?: () => void
 }
 
+// 加载遮罩强度 → 视觉映射。文案统一「加载中...」（避免与 SearchBar 按钮「搜索中...」撞车），
+// 仅靠背景不透明度 + 模糊强度区分场景：翻页用 light（旧结果可读），换来源/新查询用 strong（几乎不可辨认）。
+const OVERLAY_STYLES: Record<'light' | 'strong', string> = {
+  light: 'bg-[var(--bg-primary)]/40 backdrop-blur-[2px]',
+  strong: 'bg-[var(--bg-primary)]/85 backdrop-blur-[10px]',
+}
+
 export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState('keyword')
@@ -52,6 +59,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [needsLogin, setNeedsLogin] = useState(false)
   const [viewingCategory, setViewingCategory] = useState(false)
   const [viewingNhEntry, setViewingNhEntry] = useState(false)
+  // 加载遮罩强度：light=翻页（旧结果可读），strong=换来源/新查询（旧结果几乎不可辨认）。
+  // 由 withLoading 据 keepExisting 派生，handleSourceChange 认证窗口显式标注为 strong。
+  // 文案统一「加载中...」（避免与 SearchBar 按钮「搜索中...」撞车），仅靠模糊+不透明度区分。
+  const [overlayIntensity, setOverlayIntensity] = useState<'light' | 'strong' | null>(null)
   const { comics, pagination, isLoading, error, setComics, setPagination, setLoading, setError } = useComicStore()
   const { search } = useSearch()
   const { random } = useRandom()
@@ -192,6 +203,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     let mountedSource = source
     const gen = ++searchGenRef.current
     setLoading(true)
+    // 挂载初始化属于新查询语义：若 store 残留旧结果（如从详情页返回），按 strong 档显示遮罩。
+    setOverlayIntensity('strong')
 
     getConfig().then(result => {
       if (cancelled) return
@@ -244,6 +257,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }).finally(() => {
       if (!cancelled && gen === searchGenRef.current) {
         setLoading(false)
+        setOverlayIntensity(null)
       }
     })
 
@@ -368,6 +382,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const gen = ++searchGenRef.current
     setLoading(true)
     setError(null)
+    // 遮罩强度：keepExisting=true（翻页）→ light（旧结果可读）；否则 → strong（旧结果将被整页替换）。
+    setOverlayIntensity(opts.keepExisting ? 'light' : 'strong')
     // 新查询默认清空当前结果 → 触发骨架渲染（filteredComics.length === 0）。
     // 翻页（keepExisting=true）保留旧结果 → 触发遮罩渲染（filteredComics.length > 0 && isLoading）。
     if (!opts.keepExisting) {
@@ -408,7 +424,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       }
       setError(msg)
     } finally {
-      if (gen === searchGenRef.current) setLoading(false)
+      if (gen === searchGenRef.current) {
+        setLoading(false)
+        setOverlayIntensity(null)
+      }
     }
   }, [setLoading, setError, cacheSearchPage, applySearchResult, clearSearchResult])
 
@@ -586,9 +605,12 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
     if (requiresAuth(newSource)) {
       setLoading(true)
+      // 认证校验窗口：旧结果仍在，按"整页替换前奏"标注为 strong（重模糊）。
+      setOverlayIntensity('strong')
       const isValid = await verifySourceAuth(newSource)
       if (sourceRef.current !== newSource) return
       setLoading(false)
+      setOverlayIntensity(null)
       if (!isValid) {
         setNeedsLogin(true)
         return
@@ -904,9 +926,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
             </AnimatePresence>
           </LayoutGroup>
 
-          {/* 翻页加载遮罩：保留旧结果（Direction B），仅在 isLoading 且仍有旧结果时显示 */}
-          {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-primary)]/60 backdrop-blur-[1px] rounded-xl">
+          {/* 加载遮罩：保留旧结果，仅在 isLoading 且仍有旧结果时显示。
+              强度由 overlayIntensity 决定：light=翻页（旧结果可读），strong=换来源/新查询（几乎不可辨认）。 */}
+          {isLoading && overlayIntensity && (
+            <div className={`absolute inset-0 flex items-center justify-center ${OVERLAY_STYLES[overlayIntensity]} rounded-xl`}>
               <span className="text-sm text-[var(--text-secondary)]">加载中...</span>
             </div>
           )}
