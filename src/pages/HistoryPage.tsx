@@ -486,7 +486,7 @@ function HistoryCard({ item, cardStyle, onOpen, onOpenDrawer, onDelete, onDownlo
         onDownload={onDownload}
         activeDownload={activeDownload}
       />
-      <div className="px-2 pb-2 -mt-1">
+      <div className="px-2 pt-2 pb-2 mt-2 border-t border-[var(--border)]">
         <div className="text-xs text-[var(--text-secondary)]">
           <span>{sourceSiteLabel}</span>
           {item.totalPages > 0 && <span className="mx-1">·</span>}
