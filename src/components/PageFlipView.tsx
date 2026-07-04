@@ -79,6 +79,10 @@ export function PageFlipView({
   // AnimatePresence 的 custom 因此在同一提交里就与 key 一致；值稳定后自动退出。
   const [prevPage, setPrevPage] = useState(currentPage)
   const [isFlipping, setIsFlipping] = useState(false)
+  // 标记组件是否已完成首次挂载。用于让"currentPage 变化即上锁"的 effect 跳过
+  // 首次执行——AnimatePresence initial={false} 首次挂载不播动画、不触发
+  // onAnimationComplete，首次若上锁将永久锁死 isFlipping。详见下面该 effect。
+  const hasMountedRef = useRef(false)
 
   const isDoubleMode = displayMode === 'double'
   const step = isDoubleMode ? 2 : 1
@@ -196,9 +200,19 @@ export function PageFlipView({
     setIsFlipping(false)
   }, [])
 
-  // currentPage 变化即触发翻页动画，置 isFlipping=true
+  // currentPage 变化即触发翻页动画，置 isFlipping=true。
+  // 关键：必须跳过首次挂载。framer-motion v12 的 AnimatePresence initial={false}
+  // 在子组件首次挂载时跳过 enter→center 动画——animateChanges() 检测到
+  // isInitialRender && props.initial === false，强制 shouldAnimate=false，返回
+  // Promise.resolve() 而不调用 animate()，因此 onAnimationComplete 永不触发。
+  // 若首次挂载也上锁，解锁回调不来，isFlipping 永久停在 true，滚轮/拖拽平移/
+  // pointerEvents 全部失效。跳过首次挂载让上锁源(effect)与解锁源(动画完成回调)
+  // 在首次挂载时都"不动作"，状态机恢复对称。
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (!hasMountedRef.current) {
+      hasMountedRef.current = true
+      return // 首次挂载：无动画可等，不上锁
+    }
     setIsFlipping(true)
   }, [currentPage])
 

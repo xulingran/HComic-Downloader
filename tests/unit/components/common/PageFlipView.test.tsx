@@ -171,6 +171,49 @@ describe('PageFlipView', () => {
     // 占位内有 spinner
     expect(placeholder!.querySelector('svg.animate-spin')).toBeInTheDocument()
   })
+
+  // 回归（reader-flip-input-gating 规范）：首次挂载后滚轮必须立即可触发翻页。
+  // 旧 bug：isFlipping 上锁 effect 在首次挂载也跑（setIsFlipping(true)），但
+  // AnimatePresence initial={false} 首次挂载不播动画、不触发 onAnimationComplete，
+  // 导致 isFlipping 永久锁死，handleWheel 的 `if (isFlipping) return` 永远吞掉滚轮。
+  // 修复后上锁 effect 跳过首次挂载，滚轮立即可用。断言 setCurrentPage 被以正确
+  // 页码调用（真实行为断言，非裸 mock 调用断言）。
+  it('triggers page flip on wheel down after first mount (single mode)', () => {
+    const setCurrentPage = vi.fn()
+    const { container } = render(
+      <PageFlipView {...defaultProps} currentPage={1} setCurrentPage={setCurrentPage} />
+    )
+    fireEvent.wheel(container.firstChild as Element, { deltaY: 100 })
+    expect(setCurrentPage).toHaveBeenCalledWith(2)
+  })
+
+  it('triggers page flip on wheel down after first mount (double mode, step=2)', () => {
+    const setCurrentPage = vi.fn()
+    const { container } = render(
+      <PageFlipView
+        {...defaultProps}
+        displayMode="double"
+        currentPage={1}
+        setCurrentPage={setCurrentPage}
+      />
+    )
+    fireEvent.wheel(container.firstChild as Element, { deltaY: 100 })
+    expect(setCurrentPage).toHaveBeenCalledWith(3)
+  })
+
+  it('triggers page flip on wheel up when not on first page', () => {
+    const setCurrentPage = vi.fn()
+    const { container } = render(
+      <PageFlipView {...defaultProps} currentPage={2} setCurrentPage={setCurrentPage} />
+    )
+    fireEvent.wheel(container.firstChild as Element, { deltaY: -100 })
+    expect(setCurrentPage).toHaveBeenCalledWith(1)
+  })
+
+  // 注："动画期间滚轮被丢弃"用例未补。jsdom 不执行真实 transform 动画，
+  // framer-motion 的 onAnimationComplete 在 jsdom 下依赖 raf/微任务链，行为不稳定，
+  // 强行 mock 会绑定实现细节且偏离真实行为。核心回归（首次挂载滚轮可用）由上面
+  // 三条用例承担，"动画中丢弃"语义由代码评审 + 手动验证覆盖。
 })
 
 // 回归：翻页方向必须在渲染期间同步推断。
