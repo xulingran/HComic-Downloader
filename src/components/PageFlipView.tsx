@@ -285,12 +285,14 @@ export function PageFlipView({
         </AnimatePresence>
       </div>
 
-      {/* Click-to-flip overlay */}
+      {/* Click-to-flip overlay：左右边缘条带（各 ~20%）+ 中央拖拽安全区（~60%）。
+          安全区 pointer-events-none 让指针事件穿透到容器的拖拽平移 / 滚轮 handler；
+          边缘按钮保留 stopPropagation 以独占"翻页点击"语义。详见 shrink-pageflip-trigger-zones design.md。 */}
       <div className="absolute inset-0 flex pointer-events-none">
         <button
           aria-label="上一页"
           aria-disabled={!canGoPrev}
-          className="w-[40%] h-full pointer-events-auto cursor-pointer flex items-center justify-start pl-4 group"
+          className="w-1/5 h-full pointer-events-auto cursor-pointer flex items-center justify-start pl-4 group"
           onClick={goPrev}
           onPointerDown={(e) => e.stopPropagation()}
           style={{ background: 'transparent', border: 'none' }}
@@ -303,10 +305,13 @@ export function PageFlipView({
             <path d="M20 8l-8 8 8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
+        {/* 中央拖拽安全区：flex-1 (~60%) + pointer-events-none。
+            显式留白，使该区域 pointer 事件冒泡到容器 handlePointerDown（zoom>1 平移）。 */}
+        <div className="flex-1 h-full pointer-events-none" data-testid="flip-drag-safe-zone" />
         <button
           aria-label="下一页"
           aria-disabled={!canGoNext}
-          className="w-[60%] h-full pointer-events-auto cursor-pointer flex items-center justify-end pr-4 group"
+          className="w-1/5 h-full pointer-events-auto cursor-pointer flex items-center justify-end pr-4 group"
           onClick={goNext}
           onPointerDown={(e) => e.stopPropagation()}
           style={{ background: 'transparent', border: 'none' }}

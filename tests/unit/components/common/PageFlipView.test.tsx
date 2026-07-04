@@ -157,6 +157,63 @@ describe('PageFlipView', () => {
     expect(setCurrentPage).toHaveBeenCalledWith(3)
   })
 
+  // ── shrink-pageflip-trigger-zones：点击翻页热区几何契约 ──
+  // 规范：reader-flip-input-gating「点击翻页热区必须限制在左右边缘条带，中央保留
+  // 拖拽安全区」。左右按钮各占容器宽度 ~20%（w-1/5），中央 ~60%（flex-1）+ 安全区
+  // pointer-events-none，使该区域指针事件冒泡到容器的拖拽平移 handler。
+  // 实现注：jsdom 不做真实布局（getBoundingClientRect 全返回 0），故几何契约用
+  // class 断言而非计算后宽度；pointer-events 穿透在 jsdom 无法模拟，安全区契约
+  // 用 class 断言 + "安全区点击不翻页"行为断言固化（真实穿透由手动验证覆盖）。
+
+  it('uses symmetric edge trigger zones (w-1/5 each), replacing old 40/60 split', () => {
+    render(<PageFlipView {...defaultProps} />)
+    const prevBtn = screen.getByLabelText('上一页')
+    const nextBtn = screen.getByLabelText('下一页')
+    // 左右条带均等宽（各 ~20%），且不再保留旧的 w-[40%] / w-[60%]
+    expect(prevBtn).toHaveClass('w-1/5')
+    expect(nextBtn).toHaveClass('w-1/5')
+    expect(prevBtn).not.toHaveClass('w-[40%]')
+    expect(nextBtn).not.toHaveClass('w-[60%]')
+  })
+
+  it('provides a central drag safe zone that is pointer-events-none', () => {
+    render(<PageFlipView {...defaultProps} />)
+    const safeZone = screen.getByTestId('flip-drag-safe-zone')
+    // flex-1 占满中央剩余空间（~60%），pointer-events-none 让指针事件穿透到容器
+    expect(safeZone).toHaveClass('flex-1')
+    expect(safeZone).toHaveClass('pointer-events-none')
+  })
+
+  // 关键新行为：点击中央安全区不得触发翻页（规范场景「点击中央安全区不触发翻页」）。
+  // 固化"安全区本身不绑定翻页 handler"契约——若未来误给安全区加 onClick 翻页，此测试失败。
+  it('does NOT trigger page flip when clicking the central safe zone', () => {
+    const setCurrentPage = vi.fn()
+    render(<PageFlipView {...defaultProps} setCurrentPage={setCurrentPage} />)
+    fireEvent.click(screen.getByTestId('flip-drag-safe-zone'))
+    expect(setCurrentPage).not.toHaveBeenCalled()
+  })
+
+  // 边缘条带点击仍翻页，且断言真实页码值（绑定"边缘几何 + 翻页行为"，规范场景）。
+  it('clicking the right edge zone advances to next page', () => {
+    const setCurrentPage = vi.fn()
+    render(<PageFlipView {...defaultProps} setCurrentPage={setCurrentPage} />)
+    const nextBtn = screen.getByLabelText('下一页')
+    expect(nextBtn).toHaveClass('w-1/5') // 确认是边缘条带
+    fireEvent.click(nextBtn)
+    expect(setCurrentPage).toHaveBeenCalledWith(2)
+  })
+
+  it('clicking the left edge zone goes to previous page', () => {
+    const setCurrentPage = vi.fn()
+    render(
+      <PageFlipView {...defaultProps} currentPage={2} setCurrentPage={setCurrentPage} />
+    )
+    const prevBtn = screen.getByLabelText('上一页')
+    expect(prevBtn).toHaveClass('w-1/5') // 确认是边缘条带
+    fireEvent.click(prevBtn)
+    expect(setCurrentPage).toHaveBeenCalledWith(1)
+  })
+
   // 加载中占位回归（preview-loading-placeholder 规范）：
   // 翻页模式加载中必须渲染 ReaderPagePlaceholder（阅读器背景色 #1a1a2e + spinner），
   // 不再渲染走主题变量的 Skeleton（避免浅色主题下阅读器内出现白色色块）。

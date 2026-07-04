@@ -7,9 +7,7 @@
 本规范源自归档变更 `fix-reader-wheel-flip`，修复 `2026-07-03-fix-page-flip-direction-sync` 引入 `isFlipping` 门控时的盲点：`AnimatePresence initial={false}` 首次挂载跳过动画且不触发 `onAnimationComplete`，而上锁 effect 在挂载时也执行，导致状态机失衡、`isFlipping` 永久锁死、滚轮与拖拽平移失效。
 
 本规范不涉及翻页动画 variants（由 `ui-animation` 规范管理）、翻页方向推断（由 `fix-page-flip-direction-sync` 已固化）、连续滚动模式（走 `ComicReaderModal` 另一渲染分支，不涉及 `isFlipping`）。
-
 ## 需求
-
 ### 需求:翻页输入门控必须与翻页动画的真实播放状态对称
 
 漫画阅读器翻页模式（单页/双页，由 `PageFlipView` 渲染）下，翻页输入（鼠标滚轮、点击翻页热区、拖拽平移）的门控状态 `isFlipping` **必须**与 framer-motion 翻页动画的真实播放状态保持对称：仅在真实动画播放期间置"动画中"态并丢弃后续输入，**禁止**在无动画播放时（含首次挂载）错误进入"动画中"态。由于 `AnimatePresence initial={false}` 在首次挂载时跳过 enter 动画且不触发 `onAnimationComplete`，"currentPage 变化即上锁"的逻辑**必须**跳过组件首次挂载，避免上锁源（effect）与解锁源（动画完成回调）在首次挂载时失衡导致 `isFlipping` 永久锁死。
@@ -33,3 +31,40 @@
 
 - **当** 真实翻页动画完成（`onAnimationComplete` 触发）
 - **那么** `isFlipping` **必须**回落为 `false`，后续滚轮/拖拽输入**必须**恢复正常响应
+
+### 需求:点击翻页热区必须限制在左右边缘条带，中央保留拖拽安全区
+
+漫画预览模式（`PageFlipView` 渲染的单页/双页模式）下，点击翻页热区**必须**限制在容器左右两侧的边缘条带内（每条约占容器宽度 20%），容器中央约 60% 宽度的区域**必须**作为拖拽安全区。安全区内的指针事件（`pointerdown` / `pointermove` / `pointerup` / `wheel`）**禁止**被翻页按钮拦截或停止冒泡，**必须**正常冒泡到容器的拖拽平移（`handlePointerDown` 等）与滚轮翻页处理。左右边缘条带的宽度**必须**对称相等，不因阅读方向或当前页位置改变。边缘条带在鼠标 hover 时**必须**显示翻页方向箭头（沿用现有 `opacity-0 group-hover:opacity-100` 视觉），**禁止**引入常驻可见图标。
+
+此需求不改变 `isFlipping` 门控契约（仍由"翻页输入门控必须与翻页动画的真实播放状态对称"约束），仅在门控放行时收紧点击路径的几何范围。
+
+#### 场景:点击左边缘条带触发上一页
+
+- **当** 用户在非首页状态下，于 `PageFlipView` 容器左侧约 20% 宽度条带内点击（且当前未处于 `isFlipping` 门控期）
+- **那么** **必须**调用 `setCurrentPage` 将页码回退一个 step（single 模式 step=1，double 模式 step=2），且 `panOffset` **必须**归零
+
+#### 场景:点击右边缘条带触发下一页
+
+- **当** 用户在非末页状态下，于 `PageFlipView` 容器右侧约 20% 宽度条带内点击（且当前未处于 `isFlipping` 门控期）
+- **那么** **必须**调用 `setCurrentPage` 将页码前进一个 step，且 `panOffset` **必须**归零
+
+#### 场景:点击中央安全区不触发翻页
+
+- **当** 用户在 `PageFlipView` 容器中央约 60% 宽度区域内点击（任意页状态、任意 zoom 值）
+- **那么** `setCurrentPage` **禁止**被调用，`currentPage` **必须**保持不变
+
+#### 场景:中央安全区内拖拽平移可用
+
+- **当** zoom > 1，用户在 `PageFlipView` 容器中央约 60% 宽度区域内按下指针并拖拽
+- **那么** `panOffset` **必须**随指针移动更新（`clampPanOffset` 约束范围内），拖拽平移**禁止**被翻页按钮的 `stopPropagation` 拦截
+
+#### 场景:中央安全区内滚轮翻页仍可用
+
+- **当** 用户指针位于中央安全区内滚动鼠标滚轮（`deltaY > 0` 或 `< 0`），且未处于 `isFlipping` 门控期
+- **那么** 滚轮翻页行为**必须**与指针位于边缘条带内时完全一致（滚轮翻页本就由容器 `handleWheel` 处理，不受按钮几何影响——此场景固化"安全区不破坏滚轮路径"的不变量）
+
+#### 场景:左右边缘条带宽度对称
+
+- **当** `PageFlipView` 以任意 `displayMode`（single/double）、任意 `currentPage`、任意 `blankPosition` 渲染
+- **那么** 左侧边缘条带与右侧边缘条带的像素宽度**必须**相等（容差 ±1px，源于取整），**禁止**复用旧的 40%/60% 不对称分割
+
