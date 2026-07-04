@@ -34,6 +34,16 @@ export default defineConfig({
   renderer: {
     plugins: [react()],
     root: '.',
+    // 固定 dev server 到 loopback：TUN 模式代理（Clash/Mihomo 等）冷启动时会
+    // 劫持 localhost 流量，固定到 127.0.0.1:5173 + strictPort 让 session 级
+    // bypass 规则可稳定匹配，并避免端口漂移导致 dev server 首次加载失败。
+    // 见 specs/dev-server-connectivity。
+    server: {
+      host: '127.0.0.1',
+      port: 5173,
+      strictPort: true,
+      hmr: { host: '127.0.0.1', port: 5173, protocol: 'ws' },
+    },
     define: {
       __APP_NAME__: JSON.stringify(pkg.name),
       __APP_DESCRIPTION__: JSON.stringify(pkg.description),

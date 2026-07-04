@@ -85,8 +85,16 @@ let shutdownState: ShutdownState = 'running'
 const notificationManager = new NotificationManager()
 
 const CLOSE_GET_DOWNLOADS_TIMEOUT_MS = 3_000
-const DEV_SERVER_MAX_RETRIES = 5
-const DEV_SERVER_RETRY_DELAY_MS = 1_000
+// Dev server 重试：指数退避（500ms 起步，翻倍至 3000ms 封顶），共 10 次，
+// 总窗口约 25s，覆盖 TUN 模式代理冷启动期对 loopback 的劫持。
+// 见 specs/dev-server-connectivity。
+const DEV_SERVER_MAX_RETRIES = 10
+const DEV_SERVER_RETRY_BASE_DELAY_MS = 500
+const DEV_SERVER_RETRY_MAX_DELAY_MS = 3_000
+// loadURL 前主动就绪探测：单请求超时 + 总超时 + 重试间隔。
+const DEV_SERVER_PROBE_TIMEOUT_MS = 1_500
+const DEV_SERVER_PROBE_TOTAL_TIMEOUT_MS = 30_000
+const DEV_SERVER_PROBE_INTERVAL_MS = 300
 const SHUTDOWN_TIMEOUT_MS = 5_000
 /** 应用启动后延迟多久执行首次更新检查（避开启动高负载期） */
 const STARTUP_UPDATE_CHECK_DELAY_MS = 3_000
@@ -326,20 +334,69 @@ function validateComicObject(data: unknown): asserts data is Record<string, unkn
   assert(object(), data, 'comic data')
 }
 
+/**
+ * 指数退避：第 `attempt` 次重试的等待毫秒数。
+ * 500 → 1000 → 2000 → 3000（封顶）→ 3000 ...
+ */
+function devServerRetryDelay(attempt: number): number {
+  return Math.min(DEV_SERVER_RETRY_BASE_DELAY_MS * 2 ** attempt, DEV_SERVER_RETRY_MAX_DELAY_MS)
+}
+
+/**
+ * loadURL 前主动探测 dev server 是否就绪。
+ *
+ * 为什么需要：Chromium 的 did-fail-load 超时较长且会白屏；先用 Node 内置
+ * fetch 直连 loopback 确认端口可达，把"代理/TUN 未就绪"的窗口前置消化掉。
+ * 使用全局 fetch（Node 18+ / Electron 42 内置）而非 Electron net.fetch：
+ * net.fetch 走 Chromium 网络栈会受 session 代理影响，全局 fetch 走 Node
+ * 网络栈，在 127.0.0.1 上必为 loopback。
+ *
+ * 返回 false 不抛错（超时仅 warn），交由 loadWithRetry 兜底（分层防御）。
+ */
+async function waitForDevServer(url: string, totalTimeoutMs = DEV_SERVER_PROBE_TOTAL_TIMEOUT_MS): Promise<boolean> {
+  const deadline = Date.now() + totalTimeoutMs
+  let attempt = 0
+  while (Date.now() < deadline) {
+    attempt++
+    try {
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), DEV_SERVER_PROBE_TIMEOUT_MS)
+      const res = await fetch(url, { signal: ctrl.signal, redirect: 'follow' })
+      clearTimeout(timer)
+      if (res.status >= 200 && res.status < 400) {
+        return true
+      }
+      console.warn(`waitForDevServer: attempt ${attempt} got status ${res.status}, retrying...`)
+    } catch (err) {
+      // 启动期常见 ECONNREFUSED / 超时，不打 error 级别（正常重试流程）。
+      console.warn(`waitForDevServer: attempt ${attempt} failed (${(err as Error).message}), retrying...`)
+    }
+    if (Date.now() + DEV_SERVER_PROBE_INTERVAL_MS < deadline) {
+      await new Promise<void>(resolve => setTimeout(resolve, DEV_SERVER_PROBE_INTERVAL_MS))
+    }
+  }
+  console.warn(`waitForDevServer: timed out after ${totalTimeoutMs}ms (${attempt} attempts), falling back to loadWithRetry`)
+  return false
+}
+
 function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
   const onFail = () => {
     if (win.isDestroyed()) return
     if (attempt >= DEV_SERVER_MAX_RETRIES) {
-      console.error(`Dev server failed to load after ${DEV_SERVER_MAX_RETRIES} retries`)
+      // 退避序列：500+1000+2000+3000*7 ≈ 24.5s
+      const totalMs = Array.from({ length: DEV_SERVER_MAX_RETRIES }, (_, i) => devServerRetryDelay(i))
+        .reduce((a, b) => a + b, 0)
+      console.error(`Dev server failed to load after ${DEV_SERVER_MAX_RETRIES} retries (~${Math.round(totalMs / 1000)}s total)`)
       win.show()
       return
     }
-    console.log(`Dev server not ready, retrying (${attempt + 1}/${DEV_SERVER_MAX_RETRIES})...`)
+    const delayMs = devServerRetryDelay(attempt)
+    console.log(`Dev server not ready, retrying (${attempt + 1}/${DEV_SERVER_MAX_RETRIES}) in ${delayMs}ms...`)
     setTimeout(() => {
       if (!win.isDestroyed()) {
         loadWithRetry(win, url, attempt + 1)
       }
-    }, DEV_SERVER_RETRY_DELAY_MS)
+    }, delayMs)
   }
   win.webContents.once('did-fail-load', onFail)
   win.webContents.once('did-finish-load', () => {
@@ -533,7 +590,7 @@ function getAppIconPath(): string {
   return path.join(assetsDir, 'icon.png')
 }
 
-function createWindow() {
+async function createWindow() {
   const preloadPath = path.join(__dirname, '../preload/preload.cjs')
 
   mainWindow = new BrowserWindow({
@@ -568,6 +625,21 @@ function createWindow() {
     if (parsed.hostname !== 'localhost' && parsed.hostname !== '127.0.0.1') {
       throw new Error(`ELECTRON_RENDERER_URL must be localhost: ${devServerUrl}`)
     }
+    // ── 三层防御：剥离 TUN/系统代理对 loopback 的劫持 ──
+    // 第 1 层：dev 模式强制 session 直连 + loopback bypass。必须在首次 loadURL
+    // 之前完成，否则 Chromium 继承的系统代理会把 dev server 流量路由进代理。
+    // 见 specs/dev-server-connectivity。
+    try {
+      await mainWindow.webContents.session.setProxy({
+        proxyRules: 'direct://',
+        proxyBypassRules: '<local>,localhost,127.0.0.1,::1',
+      })
+    } catch (err) {
+      console.warn(`session.setProxy failed, continuing with retries: ${(err as Error).message}`)
+    }
+    // 第 2 层：主动就绪探测，把"代理未稳定"的窗口前置消化掉。失败不阻断。
+    await waitForDevServer(devServerUrl)
+    // 第 3 层：loadWithRetry 指数退避兜底。
     loadWithRetry(mainWindow, devServerUrl)
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
@@ -1545,7 +1617,7 @@ app.on('child-process-gone', (_event, details) => {
   }
 })
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   try {
     // ── Platform-specific icon setup ──
     if (process.platform === 'win32') {
@@ -1567,7 +1639,9 @@ app.whenReady().then(() => {
     // renderer first requests an image.
     setupImageProtocol()
 
-    createWindow()
+    // createWindow 为 async：内部按序执行 session.setProxy → waitForDevServer →
+    // loadWithRetry（dev 模式）。await 之，使 URL 校验等同步抛出能被本 try/catch 捕获。
+    await createWindow()
     registerIPCHandlers()
     scheduleStartupUpdateCheck()
 
@@ -1626,7 +1700,9 @@ app.on('window-all-closed', () => {
 
 app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow()
+    // createWindow 为 async（dev 模式含 setProxy/waitForDevServer）；这里不阻塞
+    // activate 事件，但需捕获 rejection 避免未处理 Promise 警告。
+    createWindow().catch(err => console.error('createWindow on activate failed:', err))
   }
 })
 
