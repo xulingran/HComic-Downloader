@@ -341,6 +341,8 @@ class MoeImgParser(ParserContextMixin):
             chapter_detail = {}
 
         tags = self._extract_manga_tags(detail_data, detail, chapter_detail=chapter_detail)
+        parodies = self._extract_parodies(detail_data, detail)
+        characters = self._extract_characters(detail_data, detail)
 
         has_images = bool(chapter_detail.get("chapter_content"))
         has_title = bool((detail.get("manga_name") or "").strip())
@@ -373,6 +375,8 @@ class MoeImgParser(ParserContextMixin):
             pages=pages,
             category=category,
             tags=tags,
+            parodies=parodies,
+            characters=characters,
             language=language,
             publish_date=publish_date,
             cover_url=cover_url,
@@ -418,6 +422,8 @@ class MoeImgParser(ParserContextMixin):
         category: str | None = None
         language: str | None = None
         tags: list[str] = list(fallback_tags) if fallback_tags else []
+        parodies: list[str] = []
+        characters: list[str] = []
         cover_url: str | None = None
 
         for li in soup.select(".manga-detail li"):
@@ -438,12 +444,26 @@ class MoeImgParser(ParserContextMixin):
             elif md_title == "Language":
                 a = md_content_el.select_one("a")
                 language = (a.get_text(strip=True) if a else md_content_el.get_text(strip=True)) or None
+            elif md_title == "Parody":
+                for a in md_content_el.select("a"):
+                    text = a.get_text(strip=True)
+                    if text:
+                        parodies.append(text)
+            elif md_title == "Characters":
+                for a in md_content_el.select("a"):
+                    text = a.get_text(strip=True)
+                    if text:
+                        characters.append(text)
             elif md_title == "Tags":
                 if not tags:
                     for a in md_content_el.select("a"):
                         tag_text = a.get_text(strip=True)
                         if tag_text:
                             tags.append(tag_text)
+
+        # 与 SPA 路径一致：去重保序，避免 detail_data/detail 两层或 HTML 重复节点造成重复 chip。
+        parodies = self._dedupe_keep_order(parodies)
+        characters = self._dedupe_keep_order(characters)
 
         img_el = soup.select_one(".manga-img img")
         if img_el:
@@ -465,6 +485,8 @@ class MoeImgParser(ParserContextMixin):
             pages=pages,
             category=category,
             tags=tags,
+            parodies=parodies,
+            characters=characters,
             language=language,
             publish_date=publish_date,
             cover_url=cover_url,
@@ -721,18 +743,32 @@ class MoeImgParser(ParserContextMixin):
         detail: dict[str, Any],
         chapter_detail: dict[str, Any] | None = None,
     ) -> list[str]:
+        # 纯 tags 通道：parody / characters 已分离到 _extract_parodies / _extract_characters，
+        # 此处只合并三层 tags（detail_data / detail / chapter_detail），避免在"标签"区重复显示原著与角色。
         tag_values: list[str] = []
         tag_values.extend(cls._extract_names(detail_data.get("tags"), "tag_name"))
         tag_values.extend(cls._extract_names(detail.get("tags"), "tag_name"))
-        tag_values.extend(cls._extract_names(detail_data.get("parody"), "tag_name"))
-        tag_values.extend(cls._extract_names(detail.get("parody"), "tag_name"))
-        tag_values.extend(cls._extract_names(detail_data.get("characters"), "tag_name"))
-        tag_values.extend(cls._extract_names(detail.get("characters"), "tag_name"))
 
         if isinstance(chapter_detail, dict):
             tag_values.extend(cls._extract_names(chapter_detail.get("tags"), "tag_name"))
 
         return cls._dedupe_keep_order(tag_values)
+
+    @classmethod
+    def _extract_parodies(cls, detail_data: dict[str, Any], detail: dict[str, Any]) -> list[str]:
+        """从 detail_data 与 detail 两层字典的 parody 键抽取原著实体名（去重保序）。"""
+        values: list[str] = []
+        values.extend(cls._extract_names(detail_data.get("parody"), "tag_name"))
+        values.extend(cls._extract_names(detail.get("parody"), "tag_name"))
+        return cls._dedupe_keep_order(values)
+
+    @classmethod
+    def _extract_characters(cls, detail_data: dict[str, Any], detail: dict[str, Any]) -> list[str]:
+        """从 detail_data 与 detail 两层字典的 characters 键抽取角色实体名（去重保序）。"""
+        values: list[str] = []
+        values.extend(cls._extract_names(detail_data.get("characters"), "tag_name"))
+        values.extend(cls._extract_names(detail.get("characters"), "tag_name"))
+        return cls._dedupe_keep_order(values)
 
     @staticmethod
     def _extract_names(items: Any, key: str) -> list[str]:

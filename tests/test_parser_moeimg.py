@@ -289,7 +289,9 @@ def test_get_comic_detail_builds_download_urls(monkeypatch):
     assert comic.pages == 2
     assert comic.publish_date == "2025-10-18"
     assert comic.source_site == "moeimg"
-    assert comic.tags == ["tag1", "tag2", "parody1", "char1", "chapter-tag"]
+    assert comic.tags == ["tag1", "tag2", "chapter-tag"]
+    assert comic.parodies == ["parody1"]
+    assert comic.characters == ["char1"]
     assert len(comic.image_urls) == 2
     assert comic.image_urls[0] == "https://nvme1.cdndelivers.cloud/data/a5/0c/187476/189904/000-979x1331.webp"
 
@@ -441,6 +443,169 @@ def test_get_comic_detail_excludes_language_from_tags(monkeypatch):
     assert comic.language == "chinese"
     assert comic.tags == ["rough translation", "sex toys"]
     assert "chinese" not in comic.tags
+
+
+def test_get_comic_detail_separates_parody_and_characters_from_tags(monkeypatch):
+    """parody / characters / tags 三类实体必须分别落到对应字段，互不混入。"""
+    parser = MoeImgParser(timeout=5)
+    detail_payload = {
+        "detail": {
+            "manga_id": 111,
+            "manga_name": "分离测试",
+            "tags": [{"tag_name": "school"}],
+            "parody": [{"tag_name": "persona series"}],
+            "characters": [{"tag_name": "maki"}, {"tag_name": "nico"}],
+        },
+    }
+    read_payload = {
+        "chapter_detail": {
+            "total": 1,
+            "server": "https://cdn.example/",
+            "tags": [{"tag_name": "full color"}],
+            "chapter_content": '<img data-url="data/path/000.webp">',
+        }
+    }
+
+    def fake_get(url, params=None, timeout=30):
+        if url.endswith("/spa/manga/111/read"):
+            return _MockResponse(read_payload)
+        if url.endswith("/spa/manga/111"):
+            return _MockResponse(detail_payload)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comic = parser.get_comic_detail("111")
+    assert comic is not None
+    # 三类各自独立，不互相污染
+    assert comic.parodies == ["persona series"]
+    assert comic.characters == ["maki", "nico"]
+    assert comic.tags == ["school", "full color"]
+    # 反向断言：parody / characters 不得出现在 tags
+    assert "persona series" not in comic.tags
+    assert "maki" not in comic.tags
+    assert "nico" not in comic.tags
+
+
+def test_get_comic_detail_parody_characters_dedup_across_detail_layers(monkeypatch):
+    """detail_data 与 detail 两层 parody 合并后必须去重保序。"""
+    parser = MoeImgParser(timeout=5)
+    detail_payload = {
+        "detail": {
+            "manga_id": 222,
+            "manga_name": "去重测试",
+            # detail 层
+            "parody": [{"tag_name": "school"}, {"tag_name": "idol"}],
+            "characters": [{"tag_name": "nico"}],
+        },
+        # detail_data 顶层
+        "parody": [{"tag_name": "love live"}, {"tag_name": "school"}],
+        "characters": [{"tag_name": "maki"}],
+    }
+    read_payload = {"chapter_detail": {"total": 1, "server": "https://cdn.example/", "chapter_content": ""}}
+
+    def fake_get(url, params=None, timeout=30):
+        if url.endswith("/spa/manga/222/read"):
+            return _MockResponse(read_payload)
+        if url.endswith("/spa/manga/222"):
+            return _MockResponse(detail_payload)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comic = parser.get_comic_detail("222")
+    assert comic is not None
+    # detail_data 在前（love live, school），detail 在后（school 去重, idol）→ 保序去重
+    assert comic.parodies == ["love live", "school", "idol"]
+    # characters 同样跨层合并去重（detail_data 的 maki 在前，detail 的 nico 在后）
+    assert comic.characters == ["maki", "nico"]
+
+
+def test_get_comic_detail_parody_characters_empty_when_missing(monkeypatch):
+    """payload 缺 parody / characters 键时，对应字段必须为空列表且不抛异常。"""
+    parser = MoeImgParser(timeout=5)
+    detail_payload = {
+        "detail": {
+            "manga_id": 333,
+            "manga_name": "空字段测试",
+            "tags": [{"tag_name": "solo"}],
+        },
+    }
+    read_payload = {"chapter_detail": {"total": 1, "server": "https://cdn.example/", "chapter_content": ""}}
+
+    def fake_get(url, params=None, timeout=30):
+        if url.endswith("/spa/manga/333/read"):
+            return _MockResponse(read_payload)
+        if url.endswith("/spa/manga/333"):
+            return _MockResponse(detail_payload)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comic = parser.get_comic_detail("333")
+    assert comic is not None
+    assert comic.parodies == []
+    assert comic.characters == []
+    assert comic.tags == ["solo"]
+
+
+def test_get_comic_detail_html_path_extracts_parody_and_characters(monkeypatch):
+    """HTML 兜底路径必须识别 Parody / Characters 节点并填充结构化字段。"""
+    parser = MoeImgParser(timeout=5)
+
+    html_page = """
+    <html><body>
+    <div class="manga-detail">
+        <h1 class="manga-title">HTML原著角色</h1>
+        <ul>
+            <li class="br">
+                <div class="md-title">Category:</div>
+                <div class="md-content"><a href="/category/doujinshi">doujinshi</a></div>
+            </li>
+            <li class="br">
+                <div class="md-title">Parody:</div>
+                <div class="md-content">
+                    <a href="/parody/persona">persona series</a>
+                </div>
+            </li>
+            <li class="br">
+                <div class="md-title">Characters:</div>
+                <div class="md-content">
+                    <a href="/character/maki">maki</a>
+                    <a href="/character/nico">nico</a>
+                </div>
+            </li>
+            <li class="br">
+                <div class="md-title">Tags:</div>
+                <div class="md-content">
+                    <a href="/genre/school">school</a>
+                </div>
+            </li>
+        </ul>
+    </div>
+    <div class="manga-img"><img src="https://moeimg.fan/img/thumb/x.webp"></div>
+    </body></html>
+    """
+
+    def fake_get(url, params=None, timeout=30):
+        if "/spa/manga/444" in url and "/read" not in url:
+            raise _requests.ConnectionError("SPA API down")
+        if url.endswith("/post/fa444"):
+            return _MockResponse({}, text=html_page)
+        raise AssertionError(f"Unexpected URL: {url}")
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comic = parser.get_comic_detail("444")
+    assert comic is not None
+    assert comic.title == "HTML原著角色"
+    assert comic.category == "doujinshi"
+    assert comic.parodies == ["persona series"]
+    assert comic.characters == ["maki", "nico"]
+    # tags 不得含 parody / characters
+    assert comic.tags == ["school"]
+    assert "persona series" not in comic.tags
+    assert "maki" not in comic.tags
 
 
 # ---------------------------------------------------------------------------
