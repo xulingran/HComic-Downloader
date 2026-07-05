@@ -40,6 +40,8 @@ interface ConfigState {
   bikaPassword?: string
   hcomicUsername?: string
   hcomicPassword?: string
+  nhUsername?: string
+  nhPassword?: string
   previewPreloadForward: number
   previewPreloadBackward: number
   previewPreloadConcurrency: number
@@ -59,7 +61,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
   const jmAuth = useAuthState('jm')
   const moeimgAuth = useAuthState('moeimg')
   const bikaAuth = useAuthState('bika')
-    const copymangaAuth = useAuthState('copymanga')
+  const copymangaAuth = useAuthState('copymanga')
+  const nhAuth = useAuthState('nh')
   const { getProxyStatus } = useProxyStatus()
   const { getAvailableFonts } = useAvailableFonts()
   const { getJmDomains } = useJmDomains()
@@ -85,6 +88,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     bikaPassword: '',
     hcomicUsername: '',
     hcomicPassword: '',
+    nhUsername: '',
+    nhPassword: '',
     previewPreloadForward: 8,
     previewPreloadBackward: 2,
     previewPreloadConcurrency: 3,
@@ -160,6 +165,8 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           bikaPassword: result.config.bikaPassword ?? '',
           hcomicUsername: result.config.hcomicUsername ?? '',
           hcomicPassword: result.config.hcomicPassword ?? '',
+          nhUsername: result.config.nhUsername ?? '',
+          nhPassword: result.config.nhPassword ?? '',
           previewPreloadForward: result.config.previewPreloadForward ?? 8,
           previewPreloadBackward: result.config.previewPreloadBackward ?? 2,
           previewPreloadConcurrency: result.config.previewPreloadConcurrency ?? 3,
@@ -187,6 +194,9 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
         }
         if (result.config.hasCopymangaAuth) {
           copymangaAuth.verifyFromConfig(true)
+        }
+        if (result.config.hasNhAuth) {
+          nhAuth.verifyFromConfig(true)
         }
         if (result.config.fontName) setFontName(result.config.fontName)
         if (result.config.fontSize) setFontSize(result.config.fontSize)
@@ -293,6 +303,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     moeimg: moeimgAuth,
     bika: bikaAuth,
     copymanga: copymangaAuth,
+    nh: nhAuth,
   } as const
 
   const handleApplyAuth = async (curlText: string, source: string = 'hcomic') => {
@@ -405,6 +416,25 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     } catch (err) {
       bikaAuth.setStatus('error')
       bikaAuth.setMessage(
+        (err instanceof Error ? err.message : String(err)) || '登录失败',
+      )
+    }
+  }
+
+  const handleNhLogin = async (username: string, password: string) => {
+    nhAuth.setStatus('verifying')
+    nhAuth.setMessage('')
+    try {
+      const result = await window.hcomic?.nhLogin(username, password)
+      if (result?.success) {
+        await nhAuth.test()
+      } else {
+        nhAuth.setStatus('error')
+        nhAuth.setMessage(result?.message || '登录失败')
+      }
+    } catch (err) {
+      nhAuth.setStatus('error')
+      nhAuth.setMessage(
         (err instanceof Error ? err.message : String(err)) || '登录失败',
       )
     }
@@ -655,12 +685,17 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           bikaSavedPassword={config.bikaPassword || ''}
           copymangaLoginStatus={copymangaAuth.status}
           copymangaLoginMessage={copymangaAuth.message}
+          nhLoginStatus={nhAuth.status}
+          nhLoginMessage={nhAuth.message}
+          nhSavedUsername={config.nhUsername || ''}
+          nhSavedPassword={config.nhPassword || ''}
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}
           onHcomicLogin={handleHcomicLogin}
           onMoeimgLogin={handleMoeimgLogin}
           onBikaLogin={handleBikaLogin}
+          onNhLogin={handleNhLogin}
         />
       </div>
 

@@ -5,6 +5,25 @@
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本管理遵循 [Semantic Versioning](https://semver.org/lang/zh-CN/spec/v2.0.0.html)。
 
+## [Unreleased]
+
+### 🚀 新增（Added）
+
+#### 来源与内容
+- **nh**：新增 nhentai 认证与收藏夹支持。
+  - 支持 API Key（`Authorization: Key <key>`）与账号密码两种登录方式。
+  - 支持拉取收藏夹、加入收藏、取消收藏与查询收藏状态。
+  - 收藏夹页来源选择器新增 NH 选项。
+
+#### UI 与交互
+- **设置页**：新增 NH 认证区域，提供 API Key 输入、账号密码登录与登录状态检测。
+
+#### 工程与测试
+- 更新 `tests/unit/main/main.test.ts` 与 `FavouriteSourceSidebar.test.tsx`，覆盖 NH 新增 IPC 通道与收藏夹来源。
+
+### 📝 文档
+- `README.md`：补充 NH 来源说明、收藏夹列表与项目结构中的 `sources/nh/` 目录。
+
 ## [1.7.0] - 2026-06-30
 
 ### 🚀 新增（Added）

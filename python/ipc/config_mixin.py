@@ -210,6 +210,10 @@ class ConfigMixin:
         config["bikaUsername"] = self.config.source_auth.get("bika", {}).get("username", "")
         config["bikaPassword"] = bika_auth.get("password", "")
         config["hasCopymangaAuth"] = bool(self.config.source_auth.get("copymanga", {}).get("cookie"))
+        nh_auth = self.config.source_auth.get("nh", {})
+        config["hasNhAuth"] = bool(nh_auth.get("cookie") or nh_auth.get("user_agent") or nh_auth.get("bearer_token"))
+        config["nhUsername"] = nh_auth.get("username", "")
+        config["nhPassword"] = nh_auth.get("password", "")
         # 返回 jm CDN 域名，供前端动态更新白名单
         jm_cdn = self.parser.get_jm_cdn_domain()
         if jm_cdn:

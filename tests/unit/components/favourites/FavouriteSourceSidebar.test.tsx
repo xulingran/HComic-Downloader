@@ -4,16 +4,16 @@ import userEvent from '@testing-library/user-event'
 import { FavouriteSourceSidebar } from '@/components/favourites/FavouriteSourceSidebar'
 
 describe('FavouriteSourceSidebar', () => {
-  it('只渲染支持收藏夹的四个来源', () => {
+  it('只渲染支持收藏夹的五个来源', () => {
     render(<FavouriteSourceSidebar activeSource="hcomic" onSelect={vi.fn()} />)
 
-    expect(screen.getAllByRole('button')).toHaveLength(4)
+    expect(screen.getAllByRole('button')).toHaveLength(5)
     expect(screen.getByRole('button', { name: 'HComic' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'MoeImg' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'JM' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '哔咔' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'NH' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '拷贝漫画' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'NH' })).not.toBeInTheDocument()
   })
 
   it('仅为当前来源暴露选中语义', () => {

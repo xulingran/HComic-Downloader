@@ -215,6 +215,11 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.HCOMIC_LOGIN, username, password)
   },
 
+  nhLogin: (username: unknown, password: unknown) => {
+    validateCredentialPair(username, password)
+    return ipcRenderer.invoke(IPC_CHANNELS.NH_LOGIN, username, password)
+  },
+
   shutdown: () => ipcRenderer.invoke(IPC_CHANNELS.SHUTDOWN),
 
   openUrl: (url: unknown) => {

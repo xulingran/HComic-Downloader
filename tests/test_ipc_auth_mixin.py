@@ -168,6 +168,26 @@ def test_apply_auth_hcomic_still_persists_session_credentials():
     assert call_kwargs.get("source") == "hcomic"
 
 
+def test_apply_auth_nh_persists_api_key():
+    """NH apply_auth 应通过 Authorization: Key 提取 API Key 并落盘。"""
+    server = _create_test_server()
+    save_calls = _wrap_save_with_lock_check(server)
+
+    server.handle_apply_auth(
+        "curl 'https://nhentai.net/api/v2/user' -H 'Authorization: Key nh-api-key-xxx'",
+        source="nh",
+    )
+
+    assert save_calls == [True], "nh 来源必须触发 config.save() 且在锁内"
+    nh_auth = server.config.get_source_auth("nh")
+    assert nh_auth["bearer_token"] == "nh-api-key-xxx"
+    assert nh_auth["cookie"] == ""
+    assert nh_auth["user_agent"] == ""
+    call_kwargs = server.parser.configure_auth.call_args.kwargs
+    assert call_kwargs.get("bearer_token") == "nh-api-key-xxx"
+    assert call_kwargs.get("source") == "nh"
+
+
 # ---------------------------------------------------------------------------
 # 三个登录 handler: login() 留锁外，set_source_auth + save 进锁
 # 成功路径为双 save（先凭据、后 token/cookie），断言改为全部在锁内
@@ -224,6 +244,24 @@ def test_hcomic_login_saves_under_config_write_lock():
     assert server.config.get_source_auth("hcomic")["bearer_token"] == "hcomic-token"
 
 
+def test_nh_login_saves_under_config_write_lock():
+    server = _create_test_server()
+    save_calls = _wrap_save_with_lock_check(server)
+
+    nh_parser = MagicMock()
+    nh_parser.login.return_value = "Token nh-user-token"
+    server.parser.parsers = {"nh": nh_parser}
+
+    result = server.handle_nh_login("nh_user", "nh_pass")
+
+    assert result["success"] is True
+    assert len(save_calls) >= 1
+    assert all(c is True for c in save_calls), "所有 config.save 必须在 _config_write_lock 持有期间调用"
+    assert server.config.get_source_auth("nh")["bearer_token"] == "Token nh-user-token"
+    assert server.config.get_source_auth("nh")["username"] == "nh_user"
+    assert server.config.get_source_auth("nh")["password"] == "nh_pass"
+
+
 # ---------------------------------------------------------------------------
 # 登录成功路径：username/password 与 token/cookie 同时写入（spec 场景3）
 # ---------------------------------------------------------------------------
@@ -272,6 +310,21 @@ def test_hcomic_login_success_persists_credentials_and_token():
     assert auth["username"] == "u"
     assert auth["password"] == "p"
     hcomic_parser.set_stored_credentials.assert_called_once_with("u", "p")
+
+
+def test_nh_login_success_persists_credentials_and_token():
+    server = _create_test_server()
+    nh_parser = MagicMock()
+    nh_parser.login.return_value = "Token nh-token"
+    server.parser.parsers = {"nh": nh_parser}
+
+    server.handle_nh_login("u", "p")
+
+    auth = server.config.get_source_auth("nh")
+    assert auth["bearer_token"] == "Token nh-token"
+    assert auth["username"] == "u"
+    assert auth["password"] == "p"
+    nh_parser.set_stored_credentials.assert_called_once_with("u", "p")
 
 
 # ---------------------------------------------------------------------------

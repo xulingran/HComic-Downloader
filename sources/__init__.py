@@ -24,7 +24,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 _VALID_SOURCES = ("hcomic", "jm", "moeimg", "bika", "copymanga", "nh")
-_SOURCES_WITH_FAVOURITES = ("hcomic", "jm", "moeimg", "bika")
+_SOURCES_WITH_FAVOURITES = ("hcomic", "jm", "moeimg", "bika", "nh")
 
 # Map source name -> (module path, class name). Loaded lazily by _load_parser_class
 # so that ``import sources`` does not drag in every parser module (and their
@@ -178,7 +178,12 @@ class MultiSourceParser:
             ),
             "bika": lambda: _load_parser_class("bika")(timeout=timeout),
             "copymanga": lambda: _load_parser_class("copymanga")(timeout=timeout),
-            "nh": lambda: _load_parser_class("nh")(timeout=timeout),
+            "nh": lambda: _load_parser_class("nh")(
+                timeout=timeout,
+                cookie=self.source_auth["nh"]["cookie"],
+                user_agent=self.source_auth["nh"]["user_agent"],
+                bearer_token=self.source_auth["nh"]["bearer_token"],
+            ),
         }
 
         # 缓存字典 —— 已创建的解析器实例
@@ -273,6 +278,13 @@ class MultiSourceParser:
             parser.set_stored_credentials(
                 hcomic_auth.get("username", ""),
                 hcomic_auth.get("password", ""),
+            )
+        # 为 nh 恢复存储的用户名密码（用于密码登录）
+        elif name == "nh":
+            nh_auth = self.source_auth.get("nh", {})
+            parser.set_stored_credentials(
+                nh_auth.get("username", ""),
+                nh_auth.get("password", ""),
             )
 
     @staticmethod

@@ -249,33 +249,227 @@ class TestExtractLanguage:
 class TestAuthInterface:
     """测试认证相关接口。"""
 
-    def test_configure_auth_noop(self):
+    def test_configure_auth_api_key_sets_authorization_header(self):
         parser = NhParser()
-        # 应该不抛出异常
-        parser.configure_auth(cookie="test", user_agent="test", bearer_token="test")
+        parser.configure_auth(cookie="", user_agent="", bearer_token="nh-api-key-xxx")
+        assert parser.session.headers.get("Authorization") == "Key nh-api-key-xxx"
+        assert "Cookie" not in parser.session.headers
 
-    def test_verify_login_status(self):
+    def test_configure_auth_cookie_sets_cookie_and_user_agent(self):
+        parser = NhParser()
+        parser.configure_auth(
+            cookie="sessionid=abc; csrftoken=def",
+            user_agent="Mozilla/5.0",
+            bearer_token="",
+        )
+        assert parser.session.headers.get("Cookie") == "sessionid=abc; csrftoken=def"
+        assert parser.session.headers.get("User-Agent") == "Mozilla/5.0"
+        assert "Authorization" not in parser.session.headers
+
+    def test_configure_auth_overwrites_previous_auth(self):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key1")
+        assert parser.session.headers.get("Authorization") == "Key key1"
+        parser.configure_auth(cookie="session=abc", user_agent="UA")
+        assert parser.session.headers.get("Cookie") == "session=abc"
+        assert parser.session.headers.get("User-Agent") == "UA"
+        assert "Authorization" not in parser.session.headers
+
+    def test_verify_login_status_without_credentials(self):
         parser = NhParser()
         result, message = parser.verify_login_status()
-        assert result is True
-        assert "无需登录" in message
+        assert result is False
+        assert "未配置登录凭证" in message
 
-    def test_favourites_empty(self):
+    def test_verify_login_status_success(self, monkeypatch):
         parser = NhParser()
-        result, pagination, needs_login = parser.favourites()
-        assert result == []
+        parser.configure_auth(bearer_token="nh-api-key-xxx")
+
+        def fake_request_json(url: str, **_kwargs):
+            assert url.endswith("/api/v2/user")
+            return {"id": 1, "username": "tester"}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        result, message = parser.verify_login_status()
+        assert result is True
+        assert "tester" in message
+
+    def test_verify_login_status_401(self, monkeypatch):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="invalid-key")
+
+        def fake_request_json(_url: str, **_kwargs):
+            from sources.base import ParserResponseError
+
+            raise ParserResponseError("请求失败: https://nhentai.net/api/v2/user (401 Client Error)")
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        result, message = parser.verify_login_status()
+        assert result is False
+        assert "登录已失效" in message
+
+    def test_login_success_applies_token(self, monkeypatch):
+        parser = NhParser()
+
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {"token": "user-token-abc"}
+
+        monkeypatch.setattr(parser.session, "post", lambda *args, **kwargs: FakeResponse())
+        token = parser.login("user", "pass")
+        assert token == "Token user-token-abc"
+        assert parser.session.headers.get("Authorization") == "Token user-token-abc"
+
+    def test_login_failure_401(self, monkeypatch):
+        parser = NhParser()
+
+        class FakeResponse:
+            status_code = 401
+            content = b""
+
+        monkeypatch.setattr(parser.session, "post", lambda *args, **kwargs: FakeResponse())
+        from sources.base import ParserResponseError
+
+        with pytest.raises(ParserResponseError, match="用户名或密码错误"):
+            parser.login("user", "wrong")
+
+    def test_login_failure_no_token(self, monkeypatch):
+        parser = NhParser()
+
+        class FakeResponse:
+            status_code = 200
+
+            def json(self):
+                return {"unexpected": "value"}
+
+        monkeypatch.setattr(parser.session, "post", lambda *args, **kwargs: FakeResponse())
+        from sources.base import ParserResponseError
+
+        with pytest.raises(ParserResponseError, match="未找到 token"):
+            parser.login("user", "pass")
+
+
+class TestFavouritesInterface:
+    """测试收藏夹相关接口。"""
+
+    def test_favourites_needs_login(self):
+        parser = NhParser()
+        comics, pagination, needs_login = parser.favourites()
+        assert comics == []
         assert pagination is None
+        assert needs_login is True
+
+    def test_favourites_raise_errors(self):
+        parser = NhParser()
+        from sources.base import ParserResponseError
+
+        with pytest.raises(ParserResponseError, match="未登录"):
+            parser.favourites(raise_errors=True)
+
+    def test_favourites_success(self, monkeypatch):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key")
+
+        def fake_request_json(url: str, **_kwargs):
+            assert "favorites" in url
+            return {
+                "result": [
+                    {
+                        "id": 12345,
+                        "media_id": "67890",
+                        "english_title": "Fav Title",
+                        "num_pages": 20,
+                        "thumbnail": "galleries/67890/thumb.",
+                        "tags": [],
+                    }
+                ],
+                "total_pages": 3,
+                "total": 60,
+            }
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        comics, pagination, needs_login = parser.favourites(page=2)
+        assert len(comics) == 1
+        assert comics[0].id == "12345"
+        assert pagination is not None
+        assert pagination.current_page == 2
+        assert pagination.total_pages == 3
+        assert pagination.total_items == 60
         assert needs_login is False
 
-    def test_add_to_favourites_false(self):
+    def test_favourites_empty_logged_in(self, monkeypatch):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key")
+
+        def fake_request_json(_url: str, **_kwargs):
+            return {"result": [], "total_pages": 1, "total": 0}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        comics, pagination, needs_login = parser.favourites()
+        assert comics == []
+        assert pagination is not None
+        assert pagination.total_items == 0
+        assert needs_login is False
+
+    def test_add_to_favourites_success(self, monkeypatch):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key")
+
+        class FakeResponse:
+            status_code = 200
+
+        monkeypatch.setattr(parser.session, "post", lambda *args, **kwargs: FakeResponse())
+        assert parser.add_to_favourites("12345") is True
+
+    def test_add_to_favourites_not_logged_in(self):
         parser = NhParser()
         assert parser.add_to_favourites("12345") is False
 
-    def test_check_favourite_false(self):
+    def test_check_favourite_true(self, monkeypatch):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key")
+
+        class FakeResponse:
+            status_code = 200
+            content = b'{"is_favorited": true}'
+
+            def json(self):
+                return {"is_favorited": True}
+
+        monkeypatch.setattr(parser.session, "get", lambda *args, **kwargs: FakeResponse())
+        assert parser.check_favourite("12345") is True
+
+    def test_check_favourite_false(self, monkeypatch):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key")
+
+        class FakeResponse:
+            status_code = 200
+            content = b"{}"
+
+            def json(self):
+                return {}
+
+        monkeypatch.setattr(parser.session, "get", lambda *args, **kwargs: FakeResponse())
+        assert parser.check_favourite("12345") is False
+
+    def test_check_favourite_not_logged_in(self):
         parser = NhParser()
         assert parser.check_favourite("12345") is False
 
-    def test_remove_from_favourites_false(self):
+    def test_remove_from_favourites_success(self, monkeypatch):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key")
+
+        class FakeResponse:
+            status_code = 204
+
+        monkeypatch.setattr(parser.session, "delete", lambda *args, **kwargs: FakeResponse())
+        assert parser.remove_from_favourites("12345") is True
+
+    def test_remove_from_favourites_not_logged_in(self):
         parser = NhParser()
         assert parser.remove_from_favourites("12345") is False
 

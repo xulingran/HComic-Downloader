@@ -236,7 +236,7 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
     def test_default_duplicate_blacklist_empty(self):
         config = Config()
         self.assertEqual(
-            config.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []}
+            config.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": [], "nh": []}
         )
 
     def test_legacy_string_entries_migrate_to_objects(self):
@@ -294,7 +294,8 @@ class TestDuplicateBlacklistMigration(unittest.TestCase):
         try:
             loaded = Config.load(config_path)
             self.assertEqual(
-                loaded.duplicate_blacklist, {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": []}
+                loaded.duplicate_blacklist,
+                {"hcomic": [], "moeimg": [], "jm": [], "bika": [], "copymanga": [], "nh": []},
             )
         finally:
             os.unlink(config_path)

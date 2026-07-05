@@ -16,6 +16,7 @@
 | moeimg    | moeimg.fan   | ✅   | ✅   | curl 导入 / 应用内用户名密码         |
 | jm   | jm（含镜像） | ✅   | ✅   | curl 导入 / 内嵌浏览器            |
 | bika      | 哔咔           | ✅   | ✅   | 应用内用户名密码（API 登录）           |
+| nh        | nhentai.net  | ✅   | ✅   | API Key / 账号密码            |
 | copymanga | 拷贝漫画         | —   | —   | curl 导入                    |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
@@ -51,7 +52,7 @@
 
 ### 收藏与历史
 
-- 收藏夹（hcomic / jm / moeimg / bika）
+- 收藏夹（hcomic / jm / moeimg / bika / nh）
 - 阅读历史记录（最近阅读、章节定位）
 - 收藏标签推荐与高亮（从收藏夹提取标签，搜索结果中高亮推荐标签）
 - 批量选择 + 批量下载
@@ -179,6 +180,10 @@ hcomic_downloader/
 │   ├── bika/                  # 哔咔解析器（API 登录 + 收藏夹）
 │   │   ├── parser.py
 │   │   └── constants.py
+│   ├── nh/                    # nhentai 解析器（API Key / 账号密码 + 收藏夹）
+│   │   ├── parser.py
+│   │   ├── constants.py
+│   │   └── descrambler.py
 │   └── copymanga/             # 拷贝漫画解析器（AES 解密）
 │       ├── parser.py
 │       ├── crypto.py          # AES-CBC 解密工具
@@ -323,7 +328,7 @@ venv\Scripts\black.exe .            # 格式化
 | `autoRetryMaxAttempts`    | number  | 失败自动重试次数       | 2                                    | 0-5                                                    |
 | `notifyOnComplete`        | boolean | 下载完成系统通知       | `true`                               | —                                                      |
 | `notifyWhenForeground`    | string  | 通知触发策略         | `inactive`                           | `inactive` / `always`                                  |
-| `defaultSource`           | string  | 默认搜索来源         | `hcomic`                             | `hcomic` / `moeimg` / `jm` / `bika` / `copymanga` |
+| `defaultSource`           | string  | 默认搜索来源         | `hcomic`                             | `hcomic` / `moeimg` / `jm` / `bika` / `copymanga` / `nh` |
 | `fontName`                | string  | 自定义字体          | `""`（自动检测 CJK）                       | —                                                      |
 | `fontSize`                | number  | 基础字号           | 12                                   | 12-20                                                  |
 | `sfwMode`                 | boolean | SFW 安全模式（隐藏封面） | `true`                               | —                                                      |

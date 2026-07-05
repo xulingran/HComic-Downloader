@@ -14,6 +14,9 @@ from sources.base import ParserContextMixin, ParserResponseError
 from utils import apply_system_proxy_to_session
 
 from .constants import (
+    AUTH_LOGIN_URL,
+    FAVORITE_URL_TEMPLATE,
+    FAVORITES_URL,
     GALLERIES_URL,
     GALLERY_URL_TEMPLATE,
     REQUEST_HEADERS,
@@ -23,6 +26,7 @@ from .constants import (
     SORT_POPULAR_TODAY,
     SORT_POPULAR_WEEK,
     TAGS_URL,
+    USER_URL,
 )
 
 logger = logging.getLogger(__name__)
@@ -31,35 +35,211 @@ logger = logging.getLogger(__name__)
 class NhParser(ParserContextMixin):
     """NH 解析器。"""
 
-    def __init__(self, timeout: int = 30):
+    def __init__(
+        self,
+        timeout: int = 30,
+        cookie: str = "",
+        user_agent: str = "",
+        bearer_token: str = "",
+    ):
         self.timeout = timeout
         self.session = requests.Session()
         self.session.headers.update(REQUEST_HEADERS)
         apply_system_proxy_to_session(self.session)
+        self._cookie = (cookie or "").strip()
+        self._user_agent = (user_agent or "").strip()
+        self._bearer_token = (bearer_token or "").strip()
+        self._username = ""
+        self._password = ""
+        self.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+
+    def set_stored_credentials(self, username: str, password: str) -> None:
+        """保存账号密码，供密码登录使用。"""
+        self._username = (username or "").strip()
+        self._password = (password or "").strip()
+
+    def _is_auth_configured(self) -> bool:
+        """判断是否已配置任何形式的认证凭证。"""
+        return bool(self._cookie or self._user_agent or self._bearer_token)
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
-        """配置认证信息。NH 无需登录，此方法为空实现。"""
-        pass
+        """配置认证信息。
+
+        NH API v2 支持两种认证方式：
+        - API Key / User Token：通过 ``Authorization: Key <key>`` 或
+          ``Authorization: Token <token>`` 发送。
+        - Cookie：直接设置 ``Cookie`` 头，并可覆盖 ``User-Agent``。
+        """
+        self._cookie = (cookie or "").strip()
+        self._user_agent = (user_agent or "").strip()
+        self._bearer_token = (bearer_token or "").strip()
+
+        # 清除旧认证头，避免凭证切换时残留
+        self.session.headers.pop("Authorization", None)
+        self.session.headers.pop("Cookie", None)
+
+        if self._bearer_token:
+            # API Key 使用 Key 前缀；登录返回的 User Token 使用 Token 前缀。
+            # 为简化实现，统一通过 Authorization 头发送；前缀由调用方通过
+            # bearer_token 内容控制（约定：API Key 不带前缀，User Token 也不带
+            # 前缀，但内部按类型选择前缀）。
+            self.session.headers["Authorization"] = self._build_auth_header(self._bearer_token)
+        if self._cookie:
+            self.session.headers["Cookie"] = self._cookie
+        if self._user_agent:
+            self.session.headers["User-Agent"] = self._user_agent
+
+    @staticmethod
+    def _build_auth_header(token: str) -> str:
+        """根据 token 格式构建 Authorization 头。
+
+        nhentai API v2 中：
+        - API Key：``Authorization: Key <key>``
+        - 账号密码登录返回的 User Token：``Authorization: Token <token>``
+        为兼容两种场景，若 token 已包含空格（即已带前缀），直接返回；
+        否则默认使用 ``Key`` 前缀（API Key 为首选认证方式）。
+        """
+        if not token:
+            return ""
+        if " " in token:
+            return token
+        return f"Key {token}"
 
     def verify_login_status(self) -> tuple[bool, str]:
-        """检查登录状态。NH 无需登录，始终返回成功。"""
-        return True, "NH 无需登录"
+        """通过 GET /api/v2/user 校验登录态。"""
+        if not self._is_auth_configured():
+            return False, "NH 未配置登录凭证"
+        try:
+            data = self._request_json(USER_URL)
+        except ParserResponseError as e:
+            msg = str(e).lower()
+            if "401" in msg or "403" in msg:
+                return False, "登录已失效，请重新登录"
+            return False, f"登录校验失败: {e}"
+        username = data.get("username") or data.get("name") or ""
+        if username:
+            return True, f"登录校验通过（{username}）"
+        return True, "登录校验通过"
 
-    def favourites(self, page: int = 1, raise_errors: bool = False) -> tuple[list, None, bool]:
-        """NH 不支持收藏夹。"""
-        return [], None, False
+    def login(self, username: str, password: str) -> str:
+        """调用 POST /api/v2/auth/login 获取 User Token。"""
+        if not username or not password:
+            raise ParserResponseError("请输入用户名和密码")
+        try:
+            resp = self.session.post(
+                AUTH_LOGIN_URL,
+                json={"username": username, "password": password},
+                timeout=self.timeout,
+            )
+        except requests.Timeout as e:
+            raise ParserResponseError("登录请求超时") from e
+        except requests.ConnectionError as e:
+            raise ParserResponseError("登录连接失败") from e
+        except requests.RequestException as e:
+            raise ParserResponseError(f"登录请求失败: {e}") from e
+
+        if resp.status_code == 401:
+            raise ParserResponseError("用户名或密码错误")
+        if resp.status_code == 403:
+            raise ParserResponseError("登录被阻止，请改用 API Key 或浏览器登录")
+        if resp.status_code != 200:
+            raise ParserResponseError(f"登录失败（HTTP {resp.status_code}）")
+
+        try:
+            data = resp.json()
+        except ValueError as e:
+            raise ParserResponseError("登录响应解析失败") from e
+
+        token = data.get("token") or data.get("access_token") or data.get("user_token")
+        if not token:
+            raise ParserResponseError("登录响应中未找到 token")
+        # 登录返回的 User Token 使用 Token 前缀
+        self._bearer_token = f"Token {token}"
+        self.configure_auth(bearer_token=self._bearer_token)
+        return self._bearer_token
+
+    def favourites(
+        self, page: int = 1, raise_errors: bool = False
+    ) -> tuple[list[ComicInfo], PaginationInfo | None, bool]:
+        """获取 NH 收藏夹列表。"""
+        if not self._is_auth_configured():
+            if raise_errors:
+                raise ParserResponseError("NH 未登录，请前往设置页面配置登录凭证")
+            return [], None, True
+        url = f"{FAVORITES_URL}?page={page}"
+        try:
+            data = self._request_json(url)
+        except ParserResponseError as e:
+            msg = str(e).lower()
+            if raise_errors and ("401" in msg or "403" in msg):
+                raise ParserResponseError("NH 登录已失效，请重新登录") from e
+            return [], None, False
+
+        result = data.get("result", [])
+        if not result:
+            return (
+                [],
+                PaginationInfo(current_page=page, total_pages=page, limit=0, total_items=0),
+                False,
+            )
+
+        comics = []
+        for item in result:
+            try:
+                comic = self._parse_search_item(item)
+                comics.append(comic)
+            except (KeyError, ValueError) as e:
+                logger.warning("Failed to parse favourite item: %s", e)
+                continue
+
+        total_pages = data.get("total_pages", page)
+        total_items = data.get("total", len(result))
+        pagination = PaginationInfo(
+            current_page=page,
+            total_pages=total_pages,
+            limit=len(result),
+            total_items=total_items,
+        )
+        return comics, pagination, False
 
     def add_to_favourites(self, comic_id: str) -> bool:
-        """NH 不支持收藏夹。"""
-        return False
+        """将漫画加入 NH 收藏夹。"""
+        if not self._is_auth_configured():
+            return False
+        url = FAVORITE_URL_TEMPLATE.format(gallery_id=comic_id)
+        try:
+            resp = self.session.post(url, timeout=self.timeout)
+            return resp.status_code in (200, 201, 409)
+        except requests.RequestException as e:
+            logger.warning("Failed to add favourite %s: %s", comic_id, e)
+            return False
 
     def check_favourite(self, comic_id: str) -> bool:
-        """NH 不支持收藏夹。"""
-        return False
+        """检查指定漫画是否在 NH 收藏夹中。"""
+        if not self._is_auth_configured():
+            return False
+        url = FAVORITE_URL_TEMPLATE.format(gallery_id=comic_id)
+        try:
+            resp = self.session.get(url, timeout=self.timeout)
+            if resp.status_code == 200:
+                data = resp.json() if resp.content else {}
+                return bool(data.get("is_favorited") or data.get("is_favourited"))
+            return False
+        except requests.RequestException as e:
+            logger.warning("Failed to check favourite %s: %s", comic_id, e)
+            return False
 
     def remove_from_favourites(self, comic_id: str) -> bool:
-        """NH 不支持收藏夹。"""
-        return False
+        """将漫画从 NH 收藏夹移除。"""
+        if not self._is_auth_configured():
+            return False
+        url = FAVORITE_URL_TEMPLATE.format(gallery_id=comic_id)
+        try:
+            resp = self.session.delete(url, timeout=self.timeout)
+            return resp.status_code in (200, 204, 404)
+        except requests.RequestException as e:
+            logger.warning("Failed to remove favourite %s: %s", comic_id, e)
+            return False
 
     # ------------------------------------------------------------------
     # 内部请求辅助

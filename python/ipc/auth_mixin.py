@@ -176,3 +176,6 @@ class AuthMixin:
             credential_kind="bearer_token",
             apply_to_downloader=True,
         )
+
+    def handle_nh_login(self, username: str, password: str) -> dict:
+        return self._do_password_login("nh", username, password, credential_kind="bearer_token")

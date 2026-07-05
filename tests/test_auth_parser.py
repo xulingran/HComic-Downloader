@@ -150,5 +150,23 @@ class TestExtractBearerToken(unittest.TestCase):
         self.assertEqual(bearer, "")
 
 
+class TestExtractApiKeyToken(unittest.TestCase):
+    """测试 NH API Key（Authorization: Key ...）提取"""
+
+    def test_extract_api_key_from_header(self):
+        curl_text = "curl 'https://nhentai.net/api/v2/user' " "-H 'Authorization: Key nh-api-key-xxx'"
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
+        self.assertEqual(cookie, "")
+        self.assertEqual(user_agent, "")
+        self.assertEqual(bearer, "nh-api-key-xxx")
+        self.assertEqual(domain, "nhentai.net")
+
+    def test_extract_api_key_allows_missing_cookie_ua(self):
+        curl_text = "curl 'https://nhentai.net/' -H 'Authorization: Key abc123'"
+        cookie, user_agent, bearer, domain = extract_auth_from_curl(curl_text)
+        self.assertEqual(bearer, "abc123")
+        self.assertEqual(domain, "nhentai.net")
+
+
 if __name__ == "__main__":
     unittest.main()

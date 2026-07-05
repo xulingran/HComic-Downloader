@@ -20,15 +20,17 @@ def _split_header(header_value: str) -> tuple[str, str]:
 
 
 def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str, str]:
-    """从 curl 命令中提取 Cookie、User-Agent、Bearer Token 和域名。
+    """从 curl 命令中提取 Cookie、User-Agent、Bearer/API Key Token 和域名。
 
     支持:
     - `-b '...'` / `--cookie '...'`
     - `-H 'Cookie: ...'`
     - `-H 'User-Agent: ...'`
     - `-A '...'` / `--user-agent '...'`
-    - `-H 'Authorization: Bearer ...'`
+    - `-H 'Authorization: Bearer ...'` / `-H 'Authorization: Key ...'`
     - 从 URL 中提取域名
+
+    当请求中已包含 Authorization token 时，不再强制要求 Cookie/User-Agent。
     """
     text = _normalize_curl_text(curl_text)
     if not text:
@@ -76,8 +78,12 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str, str]:
                     cookie = header_val
                 elif header_name.lower() == "user-agent":
                     user_agent = header_val
-                elif header_name.lower() == "authorization" and header_val.lower().startswith("bearer "):
-                    bearer_token = header_val[7:].strip()
+                elif header_name.lower() == "authorization":
+                    header_lower = header_val.lower()
+                    if header_lower.startswith("bearer "):
+                        bearer_token = header_val[7:].strip()
+                    elif header_lower.startswith("key "):
+                        bearer_token = header_val[4:].strip()
                 i += 2
                 continue
         elif token.startswith("--header="):
@@ -86,8 +92,12 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str, str]:
                 cookie = header_val
             elif header_name.lower() == "user-agent":
                 user_agent = header_val
-            elif header_name.lower() == "authorization" and header_val.lower().startswith("bearer "):
-                bearer_token = header_val[7:].strip()
+            elif header_name.lower() == "authorization":
+                header_lower = header_val.lower()
+                if header_lower.startswith("bearer "):
+                    bearer_token = header_val[7:].strip()
+                elif header_lower.startswith("key "):
+                    bearer_token = header_val[4:].strip()
 
         i += 1
 
@@ -96,9 +106,9 @@ def extract_auth_from_curl(curl_text: str) -> tuple[str, str, str, str]:
         bearer_token = _extract_auth0_token(cookie)
 
     missing = []
-    if not cookie:
+    if not cookie and not bearer_token:
         missing.append("Cookie")
-    if not user_agent:
+    if not user_agent and not bearer_token:
         missing.append("User-Agent")
     if missing:
         raise ValueError(f"curl 中缺少: {', '.join(missing)}")

@@ -10,15 +10,49 @@ class _FakeSearchMixin(SearchMixin):
     def __init__(self):
         self.config = SimpleNamespace(default_source="hcomic", source_auth={})
         self.calls = []
-        self.parser = SimpleNamespace(search=self._search)
+        self.parser = SimpleNamespace(
+            search=self._search,
+            favourites=self._favourites,
+            add_to_favourites=self._add_to_favourites,
+            check_favourite=self._check_favourite,
+            remove_from_favourites=self._remove_from_favourites,
+        )
         self._tag_list_db = SimpleNamespace(upsert_tags=lambda *_args, **_kwargs: None)
+        self._favourite_tags_db = SimpleNamespace(
+            upsert_comic=lambda *_args, **_kwargs: None,
+            remove_comic=lambda *_args, **_kwargs: None,
+            get_comic_tags=lambda *_args, **_kwargs: [],
+        )
 
     def _search(self, keyword: str, page: int = 1, source: str | None = None, tag: str = ""):
         self.calls.append({"keyword": keyword, "page": page, "source": source, "tag": tag})
         comic = ComicInfo(id="1", title="Test", source_site="nh", comic_source="NH", tags=["big breasts"])
         return [comic], SimpleNamespace(current_page=page, total_pages=1, total_items=1)
 
+    def _favourites(self, page: int = 1, raise_errors: bool = False, source: str | None = None):
+        self.calls.append({"method": "favourites", "page": page, "raise_errors": raise_errors, "source": source})
+        comic = ComicInfo(id="1", title="Test", source_site="nh", comic_source="NH", tags=[])
+        return [comic], SimpleNamespace(current_page=page, total_pages=1, total_items=1), False
+
+    def _add_to_favourites(self, comic_id: str, source: str | None = None):
+        self.calls.append({"method": "add_to_favourites", "comic_id": comic_id, "source": source})
+        return True
+
+    def _check_favourite(self, comic_id: str, source: str | None = None):
+        self.calls.append({"method": "check_favourite", "comic_id": comic_id, "source": source})
+        return True
+
+    def _remove_from_favourites(self, comic_id: str, source: str | None = None):
+        self.calls.append({"method": "remove_from_favourites", "comic_id": comic_id, "source": source})
+        return True
+
     def _collect_tags_from_comics(self, *_args, **_kwargs):
+        pass
+
+    def _update_tags_from_favourites_page(self, *_args, **_kwargs):
+        pass
+
+    def _update_tags_on_favourite_add(self, *_args, **_kwargs):
         pass
 
 
@@ -91,3 +125,41 @@ def test_nh_tag_query_deduplicates_case_insensitively():
     )
 
     assert mixin.calls[-1]["keyword"] == 'tag:"Big Breasts" tag:"Full Color"'
+
+
+def test_nh_get_favourites_routes_to_parser():
+    mixin = _FakeSearchMixin()
+    mixin.config.source_auth = {"nh": {"cookie": "", "user_agent": "", "bearer_token": "key"}}
+
+    result = mixin.handle_get_favourites(page=2, source="nh")
+
+    assert any(c.get("method") == "favourites" and c.get("source") == "nh" for c in mixin.calls)
+    assert result["needsLogin"] is False
+    assert result["pagination"]["currentPage"] == 2
+
+
+def test_nh_add_to_favourites_routes_to_parser():
+    mixin = _FakeSearchMixin()
+
+    result = mixin.handle_add_to_favourites(comic_id="12345", source="nh")
+
+    assert any(c.get("method") == "add_to_favourites" and c.get("source") == "nh" for c in mixin.calls)
+    assert result["success"] is True
+
+
+def test_nh_check_favourite_routes_to_parser():
+    mixin = _FakeSearchMixin()
+
+    result = mixin.handle_check_favourite(comic_id="12345", source="nh")
+
+    assert any(c.get("method") == "check_favourite" and c.get("source") == "nh" for c in mixin.calls)
+    assert result["isFavourited"] is True
+
+
+def test_nh_remove_from_favourites_routes_to_parser():
+    mixin = _FakeSearchMixin()
+
+    result = mixin.handle_remove_from_favourites(comic_id="12345", source="nh")
+
+    assert any(c.get("method") == "remove_from_favourites" and c.get("source") == "nh" for c in mixin.calls)
+    assert result["success"] is True

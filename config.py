@@ -12,9 +12,9 @@ from utils import normalize_source_auth, normalize_source_key
 logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_FORMAT = "folder"
-VALID_SOURCE_KEYS = ("hcomic", "moeimg", "jm", "bika", "copymanga")
+VALID_SOURCE_KEYS = ("hcomic", "moeimg", "jm", "bika", "copymanga", "nh")
 # 支持收藏夹的来源子集（与前端 SOURCES_WITH_FAVOURITES 对应，copymanga 不支持收藏）
-SOURCES_WITH_FAVOURITES = ("hcomic", "moeimg", "jm", "bika")
+SOURCES_WITH_FAVOURITES = ("hcomic", "moeimg", "jm", "bika", "nh")
 
 
 def _default_source_list_map() -> dict[str, list]:
@@ -206,7 +206,7 @@ class Config:
         auth.setdefault("cookie", "")
         auth.setdefault("user_agent", "")
         auth.setdefault("bearer_token", "")
-        if source in ("moeimg", "bika", "hcomic"):
+        if source in ("moeimg", "bika", "hcomic", "nh"):
             auth.setdefault("username", "")
             auth.setdefault("password", "")
         return auth
@@ -225,7 +225,7 @@ class Config:
             "user_agent": user_agent,
             "bearer_token": bearer_token,
         }
-        if source in ("moeimg", "bika", "hcomic"):
+        if source in ("moeimg", "bika", "hcomic", "nh"):
             self.source_auth[source]["username"] = (data.username or "").strip()
             self.source_auth[source]["password"] = (data.password or "").strip()
         if source == "hcomic":

@@ -162,9 +162,15 @@ class SearchMixin:
 
     def _is_source_auth_error(self, source: str, error: Exception) -> bool:
         """Check if an exception indicates auth failure for the given source."""
-        if source not in ("jm", "copymanga", "hcomic"):
+        if source not in ("jm", "copymanga", "hcomic", "nh"):
             return False
         return _matches_auth_keywords(str(error))
+
+    def _check_nh_auth(self) -> None:
+        """Raise AuthRequiredError if NH credentials are not configured."""
+        nh_auth = self.config.source_auth.get("nh", {})
+        if not (nh_auth.get("cookie") or nh_auth.get("user_agent") or nh_auth.get("bearer_token")):
+            raise AuthRequiredError("NH 未登录，请前往设置页面配置 NH 登录凭证")
 
     @contextmanager
     def _auth_error_guard(self, source: str):
@@ -365,6 +371,8 @@ class SearchMixin:
         valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
         self._check_source_auth(effective_source)
+        if effective_source == "nh":
+            self._check_nh_auth()
         with self._auth_error_guard(effective_source):
             comics, pagination, needs_login = self.parser.favourites(
                 page=page, raise_errors=True, source=effective_source

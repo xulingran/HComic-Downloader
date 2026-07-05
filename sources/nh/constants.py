@@ -9,6 +9,10 @@ SEARCH_URL = f"{API_INDEX}/search"
 GALLERY_URL_TEMPLATE = f"{API_INDEX}/galleries/{{gallery_id}}"
 GALLERIES_URL = f"{API_INDEX}/galleries"  # 首页/最新漫画列表
 TAGS_URL = f"{API_INDEX}/tags/tag"  # 标签目录 API
+AUTH_LOGIN_URL = f"{API_INDEX}/auth/login"
+USER_URL = f"{API_INDEX}/user"
+FAVORITES_URL = f"{API_INDEX}/favorites"
+FAVORITE_URL_TEMPLATE = f"{API_INDEX}/galleries/{{gallery_id}}/favorite"
 
 # 排序方式
 SORT_POPULAR = "popular"  # 全站热度排序
