@@ -179,3 +179,33 @@ class AuthMixin:
 
     def handle_nh_login(self, username: str, password: str) -> dict:
         return self._do_password_login("nh", username, password, credential_kind="bearer_token")
+
+    def handle_clear_source_auth(self, source: str) -> dict:
+        """清除指定来源的持久化认证凭证与内存会话状态。"""
+        from config import VALID_SOURCE_KEYS, AuthSourceData
+
+        if not source or source not in VALID_SOURCE_KEYS:
+            raise ValueError(f"无效的来源: {source}")
+
+        with self._config_write_lock:
+            self.config.set_source_auth(
+                source,
+                AuthSourceData(
+                    cookie="",
+                    user_agent="",
+                    bearer_token="",
+                    username="",
+                    password="",
+                ),
+            )
+            self.config.save(_get_config_path())
+
+        parser = self.parser.parsers.get(source)
+        if parser is not None and hasattr(parser, "configure_auth"):
+            parser.configure_auth(cookie="", user_agent="", bearer_token="")
+
+        if source == "hcomic":
+            self.downloader.configure_auth(cookie="", user_agent="", bearer_token="")
+
+        logger.info("Cleared auth for %s", source)
+        return {"success": True}

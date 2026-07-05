@@ -29,6 +29,7 @@ interface AuthSettingsProps {
   onMoeimgLogin: (username: string, password: string) => Promise<void>
   onBikaLogin: (username: string, password: string) => Promise<void>
   onNhLogin: (username: string, password: string) => Promise<void>
+  onClearAuth: (source: string) => Promise<void>
 }
 
 type AuthStatus = AuthSettingsProps['loginStatus']
@@ -62,6 +63,7 @@ export function AuthSettings({
   onMoeimgLogin,
   onBikaLogin,
   onNhLogin,
+  onClearAuth,
 }: AuthSettingsProps) {
   const [curlText, setCurlText] = useState('')
   const [hcomicUsername, setHcomicUsername] = useState(hcomicSavedUsername || '')
@@ -575,6 +577,20 @@ export function AuthSettings({
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {nhLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
+          </button>
+          <button
+            onClick={async () => {
+              await onClearAuth('nh')
+              setNhUsername('')
+              setNhPassword('')
+              setNhApiKey('')
+            }}
+            disabled={nhLoginStatus === 'verifying'}
+            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
+                       bg-[var(--bg-secondary)] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20
+                       disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            登出
           </button>
         </div>
       </AuthSourceCard>

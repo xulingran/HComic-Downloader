@@ -160,9 +160,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 74 total
+      // 75 total
       const count = handleCalls.length
-      expect(count).toBe(74)
+      expect(count).toBe(75)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -231,6 +231,7 @@ describe('main.ts', () => {
       'python:bika-login',
       'python:hcomic-login',
       'python:nh-login',
+      'python:clear-auth',
       'python:run-health-check',
       'python:scan-orphan-temps',
       'python:cleanup-orphan-temps',
@@ -278,7 +279,7 @@ describe('main.ts', () => {
         'get_history', 'add_history', 'delete_history', 'clear_history',
         'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
         'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
-        'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'nh_login', 'get_jm_domains',
+        'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'nh_login', 'clear_source_auth', 'get_jm_domains',
         'force_pack_album', 'get_album_progress',
         'pause_album', 'resume_album', 'cancel_album',
         'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',

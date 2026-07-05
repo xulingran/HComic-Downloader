@@ -460,3 +460,41 @@ def test_concurrent_logins_do_not_corrupt_source_auth():
     assert server.config.get_source_auth("moeimg")["username"] == "u"
     assert server.config.get_source_auth("bika")["bearer_token"] == "bika-token"
     assert server.config.get_source_auth("bika")["username"] == "u"
+
+
+# ---------------------------------------------------------------------------
+# handle_clear_source_auth: 清除凭证并同步到 parser / downloader
+# ---------------------------------------------------------------------------
+
+
+def test_clear_source_auth_clears_credentials_and_parser_state():
+    server = _create_test_server()
+    server.config.set_source_auth(
+        "nh",
+        AuthSourceData(
+            cookie="c",
+            user_agent="ua",
+            bearer_token="token",
+            username="u",
+            password="p",
+        ),
+    )
+    nh_parser = MagicMock()
+    server.parser.parsers = {"nh": nh_parser}
+
+    result = server.handle_clear_source_auth("nh")
+
+    assert result == {"success": True}
+    auth = server.config.get_source_auth("nh")
+    assert auth["cookie"] == ""
+    assert auth["user_agent"] == ""
+    assert auth["bearer_token"] == ""
+    assert auth["username"] == ""
+    assert auth["password"] == ""
+    nh_parser.configure_auth.assert_called_once_with(cookie="", user_agent="", bearer_token="")
+
+
+def test_clear_source_auth_rejects_invalid_source():
+    server = _create_test_server()
+    with pytest.raises(ValueError, match="无效的来源"):
+        server.handle_clear_source_auth("evil")

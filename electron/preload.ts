@@ -220,6 +220,11 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.NH_LOGIN, username, password)
   },
 
+  clearAuth: (source: unknown) => {
+    if (typeof source !== 'string' || !VALID_SOURCES.has(source)) throw new Error('Invalid source')
+    return ipcRenderer.invoke(IPC_CHANNELS.CLEAR_AUTH, source)
+  },
+
   shutdown: () => ipcRenderer.invoke(IPC_CHANNELS.SHUTDOWN),
 
   openUrl: (url: unknown) => {

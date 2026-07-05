@@ -303,6 +303,7 @@ class IPCServer(
         "bika_categories": "handle_bika_categories",
         "hcomic_login": "handle_hcomic_login",
         "nh_login": "handle_nh_login",
+        "clear_source_auth": "handle_clear_source_auth",
         "get_config": "handle_get_config",
         "set_config": "handle_set_config",
         "get_downloads": "handle_get_downloads",

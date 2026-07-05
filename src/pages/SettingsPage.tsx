@@ -440,6 +440,22 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
+  const handleClearAuth = async (source: string) => {
+    try {
+      await window.hcomic?.clearAuth(source)
+      if (source === 'nh') {
+        setConfigState(prev => ({ ...prev, nhUsername: '', nhPassword: '' }))
+        nhAuth.setStatus('idle')
+        nhAuth.setMessage('')
+      }
+      useToastStore.getState().success('已清除登录凭证')
+    } catch (err) {
+      useToastStore.getState().error(
+        (err instanceof Error ? err.message : String(err)) || '清除凭证失败',
+      )
+    }
+  }
+
   const handleSectionClick = (sectionId: string) => {
     setActiveSection(sectionId)
     document.getElementById(`section-${sectionId}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -696,6 +712,7 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           onMoeimgLogin={handleMoeimgLogin}
           onBikaLogin={handleBikaLogin}
           onNhLogin={handleNhLogin}
+          onClearAuth={handleClearAuth}
         />
       </div>
 

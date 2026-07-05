@@ -16,7 +16,7 @@
   - 收藏夹页来源选择器新增 NH 选项。
 
 #### UI 与交互
-- **设置页**：新增 NH 认证区域，提供 API Key 输入、账号密码登录与登录状态检测。
+- **设置页**：新增 NH 认证区域，提供 API Key 输入、账号密码登录、登录状态检测与登出清除凭证按钮。
 
 #### 工程与测试
 - 更新 `tests/unit/main/main.test.ts` 与 `FavouriteSourceSidebar.test.tsx`，覆盖 NH 新增 IPC 通道与收藏夹来源。

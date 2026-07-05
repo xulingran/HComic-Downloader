@@ -530,6 +530,10 @@ export interface IPCMethods {
     params: { username: string; password: string }
     result: { success: boolean; message: string }
   }
+  clear_source_auth: {
+    params: { source: string }
+    result: { success: boolean }
+  }
   shutdown: {
     params: Record<string, never>
     result: { success: boolean; cancelledTasks: number }
@@ -768,6 +772,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:bika-categories': 'bika_categories',
   'python:hcomic-login': 'hcomic_login',
   'python:nh-login': 'nh_login',
+  'python:clear-auth': 'clear_source_auth',
   'python:shutdown': 'shutdown',
   'python:fetch-cover': 'fetch_cover',
   'python:pause-task': 'pause_task',
@@ -861,6 +866,7 @@ export interface HcomicAPI {
   bikaCategories(): Promise<{ categories: Array<{ id: string; title: string; thumb: string }> }>
   hcomicLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   nhLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
+  clearAuth(source: string): Promise<{ success: boolean }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   fetchCover(url: string): Promise<{ urlHash: string }>
   openUrl(url: string): Promise<void>
@@ -1079,6 +1085,7 @@ export const IPC_CHANNELS = {
   BIKA_CATEGORIES: 'python:bika-categories',
   HCOMIC_LOGIN: 'python:hcomic-login',
   NH_LOGIN: 'python:nh-login',
+  CLEAR_AUTH: 'python:clear-auth',
   SHUTDOWN: 'python:shutdown',
   FETCH_COVER: 'python:fetch-cover',
   OPEN_EXTERNAL: 'open-external',

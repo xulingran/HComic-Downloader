@@ -1086,6 +1086,13 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('nh_login', { username: username.trim(), password: password.trim() })
   })
 
+  ipcMain.handle(IPC_CHANNELS.CLEAR_AUTH, async (_, source) => {
+    if (typeof source !== 'string' || !SOURCE_VALUES.has(source)) {
+      throw new Error('Invalid clear auth source')
+    }
+    return bridge.call('clear_source_auth', { source })
+  })
+
   ipcMain.handle(IPC_CHANNELS.OPEN_LOGIN_WINDOW, async (_, source) => {
     // 对 jm，先获取配置以更新域名
     if (source === 'jm' && !jmMainDomain) {
