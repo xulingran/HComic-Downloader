@@ -260,8 +260,7 @@ describe('FavouritesPage', () => {
     await waitFor(() => expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic', false))
 
     // 切换到来源 moeimg——contextKey 变化，旧来源预加载被中断
-    const sourceSelect = screen.getByDisplayValue('HComic')
-    await userEvent.selectOptions(sourceSelect, 'moeimg')
+    await userEvent.click(screen.getByRole('button', { name: 'MoeImg' }))
 
     // 让来源 hcomic 的迟到预加载请求返回
     deferredPage2.resolve({
@@ -276,6 +275,127 @@ describe('FavouritesPage', () => {
       ([source, page]) => source === 'hcomic' && page === 2,
     )
     expect(committedPage2ForHcomic).toHaveLength(0)
+  })
+
+  describe('来源侧边栏切换', () => {
+    it('移除来源下拉框并通过侧边栏加载目标来源第一页', async () => {
+      mockGetFavourites.mockImplementation((_page: number, source?: string) => Promise.resolve({
+        comics: [{
+          id: source === 'jm' ? 'jm-1' : 'hcomic-1',
+          title: source === 'jm' ? 'JM Favourite' : 'HComic Favourite',
+          url: '',
+          coverUrl: '',
+          source: source ?? 'hcomic',
+        }],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      }))
+
+      render(<FavouritesPage />)
+      await screen.findByText('HComic Favourite')
+
+      expect(screen.queryByRole('combobox')).not.toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: 'JM' }))
+
+      expect(await screen.findByText('JM Favourite')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'JM' })).toHaveAttribute('aria-current', 'page')
+      expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm', true)
+    })
+
+    it('切换到已有第一页缓存时立即显示缓存并后台刷新', async () => {
+      mockFavouritesStore.getPage.mockImplementation((source: string, page: number) => {
+        if (source !== 'jm' || page !== 1) return undefined
+        return {
+          comics: [{ id: 'cached-jm', title: 'Cached JM Favourite', url: '', coverUrl: '', source: 'jm' }],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+          currentPage: 1,
+          downloadedStatus: {},
+        }
+      })
+      mockGetFavourites.mockImplementation((_page: number, source?: string) => {
+        if (source === 'jm') return new Promise(() => {})
+        return Promise.resolve({
+          comics: [{ id: 'hcomic-1', title: 'HComic Favourite', url: '', coverUrl: '', source: 'hcomic' }],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+        })
+      })
+
+      render(<FavouritesPage />)
+      await screen.findByText('HComic Favourite')
+      await userEvent.click(screen.getByRole('button', { name: 'JM' }))
+
+      expect(await screen.findByText('Cached JM Favourite')).toBeInTheDocument()
+      expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm', false)
+    })
+
+    it('重复点击当前来源不会重新请求', async () => {
+      mockGetFavourites.mockResolvedValue({
+        comics: [{ id: 'hcomic-1', title: 'HComic Favourite', url: '', coverUrl: '', source: 'hcomic' }],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      })
+
+      render(<FavouritesPage />)
+      await screen.findByText('HComic Favourite')
+      mockGetFavourites.mockClear()
+
+      await userEvent.click(screen.getByRole('button', { name: 'HComic' }))
+
+      expect(screen.getByText('HComic Favourite')).toBeInTheDocument()
+      expect(mockGetFavourites).not.toHaveBeenCalled()
+    })
+
+    it('旧来源第一页迟到时只写入原来源缓存且不覆盖当前内容', async () => {
+      const deferredHcomic = createDeferredFavourites()
+      mockGetFavourites.mockImplementation((_page: number, source?: string) => {
+        if (source === 'hcomic') return deferredHcomic.promise
+        return Promise.resolve({
+          comics: [{ id: 'jm-1', title: 'Current JM Favourite', url: '', coverUrl: '', source: 'jm' }],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+        })
+      })
+
+      render(<FavouritesPage />)
+      await userEvent.click(screen.getByRole('button', { name: 'JM' }))
+      await screen.findByText('Current JM Favourite')
+
+      deferredHcomic.resolve({
+        comics: [{ id: 'stale-hcomic', title: 'Stale HComic Favourite', url: '', coverUrl: '', source: 'hcomic' }],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      })
+      await act(async () => { await deferredHcomic.promise })
+
+      expect(screen.getByText('Current JM Favourite')).toBeInTheDocument()
+      expect(screen.queryByText('Stale HComic Favourite')).not.toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'JM' })).toHaveAttribute('aria-current', 'page')
+      expect(mockFavouritesStore.setPage).toHaveBeenCalledWith(
+        'hcomic',
+        1,
+        expect.objectContaining({
+          comics: [expect.objectContaining({ id: 'stale-hcomic' })],
+        }),
+        false,
+      )
+      expect(mockFavouritesStore.setPage).toHaveBeenCalledWith(
+        'jm',
+        1,
+        expect.objectContaining({
+          comics: [expect.objectContaining({ id: 'jm-1' })],
+        }),
+        true,
+      )
+    })
+
+    it('使用双侧栏网格断点避免中等宽度强制五列', async () => {
+      mockGetFavourites.mockResolvedValue({
+        comics: [{ id: '1', title: 'Responsive Favourite', url: '', coverUrl: '', source: 'hcomic' }],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      })
+
+      render(<FavouritesPage />)
+      await screen.findByText('Responsive Favourite')
+
+      const grid = document.querySelector('[data-grid-key]')
+      expect(grid).toHaveClass('md:grid-cols-3', 'lg:grid-cols-4', 'xl:grid-cols-5')
+    })
   })
 
   // 回归：封面从左上角飞入 bug 修复（与 SearchPage 同源）。

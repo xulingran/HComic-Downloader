@@ -171,7 +171,7 @@ describe('FavouritesPage 来源选择器三态分支', () => {
       render(<FavouritesPage />)
       await screen.findByText('选择收藏夹来源')
 
-      // 弹窗内的 JM 按钮（顶部下拉框也有同名 option，需用 dialog scope 定位）
+      // 弹窗与常驻侧栏都有 JM 按钮，需用 dialog scope 定位。
       const dialog = screen.getByRole('dialog')
       fireEvent.click(within(dialog).getByText('JM'))
 
@@ -181,6 +181,7 @@ describe('FavouritesPage 来源选择器三态分支', () => {
       })
       expect(mockFavouritesStore.setCurrentSource).toHaveBeenCalledWith('jm')
       expect(mockFavouritesStore.markPickerShown).toHaveBeenCalled()
+      expect(screen.getByRole('button', { name: 'JM', current: 'page' })).toBeInTheDocument()
     })
 
     it('跳过选择器（稍后再说）后显示空状态与重开按钮，并标记已弹', async () => {
@@ -200,6 +201,7 @@ describe('FavouritesPage 来源选择器三态分支', () => {
       // 显示空状态与重开按钮
       await screen.findByText('请选择收藏夹来源')
       expect(screen.getByText('选择来源')).toBeInTheDocument()
+      expect(screen.queryByRole('button', { current: 'page' })).not.toBeInTheDocument()
     })
   })
 
@@ -222,6 +224,23 @@ describe('FavouritesPage 来源选择器三态分支', () => {
       await screen.findByText('Cached')
     })
 
+    it('已弹过且缓存列表为空时保留当前来源选中状态', async () => {
+      mockSettingsStore.defaultFavouriteSource = ''
+      mockFavouritesStore.sessionPickerShown = true
+      mockFavouritesStore.getPage.mockReturnValue({
+        comics: [],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
+        currentPage: 1,
+        downloadedStatus: {},
+      })
+
+      render(<FavouritesPage />)
+
+      expect(await screen.findByText('暂无收藏')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'HComic', current: 'page' })).toBeInTheDocument()
+      expect(mockGetFavourites).not.toHaveBeenCalled()
+    })
+
     it('已弹过且无缓存时不自动加载（保持空状态）', async () => {
       mockSettingsStore.defaultFavouriteSource = ''
       mockFavouritesStore.sessionPickerShown = true
@@ -234,6 +253,7 @@ describe('FavouritesPage 来源选择器三态分支', () => {
       await waitFor(() => {
         expect(mockGetFavourites).not.toHaveBeenCalled()
       })
+      expect(screen.queryByRole('button', { current: 'page' })).not.toBeInTheDocument()
     })
   })
 })

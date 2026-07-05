@@ -30,7 +30,7 @@ export function SourcePickerModal({ isOpen, onSelect, onClose }: SourcePickerMod
     >
       <h3 className="text-lg font-medium text-[var(--text-primary)] mb-2">选择收藏夹来源</h3>
       <p className="text-sm text-[var(--text-secondary)] mb-4">
-        请选择要查看的收藏夹来源，之后可在顶部下拉框随时切换
+        请选择要查看的收藏夹来源，之后可在左侧来源栏随时切换
       </p>
       <div className="flex flex-col gap-2">
         {sources.map((s) => (

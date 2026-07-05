@@ -15,6 +15,8 @@ describe('SourcePickerModal', () => {
     render(<SourcePickerModal isOpen onSelect={vi.fn()} onClose={vi.fn()} />)
     // 等待弹窗 mount 完成（标题出现）
     await screen.findByText('选择收藏夹来源')
+    expect(screen.getByText('请选择要查看的收藏夹来源，之后可在左侧来源栏随时切换')).toBeInTheDocument()
+    expect(screen.queryByText(/顶部下拉框/)).not.toBeInTheDocument()
     // 每个支持收藏的来源按钮都应出现
     for (const s of SOURCES_WITH_FAVOURITES) {
       expect(screen.getByText(SOURCE_LABELS[s])).toBeInTheDocument()
