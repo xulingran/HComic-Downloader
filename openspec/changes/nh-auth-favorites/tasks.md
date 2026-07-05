@@ -36,6 +36,6 @@
 
 ## 5. 文档与收尾
 
-- [ ] 5.1 在 README 或设置页文案中补充 NH API Key 的获取方式（`https://nhentai.net/user/settings#apikeys`）。
-- [ ] 5.2 运行 `openspec-cn strict-validate --change "nh-auth-favorites"` 确认产出物合规。
-- [ ] 5.3 提交变更并生成 CHANGELOG 条目。
+- [x] 5.1 在 README 或设置页文案中补充 NH API Key 的获取方式（`https://nhentai.net/user/settings#apikeys`）。
+- [x] 5.2 运行 `openspec-cn validate --changes "nh-auth-favorites"` 确认产出物合规。
+- [x] 5.3 提交变更并生成 CHANGELOG 条目。
