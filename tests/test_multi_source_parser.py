@@ -1,5 +1,6 @@
 """MultiSourceParser 单元测试"""
 
+from config import AuthSourceData, Config
 from models import ComicInfo
 from sources import MultiSourceParser
 
@@ -37,6 +38,37 @@ def test_default_source_and_auth_mapping():
     assert parser.current_source == "moeimg"
     assert parser.get_auth("hcomic") == ("h=1", "H-UA")
     assert parser.get_auth("moeimg") == ("m=2", "M-UA")
+
+
+def test_nh_auth_restored_from_reloaded_config(tmp_path):
+    """NH API Key 与账号密码必须跨磁盘重载进入真实懒创建 parser。"""
+    config_path = str(tmp_path / "config.json")
+    config = Config(default_source="nh")
+    config.set_source_auth(
+        "nh",
+        AuthSourceData(
+            cookie="sessionid=nh-session",
+            user_agent="NH-UA/1.0",
+            bearer_token="nh-api-key",
+            username="nh-user",
+            password="nh-password",
+        ),
+    )
+    config.save(config_path)
+    reloaded = Config.load(config_path)
+
+    parser = MultiSourceParser(
+        timeout=5,
+        default_source="nh",
+        source_auth=reloaded.source_auth,
+    )
+    nh = parser.parsers["nh"]
+
+    assert nh.session.headers["Authorization"] == "Key nh-api-key"
+    assert nh.session.headers["Cookie"] == "sessionid=nh-session"
+    assert nh.session.headers["User-Agent"] == "NH-UA/1.0"
+    assert nh._username == "nh-user"
+    assert nh._password == "nh-password"
 
 
 def test_set_source_and_search_delegation(monkeypatch):

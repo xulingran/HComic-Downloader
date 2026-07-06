@@ -245,11 +245,23 @@ export function ComicInfoDrawer() {
     setFavouritesState('loading')
     try {
       if (isFavourited) {
-        await removeFromFavourites(drawerComic.id, comicSource)
+        const result = await removeFromFavourites(drawerComic.id, comicSource)
+        if (!result.success) {
+          setFavouritesState('success')
+          setFavToastMessage('移除收藏失败')
+          setShowFavToast(true)
+          return
+        }
         setFavouritesState('idle')
         setFavToastMessage('已移除收藏')
       } else {
-        await addToFavourites(drawerComic.id, comicSource)
+        const result = await addToFavourites(drawerComic.id, comicSource)
+        if (!result.success) {
+          setFavouritesState('error')
+          setFavToastMessage('加入收藏夹失败')
+          setShowFavToast(true)
+          return
+        }
         setFavouritesState('success')
         setFavToastMessage('已加入收藏夹')
       }

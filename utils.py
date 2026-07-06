@@ -147,6 +147,7 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         "jm": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "bika": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "copymanga": {"cookie": "", "user_agent": "", "bearer_token": ""},
+        "nh": {"cookie": "", "user_agent": "", "bearer_token": ""},
     }
     if not isinstance(source_auth, dict):
         return normalized
@@ -162,7 +163,7 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         for key, value in values.items():
             if value or not normalized[source].get(key):
                 normalized[source][key] = value
-        if source in ("moeimg", "bika", "hcomic"):
+        if source in ("moeimg", "bika", "hcomic", "nh"):
             username = str(auth.get("username", "") or "").strip()
             password = str(auth.get("password", "") or "").strip()
             if username or not normalized[source].get("username"):

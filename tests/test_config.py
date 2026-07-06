@@ -134,8 +134,44 @@ class TestMultiSourceConfig(unittest.TestCase):
         self.assertEqual(config.default_source, "hcomic")
         self.assertIn("hcomic", config.source_auth)
         self.assertIn("moeimg", config.source_auth)
+        self.assertIn("nh", config.source_auth)
         self.assertEqual(config.source_auth["hcomic"]["cookie"], "")
         self.assertEqual(config.source_auth["hcomic"]["user_agent"], "")
+        self.assertEqual(
+            config.get_source_auth("nh"),
+            {"cookie": "", "user_agent": "", "bearer_token": "", "username": "", "password": ""},
+        )
+
+    def test_source_auth_normalization_keeps_supported_sources_and_filters_unknown(self):
+        config = Config(
+            source_auth={
+                "hcomic": {"cookie": "hc=1", "user_agent": "HC-UA", "bearer_token": "hc-token"},
+                "nh": {
+                    "cookie": "nh=1",
+                    "user_agent": "NH-UA",
+                    "bearer_token": "nh-key",
+                    "username": "nh-user",
+                    "password": "nh-password",
+                },
+                "unknown": {"cookie": "must-be-filtered"},
+            }
+        )
+
+        self.assertEqual(
+            config.get_source_auth("hcomic"),
+            {"cookie": "hc=1", "user_agent": "HC-UA", "bearer_token": "hc-token", "username": "", "password": ""},
+        )
+        self.assertEqual(
+            config.get_source_auth("nh"),
+            {
+                "cookie": "nh=1",
+                "user_agent": "NH-UA",
+                "bearer_token": "nh-key",
+                "username": "nh-user",
+                "password": "nh-password",
+            },
+        )
+        self.assertNotIn("unknown", config.source_auth)
 
     def test_source_auth_round_trip(self):
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
@@ -154,6 +190,28 @@ class TestMultiSourceConfig(unittest.TestCase):
             # 旧字段与 hcomic 保持兼容同步
             self.assertEqual(loaded.auth_cookie, "hc=1")
             self.assertEqual(loaded.auth_user_agent, "HC-UA")
+        finally:
+            os.unlink(config_path)
+
+    def test_nh_source_auth_round_trip_preserves_all_credentials(self):
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            config_path = f.name
+
+        try:
+            config = Config()
+            expected = {
+                "cookie": "sessionid=nh-session",
+                "user_agent": "NH-UA/1.0",
+                "bearer_token": "nh-api-key",
+                "username": "nh-user",
+                "password": "nh-password",
+            }
+            config.set_source_auth("nh", AuthSourceData(**expected))
+            config.save(config_path)
+
+            loaded = Config.load(config_path)
+
+            self.assertEqual(loaded.get_source_auth("nh"), expected)
         finally:
             os.unlink(config_path)
 

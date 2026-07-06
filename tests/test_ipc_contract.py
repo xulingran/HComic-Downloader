@@ -19,7 +19,7 @@ sys.path.insert(
     os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "python"),
 )
 
-from config import Config  # noqa: E402
+from config import AuthSourceData, Config  # noqa: E402
 from python.ipc_server import IPCServer  # noqa: E402
 
 # ── 契约真相源（从 shared/types.ts AppConfig 必需字段提取）────────────────
@@ -133,6 +133,32 @@ def test_get_config_returns_structure_matching_app_config_type():
         "cover",
         "detailed",
     ), f"cardStyle 必须 ∈ cover|detailed，实际 {config['cardStyle']!r}"
+
+
+def test_get_config_returns_reloaded_nh_credentials_without_exposing_api_key(tmp_path):
+    config_path = str(tmp_path / "config.json")
+    persisted = Config()
+    persisted.set_source_auth(
+        "nh",
+        AuthSourceData(
+            bearer_token="nh-api-key",
+            username="nh-user",
+            password="nh-password",
+        ),
+    )
+    persisted.save(config_path)
+
+    server = _create_test_server()
+    server.config = Config.load(config_path)
+    server.parser.get_runtime_auth.return_value = ("", "")
+
+    returned = server.handle_get_config()["config"]
+
+    assert returned["hasNhAuth"] is True
+    assert returned["nhUsername"] == "nh-user"
+    assert returned["nhPassword"] == "nh-password"
+    assert "nhApiKey" not in returned
+    assert "nh-api-key" not in returned.values()
 
 
 # ── 场景：search 返回结构匹配前端 SearchResult 类型 ──────────────────────

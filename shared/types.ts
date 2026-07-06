@@ -1017,7 +1017,7 @@ export const SOURCE_META = {
     label: 'NH',
     supportsRandom: false,
     supportsFavourites: true,
-    requiresAuth: true,
+    requiresAuth: false,
     supportsRanking: true,
     needsDetailEnrich: false,
     supportsTagRecommendation: false,

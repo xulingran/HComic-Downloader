@@ -169,7 +169,7 @@ class SearchMixin:
     def _check_nh_auth(self) -> None:
         """Raise AuthRequiredError if NH credentials are not configured."""
         nh_auth = self.config.source_auth.get("nh", {})
-        if not (nh_auth.get("cookie") or nh_auth.get("user_agent") or nh_auth.get("bearer_token")):
+        if not (nh_auth.get("cookie") or nh_auth.get("bearer_token")):
             raise AuthRequiredError("NH 未登录，请前往设置页面配置 NH 登录凭证")
 
     @contextmanager
@@ -354,7 +354,9 @@ class SearchMixin:
         }
 
     def handle_random(self, source: str | None = None) -> dict:
-        effective_source = source if source in ("hcomic", "jm", "bika") else _DEFAULT_SOURCE
+        effective_source = source or _DEFAULT_SOURCE
+        if effective_source not in ("hcomic", "jm", "bika"):
+            raise ValueError(f"Random is not supported for source: {effective_source}")
         self._check_source_auth(effective_source)
         try:
             comics, pagination = self.parser.random(source=effective_source)
@@ -549,6 +551,8 @@ class SearchMixin:
     def handle_add_to_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
+        if effective_source == "nh":
+            self._check_nh_auth()
         with self._auth_error_guard(effective_source):
             success = self.parser.add_to_favourites(comic_id, source=effective_source)
             if success:
@@ -558,6 +562,8 @@ class SearchMixin:
     def handle_check_favourite(self, comic_id: str, source: str = "hcomic") -> dict:
         valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
+        if effective_source == "nh":
+            self._check_nh_auth()
         with self._auth_error_guard(effective_source):
             is_favourited = self.parser.check_favourite(comic_id, source=effective_source)
             return {"isFavourited": is_favourited}
@@ -565,6 +571,8 @@ class SearchMixin:
     def handle_remove_from_favourites(self, comic_id: str, source: str = "hcomic") -> dict:
         valid_sources = _SOURCES_WITH_FAVOURITES
         effective_source = source if source in valid_sources else _DEFAULT_SOURCE
+        if effective_source == "nh":
+            self._check_nh_auth()
         with self._auth_error_guard(effective_source):
             success = self.parser.remove_from_favourites(comic_id, source=effective_source)
             if success:

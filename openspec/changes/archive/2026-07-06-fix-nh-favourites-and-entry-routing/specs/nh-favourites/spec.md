@@ -1,12 +1,6 @@
-# nh-favourites 规范
+## 新增需求
 
-## 目的
-
-定义 NH 收藏夹列表、收藏状态变更、统一 IPC 接入以及前端收藏交互的行为契约。确保服务端认证或收藏操作失败时不会被前端误判为成功，并保持按钮状态与远端结果一致。
-
-## 需求
-
-### 需求: 详情抽屉收藏状态必须以 IPC 结果提交
+### 需求:详情抽屉收藏状态必须以 IPC 结果提交
 
 详情抽屉执行 NH 加入收藏或移除收藏时，必须检查 IPC 返回的 `success`。只有 `success=true` 才能提交新的收藏状态并显示成功提示；`success=false` 或请求异常必须恢复操作前状态并显示失败或登录提示。
 
@@ -32,7 +26,9 @@
 - **当** 加入或移除收藏收到统一认证错误
 - **那么** 系统必须保留操作前收藏状态并提示用户先登录
 
-### 需求: 解析器必须能列出 NH 收藏夹
+## 修改需求
+
+### 需求:解析器必须能列出 NH 收藏夹
 
 `NhParser.favourites(page)` 必须返回当前登录用户的 NH 收藏夹漫画列表，并附带分页信息。分页必须优先读取官方响应字段 `num_pages`，仅在该字段缺失时兼容读取 `total_pages`。
 
@@ -61,7 +57,7 @@
 - **当** 响应缺少 `num_pages` 但包含 `total_pages`
 - **那么** 解析器必须使用 `total_pages`，禁止把总页数错误回退为当前页
 
-### 需求: 解析器必须能将漫画加入 NH 收藏夹
+### 需求:解析器必须能将漫画加入 NH 收藏夹
 
 `NhParser.add_to_favourites(comic_id)` 必须调用 NH API v2 添加收藏端点，并以 HTTP 成功状态和 `FavoriteResponse.favorited` 共同判定结果。只有响应明确表示 `favorited=true` 才能返回 `True`；认证、校验、限流或功能关闭错误禁止被吞掉为成功。
 
@@ -91,7 +87,7 @@
 - **当** 未配置有效认证时调用 `add_to_favourites("12345")`
 - **那么** 方法必须返回 `False` 或抛出认证错误，且 IPC 用户路径必须呈现为认证失败
 
-### 需求: 解析器必须能移除 NH 收藏
+### 需求:解析器必须能移除 NH 收藏
 
 `NhParser.remove_from_favourites(comic_id)` 必须调用 NH API v2 移除收藏端点，并以 HTTP 成功状态和 `FavoriteResponse.favorited` 共同判定结果。只有响应明确表示 `favorited=false` 才能返回 `True`。
 
@@ -116,7 +112,7 @@
 - **当** 未配置有效认证时调用 `remove_from_favourites("12345")`
 - **那么** 方法必须返回 `False` 或抛出认证错误，且禁止呈现为移除成功
 
-### 需求: 解析器必须能检查 NH 收藏状态
+### 需求:解析器必须能检查 NH 收藏状态
 
 `NhParser.check_favourite(comic_id)` 必须从官方 `FavoriteResponse.favorited` 字段返回指定漫画的收藏状态，禁止使用不存在的 `is_favorited` 或 `is_favourited` 作为主要契约。
 
@@ -140,7 +136,7 @@
 - **当** 未配置有效认证时调用 `check_favourite("12345")`
 - **那么** 方法必须返回 `False` 或抛出认证错误，且 IPC 用户路径必须提示认证缺失
 
-### 需求: 收藏夹操作必须接入项目统一 IPC 接口
+### 需求:收藏夹操作必须接入项目统一 IPC 接口
 
 `handle_get_favourites`、`handle_add_to_favourites`、`handle_check_favourite`、`handle_remove_from_favourites` 必须支持 `source="nh"`。四个入口都必须在调用 parser 前检查 NH 认证，并复用 `_auth_error_guard` 将解析器认证失败转换为统一 `AuthRequiredError`；其他失败必须保留失败语义返回或抛出，禁止被前端误判为成功。
 
@@ -164,17 +160,3 @@
 
 - **当** 用户未配置有效 NH 认证并调用获取、检查、添加或移除收藏中的任一操作
 - **那么** 后端必须抛出 `AuthRequiredError`（序列化为 IPC 错误码 -32001）
-
-### 需求: 前端必须展示 NH 收藏夹来源入口
-
-`shared/types.ts` 中的 `SOURCE_META.nh` 必须将 `supportsFavourites` 设为 `true`，并新增 `hasNhAuth` 配置键，使收藏夹页和设置页能识别 NH。
-
-#### 场景:收藏夹来源选择器出现 NH
-
-- **当** 用户打开收藏夹页
-- **那么** 来源选择器中必须出现“NH”选项
-
-#### 场景:设置页显示 NH 登录状态
-
-- **当** 用户已配置 NH API Key 或登录成功
-- **那么** 设置页中 NH 区域必须显示“已登录”状态及登出按钮

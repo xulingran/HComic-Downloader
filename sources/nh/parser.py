@@ -60,14 +60,14 @@ class NhParser(ParserContextMixin):
 
     def _is_auth_configured(self) -> bool:
         """判断是否已配置任何形式的认证凭证。"""
-        return bool(self._cookie or self._user_agent or self._bearer_token)
+        return bool(self._cookie or self._bearer_token)
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
         """配置认证信息。
 
         NH API v2 支持两种认证方式：
         - API Key / User Token：通过 ``Authorization: Key <key>`` 或
-          ``Authorization: Token <token>`` 发送。
+          ``Authorization: User <token>`` 发送。
         - Cookie：直接设置 ``Cookie`` 头，并可覆盖 ``User-Agent``。
         """
         self._cookie = (cookie or "").strip()
@@ -79,10 +79,7 @@ class NhParser(ParserContextMixin):
         self.session.headers.pop("Cookie", None)
 
         if self._bearer_token:
-            # API Key 使用 Key 前缀；登录返回的 User Token 使用 Token 前缀。
-            # 为简化实现，统一通过 Authorization 头发送；前缀由调用方通过
-            # bearer_token 内容控制（约定：API Key 不带前缀，User Token 也不带
-            # 前缀，但内部按类型选择前缀）。
+            # 无前缀值是 API Key；登录返回值与旧版 Token 值由 helper 规范化。
             self.session.headers["Authorization"] = self._build_auth_header(self._bearer_token)
         if self._cookie:
             self.session.headers["Cookie"] = self._cookie
@@ -95,15 +92,23 @@ class NhParser(ParserContextMixin):
 
         nhentai API v2 中：
         - API Key：``Authorization: Key <key>``
-        - 账号密码登录返回的 User Token：``Authorization: Token <token>``
-        为兼容两种场景，若 token 已包含空格（即已带前缀），直接返回；
-        否则默认使用 ``Key`` 前缀（API Key 为首选认证方式）。
+        - 账号密码登录返回的 User Token：``Authorization: User <token>``
+        - 旧版错误保存的 ``Token <token>`` 在运行期兼容为 ``User <token>``
+        无前缀值默认使用 ``Key``（API Key 为首选认证方式）。
         """
         if not token:
             return ""
-        if " " in token:
-            return token
-        return f"Key {token}"
+        normalized = token.strip()
+        prefix, separator, value = normalized.partition(" ")
+        if separator:
+            if prefix.lower() == "token":
+                return f"User {value.strip()}"
+            if prefix.lower() == "user":
+                return f"User {value.strip()}"
+            if prefix.lower() == "key":
+                return f"Key {value.strip()}"
+            return normalized
+        return f"Key {normalized}"
 
     def verify_login_status(self) -> tuple[bool, str]:
         """通过 GET /api/v2/user 校验登录态。"""
@@ -128,7 +133,13 @@ class NhParser(ParserContextMixin):
         try:
             resp = self.session.post(
                 AUTH_LOGIN_URL,
-                json={"username": username, "password": password},
+                json={
+                    "username": username,
+                    "password": password,
+                    "pow_challenge": "",
+                    "pow_nonce": "",
+                    "captcha_response": "",
+                },
                 timeout=self.timeout,
             )
         except requests.Timeout as e:
@@ -142,6 +153,8 @@ class NhParser(ParserContextMixin):
             raise ParserResponseError("用户名或密码错误")
         if resp.status_code == 403:
             raise ParserResponseError("登录被阻止，请改用 API Key 或浏览器登录")
+        if resp.status_code == 422:
+            raise ParserResponseError("登录需要 PoW/CAPTCHA 验证，请改用 API Key")
         if resp.status_code != 200:
             raise ParserResponseError(f"登录失败（HTTP {resp.status_code}）")
 
@@ -150,11 +163,10 @@ class NhParser(ParserContextMixin):
         except ValueError as e:
             raise ParserResponseError("登录响应解析失败") from e
 
-        token = data.get("token") or data.get("access_token") or data.get("user_token")
+        token = data.get("access_token") or data.get("token") or data.get("user_token")
         if not token:
             raise ParserResponseError("登录响应中未找到 token")
-        # 登录返回的 User Token 使用 Token 前缀
-        self._bearer_token = f"Token {token}"
+        self._bearer_token = f"User {token}"
         self.configure_auth(bearer_token=self._bearer_token)
         return self._bearer_token
 
@@ -176,10 +188,17 @@ class NhParser(ParserContextMixin):
             return [], None, False
 
         result = data.get("result", [])
+        total_pages = int(data.get("num_pages") or data.get("total_pages") or page)
+        total_items = int(data.get("total") if data.get("total") is not None else len(result))
         if not result:
             return (
                 [],
-                PaginationInfo(current_page=page, total_pages=page, limit=0, total_items=0),
+                PaginationInfo(
+                    current_page=page,
+                    total_pages=max(total_pages, page),
+                    limit=0,
+                    total_items=total_items,
+                ),
                 False,
             )
 
@@ -192,11 +211,9 @@ class NhParser(ParserContextMixin):
                 logger.warning("Failed to parse favourite item: %s", e)
                 continue
 
-        total_pages = data.get("total_pages", page)
-        total_items = data.get("total", len(result))
         pagination = PaginationInfo(
             current_page=page,
-            total_pages=total_pages,
+            total_pages=max(total_pages, page),
             limit=len(result),
             total_items=total_items,
         )
@@ -206,40 +223,38 @@ class NhParser(ParserContextMixin):
         """将漫画加入 NH 收藏夹。"""
         if not self._is_auth_configured():
             return False
-        url = FAVORITE_URL_TEMPLATE.format(gallery_id=comic_id)
-        try:
-            resp = self.session.post(url, timeout=self.timeout)
-            return resp.status_code in (200, 201, 409)
-        except requests.RequestException as e:
-            logger.warning("Failed to add favourite %s: %s", comic_id, e)
-            return False
+        return self._request_favourite_state("POST", comic_id) is True
 
     def check_favourite(self, comic_id: str) -> bool:
         """检查指定漫画是否在 NH 收藏夹中。"""
         if not self._is_auth_configured():
             return False
-        url = FAVORITE_URL_TEMPLATE.format(gallery_id=comic_id)
-        try:
-            resp = self.session.get(url, timeout=self.timeout)
-            if resp.status_code == 200:
-                data = resp.json() if resp.content else {}
-                return bool(data.get("is_favorited") or data.get("is_favourited"))
-            return False
-        except requests.RequestException as e:
-            logger.warning("Failed to check favourite %s: %s", comic_id, e)
-            return False
+        return self._request_favourite_state("GET", comic_id) is True
 
     def remove_from_favourites(self, comic_id: str) -> bool:
         """将漫画从 NH 收藏夹移除。"""
         if not self._is_auth_configured():
             return False
+        return self._request_favourite_state("DELETE", comic_id) is False
+
+    def _request_favourite_state(self, method: str, comic_id: str) -> bool | None:
+        """执行收藏状态请求并返回官方 ``FavoriteResponse.favorited``。"""
         url = FAVORITE_URL_TEMPLATE.format(gallery_id=comic_id)
         try:
-            resp = self.session.delete(url, timeout=self.timeout)
-            return resp.status_code in (200, 204, 404)
+            resp = self.session.request(method, url, timeout=self.timeout)
+            resp.raise_for_status()
+            data = resp.json()
+            value = data.get("favorited") if isinstance(data, dict) else None
+            return value if isinstance(value, bool) else None
+        except requests.HTTPError as e:
+            status = e.response.status_code if e.response is not None else None
+            if status in (401, 403):
+                raise ParserResponseError(f"NH 认证已失效（HTTP {status}），请重新登录") from e
+            raise ParserResponseError(f"NH 收藏操作失败（HTTP {status}）") from e
+        except ValueError as e:
+            raise ParserResponseError("NH 收藏响应解析失败") from e
         except requests.RequestException as e:
-            logger.warning("Failed to remove favourite %s: %s", comic_id, e)
-            return False
+            raise ParserResponseError(f"NH 收藏请求失败: {e}") from e
 
     # ------------------------------------------------------------------
     # 内部请求辅助
@@ -482,11 +497,11 @@ class NhParser(ParserContextMixin):
                 continue
 
         # 解析分页信息
-        total_pages = data.get("total_pages", 1)
-        total_items = data.get("total", len(result))
+        total_pages = int(data.get("num_pages") or data.get("total_pages") or page)
+        total_items = int(data.get("total") if data.get("total") is not None else len(result))
         pagination = PaginationInfo(
             current_page=page,
-            total_pages=total_pages,
+            total_pages=max(total_pages, page),
             limit=len(result),
             total_items=total_items,
         )
@@ -530,11 +545,11 @@ class NhParser(ParserContextMixin):
                 continue
 
         # 解析分页信息
-        total_pages = data.get("total_pages", 1)
-        total_items = data.get("total", len(result))
+        total_pages = int(data.get("num_pages") or data.get("total_pages") or page)
+        total_items = int(data.get("total") if data.get("total") is not None else len(result))
         pagination = PaginationInfo(
             current_page=page,
-            total_pages=total_pages,
+            total_pages=max(total_pages, page),
             limit=len(result),
             total_items=total_items,
         )

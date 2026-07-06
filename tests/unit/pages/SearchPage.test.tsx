@@ -362,6 +362,9 @@ describe('SearchPage', () => {
 
     expect(await screen.findByText('最近更新')).toBeInTheDocument()
     expect(screen.getByText('热门排行')).toBeInTheDocument()
+    expect(mockSearch).not.toHaveBeenCalled()
+    expect(mockRandom).not.toHaveBeenCalled()
+    expect(mockVerifyAuth).not.toHaveBeenCalled()
 
     await user.click(screen.getByText('热门排行'))
 
@@ -646,6 +649,53 @@ describe('SearchPage', () => {
 
       expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
       expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true)
+      expect(mockRandom).not.toHaveBeenCalled()
+    })
+
+    it.each([
+      ['valid credentials', { valid: true }],
+      ['missing credentials', { valid: false }],
+    ])('shows NH entry without auth or automatic content when switching with %s', async (_label, authResult) => {
+      mockVerifyAuth.mockResolvedValue(authResult)
+
+      render(<SearchPage />)
+      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic'))
+      mockSearch.mockClear()
+      mockRandom.mockClear()
+      mockVerifyAuth.mockClear()
+
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'nh')
+
+      expect(await screen.findByText('最近更新')).toBeInTheDocument()
+      expect(screen.getByText('热门排行')).toBeInTheDocument()
+      expect(screen.getByText('热门标签')).toBeInTheDocument()
+      expect(mockSearch).not.toHaveBeenCalled()
+      expect(mockRandom).not.toHaveBeenCalled()
+      expect(mockVerifyAuth).not.toHaveBeenCalled()
+      expect(screen.queryByText(/NH 登录信息已过期或未配置/)).not.toBeInTheDocument()
+    })
+
+    it('restores cached NH results and keeps the back-to-entry action', async () => {
+      const comic: ComicInfo = {
+        id: 'nh-1', title: 'Cached NH Comic', url: '', coverUrl: '', source: 'NH', sourceSite: 'nh',
+      }
+      mockStoreState.comics = [comic]
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+      mockSearchCacheStore.currentContextKey = 'nh\u001franking\u001fpopular-today\u001f'
+      mockSearchCacheStore.getPage.mockReturnValue({
+        query: 'popular-today',
+        mode: 'ranking',
+        source: 'nh',
+        searchTags: '',
+        comics: [comic],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      })
+
+      render(<SearchPage />)
+
+      expect(await screen.findByText('Cached NH Comic')).toBeInTheDocument()
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+      expect(mockSearch).not.toHaveBeenCalled()
       expect(mockRandom).not.toHaveBeenCalled()
     })
 

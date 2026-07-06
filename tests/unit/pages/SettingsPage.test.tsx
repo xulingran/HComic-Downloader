@@ -374,6 +374,8 @@ describe('SettingsPage', () => {
         moeimgPassword: 'moeimg_pass',
         bikaUsername: 'bika_user',
         bikaPassword: 'bika_pass',
+        nhUsername: 'nh_user',
+        nhPassword: 'nh_pass',
       }
     })
 
@@ -383,6 +385,7 @@ describe('SettingsPage', () => {
     await userEvent.click(await screen.findByRole('button', { name: '展开 HComic 登录设置' }))
     await userEvent.click(screen.getByRole('button', { name: '展开 MoeImg 登录设置' }))
     await userEvent.click(screen.getByRole('button', { name: '展开 哔咔 (Bika) 登录设置' }))
+    await userEvent.click(screen.getByRole('button', { name: '展开 NH 登录设置' }))
 
     // 卡片展开后输入框才渲染；findBy 会自动等待
     const hcomicUserInput = await screen.findByPlaceholderText('HComic 用户名或邮箱') as HTMLInputElement
@@ -391,6 +394,9 @@ describe('SettingsPage', () => {
     const moeimgPassInput = await screen.findByPlaceholderText('moeimg 密码') as HTMLInputElement
     const bikaUserInput = await screen.findByPlaceholderText('哔咔用户名') as HTMLInputElement
     const bikaPassInput = await screen.findByPlaceholderText('哔咔密码') as HTMLInputElement
+    const nhUserInput = await screen.findByPlaceholderText('nhentai 用户名') as HTMLInputElement
+    const nhPassInput = await screen.findByPlaceholderText('nhentai 密码') as HTMLInputElement
+    const nhApiKeyInput = await screen.findByPlaceholderText('从 nhentai 账户设置页生成 API Key') as HTMLInputElement
 
     expect(hcomicUserInput.value).toBe('hcomic_user')
     expect(hcomicPassInput.value).toBe('hcomic_pass')
@@ -401,6 +407,10 @@ describe('SettingsPage', () => {
     expect(bikaUserInput.value).toBe('bika_user')
     expect(bikaPassInput.value).toBe('bika_pass')
     expect(bikaPassInput).toHaveAttribute('type', 'password')
+    expect(nhUserInput.value).toBe('nh_user')
+    expect(nhPassInput.value).toBe('nh_pass')
+    expect(nhPassInput).toHaveAttribute('type', 'password')
+    expect(nhApiKeyInput.value).toBe('')
   })
 
   it('renders apply and test auth buttons', async () => {

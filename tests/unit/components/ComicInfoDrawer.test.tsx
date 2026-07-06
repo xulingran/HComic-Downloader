@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useDrawerStore } from '@/stores/useDrawerStore'
-import { sourceNeedsDetailEnrich, sourceSupportsTagRecommendation } from '@/utils/source'
+import { sourceNeedsDetailEnrich, sourceSupportsFavourites, sourceSupportsTagRecommendation } from '@/utils/source'
 import type { ComicInfo } from '@shared/types'
 
 // --- Mocks（必须用 @/ 别名，相对路径 mock 会失效导致真实模块加载、jsdom 下渲染循环 OOM）---
@@ -11,12 +11,15 @@ vi.mock('@/components/common/Toast', () => ({
   Toast: ({ message, visible }: { message: string; visible: boolean }) =>
     visible ? <div>{message}</div> : null,
 }))
-vi.mock('@/utils/auth', () => ({
-  isAuthError: () => false,
+const { mockIsAuthError, mockAddToFavourites, mockRemoveFromFavourites } = vi.hoisted(() => ({
+  mockIsAuthError: vi.fn((_error: unknown) => false),
+  mockAddToFavourites: vi.fn().mockResolvedValue({ success: true }),
+  mockRemoveFromFavourites: vi.fn().mockResolvedValue({ success: true }),
 }))
+vi.mock('@/utils/auth', () => ({ isAuthError: mockIsAuthError }))
 vi.mock('@/utils/source', () => ({
   normalizeSourceKey: (s: string) => s,
-  sourceSupportsFavourites: () => false,
+  sourceSupportsFavourites: vi.fn((source: string) => ['hcomic', 'moeimg', 'jm', 'bika', 'nh'].includes(source)),
   // 默认 true：hcomic/moeimg/jm/bika 真实均支持推荐，让既有 hcomic 用例保留推荐入口行为。
   // 新增 NH 门控用例通过 vi.mocked(...).mockReturnValue(false) 覆盖为不支持来源。
   sourceSupportsTagRecommendation: vi.fn(() => true),
@@ -48,8 +51,8 @@ vi.mock('@/stores/useSettingsStore', () => ({
 const mockCheckFavourite = vi.fn().mockResolvedValue({ isFavourited: false })
 const mockGetComicDetail = vi.fn().mockResolvedValue({ comic: null })
 vi.mock('@/hooks/useIpc', () => ({
-  useAddToFavourites: () => ({ addToFavourites: () => Promise.resolve() }),
-  useRemoveFromFavourites: () => ({ removeFromFavourites: () => Promise.resolve() }),
+  useAddToFavourites: () => ({ addToFavourites: mockAddToFavourites }),
+  useRemoveFromFavourites: () => ({ removeFromFavourites: mockRemoveFromFavourites }),
   useCheckFavourite: () => ({ checkFavourite: mockCheckFavourite }),
   useComicDetail: () => ({ getComicDetail: mockGetComicDetail }),
 }))
@@ -96,6 +99,17 @@ beforeEach(() => {
   mockAddMyTag.mockClear()
   mockAddMyTag.mockReturnValue(true)
   mockRemoveMyTag.mockClear()
+  mockCheckFavourite.mockReset()
+  mockCheckFavourite.mockResolvedValue({ isFavourited: false })
+  mockAddToFavourites.mockReset()
+  mockAddToFavourites.mockResolvedValue({ success: true })
+  mockRemoveFromFavourites.mockReset()
+  mockRemoveFromFavourites.mockResolvedValue({ success: true })
+  mockIsAuthError.mockReset()
+  mockIsAuthError.mockReturnValue(false)
+  vi.mocked(sourceSupportsFavourites).mockImplementation(
+    (source: string) => ['hcomic', 'moeimg', 'jm', 'bika', 'nh'].includes(source),
+  )
   // 重置来源能力 mock 为默认（支持推荐），防止上一用例 mockReturnValue(false) 泄漏
   vi.mocked(sourceSupportsTagRecommendation).mockReturnValue(true)
   vi.mocked(sourceNeedsDetailEnrich).mockReturnValue(false)
@@ -246,6 +260,83 @@ describe('ComicInfoDrawer - 元数据信息渲染', () => {
     expect(screen.queryByText(/更新/)).not.toBeInTheDocument()
     // category 文案不渲染
     expect(screen.queryByText('artist cg')).not.toBeInTheDocument()
+  })
+})
+
+describe('ComicInfoDrawer - 收藏状态提交', () => {
+  const nhComic: ComicInfo = {
+    ...comicWithTags,
+    id: 'nh-12345',
+    source: 'NH',
+    sourceSite: 'nh',
+  }
+
+  async function renderNhDrawer(initiallyFavourited = false) {
+    mockCheckFavourite.mockResolvedValueOnce({ isFavourited: initiallyFavourited })
+    openDrawerWith(nhComic)
+    render(<ComicInfoDrawer />)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: initiallyFavourited ? '已加入收藏' : '加入收藏' })).toBeEnabled()
+    })
+  }
+
+  it('NH 加入收藏真实成功后才提交已收藏状态', async () => {
+    const user = userEvent.setup()
+    await renderNhDrawer()
+
+    await user.click(screen.getByRole('button', { name: '加入收藏' }))
+
+    expect(mockAddToFavourites).toHaveBeenCalledWith('nh-12345', 'nh')
+    expect(await screen.findByRole('button', { name: '已加入收藏' })).toBeEnabled()
+    expect(screen.getByText('已加入收藏夹')).toBeInTheDocument()
+  })
+
+  it('NH 加入收藏返回 false 时保留未收藏状态并提示失败', async () => {
+    mockAddToFavourites.mockResolvedValueOnce({ success: false })
+    const user = userEvent.setup()
+    await renderNhDrawer()
+
+    await user.click(screen.getByRole('button', { name: '加入收藏' }))
+
+    expect(await screen.findByRole('button', { name: '加入收藏' })).toBeEnabled()
+    expect(screen.getByText('加入收藏夹失败')).toBeInTheDocument()
+  })
+
+  it('NH 移除收藏返回 false 时恢复已收藏状态并提示失败', async () => {
+    mockRemoveFromFavourites.mockResolvedValueOnce({ success: false })
+    const user = userEvent.setup()
+    await renderNhDrawer(true)
+
+    await user.click(screen.getByRole('button', { name: '已加入收藏' }))
+
+    expect(mockRemoveFromFavourites).toHaveBeenCalledWith('nh-12345', 'nh')
+    expect(await screen.findByRole('button', { name: '已加入收藏' })).toBeEnabled()
+    expect(screen.getByText('移除收藏失败')).toBeInTheDocument()
+  })
+
+  it('NH 收藏认证失效时恢复原状态并提示登录', async () => {
+    const authError = new Error('NH 认证已失效')
+    mockAddToFavourites.mockRejectedValueOnce(authError)
+    mockIsAuthError.mockImplementationOnce(error => error === authError)
+    const user = userEvent.setup()
+    await renderNhDrawer()
+
+    await user.click(screen.getByRole('button', { name: '加入收藏' }))
+
+    expect(await screen.findByRole('button', { name: '加入收藏' })).toBeEnabled()
+    expect(screen.getByText('请先登录后再操作')).toBeInTheDocument()
+  })
+
+  it.each(['hcomic', 'moeimg', 'jm', 'bika'])('%s 收藏成功行为保持不变', async (source) => {
+    const user = userEvent.setup()
+    openDrawerWith({ ...comicWithTags, id: `${source}-1`, source, sourceSite: source })
+    render(<ComicInfoDrawer />)
+    await waitFor(() => expect(screen.getByRole('button', { name: '加入收藏' })).toBeEnabled())
+
+    await user.click(screen.getByRole('button', { name: '加入收藏' }))
+
+    expect(mockAddToFavourites).toHaveBeenCalledWith(`${source}-1`, source)
+    expect(await screen.findByRole('button', { name: '已加入收藏' })).toBeEnabled()
   })
 })
 

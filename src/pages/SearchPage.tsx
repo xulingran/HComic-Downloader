@@ -209,8 +209,23 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     getConfig().then(result => {
       if (cancelled) return
       mountedSource = result.config.defaultSource || source
+      sourceRef.current = mountedSource
       if (result.config.defaultSource) {
         setSource(result.config.defaultSource)
+      }
+      if (mountedSource === 'nh') {
+        setQuery('')
+        queryRef.current = ''
+        setMode('keyword')
+        modeRef.current = 'keyword'
+        setSearchTags('')
+        searchTagsRef.current = ''
+        setViewingCategory(false)
+        setViewingNhEntry(false)
+        setNeedsLogin(false)
+        clearSearchResult()
+        setError(null)
+        return undefined
       }
       if (requiresAuth(mountedSource)) {
         return verifySourceAuth(mountedSource).then(isValid => {
@@ -586,6 +601,17 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setNeedsLogin(false)
     setViewingCategory(false)
     setViewingNhEntry(false)
+    if (newSource === 'nh') {
+      setQuery('')
+      queryRef.current = ''
+      setMode('keyword')
+      modeRef.current = 'keyword'
+      clearSearchResult()
+      setError(null)
+      setLoading(false)
+      setOverlayIntensity(null)
+      return
+    }
     if (newSource === 'jm') {
       setMode('keyword')
       modeRef.current = 'keyword'
@@ -596,9 +622,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     } else if (newSource === 'bika' && mode === 'ranking') {
       setQuery('H24')
       queryRef.current = 'H24'
-    } else if (newSource === 'nh' && mode === 'ranking') {
-      setQuery('popular-today')
-      queryRef.current = 'popular-today'
     } else {
       setQuery('')
       queryRef.current = ''
@@ -621,8 +644,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         withLoading(() => random(newSource))
       }
     } else if (newSource === 'bika') {
-      clearSearchResult()
-    } else if (newSource === 'nh') {
       clearSearchResult()
     } else {
       withLoading(() => search('', mode, 1, newSource))
