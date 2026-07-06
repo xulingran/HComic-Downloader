@@ -21,9 +21,12 @@ export function useCardInteraction({
   onOpenReader,
 }: UseCardInteractionParams) {
   const handleCardClick = useCallback(() => {
-    if (batchMode) onToggleSelect?.(comic)
-    else onClick?.(comic)
-  }, [batchMode, comic, onToggleSelect, onClick])
+    if (batchMode) { onToggleSelect?.(comic); return }
+    // 非批量模式：onClick 是 body 区的主路由（保留优先语义），
+    // 未传入时回退到打开详情抽屉，消除卡片 body 的点击死区。
+    if (onClick) { onClick(comic); return }
+    onOpenDrawer()
+  }, [batchMode, comic, onToggleSelect, onClick, onOpenDrawer])
 
   const handleReaderClick = useCallback(() => {
     if (batchMode) { onToggleSelect?.(comic); return }

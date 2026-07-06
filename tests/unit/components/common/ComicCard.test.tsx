@@ -3,6 +3,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ComicCard } from '@/components/common/ComicCard'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useDrawerStore } from '@/stores/useDrawerStore'
 import type { ComicInfo } from '@shared/types'
 import type { DownloadProgressData } from '@/hooks/useIpc'
 
@@ -105,6 +106,68 @@ describe('ComicCard', () => {
     await userEvent.click(downloadButton)
     expect(onDownload).toHaveBeenCalledWith(mockComic)
     expect(onClick).not.toHaveBeenCalled()
+  })
+
+  describe('body 点击回退到详情抽屉 (card-body-opens-drawer)', () => {
+    // 默认 mock 的 openDrawer 是模块级共享 vi.fn()，无法区分调用来源；
+    // 用例内为每个用例注入独立 spy，并在 afterEach 恢复默认实现，避免串扰。
+    afterEach(() => {
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer: vi.fn() })
+    })
+
+    it('CoverCard: 非批量模式、仅传 onOpenReader（未传 onClick）时，点击 body 区必须打开抽屉', async () => {
+      const openDrawer = vi.fn()
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
+      const { container } = render(
+        <ComicCard comic={mockComic} onOpenReader={vi.fn()} />
+      )
+      // 点卡片容器（body 区）—— 封面/标题各自的 stopPropagation 会让点击落在容器
+      const card = container.querySelector('div[class*="rounded-xl"]')!
+      await userEvent.click(card)
+      expect(openDrawer).toHaveBeenCalledTimes(1)
+    })
+
+    it('CoverCard: 非批量模式、同时传 onClick 与 onOpenReader 时，点击 body 区走 onClick 且不打开抽屉', async () => {
+      const openDrawer = vi.fn()
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
+      const onClick = vi.fn()
+      const { container } = render(
+        <ComicCard comic={mockComic} onClick={onClick} onOpenReader={vi.fn()} />
+      )
+      const card = container.querySelector('div[class*="rounded-xl"]')!
+      await userEvent.click(card)
+      expect(onClick).toHaveBeenCalledWith(mockComic)
+      expect(openDrawer).not.toHaveBeenCalled()
+    })
+
+    it('CoverCard: 批量模式下点击 body 区切换选择且不打开抽屉', async () => {
+      const openDrawer = vi.fn()
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
+      const onToggleSelect = vi.fn()
+      const { container } = render(
+        <ComicCard comic={mockComic} batchMode={true} onToggleSelect={onToggleSelect} />
+      )
+      const card = container.querySelector('div[class*="rounded-xl"]')!
+      await userEvent.click(card)
+      expect(onToggleSelect).toHaveBeenCalledWith(mockComic)
+      expect(openDrawer).not.toHaveBeenCalled()
+    })
+
+    it('DetailedCard: 非批量模式、仅传 onOpenReader 时，点击行 body 区（作者文字）必须打开抽屉', async () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
+      const openDrawer = vi.fn()
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
+      const comic: ComicInfo = { ...mockComic, author: '作者A', pages: 128 }
+      render(
+        <ComicCard comic={comic} onOpenReader={vi.fn()} />
+      )
+      // 点击作者文字（无独立 handler，会冒泡到行容器 body 区）
+      const authorEl = screen.getByText('作者A')
+      await userEvent.click(authorEl)
+      expect(openDrawer).toHaveBeenCalledTimes(1)
+      // 恢复默认 cardStyle，避免污染后续用例
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
   })
 
   describe('DetailedCard (detailed mode)', () => {
