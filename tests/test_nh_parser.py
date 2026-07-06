@@ -248,7 +248,11 @@ class TestExtractLanguage:
 
 
 class TestAuthInterface:
-    """测试认证相关接口。"""
+    """测试认证相关接口。
+
+    NH 收敛为仅 API Key（remove-nh-password-login spec）：Cookie、User-Agent、
+    User Token、Bearer Token 与旧 ``Token`` 值不再是受支持的 NH 认证凭据。
+    """
 
     def test_configure_auth_api_key_sets_authorization_header(self):
         parser = NhParser()
@@ -256,47 +260,66 @@ class TestAuthInterface:
         assert parser.session.headers.get("Authorization") == "Key nh-api-key-xxx"
         assert "Cookie" not in parser.session.headers
 
-    def test_configure_auth_user_token_sets_user_authorization_header(self):
+    def test_configure_auth_key_prefix_is_normalized(self):
+        parser = NhParser()
+        parser.configure_auth(bearer_token="Key nh-api-key-xxx")
+        assert parser.session.headers.get("Authorization") == "Key nh-api-key-xxx"
+
+    def test_configure_auth_user_token_is_rejected(self):
+        """``User <token>`` 不再受支持，configure_auth 必须清空 Authorization。"""
         parser = NhParser()
         parser.configure_auth(bearer_token="User user-token-abc")
-        assert parser.session.headers.get("Authorization") == "User user-token-abc"
+        assert "Authorization" not in parser.session.headers
 
-    def test_configure_auth_legacy_token_prefix_is_normalized(self):
+    def test_configure_auth_legacy_token_prefix_is_rejected(self):
+        """旧 ``Token <token>`` 不再受支持。"""
         parser = NhParser()
         parser.configure_auth(bearer_token="Token user-token-abc")
-        assert parser.session.headers.get("Authorization") == "User user-token-abc"
+        assert "Authorization" not in parser.session.headers
 
-    def test_configure_auth_cookie_sets_cookie_and_user_agent(self):
+    def test_configure_auth_bearer_prefix_is_rejected(self):
+        """``Bearer <token>`` 不再受支持。"""
+        parser = NhParser()
+        parser.configure_auth(bearer_token="Bearer legacy")
+        assert "Authorization" not in parser.session.headers
+
+    def test_configure_auth_cookie_user_agent_are_ignored(self):
+        """Cookie/User-Agent 不再作为 NH 认证方式。"""
         parser = NhParser()
         parser.configure_auth(
             cookie="sessionid=abc; csrftoken=def",
             user_agent="Mozilla/5.0",
             bearer_token="",
         )
-        assert parser.session.headers.get("Cookie") == "sessionid=abc; csrftoken=def"
-        assert parser.session.headers.get("User-Agent") == "Mozilla/5.0"
         assert "Authorization" not in parser.session.headers
+        assert parser.session.headers.get("Cookie") is None
 
-    def test_configure_auth_overwrites_previous_auth(self):
+    def test_configure_auth_overwrites_previous_api_key(self):
         parser = NhParser()
         parser.configure_auth(bearer_token="key1")
         assert parser.session.headers.get("Authorization") == "Key key1"
-        parser.configure_auth(cookie="session=abc", user_agent="UA")
-        assert parser.session.headers.get("Cookie") == "session=abc"
-        assert parser.session.headers.get("User-Agent") == "UA"
+        parser.configure_auth(bearer_token="key2")
+        assert parser.session.headers.get("Authorization") == "Key key2"
+
+    def test_configure_auth_clears_when_setting_user_token(self):
+        """从有效 API Key 切换到 User Token 必须清空 Authorization。"""
+        parser = NhParser()
+        parser.configure_auth(bearer_token="key1")
+        assert parser.session.headers.get("Authorization") == "Key key1"
+        parser.configure_auth(bearer_token="User legacy")
         assert "Authorization" not in parser.session.headers
 
     def test_verify_login_status_without_credentials(self):
         parser = NhParser()
         result, message = parser.verify_login_status()
         assert result is False
-        assert "未配置登录凭证" in message
+        assert "未配置 API Key" in message
 
     def test_verify_login_status_user_agent_alone_is_not_auth(self):
         parser = NhParser(user_agent="Mozilla/5.0")
         result, message = parser.verify_login_status()
         assert result is False
-        assert "未配置登录凭证" in message
+        assert "未配置 API Key" in message
 
     def test_verify_login_status_success(self, monkeypatch):
         parser = NhParser()
@@ -323,55 +346,15 @@ class TestAuthInterface:
         monkeypatch.setattr(parser, "_request_json", fake_request_json)
         result, message = parser.verify_login_status()
         assert result is False
-        assert "登录已失效" in message
+        assert "重新配置 API Key" in message
 
-    def test_login_success_applies_token(self, monkeypatch):
-        parser = NhParser()
-        seen = {}
+    def test_parser_does_not_expose_login_method(self):
+        """NH 账号密码登录已移除（remove-nh-password-login spec）。"""
+        assert not hasattr(NhParser, "login")
 
-        def fake_post(url: str, **kwargs):
-            seen["url"] = url
-            seen["json"] = kwargs["json"]
-            return _make_json_response(
-                {"access_token": "user-token-abc", "refresh_token": "refresh", "user": {"id": 1}}
-            )
-
-        monkeypatch.setattr(parser.session, "post", fake_post)
-        token = parser.login("user", "pass")
-        assert seen["url"].endswith("/api/v2/auth/login")
-        assert seen["json"] == {
-            "username": "user",
-            "password": "pass",
-            "pow_challenge": "",
-            "pow_nonce": "",
-            "captcha_response": "",
-        }
-        assert token == "User user-token-abc"
-        assert parser.session.headers.get("Authorization") == "User user-token-abc"
-
-    def test_login_failure_401(self, monkeypatch):
-        parser = NhParser()
-
-        class FakeResponse:
-            status_code = 401
-            content = b""
-
-        monkeypatch.setattr(parser.session, "post", lambda *args, **kwargs: FakeResponse())
-        with pytest.raises(ParserResponseError, match="用户名或密码错误"):
-            parser.login("user", "wrong")
-
-    def test_login_failure_no_token(self, monkeypatch):
-        parser = NhParser()
-
-        class FakeResponse:
-            status_code = 200
-
-            def json(self):
-                return {"unexpected": "value"}
-
-        monkeypatch.setattr(parser.session, "post", lambda *args, **kwargs: FakeResponse())
-        with pytest.raises(ParserResponseError, match="未找到 token"):
-            parser.login("user", "pass")
+    def test_parser_does_not_expose_set_stored_credentials(self):
+        """NH 不再保存账号密码用于懒登录。"""
+        assert not hasattr(NhParser, "set_stored_credentials")
 
 
 class TestFavouritesInterface:
@@ -386,7 +369,7 @@ class TestFavouritesInterface:
 
     def test_favourites_raise_errors(self):
         parser = NhParser()
-        with pytest.raises(ParserResponseError, match="未登录"):
+        with pytest.raises(ParserResponseError, match="未配置 API Key"):
             parser.favourites(raise_errors=True)
 
     def test_favourites_success(self, monkeypatch):

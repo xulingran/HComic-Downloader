@@ -88,6 +88,9 @@ Object.defineProperty(window, 'hcomic', {
   value: {
     openLoginWindow: vi.fn().mockResolvedValue({ success: true, message: '登录成功' }),
     openUrl: vi.fn(),
+    nhApplyApiKey: vi.fn().mockResolvedValue({ success: true }),
+    clearAuth: vi.fn().mockResolvedValue({ success: true }),
+    verifyAuth: vi.fn().mockResolvedValue({ valid: true, message: 'ok' }),
   },
   writable: true,
 })
@@ -374,8 +377,6 @@ describe('SettingsPage', () => {
         moeimgPassword: 'moeimg_pass',
         bikaUsername: 'bika_user',
         bikaPassword: 'bika_pass',
-        nhUsername: 'nh_user',
-        nhPassword: 'nh_pass',
       }
     })
 
@@ -394,9 +395,6 @@ describe('SettingsPage', () => {
     const moeimgPassInput = await screen.findByPlaceholderText('moeimg 密码') as HTMLInputElement
     const bikaUserInput = await screen.findByPlaceholderText('哔咔用户名') as HTMLInputElement
     const bikaPassInput = await screen.findByPlaceholderText('哔咔密码') as HTMLInputElement
-    const nhUserInput = await screen.findByPlaceholderText('nhentai 用户名') as HTMLInputElement
-    const nhPassInput = await screen.findByPlaceholderText('nhentai 密码') as HTMLInputElement
-    const nhApiKeyInput = await screen.findByPlaceholderText('从 nhentai 账户设置页生成 API Key') as HTMLInputElement
 
     expect(hcomicUserInput.value).toBe('hcomic_user')
     expect(hcomicPassInput.value).toBe('hcomic_pass')
@@ -407,10 +405,38 @@ describe('SettingsPage', () => {
     expect(bikaUserInput.value).toBe('bika_user')
     expect(bikaPassInput.value).toBe('bika_pass')
     expect(bikaPassInput).toHaveAttribute('type', 'password')
-    expect(nhUserInput.value).toBe('nh_user')
-    expect(nhPassInput.value).toBe('nh_pass')
-    expect(nhPassInput).toHaveAttribute('type', 'password')
+  })
+
+  it('NH does not render username/password inputs and never prefills API Key (remove-nh-password-login)', async () => {
+    render(<SettingsPage />)
+
+    await userEvent.click(await screen.findByRole('button', { name: '展开 NH 登录设置' }))
+
+    // NH 仅保留 API Key 输入框；账号密码相关元素必须完全不存在
+    expect(screen.queryByPlaceholderText('nhentai 用户名')).toBeNull()
+    expect(screen.queryByPlaceholderText('nhentai 密码')).toBeNull()
+    // 已保存的 API Key 不回填（安全契约）
+    const nhApiKeyInput = await screen.findByPlaceholderText('从 nhentai 账户设置页生成 API Key') as HTMLInputElement
     expect(nhApiKeyInput.value).toBe('')
+    // 应用 API Key 按钮存在且初始禁用（空输入）
+    expect(screen.getByRole('button', { name: '应用 API Key' })).toBeDisabled()
+  })
+
+  it('NH applies API Key via nhApplyApiKey and runs verify on success', async () => {
+    const nhApplyApiKeySpy = window.hcomic!.nhApplyApiKey as ReturnType<typeof vi.fn>
+    nhApplyApiKeySpy.mockClear()
+    nhApplyApiKeySpy.mockResolvedValue({ success: true })
+
+    render(<SettingsPage />)
+    await userEvent.click(await screen.findByRole('button', { name: '展开 NH 登录设置' }))
+
+    const nhApiKeyInput = await screen.findByPlaceholderText('从 nhentai 账户设置页生成 API Key') as HTMLInputElement
+    await userEvent.type(nhApiKeyInput, 'nh-api-key-xxx')
+    await userEvent.click(screen.getByRole('button', { name: '应用 API Key' }))
+
+    await waitFor(() => {
+      expect(nhApplyApiKeySpy).toHaveBeenCalledWith('nh-api-key-xxx')
+    })
   })
 
   it('renders apply and test auth buttons', async () => {

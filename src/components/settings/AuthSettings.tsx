@@ -20,15 +20,13 @@ interface AuthSettingsProps {
   copymangaLoginMessage: string
   nhLoginStatus: 'idle' | 'verifying' | 'valid' | 'invalid' | 'error'
   nhLoginMessage: string
-  nhSavedUsername: string
-  nhSavedPassword: string
   onApplyAuth: (curlText: string, source?: string) => Promise<void>
   onTestAuth: (source?: string) => Promise<void>
   onOpenLoginWindow: (source?: string) => Promise<void>
   onHcomicLogin: (username: string, password: string) => Promise<void>
   onMoeimgLogin: (username: string, password: string) => Promise<void>
   onBikaLogin: (username: string, password: string) => Promise<void>
-  onNhLogin: (username: string, password: string) => Promise<void>
+  onNhApplyApiKey: (apiKey: string) => Promise<void>
   onClearAuth: (source: string) => Promise<void>
 }
 
@@ -54,15 +52,13 @@ export function AuthSettings({
   copymangaLoginMessage,
   nhLoginStatus,
   nhLoginMessage,
-  nhSavedUsername,
-  nhSavedPassword,
   onApplyAuth,
   onTestAuth,
   onOpenLoginWindow,
   onHcomicLogin,
   onMoeimgLogin,
   onBikaLogin,
-  onNhLogin,
+  onNhApplyApiKey,
   onClearAuth,
 }: AuthSettingsProps) {
   const [curlText, setCurlText] = useState('')
@@ -77,10 +73,9 @@ export function AuthSettings({
   const [bikaUsername, setBikaUsername] = useState(bikaSavedUsername || '')
   const [bikaPassword, setBikaPassword] = useState(bikaSavedPassword || '')
   const [showBikaPassword, setShowBikaPassword] = useState(false)
-  const [nhUsername, setNhUsername] = useState(nhSavedUsername || '')
-  const [nhPassword, setNhPassword] = useState(nhSavedPassword || '')
+  // NH 仅保留 API Key 输入（remove-nh-password-login spec）：禁止回填完整 Key，
+  // 已保存状态由父组件通过 nhLoginStatus/nhLoginMessage 反映。
   const [nhApiKey, setNhApiKey] = useState('')
-  const [showNhPassword, setShowNhPassword] = useState(false)
 
   // 配置异步加载：挂载后 savedUsername/savedPassword 才到达，同步到本地 state。
   // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -95,10 +90,6 @@ export function AuthSettings({
   useEffect(() => { setBikaUsername(bikaSavedUsername || '') }, [bikaSavedUsername])
   // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { setBikaPassword(bikaSavedPassword || '') }, [bikaSavedPassword])
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setNhUsername(nhSavedUsername || '') }, [nhSavedUsername])
-  // eslint-disable-next-line react-hooks/set-state-in-effect
-  useEffect(() => { setNhPassword(nhSavedPassword || '') }, [nhSavedPassword])
 
   return (
     <div ref={loginSectionRef} className="bg-[var(--bg-primary)] rounded-xl p-6 shadow-sm space-y-6">
@@ -472,69 +463,7 @@ export function AuthSettings({
       >
         <div className="flex gap-3 items-end">
           <div className="flex-1">
-            <label className="block text-xs text-[var(--text-secondary)] mb-1">用户名</label>
-            <input
-              type="text"
-              value={nhUsername}
-              onChange={(e) => setNhUsername(e.target.value)}
-              placeholder="nhentai 用户名"
-              className="w-full px-3 py-2 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
-            />
-          </div>
-          <div className="flex-1">
-            <label className="block text-xs text-[var(--text-secondary)] mb-1">密码</label>
-            <div className="relative">
-              <input
-                type={showNhPassword ? 'text' : 'password'}
-                value={nhPassword}
-                onChange={(e) => setNhPassword(e.target.value)}
-                placeholder="nhentai 密码"
-                className="w-full px-3 py-2 pr-10 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm focus:outline-none focus:border-[var(--accent)]"
-              />
-              <button
-                type="button"
-                onMouseDown={() => setShowNhPassword(true)}
-                onMouseUp={() => setShowNhPassword(false)}
-                onMouseLeave={() => setShowNhPassword(false)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-[var(--text-secondary)] hover:text-[var(--text-primary)] p-1"
-                aria-label={showNhPassword ? '隐藏密码' : '显示密码'}
-              >
-                {showNhPassword ? (
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24" />
-                    <line x1="1" y1="1" x2="23" y2="23" />
-                  </svg>
-                ) : (
-                  <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                    <circle cx="12" cy="12" r="3" />
-                  </svg>
-                )}
-              </button>
-            </div>
-          </div>
-          <button
-            onClick={async () => {
-              await onNhLogin(nhUsername, nhPassword)
-            }}
-            disabled={!nhUsername.trim() || !nhPassword.trim() || nhLoginStatus === 'verifying'}
-            className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
-                       bg-[var(--accent)] text-white hover:opacity-90
-                       disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {nhLoginStatus === 'verifying' ? '登录中...' : '登录'}
-          </button>
-        </div>
-
-        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)] py-2">
-          <div className="flex-1 h-px bg-[var(--border)]" />
-          <span>或</span>
-          <div className="flex-1 h-px bg-[var(--border)]" />
-        </div>
-
-        <div className="flex gap-3 items-end">
-          <div className="flex-1">
-            <label className="block text-xs text-[var(--text-secondary)] mb-1">API Key（推荐）</label>
+            <label className="block text-xs text-[var(--text-secondary)] mb-1">API Key</label>
             <input
               type="text"
               value={nhApiKey}
@@ -544,20 +473,20 @@ export function AuthSettings({
             />
           </div>
           <button
-            onClick={() => {
-              const curl = `curl 'https://nhentai.net/api/v2/user' -H 'Authorization: Key ${nhApiKey.trim()}'`
-              onApplyAuth(curl, 'nh')
+            onClick={async () => {
+              await onNhApplyApiKey(nhApiKey.trim())
             }}
             disabled={!nhApiKey.trim() || nhLoginStatus === 'verifying'}
             className="px-4 py-2 rounded-lg text-sm font-medium transition-colors
                        bg-[var(--accent)] text-white hover:opacity-90
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            应用 API Key
+            {nhLoginStatus === 'verifying' ? '应用中...' : '应用 API Key'}
           </button>
         </div>
         <p className="text-xs text-[var(--text-secondary)] mt-2">
-          推荐在<a
+          NH 仅支持 API Key 认证（账号密码登录已移除）。请在
+          <a
             href="https://nhentai.net/user/settings#apikeys"
             onClick={(e) => {
               e.preventDefault()
@@ -565,7 +494,7 @@ export function AuthSettings({
             }}
             className="text-[var(--accent)] hover:underline"
           >nhentai 账户设置</a>
-          生成 API Key 后粘贴到此处。也可使用账号密码登录（可能受 Cloudflare 影响）。
+          生成 API Key 后粘贴到此处。出于安全考虑，已保存的 Key 不会回填到输入框。
         </p>
 
         <div className="flex gap-3">
@@ -576,13 +505,11 @@ export function AuthSettings({
                        bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:bg-[var(--border)]
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {nhLoginStatus === 'verifying' ? '测试中...' : '测试登录'}
+            {nhLoginStatus === 'verifying' ? '测试中...' : '测试认证'}
           </button>
           <button
             onClick={async () => {
               await onClearAuth('nh')
-              setNhUsername('')
-              setNhPassword('')
               setNhApiKey('')
             }}
             disabled={nhLoginStatus === 'verifying'}
@@ -590,7 +517,7 @@ export function AuthSettings({
                        bg-[var(--bg-secondary)] text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            登出
+            清除认证
           </button>
         </div>
       </AuthSourceCard>

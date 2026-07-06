@@ -30,6 +30,19 @@ function validateCredentialPair(username: unknown, password: unknown): void {
 }
 
 /**
+ * NH API Key 校验（remove-nh-password-login spec）：类型 + 去空白后非空 + 长度上限 +
+ * 禁止控制字符。后端 Python handler 会做更细粒度的前缀拒绝（User/Token/Bearer）。
+ */
+function validateNhApiKey(apiKey: unknown): asserts apiKey is string {
+  if (typeof apiKey !== 'string') throw new Error('Invalid NH API Key')
+  // 控制字符（C0 + DEL）正则：与后端 _NH_API_KEY_CONTROL_CHARS 对称
+  // eslint-disable-next-line no-control-regex
+  if (/[\u0000-\u001F\u007F]/.test(apiKey)) throw new Error('NH API Key must not contain control characters')
+  if (apiKey.trim().length === 0) throw new Error('Invalid NH API Key')
+  if (apiKey.length > 1024) throw new Error('Invalid NH API Key')
+}
+
+/**
  * comicId + 可选 source 校验：addToFavourites/checkFavourite/removeFromFavourites 共用。
  * 注意 preload 端不校验 source 是否在 COMIC_SOURCES 内（主进程权威校验），
  * 仅做类型与长度早期拒绝。
@@ -215,9 +228,9 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.HCOMIC_LOGIN, username, password)
   },
 
-  nhLogin: (username: unknown, password: unknown) => {
-    validateCredentialPair(username, password)
-    return ipcRenderer.invoke(IPC_CHANNELS.NH_LOGIN, username, password)
+  nhApplyApiKey: (apiKey: unknown) => {
+    validateNhApiKey(apiKey)
+    return ipcRenderer.invoke(IPC_CHANNELS.NH_APPLY_API_KEY, apiKey)
   },
 
   clearAuth: (source: unknown) => {

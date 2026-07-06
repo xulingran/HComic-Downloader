@@ -140,11 +140,7 @@ def test_get_config_returns_reloaded_nh_credentials_without_exposing_api_key(tmp
     persisted = Config()
     persisted.set_source_auth(
         "nh",
-        AuthSourceData(
-            bearer_token="nh-api-key",
-            username="nh-user",
-            password="nh-password",
-        ),
+        AuthSourceData(bearer_token="nh-api-key"),
     )
     persisted.save(config_path)
 
@@ -154,11 +150,30 @@ def test_get_config_returns_reloaded_nh_credentials_without_exposing_api_key(tmp
 
     returned = server.handle_get_config()["config"]
 
+    # NH 收敛为仅 API Key（remove-nh-password-login spec）：hasNhAuth 仅由 API Key
+    # 决定，禁止回显完整 Key 或 username/password 字段。
     assert returned["hasNhAuth"] is True
-    assert returned["nhUsername"] == "nh-user"
-    assert returned["nhPassword"] == "nh-password"
+    assert "nhUsername" not in returned
+    assert "nhPassword" not in returned
     assert "nhApiKey" not in returned
     assert "nh-api-key" not in returned.values()
+
+
+def test_get_config_nh_legacy_credentials_reported_unauthenticated(tmp_path):
+    """仅存在旧 NH 凭据（cookie/user_agent）时 hasNhAuth 必须为 false。"""
+    config_path = str(tmp_path / "config.json")
+    persisted = Config()
+    # 直接写入旧 cookie/user_agent（不带 API Key）—— 模拟仅有旧凭据的配置。
+    persisted.source_auth["nh"] = {"cookie": "sessionid=legacy", "user_agent": "UA/legacy", "bearer_token": ""}
+    persisted.save(config_path)
+
+    server = _create_test_server()
+    server.config = Config.load(config_path)
+    server.parser.get_runtime_auth.return_value = ("", "")
+
+    returned = server.handle_get_config()["config"]
+
+    assert returned["hasNhAuth"] is False
 
 
 # ── 场景：search 返回结构匹配前端 SearchResult 类型 ──────────────────────

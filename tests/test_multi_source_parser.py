@@ -41,18 +41,16 @@ def test_default_source_and_auth_mapping():
 
 
 def test_nh_auth_restored_from_reloaded_config(tmp_path):
-    """NH API Key 与账号密码必须跨磁盘重载进入真实懒创建 parser。"""
+    """NH API Key 必须跨磁盘重载进入真实懒创建 parser（remove-nh-password-login spec）。
+
+    归一化只保留 API Key；cookie/user_agent/username/password 不会被恢复。
+    """
     config_path = str(tmp_path / "config.json")
     config = Config(default_source="nh")
+    # set_source_auth 对 NH 只保留 API Key，其余字段被丢弃。
     config.set_source_auth(
         "nh",
-        AuthSourceData(
-            cookie="sessionid=nh-session",
-            user_agent="NH-UA/1.0",
-            bearer_token="nh-api-key",
-            username="nh-user",
-            password="nh-password",
-        ),
+        AuthSourceData(bearer_token="nh-api-key"),
     )
     config.save(config_path)
     reloaded = Config.load(config_path)
@@ -65,10 +63,11 @@ def test_nh_auth_restored_from_reloaded_config(tmp_path):
     nh = parser.parsers["nh"]
 
     assert nh.session.headers["Authorization"] == "Key nh-api-key"
-    assert nh.session.headers["Cookie"] == "sessionid=nh-session"
-    assert nh.session.headers["User-Agent"] == "NH-UA/1.0"
-    assert nh._username == "nh-user"
-    assert nh._password == "nh-password"
+    # cookie/user_agent 不再作为 NH 认证凭据
+    assert "Cookie" not in nh.session.headers
+    # NhParser 不再持有 _username/_password（账号密码登录已移除）
+    assert not hasattr(nh, "_username")
+    assert not hasattr(nh, "_password")
 
 
 def test_set_source_and_search_delegation(monkeypatch):

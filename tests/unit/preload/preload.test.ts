@@ -322,6 +322,39 @@ describe('preload.ts', () => {
     }
   })
 
+  // 回归：nhApplyApiKey 必须做与后端对称的 API Key 输入校验
+  // （remove-nh-password-login spec）。
+  describe('nhApplyApiKey (validateNhApiKey)', () => {
+    it('rejects empty / whitespace-only api key', () => {
+      expect(() => exposedApi.nhApplyApiKey('')).toThrow('Invalid NH API Key')
+      expect(() => exposedApi.nhApplyApiKey('   ')).toThrow('Invalid NH API Key')
+    })
+
+    it('rejects non-string api key', () => {
+      expect(() => exposedApi.nhApplyApiKey(123)).toThrow('Invalid NH API Key')
+      expect(() => exposedApi.nhApplyApiKey(null)).toThrow('Invalid NH API Key')
+    })
+
+    it('rejects control characters', () => {
+      expect(() => exposedApi.nhApplyApiKey('bad\nkey')).toThrow('control characters')
+      expect(() => exposedApi.nhApplyApiKey('bad\x00key')).toThrow('control characters')
+    })
+
+    it('rejects api key over 1024 chars', () => {
+      expect(() => exposedApi.nhApplyApiKey('a'.repeat(1025))).toThrow('Invalid NH API Key')
+    })
+
+    it('accepts valid api key and invokes IPC', () => {
+      exposedApi.nhApplyApiKey('nh-api-key-xxx')
+      expect(mockInvoke).toHaveBeenCalledTimes(1)
+      expect(mockInvoke).toHaveBeenCalledWith('python:nh-apply-api-key', 'nh-api-key-xxx')
+    })
+
+    it('does not expose nhLogin anymore', () => {
+      expect((exposedApi as Record<string, unknown>).nhLogin).toBeUndefined()
+    })
+  })
+
   // 回归：validateComicIdAndOptionalSource helper 必须被三个收藏函数复用。
   describe('favourites helpers (validateComicIdAndOptionalSource)', () => {
     const favMethods = ['addToFavourites', 'checkFavourite', 'removeFromFavourites'] as const

@@ -40,8 +40,6 @@ interface ConfigState {
   bikaPassword?: string
   hcomicUsername?: string
   hcomicPassword?: string
-  nhUsername?: string
-  nhPassword?: string
   previewPreloadForward: number
   previewPreloadBackward: number
   previewPreloadConcurrency: number
@@ -88,8 +86,6 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     bikaPassword: '',
     hcomicUsername: '',
     hcomicPassword: '',
-    nhUsername: '',
-    nhPassword: '',
     previewPreloadForward: 8,
     previewPreloadBackward: 2,
     previewPreloadConcurrency: 3,
@@ -165,8 +161,6 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           bikaPassword: result.config.bikaPassword ?? '',
           hcomicUsername: result.config.hcomicUsername ?? '',
           hcomicPassword: result.config.hcomicPassword ?? '',
-          nhUsername: result.config.nhUsername ?? '',
-          nhPassword: result.config.nhPassword ?? '',
           previewPreloadForward: result.config.previewPreloadForward ?? 8,
           previewPreloadBackward: result.config.previewPreloadBackward ?? 2,
           previewPreloadConcurrency: result.config.previewPreloadConcurrency ?? 3,
@@ -421,21 +415,21 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     }
   }
 
-  const handleNhLogin = async (username: string, password: string) => {
+  const handleNhApplyApiKey = async (apiKey: string) => {
     nhAuth.setStatus('verifying')
     nhAuth.setMessage('')
     try {
-      const result = await window.hcomic?.nhLogin(username, password)
+      const result = await window.hcomic?.nhApplyApiKey(apiKey)
       if (result?.success) {
         await nhAuth.test()
       } else {
         nhAuth.setStatus('error')
-        nhAuth.setMessage(result?.message || '登录失败')
+        nhAuth.setMessage(result?.message || '应用 API Key 失败')
       }
     } catch (err) {
       nhAuth.setStatus('error')
       nhAuth.setMessage(
-        (err instanceof Error ? err.message : String(err)) || '登录失败',
+        (err instanceof Error ? err.message : String(err)) || '应用 API Key 失败',
       )
     }
   }
@@ -444,7 +438,6 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
     try {
       await window.hcomic?.clearAuth(source)
       if (source === 'nh') {
-        setConfigState(prev => ({ ...prev, nhUsername: '', nhPassword: '' }))
         nhAuth.setStatus('idle')
         nhAuth.setMessage('')
       }
@@ -703,15 +696,13 @@ export function SettingsPage({ scrollTarget, onScrollDone }: SettingsPageProps) 
           copymangaLoginMessage={copymangaAuth.message}
           nhLoginStatus={nhAuth.status}
           nhLoginMessage={nhAuth.message}
-          nhSavedUsername={config.nhUsername || ''}
-          nhSavedPassword={config.nhPassword || ''}
           onApplyAuth={handleApplyAuth}
           onTestAuth={handleTestAuth}
           onOpenLoginWindow={handleOpenLoginWindow}
           onHcomicLogin={handleHcomicLogin}
           onMoeimgLogin={handleMoeimgLogin}
           onBikaLogin={handleBikaLogin}
-          onNhLogin={handleNhLogin}
+          onNhApplyApiKey={handleNhApplyApiKey}
           onClearAuth={handleClearAuth}
         />
       </div>

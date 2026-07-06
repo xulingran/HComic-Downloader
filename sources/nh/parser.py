@@ -11,10 +11,9 @@ from lxml import html as lxml_html
 
 from models import ComicInfo, PaginationInfo
 from sources.base import ParserContextMixin, ParserResponseError
-from utils import apply_system_proxy_to_session
+from utils import apply_system_proxy_to_session, normalize_nh_api_key
 
 from .constants import (
-    AUTH_LOGIN_URL,
     FAVORITE_URL_TEMPLATE,
     FAVORITES_URL,
     GALLERIES_URL,
@@ -33,7 +32,12 @@ logger = logging.getLogger(__name__)
 
 
 class NhParser(ParserContextMixin):
-    """NH 解析器。"""
+    """NH 解析器。
+
+    认证收敛为仅 API Key（remove-nh-password-login spec）：解析器只接受 NH API Key，
+    并始终发送 ``Authorization: Key <api_key>``。Cookie、User-Agent、User Token、
+    Bearer Token 与旧 ``Token`` 值不再是受支持的 NH 认证凭据。
+    """
 
     def __init__(
         self,
@@ -46,129 +50,51 @@ class NhParser(ParserContextMixin):
         self.session = requests.Session()
         self.session.headers.update(REQUEST_HEADERS)
         apply_system_proxy_to_session(self.session)
-        self._cookie = (cookie or "").strip()
-        self._user_agent = (user_agent or "").strip()
-        self._bearer_token = (bearer_token or "").strip()
-        self._username = ""
-        self._password = ""
-        self.configure_auth(cookie=cookie, user_agent=user_agent, bearer_token=bearer_token)
+        # 仅 API Key（无前缀 / Key 前缀）受支持；其他旧凭据一律忽略。
+        self._api_key = normalize_nh_api_key(bearer_token)
+        self._apply_authorization_header()
+        # cookie/user_agent 参数仅为保留与 MultiSourceParser 通用调用签名兼容，
+        # NH 不再使用它们作为认证方式。
+        _ = cookie, user_agent
 
-    def set_stored_credentials(self, username: str, password: str) -> None:
-        """保存账号密码，供密码登录使用。"""
-        self._username = (username or "").strip()
-        self._password = (password or "").strip()
+    def _apply_authorization_header(self) -> None:
+        """根据当前 API Key 同步 Session 的 ``Authorization`` 头。"""
+        self.session.headers.pop("Authorization", None)
+        if self._api_key:
+            self.session.headers["Authorization"] = f"Key {self._api_key}"
 
     def _is_auth_configured(self) -> bool:
-        """判断是否已配置任何形式的认证凭证。"""
-        return bool(self._cookie or self._bearer_token)
+        """判断是否已配置 API Key。"""
+        return bool(self._api_key)
 
     def configure_auth(self, cookie: str = "", user_agent: str = "", bearer_token: str = ""):
-        """配置认证信息。
+        """配置 NH 认证信息。
 
-        NH API v2 支持两种认证方式：
-        - API Key / User Token：通过 ``Authorization: Key <key>`` 或
-          ``Authorization: User <token>`` 发送。
-        - Cookie：直接设置 ``Cookie`` 头，并可覆盖 ``User-Agent``。
+        NH 仅接受 API Key（remove-nh-password-login spec）。``bearer_token`` 中
+        无前缀 / ``Key `` 前缀值被归一化为纯 API Key；``User `` / ``Token `` /
+        ``Bearer `` 等旧前缀或其他凭据一律清空。``cookie`` / ``user_agent``
+        参数仅为保留与 ``MultiSourceParser.configure_auth`` 的通用调用签名兼容，
+        对 NH 无效。
         """
-        self._cookie = (cookie or "").strip()
-        self._user_agent = (user_agent or "").strip()
-        self._bearer_token = (bearer_token or "").strip()
-
-        # 清除旧认证头，避免凭证切换时残留
-        self.session.headers.pop("Authorization", None)
-        self.session.headers.pop("Cookie", None)
-
-        if self._bearer_token:
-            # 无前缀值是 API Key；登录返回值与旧版 Token 值由 helper 规范化。
-            self.session.headers["Authorization"] = self._build_auth_header(self._bearer_token)
-        if self._cookie:
-            self.session.headers["Cookie"] = self._cookie
-        if self._user_agent:
-            self.session.headers["User-Agent"] = self._user_agent
-
-    @staticmethod
-    def _build_auth_header(token: str) -> str:
-        """根据 token 格式构建 Authorization 头。
-
-        nhentai API v2 中：
-        - API Key：``Authorization: Key <key>``
-        - 账号密码登录返回的 User Token：``Authorization: User <token>``
-        - 旧版错误保存的 ``Token <token>`` 在运行期兼容为 ``User <token>``
-        无前缀值默认使用 ``Key``（API Key 为首选认证方式）。
-        """
-        if not token:
-            return ""
-        normalized = token.strip()
-        prefix, separator, value = normalized.partition(" ")
-        if separator:
-            if prefix.lower() == "token":
-                return f"User {value.strip()}"
-            if prefix.lower() == "user":
-                return f"User {value.strip()}"
-            if prefix.lower() == "key":
-                return f"Key {value.strip()}"
-            return normalized
-        return f"Key {normalized}"
+        _ = cookie, user_agent
+        self._api_key = normalize_nh_api_key(bearer_token)
+        self._apply_authorization_header()
 
     def verify_login_status(self) -> tuple[bool, str]:
         """通过 GET /api/v2/user 校验登录态。"""
         if not self._is_auth_configured():
-            return False, "NH 未配置登录凭证"
+            return False, "NH 未配置 API Key"
         try:
             data = self._request_json(USER_URL)
         except ParserResponseError as e:
             msg = str(e).lower()
             if "401" in msg or "403" in msg:
-                return False, "登录已失效，请重新登录"
+                return False, "登录已失效，请重新配置 API Key"
             return False, f"登录校验失败: {e}"
         username = data.get("username") or data.get("name") or ""
         if username:
             return True, f"登录校验通过（{username}）"
         return True, "登录校验通过"
-
-    def login(self, username: str, password: str) -> str:
-        """调用 POST /api/v2/auth/login 获取 User Token。"""
-        if not username or not password:
-            raise ParserResponseError("请输入用户名和密码")
-        try:
-            resp = self.session.post(
-                AUTH_LOGIN_URL,
-                json={
-                    "username": username,
-                    "password": password,
-                    "pow_challenge": "",
-                    "pow_nonce": "",
-                    "captcha_response": "",
-                },
-                timeout=self.timeout,
-            )
-        except requests.Timeout as e:
-            raise ParserResponseError("登录请求超时") from e
-        except requests.ConnectionError as e:
-            raise ParserResponseError("登录连接失败") from e
-        except requests.RequestException as e:
-            raise ParserResponseError(f"登录请求失败: {e}") from e
-
-        if resp.status_code == 401:
-            raise ParserResponseError("用户名或密码错误")
-        if resp.status_code == 403:
-            raise ParserResponseError("登录被阻止，请改用 API Key 或浏览器登录")
-        if resp.status_code == 422:
-            raise ParserResponseError("登录需要 PoW/CAPTCHA 验证，请改用 API Key")
-        if resp.status_code != 200:
-            raise ParserResponseError(f"登录失败（HTTP {resp.status_code}）")
-
-        try:
-            data = resp.json()
-        except ValueError as e:
-            raise ParserResponseError("登录响应解析失败") from e
-
-        token = data.get("access_token") or data.get("token") or data.get("user_token")
-        if not token:
-            raise ParserResponseError("登录响应中未找到 token")
-        self._bearer_token = f"User {token}"
-        self.configure_auth(bearer_token=self._bearer_token)
-        return self._bearer_token
 
     def favourites(
         self, page: int = 1, raise_errors: bool = False
@@ -176,7 +102,7 @@ class NhParser(ParserContextMixin):
         """获取 NH 收藏夹列表。"""
         if not self._is_auth_configured():
             if raise_errors:
-                raise ParserResponseError("NH 未登录，请前往设置页面配置登录凭证")
+                raise ParserResponseError("NH 未配置 API Key，请前往设置页配置")
             return [], None, True
         url = f"{FAVORITES_URL}?page={page}"
         try:
@@ -184,7 +110,7 @@ class NhParser(ParserContextMixin):
         except ParserResponseError as e:
             msg = str(e).lower()
             if raise_errors and ("401" in msg or "403" in msg):
-                raise ParserResponseError("NH 登录已失效，请重新登录") from e
+                raise ParserResponseError("NH 登录已失效，请重新配置 API Key") from e
             return [], None, False
 
         result = data.get("result", [])
@@ -249,7 +175,7 @@ class NhParser(ParserContextMixin):
         except requests.HTTPError as e:
             status = e.response.status_code if e.response is not None else None
             if status in (401, 403):
-                raise ParserResponseError(f"NH 认证已失效（HTTP {status}），请重新登录") from e
+                raise ParserResponseError(f"NH 认证已失效（HTTP {status}），请重新配置 API Key") from e
             raise ParserResponseError(f"NH 收藏操作失败（HTTP {status}）") from e
         except ValueError as e:
             raise ParserResponseError("NH 收藏响应解析失败") from e

@@ -16,7 +16,7 @@
 | moeimg    | moeimg.fan   | ✅   | ✅   | curl 导入 / 应用内用户名密码         |
 | jm   | jm（含镜像） | ✅   | ✅   | curl 导入 / 内嵌浏览器            |
 | bika      | 哔咔           | ✅   | ✅   | 应用内用户名密码（API 登录）           |
-| nh        | nhentai.net  | ✅   | ✅   | API Key / 账号密码            |
+| nh        | nhentai.net  | ✅   | ✅   | API Key（账号密码登录已移除，升级时清理旧凭据）|
 | copymanga | 拷贝漫画         | —   | —   | curl 导入                    |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
@@ -180,7 +180,7 @@ hcomic_downloader/
 │   ├── bika/                  # 哔咔解析器（API 登录 + 收藏夹）
 │   │   ├── parser.py
 │   │   └── constants.py
-│   ├── nh/                    # nhentai 解析器（API Key / 账号密码 + 收藏夹）
+│   ├── nh/                    # nhentai 解析器（API Key + 收藏夹）
 │   │   ├── parser.py
 │   │   ├── constants.py
 │   │   └── descrambler.py

@@ -1076,14 +1076,14 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('hcomic_login', { username: username.trim(), password: password.trim() })
   })
 
-  ipcMain.handle(IPC_CHANNELS.NH_LOGIN, async (_, username, password) => {
-    if (typeof username !== 'string' || username.trim().length === 0 || username.length > 256) {
-      throw new Error('Invalid nh username')
-    }
-    if (typeof password !== 'string' || password.trim().length === 0 || password.length > 256) {
-      throw new Error('Invalid nh password')
-    }
-    return bridge.call('nh_login', { username: username.trim(), password: password.trim() })
+  ipcMain.handle(IPC_CHANNELS.NH_APPLY_API_KEY, async (_, apiKey) => {
+    // 主进程权威校验：类型 + 去空白非空 + 长度 + 控制字符（与 preload 对称）
+    if (typeof apiKey !== 'string') throw new Error('Invalid NH API Key')
+    // eslint-disable-next-line no-control-regex
+    if (/[\u0000-\u001F\u007F]/.test(apiKey)) throw new Error('NH API Key must not contain control characters')
+    if (apiKey.trim().length === 0) throw new Error('Invalid NH API Key')
+    if (apiKey.length > 1024) throw new Error('Invalid NH API Key')
+    return bridge.call('nh_apply_api_key', { api_key: apiKey })
   })
 
   ipcMain.handle(IPC_CHANNELS.CLEAR_AUTH, async (_, source) => {

@@ -139,13 +139,15 @@ class TestMultiSourceConfig(unittest.TestCase):
         self.assertEqual(config.source_auth["hcomic"]["user_agent"], "")
         self.assertEqual(
             config.get_source_auth("nh"),
-            {"cookie": "", "user_agent": "", "bearer_token": "", "username": "", "password": ""},
+            {"cookie": "", "user_agent": "", "bearer_token": ""},
         )
 
     def test_source_auth_normalization_keeps_supported_sources_and_filters_unknown(self):
         config = Config(
             source_auth={
                 "hcomic": {"cookie": "hc=1", "user_agent": "HC-UA", "bearer_token": "hc-token"},
+                # NH 收敛为仅 API Key（remove-nh-password-login spec）：归一化必须
+                # 清空 username/password/cookie/user_agent，仅保留有效 API Key。
                 "nh": {
                     "cookie": "nh=1",
                     "user_agent": "NH-UA",
@@ -163,13 +165,7 @@ class TestMultiSourceConfig(unittest.TestCase):
         )
         self.assertEqual(
             config.get_source_auth("nh"),
-            {
-                "cookie": "nh=1",
-                "user_agent": "NH-UA",
-                "bearer_token": "nh-key",
-                "username": "nh-user",
-                "password": "nh-password",
-            },
+            {"cookie": "", "user_agent": "", "bearer_token": "nh-key"},
         )
         self.assertNotIn("unknown", config.source_auth)
 
@@ -193,25 +189,32 @@ class TestMultiSourceConfig(unittest.TestCase):
         finally:
             os.unlink(config_path)
 
-    def test_nh_source_auth_round_trip_preserves_all_credentials(self):
+    def test_nh_source_auth_round_trip_preserves_only_api_key(self):
+        """NH 收敛为仅 API Key（remove-nh-password-login spec）：往返只保留 Key。"""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
             config_path = f.name
 
         try:
             config = Config()
-            expected = {
-                "cookie": "sessionid=nh-session",
-                "user_agent": "NH-UA/1.0",
-                "bearer_token": "nh-api-key",
-                "username": "nh-user",
-                "password": "nh-password",
-            }
-            config.set_source_auth("nh", AuthSourceData(**expected))
+            # set_source_auth 对 NH 只接受 bearer_token；其余字段被丢弃。
+            config.set_source_auth(
+                "nh",
+                AuthSourceData(
+                    cookie="sessionid=nh-session",
+                    user_agent="NH-UA/1.0",
+                    bearer_token="nh-api-key",
+                    username="nh-user",
+                    password="nh-password",
+                ),
+            )
             config.save(config_path)
 
             loaded = Config.load(config_path)
 
-            self.assertEqual(loaded.get_source_auth("nh"), expected)
+            self.assertEqual(
+                loaded.get_source_auth("nh"),
+                {"cookie": "", "user_agent": "", "bearer_token": "nh-api-key"},
+            )
         finally:
             os.unlink(config_path)
 

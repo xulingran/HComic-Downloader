@@ -21,6 +21,31 @@ def _default_source_list_map() -> dict[str, list]:
     return {source: [] for source in VALID_SOURCE_KEYS}
 
 
+def _has_legacy_nh_credentials(source_auth: object) -> bool:
+    """检测 source_auth 中是否存在需要清理的旧 NH 凭据。
+
+    旧 NH 敏感字段包括：username、password、cookie、user_agent，以及带
+    ``User `` / ``Token `` / ``Bearer `` 前缀的 bearer_token。归一化会清空
+    这些值；本函数用于决定 Config.load 是否需要原子回写磁盘配置。
+
+    规范后的纯 API Key（无前缀 / ``Key `` 前缀）不会触发回写。
+    """
+    if not isinstance(source_auth, dict):
+        return False
+    nh = source_auth.get("nh")
+    if not isinstance(nh, dict):
+        return False
+    for key in ("username", "password", "cookie", "user_agent"):
+        if str(nh.get(key, "") or "").strip():
+            return True
+    bearer = str(nh.get("bearer_token", "") or "").strip()
+    if bearer:
+        prefix, separator, _ = bearer.partition(" ")
+        if separator and prefix.lower() not in ("key",):
+            return True
+    return False
+
+
 def _migrate_blacklist_entries(entries: list) -> list[dict]:
     migrated = []
     for entry in entries:
@@ -206,7 +231,8 @@ class Config:
         auth.setdefault("cookie", "")
         auth.setdefault("user_agent", "")
         auth.setdefault("bearer_token", "")
-        if source in ("moeimg", "bika", "hcomic", "nh"):
+        # NH 收敛为仅 API Key（remove-nh-password-login spec）：禁止 username/password。
+        if source in ("moeimg", "bika", "hcomic"):
             auth.setdefault("username", "")
             auth.setdefault("password", "")
         return auth
@@ -225,7 +251,8 @@ class Config:
             "user_agent": user_agent,
             "bearer_token": bearer_token,
         }
-        if source in ("moeimg", "bika", "hcomic", "nh"):
+        # NH 收敛为仅 API Key（remove-nh-password-login spec）：禁止写入 username/password。
+        if source in ("moeimg", "bika", "hcomic"):
             self.source_auth[source]["username"] = (data.username or "").strip()
             self.source_auth[source]["password"] = (data.password or "").strip()
         if source == "hcomic":
@@ -304,7 +331,14 @@ class Config:
             if unknown:
                 logger.warning("Ignoring unknown config keys in %s: %s", config_path, unknown)
             data = {k: v for k, v in data.items() if k in known_fields}
-            return cls(**data)
+            instance = cls(**data)
+            # NH 收敛式迁移（remove-nh-password-login spec）：检测旧 NH 敏感凭据
+            # （username/password/cookie/user_agent 或带 User/Token/Bearer 前缀的
+            # bearer_token），通过既有原子写入回写清理后的配置，避免密码只在内存中
+            # 消失、磁盘长期残留。
+            if _has_legacy_nh_credentials(data.get("source_auth")):
+                instance.save(config_path)
+            return instance
         return cls()
 
     def save(self, config_path: str):

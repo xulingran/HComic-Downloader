@@ -1,10 +1,27 @@
-# credential-persistence 规范
+## 新增需求
 
-## 目的
+### 需求:系统必须清理旧版 NH 非 API Key 凭据
 
-定义漫画来源账号密码凭据的持久化语义：登录失败时凭据仍须被保存，且 curl/cookie 登录不得覆盖既有账号密码。覆盖支持账号密码登录的来源（hcomic、moeimg、bika、nh）。
+配置归一化必须把 NH 认证数据收敛为仅 API Key。系统必须清空旧版 `source_auth.nh` 中的 username、password、cookie、user_agent 及带 `User `、`Token `、`Bearer ` 前缀的 bearer_token；检测到清理时必须使用既有原子配置写入将结果持久化，禁止只在内存中忽略敏感值。
 
-## 需求
+#### 场景:升级含 NH 账号密码的配置
+
+- **当** 应用加载的旧配置在 `source_auth.nh` 中包含 username/password
+- **那么** 归一化后的内存配置与回写后的磁盘配置必须清空这两个字段
+
+#### 场景:升级含旧 User Token 的配置
+
+- **当** 应用加载的旧配置包含 `bearer_token="User abc"`、`Token abc` 或 `Bearer abc`
+- **那么** 系统必须清空该 bearer_token 并将 NH 标记为未配置认证
+- **且** 必须提示用户改用 API Key，而非把旧 token 当作 Key
+
+#### 场景:升级含现有 API Key 的配置
+
+- **当** 旧配置的 `source_auth.nh.bearer_token` 是无前缀 API Key 或 `Key <api_key>`
+- **那么** 系统必须保留并规范化该 API Key
+- **且** 禁止因清理其他 NH 字段而丢失它
+
+## 修改需求
 
 ### 需求:账号密码登录失败时仍持久化凭据
 
@@ -61,24 +78,3 @@
 - **当** 用户对 jm 来源调用 `handle_apply_auth` 应用 cookie/user_agent
 - **那么** 系统禁止将 cookie/user_agent/bearer_token 写入 config.json
 - **且** 必须将凭据注入内存 parser
-
-### 需求:系统必须清理旧版 NH 非 API Key 凭据
-
-配置归一化必须把 NH 认证数据收敛为仅 API Key。系统必须清空旧版 `source_auth.nh` 中的 username、password、cookie、user_agent 及带 `User `、`Token `、`Bearer ` 前缀的 bearer_token；检测到清理时必须使用既有原子配置写入将结果持久化，禁止只在内存中忽略敏感值。
-
-#### 场景:升级含 NH 账号密码的配置
-
-- **当** 应用加载的旧配置在 `source_auth.nh` 中包含 username/password
-- **那么** 归一化后的内存配置与回写后的磁盘配置必须清空这两个字段
-
-#### 场景:升级含旧 User Token 的配置
-
-- **当** 应用加载的旧配置包含 `bearer_token="User abc"`、`Token abc` 或 `Bearer abc`
-- **那么** 系统必须清空该 bearer_token 并将 NH 标记为未配置认证
-- **且** 必须提示用户改用 API Key，而非把旧 token 当作 Key
-
-#### 场景:升级含现有 API Key 的配置
-
-- **当** 旧配置的 `source_auth.nh.bearer_token` 是无前缀 API Key 或 `Key <api_key>`
-- **那么** 系统必须保留并规范化该 API Key
-- **且** 禁止因清理其他 NH 字段而丢失它

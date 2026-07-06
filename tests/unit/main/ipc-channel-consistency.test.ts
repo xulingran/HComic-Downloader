@@ -56,7 +56,7 @@ describe('IPC Channel Consistency', () => {
       'get_history', 'add_history', 'delete_history', 'clear_history',
       'get_comic_detail',       'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
       'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
-      'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'nh_login', 'clear_source_auth', 'get_jm_domains',
+      'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'nh_apply_api_key', 'clear_source_auth', 'get_jm_domains',
       'force_pack_album', 'get_album_progress',
       'pause_album', 'resume_album', 'cancel_album',
       'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',
@@ -115,5 +115,14 @@ describe('IPC Channel Consistency', () => {
       }
     }
     expect(violations, `发现裸通道字符串字面量:\n${violations.join('\n')}`).toEqual([])
+  })
+
+  it('registers nh-apply-api-key and removes nh-login (remove-nh-password-login spec)', () => {
+    // 正向：新通道与 Python 方法必须存在
+    expect(PYTHON_IPC_CHANNEL_MAP['python:nh-apply-api-key']).toBe('nh_apply_api_key')
+    expect(IPC_CHANNELS.NH_APPLY_API_KEY).toBe('python:nh-apply-api-key')
+    // 负向：旧账号密码登录通道必须彻底移除
+    expect(PYTHON_IPC_CHANNEL_MAP['python:nh-login']).toBeUndefined()
+    expect((IPC_CHANNELS as Record<string, unknown>).NH_LOGIN).toBeUndefined()
   })
 })

@@ -15,6 +15,48 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# NH API Key 校验上限（remove-nh-password-login spec）：拒绝异常长度输入。
+_NH_API_KEY_MAX_LENGTH = 1024
+# 控制字符（C0 + DEL）：API Key 不得包含。
+_NH_API_KEY_CONTROL_CHARS = "".join(chr(c) for c in range(0x20)) + "\x7f"
+
+
+class NhApiKeyError(ValueError):
+    """NH API Key 输入校验失败。"""
+
+
+def _validate_nh_api_key(api_key: str) -> str:
+    """校验并归一化 NH API Key 原始输入。
+
+    - 去首尾空白；
+    - 拒绝空值；
+    - 拒绝控制字符；
+    - 拒绝异常长度；
+    - 拒绝 ``User `` / ``Token `` / ``Bearer `` 等旧认证前缀（保留无前缀 / ``Key ``）。
+
+    返回不含 ``Key `` 前缀的纯 API Key。
+    """
+    raw = "" if api_key is None else str(api_key)
+    stripped = raw.strip()
+    if not stripped:
+        raise NhApiKeyError("请输入 NH API Key")
+    if any(ch in _NH_API_KEY_CONTROL_CHARS for ch in stripped):
+        raise NhApiKeyError("NH API Key 不得包含控制字符")
+    if len(stripped) > _NH_API_KEY_MAX_LENGTH:
+        raise NhApiKeyError("NH API Key 长度异常")
+    prefix, separator, value = stripped.partition(" ")
+    if separator:
+        prefix_lower = prefix.lower()
+        if prefix_lower == "key":
+            normalized = value.strip()
+            if not normalized:
+                raise NhApiKeyError("请输入 NH API Key")
+            return normalized
+        if prefix_lower in ("user", "token", "bearer"):
+            raise NhApiKeyError("NH 不再支持 User/Token/Bearer 凭据，请使用 API Key")
+        raise NhApiKeyError("NH API Key 格式不正确")
+    return stripped
+
 
 class AuthMixin:
     """Mixin providing authentication handler methods."""
@@ -57,6 +99,10 @@ class AuthMixin:
         from config import AuthSourceData
 
         cookie, user_agent, bearer_token, domain = extract_auth_from_curl(curl_text.strip())
+        # NH 收敛为仅 API Key（remove-nh-password-login spec）：必须走专用
+        # handle_nh_apply_api_key，禁止通过通用 curl/cookie apply_auth 写入 NH 认证。
+        if source == "nh":
+            raise ValueError("NH 认证请使用 API Key，前往设置页应用")
         # JM 会话凭据不持久化（jm-session-cookie spec）：cookie/UA 与 Cloudflare 挑战态绑定，
         # 跨进程复用常失效。仅注入内存 parser（下方 configure_auth），禁止落盘 config.json。
         # 其他来源仍走 set_source_auth + save 持久化路径（credential-persistence spec）。
@@ -177,8 +223,29 @@ class AuthMixin:
             apply_to_downloader=True,
         )
 
-    def handle_nh_login(self, username: str, password: str) -> dict:
-        return self._do_password_login("nh", username, password, credential_kind="bearer_token")
+    def handle_nh_apply_api_key(self, api_key: str) -> dict:
+        """应用 NH API Key（remove-nh-password-login spec）。
+
+        校验 → 持久化纯 API Key 到 ``source_auth.nh.bearer_token``（同时清空其他
+        NH 认证字段） → 立即注入 parser。``source_auth.nh`` 的 username/password/
+        cookie/user_agent 必须保持为空。
+        """
+        from config import AuthSourceData
+
+        normalized = _validate_nh_api_key(api_key)
+
+        with self._config_write_lock:
+            self.config.set_source_auth(
+                "nh",
+                AuthSourceData(bearer_token=normalized),
+            )
+            self.config.save(_get_config_path())
+
+        # 立即注入已创建的 parser；未创建则等懒创建时由 factory 读取 source_auth。
+        self.parser.configure_auth(bearer_token=normalized, source="nh")
+
+        logger.info("NH API Key applied")
+        return {"success": True}
 
     def handle_clear_source_auth(self, source: str) -> dict:
         """清除指定来源的持久化认证凭证与内存会话状态。"""

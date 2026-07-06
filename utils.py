@@ -132,6 +132,33 @@ def normalize_comic_source_key(source: str) -> str:
     return key
 
 
+def normalize_nh_api_key(bearer_token: str) -> str:
+    """归一化 NH API Key（remove-nh-password-login spec）。
+
+    NH 认证收敛为仅 API Key：``source_auth.nh.bearer_token`` 对 NH 专门表示
+    不带 ``Key `` 前缀的原始 API Key。
+
+    - 无前缀值 → 视为 API Key，原样保留；
+    - ``Key <value>`` → 去前缀保留 API Key；
+    - ``User <value>`` / ``Token <value>`` / ``Bearer <value>`` → 旧凭据，清空，
+      要求用户重新配置 API Key；
+    - 空值 → 空字符串。
+
+    返回不含 ``Key `` 前缀的纯 API Key（或空串）。
+    """
+    raw = str(bearer_token or "").strip()
+    if not raw:
+        return ""
+    prefix, separator, value = raw.partition(" ")
+    if separator:
+        prefix_lower = prefix.lower()
+        if prefix_lower == "key":
+            return value.strip()
+        # User / Token / Bearer / 其他前缀均为旧 NH 凭据，禁止保留为 API Key
+        return ""
+    return raw
+
+
 def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:
     """规范化多来源认证字典。
 
@@ -147,6 +174,8 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         "jm": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "bika": {"cookie": "", "user_agent": "", "bearer_token": ""},
         "copymanga": {"cookie": "", "user_agent": "", "bearer_token": ""},
+        # NH 收敛为仅 API Key：username/password/cookie/user_agent 不再保留
+        # （remove-nh-password-login spec）。
         "nh": {"cookie": "", "user_agent": "", "bearer_token": ""},
     }
     if not isinstance(source_auth, dict):
@@ -154,6 +183,10 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
     for raw_source, auth in source_auth.items():
         source = normalize_source_key(raw_source)
         if source not in normalized or not isinstance(auth, dict):
+            continue
+        if source == "nh":
+            # NH 仅接受 API Key（无前缀 / Key 前缀），其余字段一律清空。
+            normalized[source]["bearer_token"] = normalize_nh_api_key(auth.get("bearer_token", ""))
             continue
         values = {
             "cookie": str(auth.get("cookie", "") or "").strip(),
@@ -163,7 +196,7 @@ def normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]
         for key, value in values.items():
             if value or not normalized[source].get(key):
                 normalized[source][key] = value
-        if source in ("moeimg", "bika", "hcomic", "nh"):
+        if source in ("moeimg", "bika", "hcomic"):
             username = str(auth.get("username", "") or "").strip()
             password = str(auth.get("password", "") or "").strip()
             if username or not normalized[source].get("username"):

@@ -149,8 +149,6 @@ export interface AppConfig {
   bikaPassword?: string
   hcomicUsername?: string
   hcomicPassword?: string
-  nhUsername?: string
-  nhPassword?: string
   favouriteTagHighlight?: boolean
   favouriteTagMinMatches?: number
   checkUpdateOnStart?: boolean
@@ -526,8 +524,8 @@ export interface IPCMethods {
     params: { username: string; password: string }
     result: { success: boolean; message: string }
   }
-  nh_login: {
-    params: { username: string; password: string }
+  nh_apply_api_key: {
+    params: { api_key: string }
     result: { success: boolean; message: string }
   }
   clear_source_auth: {
@@ -771,7 +769,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:bika-login': 'bika_login',
   'python:bika-categories': 'bika_categories',
   'python:hcomic-login': 'hcomic_login',
-  'python:nh-login': 'nh_login',
+  'python:nh-apply-api-key': 'nh_apply_api_key',
   'python:clear-auth': 'clear_source_auth',
   'python:shutdown': 'shutdown',
   'python:fetch-cover': 'fetch_cover',
@@ -865,7 +863,7 @@ export interface HcomicAPI {
   bikaLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   bikaCategories(): Promise<{ categories: Array<{ id: string; title: string; thumb: string }> }>
   hcomicLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
-  nhLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
+  nhApplyApiKey(apiKey: string): Promise<{ success: boolean; message: string }>
   clearAuth(source: string): Promise<{ success: boolean }>
   shutdown(): Promise<{ success: boolean; cancelledTasks: number }>
   fetchCover(url: string): Promise<{ urlHash: string }>
@@ -1084,7 +1082,7 @@ export const IPC_CHANNELS = {
   BIKA_LOGIN: 'python:bika-login',
   BIKA_CATEGORIES: 'python:bika-categories',
   HCOMIC_LOGIN: 'python:hcomic-login',
-  NH_LOGIN: 'python:nh-login',
+  NH_APPLY_API_KEY: 'python:nh-apply-api-key',
   CLEAR_AUTH: 'python:clear-auth',
   SHUTDOWN: 'python:shutdown',
   FETCH_COVER: 'python:fetch-cover',

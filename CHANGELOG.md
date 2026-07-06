@@ -11,18 +11,29 @@
 
 #### 来源与内容
 - **nh**：新增 nhentai 认证与收藏夹支持。
-  - 支持 API Key（`Authorization: Key <key>`）与账号密码两种登录方式。
+  - 支持 API Key（`Authorization: Key <key>`）认证方式。
   - 支持拉取收藏夹、加入收藏、取消收藏与查询收藏状态。
   - 收藏夹页来源选择器新增 NH 选项。
 
 #### UI 与交互
-- **设置页**：新增 NH 认证区域，提供 API Key 输入、账号密码登录、登录状态检测与登出清除凭证按钮。
+- **设置页**：新增 NH 认证区域，提供 API Key 输入、应用、登录状态检测与清除认证按钮。
 
 #### 工程与测试
 - 更新 `tests/unit/main/main.test.ts` 与 `FavouriteSourceSidebar.test.tsx`，覆盖 NH 新增 IPC 通道与收藏夹来源。
 
 ### 📝 文档
 - `README.md`：补充 NH 来源说明、收藏夹列表与项目结构中的 `sources/nh/` 目录。
+
+### ⚠️ 变更（Changed）
+
+#### 来源与内容
+- **nh**（BREAKING）：移除 NH 账号密码登录入口与相关 IPC / 解析器能力，API Key 成为 NH 唯一受支持、唯一可配置、唯一可恢复的认证方式。
+  - 设置页移除 NH 用户名、密码、显示密码与账号密码登录按钮，仅保留 API Key 输入、应用、测试与清除控件；已保存的 API Key 不再明文回填。
+  - 移除前端 `nhLogin` / `python:nh-login` / Python `nh_login` / `NhParser.login()` / 账号密码存储，新增专用 `nhApplyApiKey` / `python:nh-apply-api-key` / `nh_apply_api_key` / `handle_nh_apply_api_key` 链路。
+  - NH 认证契约收敛为 `Authorization: Key <api_key>`；User Token、Cookie、User-Agent 不再作为 NH 登录方式。
+  - 配置归一化在升级时清空 `source_auth.nh` 中的 username/password/cookie/user_agent 以及带 `User ` / `Token ` / `Bearer ` 前缀的旧 bearer_token，并通过既有原子写入一次性回写磁盘；保留无前缀或 `Key ` 前缀的有效 API Key。
+  - 通用 curl `apply_auth` 对 NH 来源禁用，必须走专用 API Key handler。
+  - 其他来源（hcomic、moeimg、jm、bika、copymanga）的认证方式不受影响。
 
 ## [1.7.0] - 2026-06-30
 

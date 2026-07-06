@@ -178,10 +178,10 @@ class MultiSourceParser:
             ),
             "bika": lambda: _load_parser_class("bika")(timeout=timeout),
             "copymanga": lambda: _load_parser_class("copymanga")(timeout=timeout),
+            # NH 仅恢复 API Key（remove-nh-password-login spec）：cookie/user_agent
+            # 不再作为 NH 认证凭据，仅传 bearer_token。
             "nh": lambda: _load_parser_class("nh")(
                 timeout=timeout,
-                cookie=self.source_auth["nh"]["cookie"],
-                user_agent=self.source_auth["nh"]["user_agent"],
                 bearer_token=self.source_auth["nh"]["bearer_token"],
             ),
         }
@@ -279,13 +279,8 @@ class MultiSourceParser:
                 hcomic_auth.get("username", ""),
                 hcomic_auth.get("password", ""),
             )
-        # 为 nh 恢复存储的用户名密码（用于密码登录）
-        elif name == "nh":
-            nh_auth = self.source_auth.get("nh", {})
-            parser.set_stored_credentials(
-                nh_auth.get("username", ""),
-                nh_auth.get("password", ""),
-            )
+        # NH 仅恢复 API Key（remove-nh-password-login spec）：factory 已通过
+        # bearer_token 注入 API Key；此处不恢复 username/password/cookie/user_agent。
 
     @staticmethod
     def _normalize_source_auth(source_auth: dict | None) -> dict[str, dict[str, str]]:

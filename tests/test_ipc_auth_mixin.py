@@ -168,24 +168,19 @@ def test_apply_auth_hcomic_still_persists_session_credentials():
     assert call_kwargs.get("source") == "hcomic"
 
 
-def test_apply_auth_nh_persists_api_key():
-    """NH apply_auth 应通过 Authorization: Key 提取 API Key 并落盘。"""
+def test_apply_auth_nh_is_rejected():
+    """NH 必须走专用 API Key handler，禁止通过通用 curl apply_auth 写入（remove-nh-password-login spec）。"""
     server = _create_test_server()
-    save_calls = _wrap_save_with_lock_check(server)
 
-    server.handle_apply_auth(
-        "curl 'https://nhentai.net/api/v2/user' -H 'Authorization: Key nh-api-key-xxx'",
-        source="nh",
-    )
+    with pytest.raises(ValueError, match="API Key"):
+        server.handle_apply_auth(
+            "curl 'https://nhentai.net/api/v2/user' -H 'Authorization: Key nh-api-key-xxx'",
+            source="nh",
+        )
 
-    assert save_calls == [True], "nh 来源必须触发 config.save() 且在锁内"
+    # 拒绝时禁止落盘、禁止注入 parser
     nh_auth = server.config.get_source_auth("nh")
-    assert nh_auth["bearer_token"] == "nh-api-key-xxx"
-    assert nh_auth["cookie"] == ""
-    assert nh_auth["user_agent"] == ""
-    call_kwargs = server.parser.configure_auth.call_args.kwargs
-    assert call_kwargs.get("bearer_token") == "nh-api-key-xxx"
-    assert call_kwargs.get("source") == "nh"
+    assert nh_auth["bearer_token"] == ""
 
 
 # ---------------------------------------------------------------------------
@@ -244,22 +239,52 @@ def test_hcomic_login_saves_under_config_write_lock():
     assert server.config.get_source_auth("hcomic")["bearer_token"] == "hcomic-token"
 
 
-def test_nh_login_saves_under_config_write_lock():
+# ---------------------------------------------------------------------------
+# handle_nh_apply_api_key: 专用 API Key handler（remove-nh-password-login spec）
+# ---------------------------------------------------------------------------
+
+
+def test_nh_apply_api_key_saves_under_config_write_lock_and_persists_pure_key():
     server = _create_test_server()
     save_calls = _wrap_save_with_lock_check(server)
 
-    nh_parser = MagicMock()
-    nh_parser.login.return_value = "Token nh-user-token"
-    server.parser.parsers = {"nh": nh_parser}
-
-    result = server.handle_nh_login("nh_user", "nh_pass")
+    result = server.handle_nh_apply_api_key("  Key nh-api-key-xxx  ")
 
     assert result["success"] is True
     assert len(save_calls) >= 1
     assert all(c is True for c in save_calls), "所有 config.save 必须在 _config_write_lock 持有期间调用"
-    assert server.config.get_source_auth("nh")["bearer_token"] == "Token nh-user-token"
-    assert server.config.get_source_auth("nh")["username"] == "nh_user"
-    assert server.config.get_source_auth("nh")["password"] == "nh_pass"
+    nh_auth = server.config.get_source_auth("nh")
+    # 纯 API Key（去 Key 前缀）写入 bearer_token；其他 NH 认证字段必须为空。
+    assert nh_auth["bearer_token"] == "nh-api-key-xxx"
+    assert nh_auth["cookie"] == ""
+    assert nh_auth["user_agent"] == ""
+    assert "username" not in nh_auth
+    assert "password" not in nh_auth
+    # 立即注入 parser
+    server.parser.configure_auth.assert_called_with(bearer_token="nh-api-key-xxx", source="nh")
+
+
+def test_nh_apply_api_key_rejects_user_token_prefix():
+    server = _create_test_server()
+    with pytest.raises(ValueError, match="User/Token/Bearer"):
+        server.handle_nh_apply_api_key("User legacy-token")
+    # 校验失败时禁止写盘、禁止注入 parser
+    nh_auth = server.config.get_source_auth("nh")
+    assert nh_auth["bearer_token"] == ""
+
+
+def test_nh_apply_api_key_rejects_empty_and_control_chars():
+    server = _create_test_server()
+    with pytest.raises(ValueError, match="请输入 NH API Key"):
+        server.handle_nh_apply_api_key("   ")
+    with pytest.raises(ValueError, match="控制字符"):
+        server.handle_nh_apply_api_key("bad\nkey")
+
+
+def test_nh_apply_api_key_rejects_bearer_prefix():
+    server = _create_test_server()
+    with pytest.raises(ValueError, match="User/Token/Bearer"):
+        server.handle_nh_apply_api_key("Bearer legacy")
 
 
 # ---------------------------------------------------------------------------
@@ -312,23 +337,9 @@ def test_hcomic_login_success_persists_credentials_and_token():
     hcomic_parser.set_stored_credentials.assert_called_once_with("u", "p")
 
 
-def test_nh_login_success_persists_credentials_and_token():
-    server = _create_test_server()
-    nh_parser = MagicMock()
-    nh_parser.login.return_value = "Token nh-token"
-    server.parser.parsers = {"nh": nh_parser}
-
-    server.handle_nh_login("u", "p")
-
-    auth = server.config.get_source_auth("nh")
-    assert auth["bearer_token"] == "Token nh-token"
-    assert auth["username"] == "u"
-    assert auth["password"] == "p"
-    nh_parser.set_stored_credentials.assert_called_once_with("u", "p")
-
-
 # ---------------------------------------------------------------------------
 # 登录失败路径：凭据仍落盘 + 注入懒登录（spec 场景1/2/4）
+# 注：NH 已移除账号密码登录（remove-nh-password-login spec），仅 moeimg/bika/hcomic 适用。
 # ---------------------------------------------------------------------------
 
 
@@ -469,15 +480,10 @@ def test_concurrent_logins_do_not_corrupt_source_auth():
 
 def test_clear_source_auth_clears_credentials_and_parser_state():
     server = _create_test_server()
+    # NH 收敛为仅 API Key（remove-nh-password-login spec）：仅 bearer_token 被持久化。
     server.config.set_source_auth(
         "nh",
-        AuthSourceData(
-            cookie="c",
-            user_agent="ua",
-            bearer_token="token",
-            username="u",
-            password="p",
-        ),
+        AuthSourceData(bearer_token="nh-api-key"),
     )
     nh_parser = MagicMock()
     server.parser.parsers = {"nh": nh_parser}
@@ -489,8 +495,7 @@ def test_clear_source_auth_clears_credentials_and_parser_state():
     assert auth["cookie"] == ""
     assert auth["user_agent"] == ""
     assert auth["bearer_token"] == ""
-    assert auth["username"] == ""
-    assert auth["password"] == ""
+    # NH 不再持久化 username/password（remove-nh-password-login spec）。
     nh_parser.configure_auth.assert_called_once_with(cookie="", user_agent="", bearer_token="")
 
 
