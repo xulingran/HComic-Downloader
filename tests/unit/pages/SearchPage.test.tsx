@@ -1228,21 +1228,31 @@ describe('SearchPage', () => {
       expect(keyPage1).not.toBe(keyPage2)
     })
 
-    it('新搜索（query 变化）时 grid key 改变', async () => {
+    it('未提交的 query 变化时 grid key 不变（不闪烁）', async () => {
+      // 修复回归：fix-search-flicker-on-keystroke —— 用户在搜索栏打字/删除修改未提交的 query 时，
+      // 结果容器的 key 必须保持稳定，避免整体 remount 引发卡片进出场动画重放（闪烁）。
+      // key 现派生自「已加载上下文」loadedContextKey，仅在搜索真正完成时更新。
       mockStoreState.comics = comicsWithResults
       mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
 
       const { rerender } = render(<SearchPage />)
       const keyBefore = getGridKey()
 
-      // 输入新 query 触发 searchContextKey 变化（仅验证 key 派生，不实际搜索）
+      // 输入新 query 但不提交（不按 Enter、不点搜索按钮）
       const input = screen.getByPlaceholderText('输入搜索内容...')
       await userEvent.type(input, 'newquery')
 
       rerender(<SearchPage />)
-      const keyAfter = getGridKey()
+      const keyAfterTyping = getGridKey()
 
-      expect(keyBefore).not.toBe(keyAfter)
+      expect(keyBefore).toBe(keyAfterTyping)
+
+      // 删除文字也不应改变 key
+      await userEvent.clear(input)
+      rerender(<SearchPage />)
+      const keyAfterClear = getGridKey()
+
+      expect(keyBefore).toBe(keyAfterClear)
     })
 
     it('换来源（source 变化）时 grid key 改变', async () => {
@@ -1288,6 +1298,70 @@ describe('SearchPage', () => {
       const keyDetailed = getGridKey()
 
       expect(keyCover).toBe(keyDetailed)
+    })
+
+    it('首次进入无搜索时 grid key 含 initial 占位值', () => {
+      // spec 场景：首次进入页面无搜索时容器拥有稳定占位 key
+      // loadedContextKey 为 null → gridContainerKey 使用 INITIAL_GRID_KEY ('initial') 兜底。
+      // 通过直接预置 comics 让 grid 容器渲染（绕过搜索流程，loadedContextKey 保持 null）。
+      mockStoreState.comics = comicsWithResults
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+
+      render(<SearchPage />)
+
+      const key = getGridKey()
+      expect(key).not.toBeNull()
+      // 未发起搜索时占位 key 必须含 'initial'
+      expect(key).toContain('initial')
+    })
+
+    it('提交搜索后 grid key 切换为新已加载上下文', async () => {
+      // spec 场景：提交搜索后容器 key 按预期切换
+      // 流程：预置初始 comics（loadedContextKey 仍为 null → 'initial:1'）
+      //      → 输入 query + 点搜索按钮 → 搜索完成 → loadedContextKey 更新 → key 切换
+      // setComics/setPagination 需真实更新 store 才能让搜索结果渲染并使 grid 容器存在
+      const origSetComics = mockStoreState.setComics
+      const origSetPagination = mockStoreState.setPagination
+      mockStoreState.setComics = vi.fn((c: ComicInfo[]) => { mockStoreState.comics = c })
+      mockStoreState.setPagination = vi.fn((p: Record<string, number> | null) => { mockStoreState.pagination = p })
+      // 直接按 data-grid-key 属性定位最新挂载的 grid 容器（适配搜索后文本变化场景）
+      const getLatestGridKey = () => {
+        const grids = document.querySelectorAll('[data-grid-key]')
+        const last = grids[grids.length - 1]
+        return last?.getAttribute('data-grid-key') ?? null
+      }
+
+      try {
+        mockStoreState.comics = comicsWithResults
+        mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+        // 挂载时不触发自动搜索的查询返回（保持 loadedContextKey 为 null）
+        mockSearch.mockResolvedValue({
+          comics: [{ id: '2', title: 'Searched Comic', url: '', coverUrl: '', source: 'test' }],
+          pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+        })
+
+        render(<SearchPage />)
+        await screen.findByText('Comic A')
+        const keyBefore = getLatestGridKey()
+        // 初始未完成搜索时 key 应含 initial 占位
+        expect(keyBefore).toContain('initial')
+
+        const input = screen.getByPlaceholderText('输入搜索内容...')
+        await userEvent.clear(input)
+        await userEvent.type(input, 'submitted-query')
+        await userEvent.click(screen.getByText('搜索'))
+
+        // 搜索完成后 loadedContextKey 更新为新上下文，key 切换
+        await screen.findByText('Searched Comic')
+        const keyAfter = getLatestGridKey()
+
+        expect(keyBefore).not.toBe(keyAfter)
+        // 新 key 应包含已加载的 query 上下文（不再含 initial 占位）
+        expect(keyAfter).not.toContain('initial')
+      } finally {
+        mockStoreState.setComics = origSetComics
+        mockStoreState.setPagination = origSetPagination
+      }
     })
   })
 

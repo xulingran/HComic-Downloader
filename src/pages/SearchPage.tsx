@@ -45,6 +45,10 @@ const OVERLAY_STYLES: Record<'light' | 'strong', string> = {
   strong: 'bg-[var(--bg-primary)]/85 backdrop-blur-[10px]',
 }
 
+// 尚无已加载搜索结果时的容器占位 key。loadedContextKey 为 null 时使用，
+// 确保结果容器始终拥有稳定 key（不随实时输入 query 抖动）。
+const INITIAL_GRID_KEY = 'initial'
+
 export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState('keyword')
@@ -141,7 +145,9 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const searchGenRef = useRef(0)
   // 记录当前 comics 所属的搜索上下文（query/mode/source/searchTags 的 key）。
   // 用于区分「翻页」（同一 context 换页 → 保留旧结果 + 遮罩）与「新查询」（换 context → 清空 + 骨架）。
-  const loadedContextKeyRef = useRef<string | null>(null)
+  // 同时作为结果容器 gridContainerKey 的来源：仅在搜索真正完成时更新，按键修改未提交的 query 时不变，
+  // 避免结果列表整体 remount 引发卡片进出场动画重放（闪烁）。
+  const [loadedContextKey, setLoadedContextKey] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const historyDropdownRef = useRef<HTMLDivElement>(null)
   const queryRef = useRef(query)
@@ -153,17 +159,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const sourceRef = useRef(source)
   sourceRef.current = source // eslint-disable-line react-hooks/refs
 
-  const searchContextKey = useMemo(() => createSearchContextKey({
-    query,
-    mode,
-    source,
-    searchTags,
-  }), [query, mode, source, searchTags])
-
-  // 列表容器 key：翻页 / 新搜索 / 换来源 / 换 mode 等整页全量替换时变化 → 整页重挂载，
-  // 规避 framer-motion `layout` 在 popLayout 全量替换下的 mount 测量竞态（封面从左上角飞入）。
+  // 列表容器 key：派生自「已加载的搜索上下文」（loadedContextKey）+ 当前页码，而非实时输入 query。
+  // 仅在真正完成一次搜索后（applySearchResult / handleSearch / pendingSearch effect 等）才变化，
+  // 因此用户在搜索栏打字/删除修改未提交的 query 时 key 不变，避免结果列表整体 remount 引发
+  // 卡片进出场动画重放（闪烁）。翻页 / 新搜索 / 换来源 / 换 mode 等整页全量替换时 key 仍按预期变化
+  // → 整页重挂载，规避 framer-motion `layout` 在 popLayout 全量替换下的 mount 测量竞态（封面从左上角飞入）。
   // cardStyle 切换时 key 不变 → layout 位置过渡照常生效。
-  const gridContainerKey = `${searchContextKey}:${pagination?.currentPage ?? 1}`
+  const gridContainerKey = `${loadedContextKey ?? INITIAL_GRID_KEY}:${pagination?.currentPage ?? 1}`
 
   const cacheSearchPage = useCallback((contextKey: string, page: number, data: SearchPageCache, setCurrent: boolean = true) => {
     searchCacheRef.current.setPage(contextKey, page, data, setCurrent)
@@ -261,7 +263,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
             source: mountedSource,
             searchTags: '',
           })
-          loadedContextKeyRef.current = contextKey
+          setLoadedContextKey(contextKey)
           cacheSearchPage(contextKey, 1, {
             query: '',
             mode,
@@ -339,7 +341,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setError(null)
     // 抽屉/侧栏触发的搜索属于新查询，清空旧结果以触发骨架渲染
     clearSearchResult()
-    loadedContextKeyRef.current = null
+    setLoadedContextKey(null)
 
     search(finalQuery, searchMode === 'tag' && !finalQuery ? 'tag' : searchMode, 1, source, finalTags).then(result => {
       if (gen !== searchGenRef.current) return
@@ -351,7 +353,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         source,
         searchTags: finalTags,
       })
-      loadedContextKeyRef.current = contextKey
+      setLoadedContextKey(contextKey)
       cacheSearchPage(contextKey, result.pagination?.currentPage ?? 1, {
         query: finalQuery,
         mode: finalMode,
@@ -415,7 +417,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     // 翻页（keepExisting=true）保留旧结果 → 触发遮罩渲染（filteredComics.length > 0 && isLoading）。
     if (!opts.keepExisting) {
       clearSearchResult()
-      loadedContextKeyRef.current = null
+      setLoadedContextKey(null)
     }
     try {
       const result = await fn()
@@ -423,7 +425,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       setNeedsLogin(false)
       applySearchResult(result)
       if (opts.cacheResult === false) {
-        loadedContextKeyRef.current = null
+        setLoadedContextKey(null)
         return
       }
       const contextKey = createSearchContextKey({
@@ -432,7 +434,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         source: sourceRef.current,
         searchTags: searchTagsRef.current,
       })
-      loadedContextKeyRef.current = contextKey
+      setLoadedContextKey(contextKey)
       cacheSearchPage(contextKey, result.pagination?.currentPage ?? 1, {
         query: queryRef.current,
         mode: modeRef.current,
@@ -477,7 +479,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       const gen = ++searchGenRef.current
       applySearchResult(cachedPage)
       setError(null)
-      loadedContextKeyRef.current = contextKey
+      setLoadedContextKey(contextKey)
       search(query, mode, page, source, searchTags || undefined, false).then((result) => {
         if (gen !== searchGenRef.current) return
         applySearchResult(result)
@@ -495,10 +497,12 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }
 
     // 区分新查询与翻页：当前 comics 属于同一搜索上下文（仅页码不同）→ 翻页，保留旧结果 + 遮罩；
-    // 否则 → 新查询，清空 + 骨架。
-    const isPaging = loadedContextKeyRef.current === contextKey
+    // 否则 → 新查询，清空 + 骨架。读取 loadedContextKey state（非 ref）：handleSearch 已依赖
+    // query/mode/searchTags 等每次按键都变的 state，本就在按键时重建，多载入 loadedContextKey（仅搜索
+    // 完成时变）不增加重建频率，且保证拿到最新值用于翻页/新查询判定。
+    const isPaging = loadedContextKey === contextKey
     await withLoading(() => search(query, mode, page, source, searchTags || undefined, true), { keepExisting: isPaging })
-  }, [source, needsLogin, query, mode, searchTags, clearSelection, addHistory, withLoading, search, setError, cacheSearchPage, applySearchResult])
+  }, [source, needsLogin, query, mode, searchTags, loadedContextKey, clearSelection, addHistory, withLoading, search, setError, cacheSearchPage, applySearchResult])
 
   const handleRandom = async () => {
     if (requiresAuth(source) && needsLogin) return
@@ -731,7 +735,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   // 预加载链路已抽到 useSearchPreloader：preloadSearchPage（含 signal.aborted 检查）、
   // consumePreloaded（中转 → 持久层搬运）、hasPage、usePaginatedPreloader 装配均在 hook 内。
   // signal.aborted 检查这一行由 useSearchPreloader.test.tsx 集成测试守护（commit 2a1d3b2）。
-  // cacheSearchPage 作为搬运注入点传入；searchContextKey 仍由本组件 useMemo 持有（9 处非预加载用途共享）。
+  // cacheSearchPage 作为搬运注入点传入；contextKey 由各搜索流程内部 createSearchContextKey 局部计算。
   useSearchPreloader({
     query,
     mode,
