@@ -899,6 +899,184 @@ describe('SearchPage', () => {
     })
   })
 
+  // 回归：fix-nh-back-button-persist —— 「返回 NH 入口」按钮在用户进入入口子功能后
+  // 必须持续可见，关键词搜索/翻页/排行下拉切换/标签增删均不得隐藏它；仅显式退出入口体系
+  // （点返回、切来源、点随机）才隐藏。详见 specs/nh-entry-page/spec.md 新增需求。
+  describe('NH 入口子功能返回按钮持续可见', () => {
+    const nhComic: ComicInfo = {
+      id: 'nh-1', title: 'NH Comic A', url: '', coverUrl: '', source: 'NH', sourceSite: 'nh',
+    }
+    // 保存原始 no-op mock，afterEach 恢复以防污染同级 describe 块。
+    let origSetComics: typeof mockStoreState.setComics
+    let origSetPagination: typeof mockStoreState.setPagination
+
+    beforeEach(() => {
+      origSetComics = mockStoreState.setComics
+      origSetPagination = mockStoreState.setPagination
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      mockUseTagList.mockReturnValue({
+        getTagList: vi.fn().mockResolvedValue({
+          tags: [{ tag: 'full color', count: 100 }, { tag: 'big breasts', count: 200 }],
+          total: 2,
+        }),
+        refreshTagList: vi.fn().mockResolvedValue(undefined),
+      })
+      // 本组测试需要交互式搜索结果能真正渲染（验证按钮与漫画列表共存），
+      // 故让 setComics/setPagination 实际更新 store state（其余 describe 仍用默认 no-op mock）。
+      mockStoreState.setComics = vi.fn((c: ComicInfo[]) => { mockStoreState.comics = c })
+      mockStoreState.setPagination = vi.fn((p: Record<string, number> | null) => { mockStoreState.pagination = p })
+    })
+
+    afterEach(() => {
+      mockStoreState.setComics = origSetComics
+      mockStoreState.setPagination = origSetPagination
+    })
+
+    it('进入热门排行后做关键词搜索时按钮仍可见', async () => {
+      const user = userEvent.setup()
+      mockSearch.mockResolvedValue({
+        comics: [nhComic],
+        pagination: { currentPage: 1, totalPages: 2, totalItems: 30 },
+      })
+
+      render(<SearchPage />)
+      await user.click(await screen.findByText('热门排行'))
+      await screen.findByText('NH Comic A')
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+
+      // 切到关键词模式（ranking 模式无文本输入框）后输入关键词并搜索
+      // bug 复现点 —— 原 handleSearch 会把 viewingNhEntry 重置为 false 导致按钮消失
+      await user.selectOptions(screen.getByDisplayValue('排行'), 'keyword')
+      const input = screen.getByPlaceholderText('输入搜索内容...')
+      await user.clear(input)
+      await user.type(input, 'keyword-query')
+      mockSearch.mockResolvedValue({
+        comics: [{ ...nhComic, id: 'nh-2', title: 'NH Keyword Result' }],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      })
+      await user.click(screen.getByText('搜索'))
+
+      expect(await screen.findByText('NH Keyword Result')).toBeInTheDocument()
+      // 修复后：按钮必须仍然可见
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+    })
+
+    it('进入最近更新后翻页时按钮仍可见', async () => {
+      const user = userEvent.setup()
+      mockSearch.mockResolvedValue({
+        comics: [nhComic],
+        pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+      })
+
+      render(<SearchPage />)
+      await user.click(await screen.findByText('最近更新'))
+      await screen.findByText('NH Comic A')
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+
+      mockSearch.mockResolvedValue({
+        comics: [{ ...nhComic, id: 'nh-p2', title: 'NH Page 2 Comic' }],
+        pagination: { currentPage: 2, totalPages: 3, totalItems: 30 },
+      })
+      // SearchBar 顶栏与底部 PaginationControls 各有一个「下一页」，取第一个
+      await user.click(screen.getAllByText('下一页')[0])
+
+      expect(await screen.findByText('NH Page 2 Comic')).toBeInTheDocument()
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+    })
+
+    it('在入口子功能内切换排行下拉时按钮仍可见', async () => {
+      const user = userEvent.setup()
+      mockSearch.mockResolvedValue({
+        comics: [nhComic],
+        pagination: { currentPage: 1, totalPages: 2, totalItems: 30 },
+      })
+
+      render(<SearchPage />)
+      await user.click(await screen.findByText('热门排行'))
+      await screen.findByText('NH Comic A')
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+
+      // 切换排行下拉（NH ranking select）。query select 的值变化触发 onNhRankingChange。
+      const rankingSelect = screen.getByDisplayValue('今日热门')
+      mockSearch.mockResolvedValue({
+        comics: [{ ...nhComic, id: 'nh-week', title: 'NH Week Popular' }],
+        pagination: { currentPage: 1, totalPages: 2, totalItems: 30 },
+      })
+      await user.selectOptions(rankingSelect, 'popular-week')
+
+      expect(await screen.findByText('NH Week Popular')).toBeInTheDocument()
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+    })
+
+    it('点击返回入口页后按钮隐藏且入口页网格重现', async () => {
+      const user = userEvent.setup()
+      mockSearch.mockResolvedValue({
+        comics: [nhComic],
+        pagination: { currentPage: 1, totalPages: 2, totalItems: 30 },
+      })
+
+      render(<SearchPage />)
+      await user.click(await screen.findByText('热门排行'))
+      await screen.findByText('NH Comic A')
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+
+      await user.click(screen.getByText('返回 NH 入口'))
+
+      // 按钮隐藏
+      expect(screen.queryByText('返回 NH 入口')).not.toBeInTheDocument()
+      // 入口页网格重现（最近更新 / 热门排行 / 热门标签区域）
+      expect(await screen.findByText('最近更新')).toBeInTheDocument()
+      expect(screen.getByText('热门排行')).toBeInTheDocument()
+    })
+
+    it('切到非 NH 来源时按钮隐藏', async () => {
+      const user = userEvent.setup()
+      mockSearch.mockResolvedValue({
+        comics: [nhComic],
+        pagination: { currentPage: 1, totalPages: 2, totalItems: 30 },
+      })
+
+      render(<SearchPage />)
+      await user.click(await screen.findByText('热门排行'))
+      await screen.findByText('NH Comic A')
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+
+      mockSearch.mockResolvedValue({
+        comics: [{ id: 'hc-1', title: 'HComic Result', url: '', coverUrl: '', source: 'hcomic' }],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      })
+      await user.selectOptions(screen.getByDisplayValue('NH'), 'hcomic')
+
+      expect(screen.queryByText('返回 NH 入口')).not.toBeInTheDocument()
+    })
+
+    it('挂载恢复 NH + keyword 模式缓存时按钮仍可见且入口页网格不重现（选项 B）', async () => {
+      // 复现：用户在入口子功能里做关键词搜索后离开页面，回来时缓存恢复。
+      // 选项 B：按钮必须显示（用户仍在 NH 体系内），入口页网格不重现（keyword 搜索结果有效）。
+      mockStoreState.comics = [nhComic]
+      mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
+      mockSearchCacheStore.currentContextKey = 'nh\u001fkeyword\u001fsome-query\u001f'
+      mockSearchCacheStore.currentPage = 1
+      mockSearchCacheStore.getPage.mockReturnValue({
+        query: 'some-query',
+        mode: 'keyword',
+        source: 'nh',
+        searchTags: '',
+        comics: [nhComic],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 1 },
+      })
+
+      render(<SearchPage />)
+
+      expect(await screen.findByText('NH Comic A')).toBeInTheDocument()
+      // 选项 B：按钮仍可见
+      expect(screen.getByText('返回 NH 入口')).toBeInTheDocument()
+      // 入口页网格不重现（keyword 搜索结果展示中，不该被入口网格覆盖）
+      expect(screen.queryByText('最近更新')).not.toBeInTheDocument()
+      expect(screen.queryByText('热门排行')).not.toBeInTheDocument()
+    })
+  })
+
   // 加载遮罩分级：翻页用 light 档（旧结果可读），换来源/新查询用 strong 档（几乎不可辨认）。
   // 文案统一「加载中...」，仅靠 backdrop-blur 像素值与 bg 不透明度区分。
   describe('加载遮罩分级（light / strong）', () => {

@@ -58,7 +58,15 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [needsLogin, setNeedsLogin] = useState(false)
   const [viewingCategory, setViewingCategory] = useState(false)
+  // viewingNhEntry 真实语义：true = 用户在 NH 入口子功能结果里（NhEntryGrid 网格隐藏，
+  // 因为渲染条件是 !viewingNhEntry）；false = 入口页本体（网格显示）。命名与字面相反，
+  // 属历史包袱，本变更不重命名以控制改动面。
   const [viewingNhEntry, setViewingNhEntry] = useState(false)
+  // showBackToNhEntry 与 viewingNhEntry 解耦：专责控制「返回 NH 入口」按钮显隐（true=显示）。
+  // 当前实现两者在所有路径取值相同（镜像同步），拆分价值在语义自释义 + 防御未来回归
+  // （viewingNhEntry 名实不符曾导致 handleSearch 误重置按钮）。详见
+  // openspec/changes/fix-nh-back-button-persist/design.md 决策 1。
+  const [showBackToNhEntry, setShowBackToNhEntry] = useState(false)
   // 加载遮罩强度：light=翻页（旧结果可读），strong=换来源/新查询（旧结果几乎不可辨认）。
   // 由 withLoading 据 keepExisting 派生，handleSourceChange 认证窗口显式标注为 strong。
   // 文案统一「加载中...」（避免与 SearchBar 按钮「搜索中...」撞车），仅靠模糊+不透明度区分。
@@ -195,7 +203,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       // viewingCategory / viewingNhEntry 是本组件局部 state，挂载时会丢失；
       // 这里依据已恢复的 mode/source 同步推导，避免用户从入口页搜索切走再切回后无法返回入口页。
       setViewingCategory(cached.mode === 'category' && cached.source === 'bika')
-      setViewingNhEntry(cached.source === 'nh' && cached.mode !== 'keyword')
+      // 选项 B（产品确认）：恢复 NH 缓存时，无论 mode 是否 keyword，都视为「在 NH 入口体系内」——
+      // viewingNhEntry=true（网格隐藏，保留搜索结果），showBackToNhEntry=true（按钮显示，一键回入口）。
+      // 旧逻辑 `cached.mode !== 'keyword'` 会让 keyword 搜索恢复时网格错误重现、按钮消失。
+      setViewingNhEntry(cached.source === 'nh')
+      setShowBackToNhEntry(cached.source === 'nh')
       return
     }
 
@@ -453,7 +465,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     if (query.trim()) {
       addHistory(searchTags ? `${query} [${searchTags}]` : query.trim())
     }
-    setViewingNhEntry(source === 'nh' && (mode === 'ranking' || mode === 'tag'))
+    // 关键修复（fix-nh-back-button-persist）：原此处根据 mode 强行重算 viewingNhEntry，
+    // 导致 keyword 搜索把按钮隐藏、入口子功能内的网格语义被破坏。删除后，
+    // 关键词搜索、翻页等操作不再触碰 viewingNhEntry / showBackToNhEntry —— 按钮可见性
+    // 由进入/退出入口体系的显式动作（handleNh* / handleBackToNhEntry / handleSourceChange /
+    // handleRandom）决定。详见 design.md 决策 1 写入规则表。
 
     const contextKey = createSearchContextKey({ query, mode, source, searchTags })
     const cachedPage = searchCacheRef.current.getPage(contextKey, page)
@@ -494,6 +510,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setShowHistory(false)
     setViewingCategory(false)
     setViewingNhEntry(false)
+    setShowBackToNhEntry(false)
     await withLoading(() => random(source), { cacheResult: false })
   }
 
@@ -535,6 +552,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setQuery('')
     queryRef.current = ''
     setViewingNhEntry(true)
+    setShowBackToNhEntry(true)
     await withLoading(() => search('', 'keyword', 1, 'nh'))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
 
@@ -550,6 +568,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setQuery('popular-today')
     queryRef.current = 'popular-today'
     setViewingNhEntry(true)
+    setShowBackToNhEntry(true)
     await withLoading(() => search('popular-today', 'ranking', 1, 'nh'))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
 
@@ -558,6 +577,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     queryRef.current = sortValue
     setSearchTags('')
     searchTagsRef.current = ''
+    setShowBackToNhEntry(true)
     await withLoading(() => search(sortValue, 'ranking', 1, 'nh'))
   }, [withLoading, search])
 
@@ -573,6 +593,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setQuery(tag)
     queryRef.current = tag
     setViewingNhEntry(true)
+    setShowBackToNhEntry(true)
     await withLoading(() => search(tag, 'tag', 1, 'nh'))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
 
@@ -586,6 +607,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setMode('keyword')
     modeRef.current = 'keyword'
     setViewingNhEntry(false)
+    setShowBackToNhEntry(false)
     clearSearchResult()
     setError(null)
   }, [clearSelection, tagPanel, clearSearchResult, setError])
@@ -601,6 +623,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setNeedsLogin(false)
     setViewingCategory(false)
     setViewingNhEntry(false)
+    setShowBackToNhEntry(false)
     if (newSource === 'nh') {
       setQuery('')
       queryRef.current = ''
@@ -741,6 +764,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     if (!isLoadingRef.current) {
       clearSelection()
       setViewingNhEntry(isNhTagSearch)
+      setShowBackToNhEntry(isNhTagSearch)
       withLoading(() => search(
         isNhTagSearch ? '' : queryRef.current,
         isNhTagSearch ? 'tag' : modeRef.current,
@@ -768,6 +792,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     if (!isLoadingRef.current) {
       clearSelection()
       setViewingNhEntry(isNhTagSearch)
+      setShowBackToNhEntry(isNhTagSearch)
       withLoading(() => search(
         isNhTagSearch ? '' : queryRef.current,
         isNhTagSearch ? 'tag' : modeRef.current,
@@ -886,7 +911,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         </button>
       )}
 
-      {viewingNhEntry && source === 'nh' && !isLoading && (
+      {showBackToNhEntry && source === 'nh' && !isLoading && (
         <button
           onClick={handleBackToNhEntry}
           className="flex items-center gap-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
