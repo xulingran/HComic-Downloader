@@ -1,3 +1,11 @@
+# logging 规范
+
+## 目的
+
+定义 Electron 与 Python 进程的文件日志、终端输出、异常捕获、存储目录和时间戳约定，为启动失败与运行时故障提供统一、可追踪且可诊断的记录。
+
+## 需求
+
 ### 需求: Electron 主进程必须将所有日志写入文件
 
 系统必须使用 electron-log 在主进程建立文件日志，将现有的 `console.log/error/warn` 调用（约 17 处）自动转发到日志文件，并捕获未处理的异常与 Promise rejection。

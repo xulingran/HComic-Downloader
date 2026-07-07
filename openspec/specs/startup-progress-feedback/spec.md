@@ -1,3 +1,11 @@
+# startup-progress-feedback 规范
+
+## 目的
+
+定义 Python 启动阶段进度信号的产生、Electron 转发、渲染订阅和界面反馈，并规定启动失败时的让位行为，使较长初始化过程保持连续且可诊断。
+
+## 需求
+
 ### 需求:启动期进度信号产生
 
 Python 后端在 `IPCServer.__init__` 各初始化阶段必须经 stderr 输出结构化进度行，格式必须为 `PROGRESS:<percent>:<label>`，其中 `percent` 为 0-100 的整数，`label` 为不含冒号的中文文案。进度行必须立即 flush，不得被缓冲延迟。进度行的 percent 必须按各阶段真实耗时分配的权重单调递增，禁止回退。进度行禁止写入 stdout（stdout 仅用于 JSON-RPC 响应）。
