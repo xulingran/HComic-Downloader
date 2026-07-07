@@ -27,6 +27,10 @@ interface SearchBarProps {
   hasFilterEnabled: boolean
   onFilterToggle: () => void
   hasBlacklistedTags: boolean
+  /** NH「仅显示中文」筛选当前状态（仅在 source === 'nh' 时由父组件传入有效值） */
+  nhLanguageFilter?: 'chinese'
+  /** NH「仅显示中文」筛选切换回调 */
+  onNhLanguageFilterChange?: (enabled: boolean) => void
   pagination: PaginationInfo | null
   blockedCount: number
   hasComics: boolean
@@ -55,6 +59,7 @@ export function SearchBar({
   history, onClearHistory, onRemoveHistory, onSelectHistory,
   inputRef, historyDropdownRef,
   hasFilterEnabled, onFilterToggle, hasBlacklistedTags,
+  nhLanguageFilter, onNhLanguageFilterChange,
   pagination, blockedCount, hasComics,
   batchMode, selectedCount, onToggleBatchMode, onSelectAll, onClearSelection, onBatchDownload, onBatchDownloadAsAlbum,
   onPageJump, onPageNavigate,
@@ -242,6 +247,22 @@ export function SearchBar({
                 />
                 <span className={hasFilterEnabled ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}>
                   过滤
+                </span>
+              </label>
+            </>
+          )}
+          {source === 'nh' && onNhLanguageFilterChange && (
+            <>
+              <span className="text-[var(--border)]">|</span>
+              <label className="flex items-center gap-1.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={nhLanguageFilter === 'chinese'}
+                  onChange={(e) => onNhLanguageFilterChange(e.target.checked)}
+                  className="rounded"
+                />
+                <span className={nhLanguageFilter === 'chinese' ? 'text-[var(--accent)]' : 'text-[var(--text-primary)]'}>
+                  仅显示中文
                 </span>
               </label>
             </>

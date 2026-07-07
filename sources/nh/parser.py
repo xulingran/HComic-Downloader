@@ -389,6 +389,7 @@ class NhParser(ParserContextMixin):
         page: int = 1,
         *,
         tag: str = "",
+        language_filter: str = "",
     ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索 NH 漫画。
 
@@ -396,17 +397,24 @@ class NhParser(ParserContextMixin):
             keyword: 搜索关键词（为空时返回首页漫画）
             page: 页码 (1-based)
             tag: 排序方式标签（"popular" 表示按热度排序，其他值或空表示按日期排序）
+            language_filter: 受限的语言筛选枚举，当前仅支持 ``"chinese"``；
+                其他值或空字符串视为未启用筛选。开启后会以 NH 搜索语法
+                ``language:"chinese"`` 限定服务端查询（add-nh-chinese-language-filter spec）。
 
         Returns:
             (漫画列表, 分页信息) 元组
         """
+        chinese_only = self._is_chinese_filter(language_filter)
         # 空关键词时获取首页漫画列表
         if not keyword or not keyword.strip():
             sort_by = (tag or "").strip().lower()
-            return self._get_homepage_galleries(page, sort_by=sort_by)
+            return self._get_homepage_galleries(
+                page, sort_by=sort_by, language_filter="chinese" if chinese_only else ""
+            )
 
-        # 有关键词时使用搜索 API
-        url = f"{SEARCH_URL}?{urlencode({'query': keyword, 'page': page})}"
+        # 有关键词时使用搜索 API；中文筛选需合并进同一 query
+        query = keyword if not chinese_only else f'{keyword} language:"chinese"'
+        url = f"{SEARCH_URL}?{urlencode({'query': query, 'page': page})}"
         data = self._request_json(url)
 
         result = data.get("result", [])
@@ -416,7 +424,7 @@ class NhParser(ParserContextMixin):
         comics = []
         for item in result:
             try:
-                comic = self._parse_search_item(item)
+                comic = self._parse_search_item(item, chinese_only=chinese_only)
                 comics.append(comic)
             except (KeyError, ValueError) as e:
                 logger.warning("Failed to parse search item: %s", e)
@@ -434,23 +442,41 @@ class NhParser(ParserContextMixin):
 
         return comics, pagination
 
+    @staticmethod
+    def _is_chinese_filter(language_filter: str) -> bool:
+        """归一化语言筛选枚举：仅 ``chinese`` 视为启用，其余一律视为未启用。"""
+        return (language_filter or "").strip().lower() == "chinese"
+
     def _get_homepage_galleries(
         self,
         page: int = 1,
         *,
         sort_by: str = "",
+        language_filter: str = "",
     ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """获取首页漫画列表。
 
         Args:
             page: 页码 (1-based)
             sort_by: 排序方式（"popular"/"popular-today"/"popular-week"/"popular-month"，空字符串表示按日期排序）
+            language_filter: 受限的语言筛选枚举，当前仅支持 ``"chinese"``；
+                开启后最近更新会改走 search 端点并以 ``language:"chinese"`` 限定，
+                且与 ``sort_by`` 排行组合使用（add-nh-chinese-language-filter spec）。
 
         Returns:
             (漫画列表, 分页信息) 元组
         """
-        # 构建 URL：popular 排序使用 search API 的 sort 参数
-        if sort_by in (SORT_POPULAR, SORT_POPULAR_TODAY, SORT_POPULAR_WEEK, SORT_POPULAR_MONTH):
+        chinese_only = self._is_chinese_filter(language_filter)
+        popular_sorts = (SORT_POPULAR, SORT_POPULAR_TODAY, SORT_POPULAR_WEEK, SORT_POPULAR_MONTH)
+        # 构建 URL：popular 排序或中文筛选使用 search API 的 sort/query 参数；
+        # 未筛选且按日期排序保持原行为走 galleries 端点。
+        if chinese_only and sort_by in popular_sorts:
+            params = {"query": 'language:"chinese"', "sort": sort_by, "page": page}
+            url = f"{SEARCH_URL}?{urlencode(params)}"
+        elif chinese_only:
+            params = {"query": 'language:"chinese"', "page": page}
+            url = f"{SEARCH_URL}?{urlencode(params)}"
+        elif sort_by in popular_sorts:
             url = f"{SEARCH_URL}?query=*&sort={sort_by}&page={page}"
         else:
             url = f"{GALLERIES_URL}?page={page}"
@@ -464,7 +490,7 @@ class NhParser(ParserContextMixin):
         comics = []
         for item in result:
             try:
-                comic = self._parse_search_item(item)
+                comic = self._parse_search_item(item, chinese_only=chinese_only)
                 comics.append(comic)
             except (KeyError, ValueError) as e:
                 logger.warning("Failed to parse gallery item: %s", e)
@@ -482,11 +508,14 @@ class NhParser(ParserContextMixin):
 
         return comics, pagination
 
-    def _parse_search_item(self, item: dict) -> ComicInfo:
+    def _parse_search_item(self, item: dict, *, chinese_only: bool = False) -> ComicInfo:
         """解析搜索结果条目。
 
         Args:
             item: API 返回的漫画条目
+            chinese_only: 当且仅当请求由 ``language:"chinese"`` 服务端谓词限定时为 True，
+                此时返回项的 ``language`` 直接置为 ``chinese``——这是由服务端过滤谓词保证的
+                来源信息，不依赖可能缺失的 ``tags``。未筛选时维持现有解析结果。
 
         Returns:
             ComicInfo 对象
@@ -506,9 +535,12 @@ class NhParser(ParserContextMixin):
         thumbnail_path = item.get("thumbnail", "")
         thumbnail_url = self._build_thumbnail_url(media_id, thumbnail_path) if thumbnail_path else ""
 
-        # 从 tags 提取语言和标签
-        tags = item.get("tags", [])
-        language = self._extract_language(tags)
+        # 从 tags 提取语言和标签（响应可能显式返回 null）
+        tags = item.get("tags") or []
+        # chinese_only 来自服务端 language:"chinese" 谓词，因此其查询语义是列表语言
+        # 的可信来源；即使响应恢复 tags、缺少 language tag 或标签顺序异常，也必须稳定
+        # 输出 chinese。未筛选时才从响应 tags 提取实际语言。
+        language: str | None = "chinese" if chinese_only else self._extract_language(tags)
         tag_names = [t.get("name", "") for t in tags if t.get("type") != "language"]
 
         return ComicInfo(

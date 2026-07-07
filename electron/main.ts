@@ -11,7 +11,7 @@ import { needsRelaxedCsp } from './csp-relaxed-registry'
 import { initLogging } from './log-init'
 import { buildDiagnostics } from './diagnostics'
 import {
-  SEARCH_MODES, SOURCE_VALUES, SOURCES_WITH_FAVOURITES,
+  SEARCH_MODES, SEARCH_LANGUAGE_FILTERS, SOURCE_VALUES, SOURCES_WITH_FAVOURITES,
   DOWNLOAD_STATUSES, ACTIVE_DOWNLOAD_STATUSES, IMAGE_QUALITIES,
   TAG_LIST_SORTS,
   IPC_CHANNELS, NOTIFICATION_CHANNELS, PYTHON_NOTIFICATION_METHODS,
@@ -767,18 +767,31 @@ function registerNotificationHandlers(bridge: Bridge) {
 }
 
 function registerSearchHandlers(bridge: Bridge) {
-  ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source, tag, allowInteractive) => {
+  ipcMain.handle(IPC_CHANNELS.SEARCH, async (_, query, mode, page, source, tag, allowInteractive, languageFilter) => {
     assert(and(string(), maxLength(512)), query, 'search query')
     assert(and(string(), oneOf(Array.from(MODE_VALUES))), mode, 'search mode')
     assert(and(number(), integer(), range(1, 1000)), page, 'search page')
     // 交互挑战恢复开关：仅接受严格布尔，缺省/非布尔视为 false（保守默认）
     const interactiveFlag = allowInteractive === true
     const effectiveSource = typeof source === 'string' ? source : undefined
+    // NH 语言筛选：类型 + 枚举值校验，且仅允许 NH 来源携带（add-nh-chinese-language-filter spec）。
+    // 该参数是独立的查询数据参数，禁止与 allowInteractiveChallenge 这类 UI 控制参数混用。
+    let effectiveLanguageFilter: 'chinese' | undefined
+    if (languageFilter !== undefined && languageFilter !== null && languageFilter !== '') {
+      assert(and(string(), oneOf(SEARCH_LANGUAGE_FILTERS)), languageFilter, 'search languageFilter')
+      effectiveLanguageFilter = languageFilter as 'chinese'
+    }
+    if (effectiveLanguageFilter && effectiveSource !== 'nh') {
+      throw new ValidationError('search languageFilter is only supported for source nh')
+    }
     const params: Record<string, unknown> = { query, mode, page }
     withOptionalSource(params, effectiveSource, 'search')
     if (tag !== undefined && tag !== null && tag !== '') {
       assert(and(string(), maxLength(128), noControlChars()), tag, 'search tag')
       params.tag = tag
+    }
+    if (effectiveLanguageFilter) {
+      params.language_filter = effectiveLanguageFilter
     }
     // 禁止把 UI 控制参数转发给 Python handler
     // 静默搜索快照预检：若此前搜索快照恢复已成功，先用隐藏窗口捕获快照，避免先触发必失败的 Python 请求

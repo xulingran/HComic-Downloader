@@ -380,10 +380,21 @@ class MultiSourceParser:
         return self._get_parser(src).verify_login_status()
 
     def search(
-        self, keyword: str, page: int = 1, source: str | None = None, *, tag: str = ""
+        self,
+        keyword: str,
+        page: int = 1,
+        source: str | None = None,
+        *,
+        tag: str = "",
+        language_filter: str = "",
     ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = self._resolve_source(source)
-        return self._get_parser(src).search(keyword, page=page, tag=tag)
+        parser = self._get_parser(src)
+        # language_filter 仅对 NH 生效：调用方（SearchMixin）已做来源级限制，
+        # 这里再以 hasattr 防御，避免破坏其他解析器的既有签名。
+        if src == "nh" and language_filter:
+            return parser.search(keyword, page=page, tag=tag, language_filter=language_filter)  # type: ignore[call-arg]
+        return parser.search(keyword, page=page, tag=tag)
 
     def jm_home(self) -> list[tuple[str, list[ComicInfo]]]:
         """返回 JM 首页的分组漫画栏目，复用唯一的懒创建 parser 实例。"""

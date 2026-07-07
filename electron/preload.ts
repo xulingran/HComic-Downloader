@@ -1,11 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import {
   CONFIG_KEYS, IMAGE_QUALITIES, SOURCE_VALUES,
-  SEARCH_MODES, TAG_LIST_SORTS,
+  SEARCH_MODES, SEARCH_LANGUAGE_FILTERS, TAG_LIST_SORTS,
   IPC_CHANNELS, NOTIFICATION_CHANNELS,
 } from '../shared/types'
 
 const VALID_SEARCH_MODES = new Set<string>(SEARCH_MODES)
+const VALID_SEARCH_LANGUAGE_FILTERS = new Set<string>(SEARCH_LANGUAGE_FILTERS)
 const VALID_TAG_LIST_SORTS = new Set<string>(TAG_LIST_SORTS)
 const VALID_SOURCES = SOURCE_VALUES
 const VALID_CONFIG_KEYS = new Set<string>(CONFIG_KEYS)
@@ -90,6 +91,7 @@ contextBridge.exposeInMainWorld('hcomic', {
     source?: unknown,
     tag?: unknown,
     allowInteractiveChallenge?: unknown,
+    languageFilter?: unknown,
   ) => {
     if (typeof query !== 'string' || query.length > 512) throw new Error('Invalid query')
     if (typeof mode !== 'string' || !VALID_SEARCH_MODES.has(mode)) throw new Error('Invalid mode')
@@ -107,6 +109,16 @@ contextBridge.exposeInMainWorld('hcomic', {
     ) {
       throw new Error('Invalid allowInteractiveChallenge')
     }
+    // NH 语言筛选：仅接受枚举内的字符串或空值，缺省视为未启用。
+    // 主进程会再次校验 source === 'nh'，preload 只做类型与枚举值早期拒绝。
+    if (
+      languageFilter !== undefined
+      && languageFilter !== null
+      && languageFilter !== ''
+      && (typeof languageFilter !== 'string' || !VALID_SEARCH_LANGUAGE_FILTERS.has(languageFilter))
+    ) {
+      throw new Error('Invalid languageFilter')
+    }
     return ipcRenderer.invoke(
       IPC_CHANNELS.SEARCH,
       query,
@@ -115,6 +127,7 @@ contextBridge.exposeInMainWorld('hcomic', {
       source ?? undefined,
       tag ?? undefined,
       allowInteractiveChallenge === true,
+      languageFilter === 'chinese' ? 'chinese' : undefined,
     )
   },
 

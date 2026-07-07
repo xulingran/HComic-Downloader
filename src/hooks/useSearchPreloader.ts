@@ -18,6 +18,7 @@ export type SearchFn = (
   source?: string,
   tag?: string,
   allowInteractiveChallenge?: boolean,
+  languageFilter?: 'chinese',
 ) => Promise<SearchResult>
 
 /**
@@ -33,11 +34,13 @@ export type CacheSearchPageFn = (
 ) => void
 
 interface UseSearchPreloaderArgs {
-  /** 搜索上下文四元组；hook 内部用 ref 同步，避免 preloadSearchPage 读到陈旧闭包值。 */
+  /** 搜索上下文五元组；hook 内部用 ref 同步，避免 preloadSearchPage 读到陈旧闭包值。 */
   query: string
   mode: string
   source: string
   searchTags: string
+  /** NH 仅中文筛选：作为独立维度参与 contextKey 与相邻页预加载请求（add-nh-chinese-language-filter spec）。 */
+  languageFilter?: 'chinese'
   /** 唯一外部依赖：真实 IPC 边界（生产）/ deferred mock（集成测试）。 */
   searchFn: SearchFn
   /** 决定预加载是否触发及候选页范围。 */
@@ -87,13 +90,14 @@ export function useSearchPreloader({
   mode,
   source,
   searchTags,
+  languageFilter,
   searchFn,
   currentPage,
   totalPages,
   enabled,
   cacheSearchPage,
 }: UseSearchPreloaderArgs): UseSearchPreloaderResult {
-  // 4 个上下文 ref：渲染期同步，供 preloadSearchPage 在异步 await 之后读到最新值。
+  // 5 个上下文 ref：渲染期同步，供 preloadSearchPage 在异步 await 之后读到最新值。
   // 这组 ref 与 SearchPage 外部的同名 ref 独立但同源（都来自组件 state），渲染结束时必然一致。
   const queryRef = useRef(query)
   queryRef.current = query // eslint-disable-line react-hooks/refs
@@ -103,13 +107,15 @@ export function useSearchPreloader({
   sourceRef.current = source // eslint-disable-line react-hooks/refs
   const searchTagsRef = useRef(searchTags)
   searchTagsRef.current = searchTags // eslint-disable-line react-hooks/refs
+  const languageFilterRef = useRef(languageFilter)
+  languageFilterRef.current = languageFilter // eslint-disable-line react-hooks/refs
 
   // 预加载临时中转缓存：preloadSearchPage 写入，consumePreloaded 读取并搬运到持久层。
   const preloadedPagesRef = useRef(new Map<string, SearchPageCache>())
 
   const contextKey = useMemo(
-    () => createSearchContextKey({ query, mode, source, searchTags }),
-    [query, mode, source, searchTags],
+    () => createSearchContextKey({ query, mode, source, searchTags, languageFilter }),
+    [query, mode, source, searchTags, languageFilter],
   )
 
   // 持久缓存读取：hasPage / getPage 经 store ref 调用，避免闭包陈旧。
@@ -124,6 +130,7 @@ export function useSearchPreloader({
         mode: modeRef.current,
         source: sourceRef.current,
         searchTags: searchTagsRef.current,
+        languageFilter: languageFilterRef.current,
       })
       const result = await searchFn(
         queryRef.current,
@@ -133,8 +140,9 @@ export function useSearchPreloader({
         searchTagsRef.current || undefined,
         // 预加载必须以非交互模式调用：被挑战时静默失败保缓存，禁止弹窗
         false,
+        languageFilterRef.current,
       )
-      // 切换来源/查询词/模式/标签后旧 contextKey 的迟到结果必须丢弃，避免脏写。
+      // 切换来源/查询词/模式/标签/语言筛选后旧 contextKey 的迟到结果必须丢弃，避免脏写。
       // 这一行是切源中断机制的最后一道闸（commit 2a1d3b2），由本 hook 的集成测试守护。
       if (signal.aborted) return
       preloadedPagesRef.current.set(`${pageContextKey}:${page}`, {
@@ -142,6 +150,7 @@ export function useSearchPreloader({
         mode: modeRef.current,
         source: sourceRef.current,
         searchTags: searchTagsRef.current,
+        languageFilter: languageFilterRef.current,
         comics: result.comics,
         pagination: result.pagination ?? null,
         sections: result.sections,

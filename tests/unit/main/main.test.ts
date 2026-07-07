@@ -496,6 +496,56 @@ describe('main.ts', () => {
       })
     })
 
+    it('python:search forwards language_filter for NH when valid', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await handler.handler({}, 'sample', 'keyword', 1, 'nh', undefined, false, 'chinese')
+
+      expect(mockBridgeCall).toHaveBeenCalledWith('search', {
+        query: 'sample',
+        mode: 'keyword',
+        page: 1,
+        source: 'nh',
+        language_filter: 'chinese',
+      })
+    })
+
+    it('python:search omits language_filter when not provided', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await handler.handler({}, 'sample', 'keyword', 1, 'nh')
+
+      const callArgs = mockBridgeCall.mock.calls[0][1] as Record<string, unknown>
+      expect(callArgs.language_filter).toBeUndefined()
+    })
+
+    it('python:search rejects language_filter from non-NH source', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(
+        handler.handler({}, 'sample', 'keyword', 1, 'hcomic', undefined, false, 'chinese'),
+      ).rejects.toThrow('languageFilter is only supported for source nh')
+    })
+
+    it.each([
+      ['unsupported value', 'japanese'],
+      ['non-string value', 123],
+      ['control characters', 'chinese\x00'],
+    ])('python:search rejects invalid language_filter: %s', async (_case, invalidValue) => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await expect(
+        handler.handler({}, 'sample', 'keyword', 1, 'nh', undefined, false, invalidValue),
+      ).rejects.toThrow('Invalid search languageFilter')
+      expect(mockBridgeCall).not.toHaveBeenCalled()
+    })
+
+    it('python:search does not forward allowInteractiveChallenge to Python', async () => {
+      // 用 hcomic 来源避免触发 JM 静默快照恢复路径；这里只关心控制参数不被转发
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await handler.handler({}, 'sample', 'keyword', 1, 'hcomic', undefined, true)
+
+      const callArgs = mockBridgeCall.mock.calls[0][1] as Record<string, unknown>
+      expect(callArgs.allowInteractiveChallenge).toBeUndefined()
+      expect(callArgs.allow_interactive_challenge).toBeUndefined()
+    })
+
     it('python:search should reject invalid mode', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:search')!
       await expect(handler.handler({}, 'test', 'invalid', 1)).rejects.toThrow('Invalid search mode')

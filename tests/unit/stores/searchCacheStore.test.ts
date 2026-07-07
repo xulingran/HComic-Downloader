@@ -29,8 +29,34 @@ describe('useSearchCacheStore', () => {
   })
 
   it('creates stable context keys', () => {
+    // 末尾的 languageFilter 段缺省为空字符串，仍参与 key（add-nh-chinese-language-filter spec）
     expect(createSearchContextKey({ query: 'abc', mode: 'keyword', source: 'hcomic', searchTags: '' }))
-      .toBe('hcomic\u001fkeyword\u001fabc\u001f')
+      .toBe('hcomic\u001fkeyword\u001fabc\u001f\u001f')
+  })
+
+  it('isolates cached pages by languageFilter for the same query', () => {
+    // 同一 NH 查询的「仅中文」开关开/关应生成不同 contextKey，避免脏读
+    const unfiltered = createSearchContextKey({
+      query: 'sample', mode: 'keyword', source: 'nh', searchTags: '',
+    })
+    const chineseOnly = createSearchContextKey({
+      query: 'sample', mode: 'keyword', source: 'nh', searchTags: '', languageFilter: 'chinese',
+    })
+    expect(unfiltered).not.toBe(chineseOnly)
+
+    useSearchCacheStore.getState().setPage(unfiltered, 1, {
+      query: 'sample', mode: 'keyword', source: 'nh', searchTags: '',
+      comics: [mockComic], pagination: { ...mockPagination, currentPage: 1 },
+    })
+    useSearchCacheStore.getState().setPage(chineseOnly, 1, {
+      query: 'sample', mode: 'keyword', source: 'nh', searchTags: '', languageFilter: 'chinese',
+      comics: [mockComic], pagination: { ...mockPagination, currentPage: 1 },
+    })
+
+    // 两种状态互不覆盖：清除一种不影响另一种
+    useSearchCacheStore.getState().clearContext(unfiltered)
+    expect(useSearchCacheStore.getState().getPage(unfiltered, 1)).toBeUndefined()
+    expect(useSearchCacheStore.getState().getPage(chineseOnly, 1)).toBeDefined()
   })
 
   it('stores and reads a page in a search context', () => {

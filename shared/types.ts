@@ -443,7 +443,7 @@ interface DownloadConflictResult {
  */
 export interface IPCMethods {
   search: {
-    params: { query: string; mode: string; page: number; source?: string; tag?: string }
+    params: { query: string; mode: string; page: number; source?: string; tag?: string; language_filter?: 'chinese' }
     result: SearchResult
   }
   random: {
@@ -840,6 +840,7 @@ export interface HcomicAPI {
     source?: string,
     tag?: string,
     allowInteractiveChallenge?: boolean,
+    languageFilter?: 'chinese',
   ): Promise<SearchResult>
   random(source?: string): Promise<SearchResult>
   downloadBatchAsAlbum(comics: ComicInfo[], albumTitle: string, overwrite?: boolean): Promise<DownloadBatchAsAlbumResult>
@@ -952,6 +953,16 @@ export interface HcomicAPI {
 /** Valid search modes — shared between preload and main */
 export const SEARCH_MODES = ['keyword', 'author', 'tag', 'ranking', 'category'] as const
 export type SearchMode = typeof SEARCH_MODES[number]
+
+/**
+ * 受限的搜索语言筛选枚举（当前唯一合法值为 `chinese`）。
+ *
+ * 该筛选是独立的查询数据参数（区别于 `allowInteractiveChallenge` 这类 UI 控制参数），
+ * 由 preload 与主进程逐层校验枚举值；主进程仅在 `source === 'nh'` 时将其映射为
+ * Python 的 `language_filter` 字段转发（add-nh-chinese-language-filter spec）。
+ */
+export const SEARCH_LANGUAGE_FILTERS = ['chinese'] as const
+export type SearchLanguageFilter = typeof SEARCH_LANGUAGE_FILTERS[number]
 
 /** Valid comic sources — shared between preload and main */
 export const COMIC_SOURCES = ['hcomic', 'moeimg', 'jm', 'bika', 'copymanga', 'nh'] as const

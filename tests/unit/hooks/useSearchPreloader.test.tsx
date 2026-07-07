@@ -55,6 +55,7 @@ interface HookProps {
   mode: string
   source: string
   searchTags: string
+  languageFilter?: 'chinese'
   currentPage: number
   totalPages: number
   enabled: boolean
@@ -112,7 +113,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
     })
 
     // 等来源 A 的第 2 页预加载请求发出（在 IPC await 中挂起）。
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false, undefined))
 
     const contextKeyA = result.current.contextKey
 
@@ -172,7 +173,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       cacheSearchPage,
     })
 
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false, undefined))
 
     const contextKeyA = result.current.contextKey
 
@@ -224,7 +225,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       cacheSearchPage,
     })
 
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false, undefined))
 
     const contextKeyA = result.current.contextKey
 
@@ -284,7 +285,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
     })
 
     // 来源 A 的第 2 页预加载正常 resolve（contextKey 未切换）。
-    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false))
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('test', 'keyword', 2, 'hcomic', undefined, false, undefined))
 
     // 等预加载写入中转缓存 + usePaginatedPreloader 触发 commit（commit 在 resolve 后调度）。
     await act(async () => {
@@ -296,5 +297,140 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
     const contextKeyA = result.current.contextKey
     // 不变量 4：正常路径下，预加载结果经 commit 搬运到持久层。
     expect(useSearchCacheStore.getState().hasPage(contextKeyA, 2)).toBe(true)
+  })
+})
+
+describe('useSearchPreloader — languageFilter 维度（add-nh-chinese-language-filter spec）', () => {
+  beforeEach(() => {
+    useSearchCacheStore.setState({
+      contexts: {},
+      currentContextKey: null,
+      currentPage: 1,
+      hasCache: false,
+    })
+  })
+
+  it('languageFilter 透传到相邻页预加载请求', async () => {
+    const searchFn = vi.fn().mockResolvedValue({
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 2 },
+    })
+    const cacheSearchPage = makeCacheSearchPage()
+
+    renderSearchPreloader({
+      query: 'sample',
+      mode: 'keyword',
+      source: 'nh',
+      searchTags: '',
+      languageFilter: 'chinese',
+      currentPage: 1,
+      totalPages: 5,
+      enabled: true,
+      searchFn,
+      cacheSearchPage,
+    })
+
+    // 第 2 页预加载请求必须携带 languageFilter='chinese'
+    await waitFor(() =>
+      expect(searchFn).toHaveBeenCalledWith('sample', 'keyword', 2, 'nh', undefined, false, 'chinese'),
+    )
+  })
+
+  it('切换 languageFilter 触发 contextKey 变化并中断旧预加载', async () => {
+    const deferredPage2 = createDeferred()
+    const searchFn = vi.fn(async (...args: Parameters<SearchFn>) => {
+      const page = args[2]
+      if (page === 2) return deferredPage2.promise
+      return { comics: [mockComic], pagination: { ...mockPagination, currentPage: page } }
+    })
+    const cacheSearchPage = makeCacheSearchPage()
+
+    const { result, rerender } = renderSearchPreloader({
+      query: 'sample',
+      mode: 'keyword',
+      source: 'nh',
+      searchTags: '',
+      currentPage: 1,
+      totalPages: 5,
+      enabled: true,
+      searchFn,
+      cacheSearchPage,
+    })
+
+    await waitFor(() => expect(searchFn).toHaveBeenCalledWith('sample', 'keyword', 2, 'nh', undefined, false, undefined))
+
+    const contextKeyUnfiltered = result.current.contextKey
+
+    // 切换筛选开启：contextKey 必须变化，且新请求带 'chinese'
+    rerender({
+      query: 'sample',
+      mode: 'keyword',
+      source: 'nh',
+      searchTags: '',
+      languageFilter: 'chinese',
+      currentPage: 1,
+      totalPages: 5,
+      enabled: true,
+      searchFn,
+      cacheSearchPage,
+    })
+
+    const contextKeyFiltered = createSearchContextKey({
+      query: 'sample', mode: 'keyword', source: 'nh', searchTags: '', languageFilter: 'chinese',
+    })
+    expect(result.current.contextKey).toBe(contextKeyFiltered)
+    expect(contextKeyUnfiltered).not.toBe(contextKeyFiltered)
+
+    await waitFor(() =>
+      expect(searchFn).toHaveBeenCalledWith('sample', 'keyword', 2, 'nh', undefined, false, 'chinese'),
+    )
+
+    // 旧筛选状态的迟到结果必须被丢弃（signal.aborted 后禁止写入中转）
+    await act(async () => {
+      deferredPage2.resolve({ comics: [mockComic], pagination: { ...mockPagination, currentPage: 2 } })
+      await deferredPage2.promise.catch(() => undefined)
+      await Promise.resolve()
+    })
+    expect(result.current.hasPreloaded(2, contextKeyUnfiltered)).toBe(false)
+    expect(useSearchCacheStore.getState().hasPage(contextKeyUnfiltered, 2)).toBe(false)
+  })
+
+  it('筛选与未筛选的缓存键互不覆盖', async () => {
+    const searchFn = vi.fn().mockResolvedValue({
+      comics: [mockComic],
+      pagination: { ...mockPagination, currentPage: 2 },
+    })
+    const cacheSearchPage = makeCacheSearchPage()
+
+    const { result } = renderSearchPreloader({
+      query: 'sample',
+      mode: 'keyword',
+      source: 'nh',
+      searchTags: '',
+      languageFilter: 'chinese',
+      currentPage: 1,
+      totalPages: 5,
+      enabled: true,
+      searchFn,
+      cacheSearchPage,
+    })
+
+    await waitFor(() =>
+      expect(searchFn).toHaveBeenCalledWith('sample', 'keyword', 2, 'nh', undefined, false, 'chinese'),
+    )
+    await act(async () => {
+      await Promise.resolve()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    const filteredKey = result.current.contextKey
+    const unfilteredKey = createSearchContextKey({
+      query: 'sample', mode: 'keyword', source: 'nh', searchTags: '',
+    })
+    expect(filteredKey).not.toBe(unfilteredKey)
+    // 筛选状态的第 2 页已落盘，但未筛选状态不应误读
+    expect(useSearchCacheStore.getState().hasPage(filteredKey, 2)).toBe(true)
+    expect(useSearchCacheStore.getState().hasPage(unfilteredKey, 2)).toBe(false)
   })
 })

@@ -36,7 +36,7 @@ describe('preload.ts', () => {
   describe('search', () => {
     it('should invoke python:search with correct args', async () => {
       await exposedApi.search('test', 'keyword', 1)
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined, false)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined, false, undefined)
     })
 
     it('should reject invalid query', () => {
@@ -46,7 +46,7 @@ describe('preload.ts', () => {
 
     it('should allow empty query for homepage search', async () => {
       await exposedApi.search('', 'keyword', 1)
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', '', 'keyword', 1, undefined, undefined, false)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', '', 'keyword', 1, undefined, undefined, false, undefined)
     })
 
     it('should reject invalid mode', () => {
@@ -66,7 +66,7 @@ describe('preload.ts', () => {
 
     it('should pass source when valid', async () => {
       await exposedApi.search('test', 'keyword', 1, 'moeimg')
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'moeimg', undefined, false)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'moeimg', undefined, false, undefined)
     })
 
     it('should reject non-boolean allowInteractiveChallenge', () => {
@@ -77,13 +77,48 @@ describe('preload.ts', () => {
 
     it('should pass allowInteractiveChallenge=true for user-initiated search', async () => {
       await exposedApi.search('test', 'keyword', 1, 'jm', undefined, true)
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'jm', undefined, true)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'jm', undefined, true, undefined)
     })
 
     it('should default allowInteractiveChallenge to false when omitted', async () => {
       await exposedApi.search('test', 'keyword', 1)
       // 第 7 参数（allowInteractiveChallenge）缺省时归一化为 false，不转发 undefined
-      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined, false)
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, undefined, undefined, false, undefined)
+    })
+
+    it('should forward languageFilter="chinese" for NH filter', async () => {
+      await exposedApi.search('test', 'keyword', 1, 'nh', undefined, false, 'chinese')
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'nh', undefined, false, 'chinese')
+    })
+
+    it('should default languageFilter to undefined when omitted', async () => {
+      await exposedApi.search('test', 'keyword', 1, 'nh')
+      // 第 8 参数（languageFilter）缺省时不转发，主进程据此识别为未启用筛选
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'nh', undefined, false, undefined)
+    })
+
+    it('should normalize empty-string languageFilter to undefined', async () => {
+      await exposedApi.search('test', 'keyword', 1, 'nh', undefined, false, '')
+      expect(mockInvoke).toHaveBeenCalledWith('python:search', 'test', 'keyword', 1, 'nh', undefined, false, undefined)
+    })
+
+    it('should reject non-string languageFilter', () => {
+      expect(() => exposedApi.search('test', 'keyword', 1, 'nh', undefined, false, 123 as unknown as string)).toThrow(
+        'Invalid languageFilter',
+      )
+    })
+
+    it('should reject unsupported languageFilter value', () => {
+      // 'japanese' 不在 SEARCH_LANGUAGE_FILTERS 枚举中，必须在 preload 早期拒绝
+      expect(() => exposedApi.search('test', 'keyword', 1, 'nh', undefined, false, 'japanese')).toThrow(
+        'Invalid languageFilter',
+      )
+    })
+
+    it('should reject languageFilter containing control characters', () => {
+      expect(() => exposedApi.search('test', 'keyword', 1, 'nh', undefined, false, 'chinese\x00')).toThrow(
+        'Invalid languageFilter',
+      )
     })
   })
 

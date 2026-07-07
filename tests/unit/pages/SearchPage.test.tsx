@@ -131,7 +131,7 @@ const { mockSearchCacheStore } = vi.hoisted(() => {
 })
 
 vi.mock('@/stores/useSearchCacheStore', () => ({
-  createSearchContextKey: ({ query, mode, source, searchTags }: { query: string; mode: string; source: string; searchTags: string }) => [source, mode, query.trim(), searchTags].join('\u001f'),
+  createSearchContextKey: ({ query, mode, source, searchTags, languageFilter }: { query: string; mode: string; source: string; searchTags: string; languageFilter?: string }) => [source, mode, query.trim(), searchTags, languageFilter ?? ''].join('\u001f'),
   useSearchCacheStore: vi.fn(() => mockSearchCacheStore)
 }))
 
@@ -259,7 +259,7 @@ describe('SearchPage', () => {
     await userEvent.type(input, 'test query')
     await userEvent.click(screen.getByText('搜索'))
 
-    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic', undefined, true)
+    expect(mockSearch).toHaveBeenCalledWith('test query', 'keyword', 1, 'hcomic', undefined, true, undefined)
   })
 
   it('auto-searches with empty keyword on mount', async () => {
@@ -273,7 +273,7 @@ describe('SearchPage', () => {
     // Wait for the async getConfig + search to complete
     await screen.findByPlaceholderText('输入搜索内容...')
 
-    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic')
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic', undefined, undefined, undefined)
   })
 
   it('sends search request with empty query when button clicked', async () => {
@@ -291,7 +291,7 @@ describe('SearchPage', () => {
     await userEvent.click(screen.getByText('搜索'))
 
     // 验证按钮点击确实发起了空 query 搜索（而非仅 mount 残留的调用）
-    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic', undefined, true)
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic', undefined, true, undefined)
   })
 
   it('shows pagination when totalPages > 1', () => {
@@ -369,7 +369,7 @@ describe('SearchPage', () => {
     await user.click(screen.getByText('热门排行'))
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh')
+      expect(mockSearch).toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh', undefined, undefined, undefined)
     })
   })
 
@@ -391,7 +391,7 @@ describe('SearchPage', () => {
     await user.click(await screen.findByText('big breasts'))
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('big breasts', 'tag', 1, 'nh')
+      expect(mockSearch).toHaveBeenCalledWith('big breasts', 'tag', 1, 'nh', undefined, undefined, undefined)
     })
   })
 
@@ -434,20 +434,20 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
     await user.click(await screen.findByText('最近更新'))
-    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'nh'))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'nh', undefined, undefined, undefined))
 
     mockSearch.mockClear()
     await user.click(screen.getByText('标签'))
     await user.click(await screen.findByText('big breasts'))
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'big breasts', true)
+      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'big breasts', true, undefined)
     })
 
     await user.click(screen.getByText('清除全部'))
     await waitFor(() => {
       // 清除全部标签是用户主动操作，与 handleToggleTag 一致透传 allowInteractiveChallenge=true
-      expect(mockSearch).toHaveBeenLastCalledWith('', 'tag', 1, 'nh', undefined, true)
+      expect(mockSearch).toHaveBeenLastCalledWith('', 'tag', 1, 'nh', undefined, true, undefined)
     })
   })
 
@@ -466,16 +466,16 @@ describe('SearchPage', () => {
 
     render(<SearchPage />)
     await user.click(await screen.findByText('热门排行'))
-    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh'))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh', undefined, undefined, undefined))
 
     mockSearch.mockClear()
     await user.click(screen.getByText('标签'))
     await user.click(await screen.findByText('full color'))
 
     await waitFor(() => {
-      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'full color', true)
+      expect(mockSearch).toHaveBeenCalledWith('', 'tag', 1, 'nh', 'full color', true, undefined)
     })
-    expect(mockSearch).not.toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh', 'full color')
+    expect(mockSearch).not.toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh', 'full color', undefined, undefined)
   })
 
   it('shows cached search page immediately and refreshes it in background', async () => {
@@ -503,7 +503,7 @@ describe('SearchPage', () => {
     expect(mockStoreState.setComics).toHaveBeenCalledWith([
       { id: '2', title: 'Cached Page 2 Comic', url: 'https://example.com/2', coverUrl: '', source: 'test' },
     ])
-    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined, false)
+    expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined, false, undefined)
   })
 
   it('restores viewingCategory from cached bika category context on remount', async () => {
@@ -540,7 +540,7 @@ describe('SearchPage', () => {
     render(<SearchPage />)
 
     await screen.findByText('Page 5 Comic')
-    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 6, 'hcomic', undefined, false))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 6, 'hcomic', undefined, false, undefined))
   })
 
   it('does not commit stale preload results after switching source', async () => {
@@ -570,7 +570,7 @@ describe('SearchPage', () => {
     render(<SearchPage />)
     await screen.findByText('Page 1 Comic')
     // 等到来源 hcomic 的第 2 页预加载请求已发出（仍挂起）
-    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined, false))
+    await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 2, 'hcomic', undefined, false, undefined))
 
     // 切换到来源 moeimg——contextKey 变化，旧来源预加载被中断
     const sourceSelect = screen.getByDisplayValue('HComic')
@@ -631,7 +631,7 @@ describe('SearchPage', () => {
 
       // Last search call should be for moeimg with empty query
       const lastCall = mockSearch.mock.calls[mockSearch.mock.calls.length - 1]
-      expect(lastCall).toEqual(['', 'keyword', 1, 'moeimg'])
+      expect(lastCall).toEqual(['', 'keyword', 1, 'moeimg', undefined, undefined, undefined])
     })
 
     it('triggers interactive empty keyword search when switching to jm source', async () => {
@@ -648,7 +648,7 @@ describe('SearchPage', () => {
       await userEvent.selectOptions(sourceSelect, 'jm')
 
       expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
-      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true)
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true, undefined)
       expect(mockRandom).not.toHaveBeenCalled()
     })
 
@@ -659,7 +659,7 @@ describe('SearchPage', () => {
       mockVerifyAuth.mockResolvedValue(authResult)
 
       render(<SearchPage />)
-      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic'))
+      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'hcomic', undefined, undefined, undefined))
       mockSearch.mockClear()
       mockRandom.mockClear()
       mockVerifyAuth.mockClear()
@@ -765,7 +765,7 @@ describe('SearchPage', () => {
       render(<SearchPage />)
 
       await waitFor(() => expect(mockSearchCacheStore.setPage).toHaveBeenCalledWith(
-        'jm\u001fkeyword\u001f\u001f',
+        'jm\u001fkeyword\u001f\u001f\u001f',
         1,
         expect.objectContaining({
           source: 'jm',
@@ -792,7 +792,7 @@ describe('SearchPage', () => {
       // 挑战阻断 verifyAuth 时不显示 needsLogin
       expect(screen.queryByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')).not.toBeInTheDocument()
       // 而是放行继续搜索（让搜索的挑战恢复机制处理）
-      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm')
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, undefined, undefined)
     })
 
     it('shows login prompt when verifyAuth throws', async () => {
@@ -864,7 +864,7 @@ describe('SearchPage', () => {
       await userEvent.selectOptions(sourceSelect, 'jm')
 
       expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
-      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true)
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true, undefined)
       expect(screen.getByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
     })
 
@@ -873,7 +873,7 @@ describe('SearchPage', () => {
       await screen.findByPlaceholderText('输入搜索内容...')
 
       await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'jm')
-      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true))
+      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true, undefined))
       mockRandom.mockClear()
       mockSearchCacheStore.setPage.mockClear()
 
@@ -895,7 +895,7 @@ describe('SearchPage', () => {
 
       expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
       // 重写：裸 toHaveBeenCalled() 改为带 source 参数，验证确实对 jm 发起了搜索
-      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm')
+      expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, undefined, undefined)
     })
   })
 
@@ -1576,6 +1576,183 @@ describe('SearchPage', () => {
 
       const states = collectCardStates()
       expect(states[0].isRecommended).toBe(true)
+    })
+  })
+
+  // ── NH「仅显示中文」筛选（add-nh-chinese-language-filter spec）──────────────
+  describe('NH language filter', () => {
+    it('默认关闭，且仅在 NH 来源显示控件', async () => {
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      render(<SearchPage />)
+
+      // NH 入口页：控件可见，且默认未勾选
+      await waitFor(() => expect(screen.getByText('NH')).toBeInTheDocument())
+      const nhCheckbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      expect(nhCheckbox).toBeInTheDocument()
+      expect(nhCheckbox.checked).toBe(false)
+    })
+
+    it('非 NH 来源不展示「仅显示中文」控件', async () => {
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'hcomic' } })
+      render(<SearchPage />)
+
+      await waitFor(() => expect(screen.getByText('HComic')).toBeInTheDocument())
+      expect(screen.queryByRole('checkbox', { name: /仅显示中文/ })).toBeNull()
+    })
+
+    it('入口页切换筛选只更新状态不发起请求', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      render(<SearchPage />)
+
+      await waitFor(() => expect(screen.getByText('NH')).toBeInTheDocument())
+      mockSearch.mockClear()
+
+      const checkbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      await user.click(checkbox)
+
+      // 入口页本体（无可见结果）：禁止自动内容请求
+      expect(mockSearch).not.toHaveBeenCalled()
+      expect(checkbox.checked).toBe(true)
+    })
+
+    it('入口动作（最近更新）应用当前筛选状态', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      render(<SearchPage />)
+
+      await waitFor(() => expect(screen.getByText('NH')).toBeInTheDocument())
+      // 先在入口页开启筛选（不触发请求）
+      const checkbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      await user.click(checkbox)
+      mockSearch.mockClear()
+
+      // 点击最近更新：请求必须携带 languageFilter='chinese'
+      await user.click(screen.getByText('最近更新'))
+      await waitFor(() => {
+        expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'nh', undefined, undefined, 'chinese')
+      })
+    })
+
+    it('入口动作把中文结果写入独立的筛选缓存上下文', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      mockSearch.mockResolvedValue({
+        comics: [{ id: 'zh-1', title: '中文结果', url: '', coverUrl: '', source: 'NH', language: 'chinese' }],
+        pagination: { currentPage: 1, totalPages: 2, totalItems: 26 },
+      })
+
+      render(<SearchPage />)
+      await waitFor(() => expect(screen.getByText('最近更新')).toBeInTheDocument())
+      await user.click(screen.getByRole('checkbox', { name: /仅显示中文/ }))
+      mockSearchCacheStore.setPage.mockClear()
+
+      await user.click(screen.getByText('最近更新'))
+
+      await waitFor(() => expect(mockSearchCacheStore.setPage).toHaveBeenCalled())
+      const [contextKey, page, cachedPage] = mockSearchCacheStore.setPage.mock.calls.at(-1)!
+      expect(contextKey).toBe('nh\u001fkeyword\u001f\u001f\u001fchinese')
+      expect(page).toBe(1)
+      expect(cachedPage).toEqual(expect.objectContaining({
+        source: 'nh',
+        languageFilter: 'chinese',
+      }))
+    })
+
+    it('热门排行入口也透传筛选状态', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      render(<SearchPage />)
+
+      await waitFor(() => expect(screen.getByText('NH')).toBeInTheDocument())
+      const checkbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      await user.click(checkbox)
+
+      mockSearch.mockClear()
+      await user.click(screen.getByText('热门排行'))
+      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('popular-today', 'ranking', 1, 'nh', undefined, undefined, 'chinese'))
+    })
+
+    it('结果页切换筛选从第 1 页重新搜索并携带筛选', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      // 模拟搜索返回结果：让点击「最近更新」后 store 有数据，进入「结果页」语义
+      mockSearch.mockResolvedValueOnce({
+        comics: [{ id: '1', title: 'Comic A', url: '', coverUrl: '', source: 'nh' }],
+        pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+      })
+
+      render(<SearchPage />)
+      await waitFor(() => expect(screen.getByText('NH')).toBeInTheDocument())
+      await user.click(screen.getByText('最近更新'))
+      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'nh', undefined, undefined, undefined))
+
+      mockSearch.mockClear()
+      const checkbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      await user.click(checkbox)
+
+      // 结果页切换：必须从第 1 页重新搜索并携带筛选
+      await waitFor(() => {
+        expect(mockSearch).toHaveBeenCalledWith(expect.anything(), expect.anything(), 1, 'nh', undefined, true, 'chinese')
+      })
+    })
+
+    it('切换到其他来源不携带筛选参数', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      render(<SearchPage />)
+
+      await waitFor(() => expect(screen.getByText('NH')).toBeInTheDocument())
+      const checkbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      await user.click(checkbox)
+
+      // 切到 hcomic：请求末尾的 languageFilter 必须是 undefined
+      mockSearch.mockClear()
+      // NH 入口页的第一个 select 是来源选择器
+      const selects = screen.getAllByRole('combobox')
+      await user.selectOptions(selects[0], 'hcomic')
+      await waitFor(() => expect(mockSearch).toHaveBeenCalled())
+      const lastCall = mockSearch.mock.calls[mockSearch.mock.calls.length - 1]
+      expect(lastCall[3]).toBe('hcomic')
+      expect(lastCall[6]).toBeUndefined() // 非 NH 来源不携带 languageFilter
+    })
+
+    it('切到非 NH 后的标签搜索不携带残留的 NH 语言筛选', async () => {
+      // 回归守护：审查发现 handleToggleTag/handleClearAllTags 曾直接透传 nhLanguageFilterRef，
+      // 而 design 决策 3 要求切源时保留筛选状态——两者叠加会让「NH 开筛选 → 切 hcomic → 点标签」
+      // 携带 source='hcomic' + languageFilter='chinese'，触发主进程跨来源拒绝。
+      const user = userEvent.setup()
+      const getTagList = vi.fn().mockResolvedValue({ tags: [{ tag: 'full color', count: 100 }], total: 1 })
+      mockUseTagList.mockReturnValue({
+        getTagList,
+        refreshTagList: vi.fn().mockResolvedValue(undefined),
+      })
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'nh' } })
+      mockSearch.mockResolvedValue({
+        comics: [],
+        pagination: { currentPage: 1, totalPages: 1, totalItems: 0 },
+      })
+
+      render(<SearchPage />)
+      await waitFor(() => expect(screen.getByText('NH')).toBeInTheDocument())
+      // 在 NH 入口页开启筛选（不触发请求）
+      const checkbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      await user.click(checkbox)
+
+      // 切到 hcomic（supportsTagList=true，标签按钮可见）
+      const selects = screen.getAllByRole('combobox')
+      await user.selectOptions(selects[0], 'hcomic')
+      await waitFor(() => expect(mockSearch).toHaveBeenCalled())
+
+      // 在 hcomic 下点选标签：最后一次 search 的 languageFilter（第 8 参数）必须 undefined
+      mockSearch.mockClear()
+      await user.click(screen.getByText('标签'))
+      await user.click(await screen.findByText('full color'))
+
+      await waitFor(() => expect(mockSearch).toHaveBeenCalled())
+      const lastCall = mockSearch.mock.calls[mockSearch.mock.calls.length - 1]
+      expect(lastCall[3]).toBe('hcomic')
+      expect(lastCall[6]).toBeUndefined() // 残留的 NH 筛选不得泄漏到 hcomic 标签搜索
     })
   })
 })

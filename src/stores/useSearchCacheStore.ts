@@ -6,6 +6,7 @@ export interface SearchPageCache {
   mode: string
   source: string
   searchTags: string
+  languageFilter?: string
   comics: ComicInfo[]
   pagination: PaginationInfo | null
   sections?: SearchSection[]
@@ -20,6 +21,7 @@ interface SearchContextInput {
   mode: string
   source: string
   searchTags: string
+  languageFilter?: string
 }
 
 interface SearchCacheStoreState {
@@ -34,8 +36,10 @@ interface SearchCacheStoreState {
   clearCache: () => void
 }
 
-export function createSearchContextKey({ query, mode, source, searchTags }: SearchContextInput): string {
-  return [source, mode, query.trim(), searchTags].join('\u001f')
+export function createSearchContextKey({ query, mode, source, searchTags, languageFilter }: SearchContextInput): string {
+  // languageFilter 作为独立维度参与 key：同一查询的筛选/未筛选缓存互不覆盖
+  // （add-nh-chinese-language-filter spec）。
+  return [source, mode, query.trim(), searchTags, languageFilter ?? ''].join('\u001f')
 }
 
 export const useSearchCacheStore = create<SearchCacheStoreState>((set, get) => ({

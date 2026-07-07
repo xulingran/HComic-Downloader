@@ -35,8 +35,11 @@ export function useSearch() {
       source?: string,
       tag?: string,
       allowInteractiveChallenge?: boolean,
+      languageFilter?: 'chinese',
     ) => {
-      return invoke(() => window.hcomic!.search(query, mode, page, source, tag, allowInteractiveChallenge))
+      return invoke(() =>
+        window.hcomic!.search(query, mode, page, source, tag, allowInteractiveChallenge, languageFilter),
+      )
     },
     [invoke],
   )

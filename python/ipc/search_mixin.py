@@ -232,9 +232,22 @@ class SearchMixin:
         page: int = 1,
         source: str | None = None,
         tag: str = "",
+        language_filter: str = "",
     ) -> dict:
         effective_source = source if source in _VALID_SOURCES else self.config.default_source
         self._check_source_auth(effective_source)
+        # language_filter 仅允许 NH 使用 'chinese'：其他来源或非法值一律视为未启用，
+        # 保持与非 NH 来源的现有行为完全一致（add-nh-chinese-language-filter spec）。
+        effective_language_filter = ""
+        if language_filter and effective_source == "nh":
+            normalized = (language_filter or "").strip().lower()
+            if normalized == "chinese":
+                effective_language_filter = "chinese"
+            else:
+                raise ValueError(f"Unsupported language_filter for NH: {language_filter!r}")
+        elif language_filter:
+            # 非 NH 来源携带筛选：拒绝，避免静默吞掉 renderer 错误的参数。
+            raise ValueError("language_filter is only supported for source nh")
         effective_query = query
         effective_tag = tag
         if effective_source == "hcomic" and mode == "tag":
@@ -338,7 +351,11 @@ class SearchMixin:
         try:
             with self._auth_error_guard(effective_source):
                 comics, pagination = self.parser.search(
-                    effective_query, page=page, source=effective_source, tag=effective_tag
+                    effective_query,
+                    page=page,
+                    source=effective_source,
+                    tag=effective_tag,
+                    language_filter=effective_language_filter,
                 )
         except AntiBotChallengeError:
             # 反爬挑战：冒泡到 ipc_server 顶层捕获，序列化为 -32002 结构化信号。

@@ -32,8 +32,23 @@ class _FakeSearchMixin(SearchMixin):
             get_comic_tags=lambda *_args, **_kwargs: [],
         )
 
-    def _search(self, keyword: str, page: int = 1, source: str | None = None, tag: str = ""):
-        self.calls.append({"keyword": keyword, "page": page, "source": source, "tag": tag})
+    def _search(
+        self,
+        keyword: str,
+        page: int = 1,
+        source: str | None = None,
+        tag: str = "",
+        language_filter: str = "",
+    ):
+        self.calls.append(
+            {
+                "keyword": keyword,
+                "page": page,
+                "source": source,
+                "tag": tag,
+                "language_filter": language_filter,
+            }
+        )
         comic = ComicInfo(id="1", title="Test", source_site="nh", comic_source="NH", tags=["big breasts"])
         return [comic], SimpleNamespace(current_page=page, total_pages=1, total_items=1)
 
@@ -74,7 +89,13 @@ def test_nh_ranking_popular_maps_to_popular_tag():
 
     mixin.handle_search(query="popular", mode="ranking", page=2, source="nh")
 
-    assert mixin.calls[-1] == {"keyword": "", "page": 2, "source": "nh", "tag": "popular"}
+    assert mixin.calls[-1] == {
+        "keyword": "",
+        "page": 2,
+        "source": "nh",
+        "tag": "popular",
+        "language_filter": "",
+    }
 
 
 def test_nh_ranking_popular_today_maps_to_tag():
@@ -82,7 +103,13 @@ def test_nh_ranking_popular_today_maps_to_tag():
 
     mixin.handle_search(query="popular-today", mode="ranking", page=1, source="nh")
 
-    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": "popular-today"}
+    assert mixin.calls[-1] == {
+        "keyword": "",
+        "page": 1,
+        "source": "nh",
+        "tag": "popular-today",
+        "language_filter": "",
+    }
 
 
 def test_nh_ranking_popular_week_maps_to_tag():
@@ -90,7 +117,13 @@ def test_nh_ranking_popular_week_maps_to_tag():
 
     mixin.handle_search(query="popular-week", mode="ranking", page=1, source="nh")
 
-    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": "popular-week"}
+    assert mixin.calls[-1] == {
+        "keyword": "",
+        "page": 1,
+        "source": "nh",
+        "tag": "popular-week",
+        "language_filter": "",
+    }
 
 
 def test_nh_ranking_popular_month_maps_to_tag():
@@ -98,7 +131,13 @@ def test_nh_ranking_popular_month_maps_to_tag():
 
     mixin.handle_search(query="popular-month", mode="ranking", page=1, source="nh")
 
-    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": "popular-month"}
+    assert mixin.calls[-1] == {
+        "keyword": "",
+        "page": 1,
+        "source": "nh",
+        "tag": "popular-month",
+        "language_filter": "",
+    }
 
 
 def test_nh_ranking_unknown_query_maps_to_empty_tag():
@@ -106,7 +145,13 @@ def test_nh_ranking_unknown_query_maps_to_empty_tag():
 
     mixin.handle_search(query="random", mode="ranking", page=1, source="nh")
 
-    assert mixin.calls[-1] == {"keyword": "", "page": 1, "source": "nh", "tag": ""}
+    assert mixin.calls[-1] == {
+        "keyword": "",
+        "page": 1,
+        "source": "nh",
+        "tag": "",
+        "language_filter": "",
+    }
 
 
 def test_nh_single_tag_maps_to_exact_tag_query():
@@ -234,3 +279,64 @@ def test_supported_random_sources_keep_their_source(source):
     mixin.handle_random(source=source)
 
     assert mixin.calls[-1] == {"method": "random", "source": source}
+
+
+# ── language_filter 路由（add-nh-chinese-language-filter spec）──────────────
+
+
+def test_nh_language_filter_chinese_forwarded_to_parser():
+    """NH 来源 + 合法 chinese 筛选必须原样转发到 parser.search。"""
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(query="sample", mode="keyword", page=1, source="nh", language_filter="chinese")
+
+    assert mixin.calls[-1]["language_filter"] == "chinese"
+
+
+def test_nh_language_filter_absent_defaults_to_empty():
+    """未传 language_filter 时应等价于空字符串，保持旧行为。"""
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(query="sample", mode="keyword", page=1, source="nh")
+
+    assert mixin.calls[-1]["language_filter"] == ""
+
+
+def test_nh_language_filter_normalizes_case_and_whitespace():
+    """'Chinese' / ' chinese ' 等大小写/空白变体应归一化为 'chinese'。"""
+    mixin = _FakeSearchMixin()
+
+    mixin.handle_search(query="", mode="keyword", page=1, source="nh", language_filter=" Chinese ")
+
+    assert mixin.calls[-1]["language_filter"] == "chinese"
+
+
+def test_nh_language_filter_rejects_unsupported_value():
+    """NH 不支持的语言值（如 'japanese'）必须在调用 parser 前被拒绝。"""
+    mixin = _FakeSearchMixin()
+
+    with pytest.raises(ValueError, match="Unsupported language_filter"):
+        mixin.handle_search(query="", mode="keyword", page=1, source="nh", language_filter="japanese")
+
+
+def test_non_nh_source_language_filter_is_rejected():
+    """非 NH 来源携带 language_filter 必须被显式拒绝，禁止静默吞掉。"""
+    mixin = _FakeSearchMixin()
+
+    with pytest.raises(ValueError, match="only supported for source nh"):
+        mixin.handle_search(query="x", mode="keyword", page=1, source="hcomic", language_filter="chinese")
+
+
+def test_nh_language_filter_combines_with_ranking_and_tag_modes():
+    """language_filter 与 ranking / tag 模式共存：四种 NH 入口都应同时携带筛选。"""
+    mixin = _FakeSearchMixin()
+
+    # ranking + chinese：tag=popular，language_filter=chinese
+    mixin.handle_search(query="popular", mode="ranking", page=1, source="nh", language_filter="chinese")
+    assert mixin.calls[-1]["tag"] == "popular"
+    assert mixin.calls[-1]["language_filter"] == "chinese"
+
+    # tag + chinese：keyword 变为 tag:"..." 查询，language_filter 仍透传
+    mixin.handle_search(query="full color", mode="tag", page=1, source="nh", language_filter="chinese")
+    assert mixin.calls[-1]["keyword"] == 'tag:"full color"'
+    assert mixin.calls[-1]["language_filter"] == "chinese"

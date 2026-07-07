@@ -557,3 +557,197 @@ class TestSearchEmptyKeyword:
         # 由于无法直接测试网络请求，我们验证方法存在且可调用
         assert hasattr(parser, "_get_homepage_galleries")
         assert callable(parser._get_homepage_galleries)
+
+
+# ---------------------------------------------------------------------------
+# language_filter 行为（add-nh-chinese-language-filter spec）
+# ---------------------------------------------------------------------------
+
+
+def _item(*, id_: str = "177013", media_id: str = "987560", tags=None):
+    """构造一条搜索列表 item，tags 缺省为 None（模拟实时列表只回 tag_ids 的场景）。"""
+    return {
+        "id": int(id_),
+        "media_id": media_id,
+        "title": {"english": "Sample"},
+        "images": {"pages": [{"t": "j"}]},
+        "num_pages": 1,
+        "tags": tags,
+    }
+
+
+class TestNhLanguageFilterUrlConstruction:
+    """覆盖四种查询模式的 URL 构造与 urlencode 行为。"""
+
+    def test_recent_updates_with_chinese_filter_uses_search_endpoint(self, monkeypatch):
+        parser = NhParser()
+        captured = {}
+
+        def fake_request_json(url, *, headers=None):
+            captured["url"] = url
+            return {"result": [], "num_pages": 1, "total": 0}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        parser.search("", page=1, language_filter="chinese")
+
+        # 必须走 search 端点，且 query 仅含 language 限定，不带 sort
+        assert "/api/v2/search" in captured["url"]
+        assert "sort=" not in captured["url"]
+        # urlencode 把冒号编码为 %3A、引号编码为 %22；统一比较小写形式
+        assert "language%3a%22chinese%22" in captured["url"].lower()
+
+    def test_keyword_with_chinese_filter_combines_query(self, monkeypatch):
+        parser = NhParser()
+        captured = {}
+
+        def fake_request_json(url, *, headers=None):
+            captured["url"] = url
+            return {"result": [], "num_pages": 1, "total": 0}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        parser.search("sample", page=1, language_filter="chinese")
+
+        # query 必须同时包含 sample 与 language:"chinese"，禁止改用 tag:"chinese"
+        assert "sample" in captured["url"]
+        assert "language" in captured["url"].lower()
+        assert "tag" not in captured["url"].lower()
+
+    def test_popular_ranking_with_chinese_filter_keeps_sort(self, monkeypatch):
+        parser = NhParser()
+        captured = {}
+
+        def fake_request_json(url, *, headers=None):
+            captured["url"] = url
+            return {"result": [], "num_pages": 1, "total": 0}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        parser.search("", page=1, tag="popular", language_filter="chinese")
+
+        url_lower = captured["url"].lower()
+        # 必须保留 popular 排序且包含 language 限定
+        assert "sort=popular" in url_lower
+        assert "language" in url_lower
+
+    @pytest.mark.parametrize("sort_value", ["popular", "popular-today", "popular-week", "popular-month"])
+    def test_all_four_rankings_keep_sort_with_chinese_filter(self, monkeypatch, sort_value):
+        parser = NhParser()
+        captured = {}
+
+        def fake_request_json(url, *, headers=None):
+            captured["url"] = url
+            return {"result": [], "num_pages": 1, "total": 0}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        parser.search("", page=1, tag=sort_value, language_filter="chinese")
+
+        assert f"sort={sort_value}" in captured["url"]
+
+    def test_unfiltered_recent_updates_keeps_galleries_endpoint(self, monkeypatch):
+        """未筛选的最近更新仍走 galleries 端点，保持原行为。"""
+        parser = NhParser()
+        captured = {}
+
+        def fake_request_json(url, *, headers=None):
+            captured["url"] = url
+            return {"result": [], "num_pages": 1, "total": 0}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        parser.search("", page=1)
+
+        assert "/api/v2/galleries" in captured["url"]
+        assert "language" not in captured["url"].lower()
+
+    def test_unfiltered_keyword_keeps_original_query(self, monkeypatch):
+        parser = NhParser()
+        captured = {}
+
+        def fake_request_json(url, *, headers=None):
+            captured["url"] = url
+            return {"result": [], "num_pages": 1, "total": 0}
+
+        monkeypatch.setattr(parser, "_request_json", fake_request_json)
+        parser.search("sample", page=1)
+
+        assert "sample" in captured["url"]
+        assert "language" not in captured["url"].lower()
+
+    def test_pagination_fields_pass_through_with_filter(self, monkeypatch):
+        parser = NhParser()
+        payload = {
+            "result": [_item()],
+            "num_pages": 5,
+            "total": 119,
+        }
+        monkeypatch.setattr(parser, "_request_json", lambda url, *, headers=None: payload)
+        comics, pagination = parser.search("sample", page=2, language_filter="chinese")
+
+        assert pagination is not None
+        assert pagination.total_pages == 5
+        assert pagination.total_items == 119
+        assert pagination.current_page == 2
+        assert len(comics) == 1
+
+    def test_language_filter_normalizes_case_and_whitespace(self):
+        """大小写/空白变体都被归一化为启用筛选。"""
+        assert NhParser._is_chinese_filter("chinese") is True
+        assert NhParser._is_chinese_filter(" Chinese ") is True
+        assert NhParser._is_chinese_filter("CHINESE") is True
+        assert NhParser._is_chinese_filter("") is False
+        assert NhParser._is_chinese_filter("japanese") is False
+        assert NhParser._is_chinese_filter("   ") is False
+
+
+class TestNhLanguageFilterMetadata:
+    """覆盖列表项 language 元数据的可信补充与未筛选时不误标。"""
+
+    def test_chinese_filter_fills_language_when_tags_missing(self):
+        """仅中文查询且 tags 缺失时，language 必须补为 'chinese'。"""
+        parser = NhParser()
+        comic = parser._parse_search_item(_item(), chinese_only=True)
+        assert comic.language == "chinese"
+
+    def test_chinese_filter_uses_query_provenance_when_tags_present(self):
+        """服务端中文谓词是可信来源，即使 tags 含冲突语言也必须稳定标为 chinese。"""
+        parser = NhParser()
+        tags = [{"id": 1, "type": "language", "name": "english"}]
+        comic = parser._parse_search_item(_item(tags=tags), chinese_only=True)
+        assert comic.language == "chinese"
+
+    def test_chinese_filter_fills_language_when_tags_have_no_language_entry(self):
+        """tags 存在但只有普通标签时仍必须补充 chinese。"""
+        parser = NhParser()
+        tags = [{"id": 2, "type": "tag", "name": "full color"}]
+        comic = parser._parse_search_item(_item(tags=tags), chinese_only=True)
+        assert comic.language == "chinese"
+
+    def test_unfiltered_does_not_default_to_chinese_when_tags_missing(self):
+        """未筛选且 tags 缺失时，language 必须为 None，禁止误标为 chinese。"""
+        parser = NhParser()
+        comic = parser._parse_search_item(_item(), chinese_only=False)
+        assert comic.language is None
+
+    def test_search_with_chinese_filter_propagates_language_to_comics(self, monkeypatch):
+        parser = NhParser()
+        payload = {
+            "result": [_item(id_="1"), _item(id_="2", media_id="2")],
+            "num_pages": 1,
+            "total": 2,
+        }
+        monkeypatch.setattr(parser, "_request_json", lambda url, *, headers=None: payload)
+        comics, _ = parser.search("sample", page=1, language_filter="chinese")
+
+        assert len(comics) == 2
+        assert all(c.language == "chinese" for c in comics)
+
+    def test_search_without_filter_keeps_language_none_when_tags_missing(self, monkeypatch):
+        parser = NhParser()
+        payload = {
+            "result": [_item(id_="1"), _item(id_="2", media_id="2")],
+            "num_pages": 1,
+            "total": 2,
+        }
+        monkeypatch.setattr(parser, "_request_json", lambda url, *, headers=None: payload)
+        comics, _ = parser.search("sample", page=1)
+
+        assert len(comics) == 2
+        assert all(c.language is None for c in comics)

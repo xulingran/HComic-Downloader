@@ -26,7 +26,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch())
     const response = await result.current.search('test query', 'keyword', 1)
 
-    expect(hcomic.search).toHaveBeenCalledWith('test query', 'keyword', 1, undefined, undefined, undefined)
+    expect(hcomic.search).toHaveBeenCalledWith('test query', 'keyword', 1, undefined, undefined, undefined, undefined)
     expect(response).toEqual(searchResult)
   })
 
@@ -36,7 +36,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch())
     await result.current.search('test', 'keyword', 3)
 
-    expect(hcomic.search).toHaveBeenCalledWith('test', 'keyword', 3, undefined, undefined, undefined)
+    expect(hcomic.search).toHaveBeenCalledWith('test', 'keyword', 3, undefined, undefined, undefined, undefined)
   })
 
   it('应传递空查询和不同的搜索模式', async () => {
@@ -47,7 +47,7 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch())
     await result.current.search('', 'tag', 1)
 
-    expect(hcomic.search).toHaveBeenCalledWith('', 'tag', 1, undefined, undefined, undefined)
+    expect(hcomic.search).toHaveBeenCalledWith('', 'tag', 1, undefined, undefined, undefined, undefined)
   })
 
   it('应透传 allowInteractiveChallenge 标志（用户主动搜索 vs 预加载）', async () => {
@@ -56,14 +56,23 @@ describe('useSearch', () => {
     const { result } = renderHook(() => useSearch())
     // 用户主动搜索 → true
     await result.current.search('test', 'keyword', 1, 'jm', undefined, true)
-    expect(hcomic.search).toHaveBeenLastCalledWith('test', 'keyword', 1, 'jm', undefined, true)
+    expect(hcomic.search).toHaveBeenLastCalledWith('test', 'keyword', 1, 'jm', undefined, true, undefined)
 
     // 预加载 → false
     await result.current.search('test', 'keyword', 2, 'jm', undefined, false)
-    expect(hcomic.search).toHaveBeenLastCalledWith('test', 'keyword', 2, 'jm', undefined, false)
+    expect(hcomic.search).toHaveBeenLastCalledWith('test', 'keyword', 2, 'jm', undefined, false, undefined)
 
     // 缺省 → undefined（preload/main 层回退为 false）
     await result.current.search('test', 'keyword', 3)
-    expect(hcomic.search).toHaveBeenLastCalledWith('test', 'keyword', 3, undefined, undefined, undefined)
+    expect(hcomic.search).toHaveBeenLastCalledWith('test', 'keyword', 3, undefined, undefined, undefined, undefined)
+  })
+
+  it('应透传 NH 语言筛选到 window.hcomic.search', async () => {
+    const hcomic = createMockHcomic({ search: vi.fn().mockResolvedValue({ comics: [] }) })
+
+    const { result } = renderHook(() => useSearch())
+    await result.current.search('sample', 'keyword', 1, 'nh', undefined, false, 'chinese')
+
+    expect(hcomic.search).toHaveBeenLastCalledWith('sample', 'keyword', 1, 'nh', undefined, false, 'chinese')
   })
 })
