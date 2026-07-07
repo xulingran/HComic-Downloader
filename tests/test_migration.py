@@ -205,6 +205,42 @@ def test_execute_continues_on_single_file_failure(mock_history_db, tmp_path):
 # ── Repair mode ───────────────────────────────────────────────────────
 
 
+class _RecordingHistoryDB:
+    """Small stateful DB double that exposes the observable output_path result."""
+
+    def __init__(self, record, *, update_error=None):
+        self.record = record
+        self.update_error = update_error
+
+    def get_all_records(self):
+        return [self.record]
+
+    def update_output_path(self, db_key, output_path):
+        if self.update_error:
+            raise self.update_error
+        expected_key = (
+            self.record["source_site"],
+            self.record["comic_id"],
+            self.record["comic_source"],
+        )
+        if db_key != expected_key:
+            raise AssertionError(f"unexpected db key: {db_key}")
+        self.record["output_path"] = output_path
+
+
+def _repair_record(output_path):
+    return {
+        "source_site": "hcomic",
+        "comic_id": "100",
+        "comic_source": "MMCG_SHORT",
+        "title": "Comic A",
+        "author": "Author A",
+        "output_path": str(output_path),
+        "output_format": "cbz",
+        "downloaded_at": 1715836800,
+    }
+
+
 def test_plan_repair_matches_files_by_title_author(tmp_path):
     target_dir = str(tmp_path / "target")
     os.makedirs(target_dir, exist_ok=True)
@@ -250,6 +286,114 @@ def test_plan_repair_no_match_returns_empty_plan(tmp_path):
 
     assert state.mode == "repair"
     assert len(state.plan) == 0
+
+
+def test_execute_repair_updates_missing_old_path_without_touching_target(tmp_path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    target_file = target_dir / "Author A-Comic A.cbz"
+    original_bytes = b"existing-cbz-content"
+    target_file.write_bytes(original_bytes)
+    old_path = tmp_path / "missing" / "old.cbz"
+    record = _repair_record(old_path)
+    db = _RecordingHistoryDB(record)
+
+    engine = MigrationEngine(history_db=db)
+    state = engine.plan_repair(str(target_dir))
+    engine.execute()
+
+    assert record["output_path"] == str(target_file)
+    assert not old_path.exists()
+    assert target_file.read_bytes() == original_bytes
+    assert state.completed_items == 1
+    assert state.failed_items == []
+    assert state.plan[0].status == "done"
+
+
+def test_execute_repair_is_idempotent_when_source_equals_target(tmp_path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    target_file = target_dir / "Author A-Comic A.cbz"
+    original_bytes = b"already-correct"
+    target_file.write_bytes(original_bytes)
+    record = _repair_record(target_file)
+    db = _RecordingHistoryDB(record)
+
+    engine = MigrationEngine(history_db=db)
+    state = engine.plan_repair(str(target_dir))
+    engine.execute()
+
+    assert record["output_path"] == str(target_file)
+    assert target_file.read_bytes() == original_bytes
+    assert state.completed_items == 1
+    assert state.failed_items == []
+    assert state.plan[0].status == "done"
+
+
+def test_execute_repair_keeps_old_path_when_target_disappears(tmp_path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    target_file = target_dir / "Author A-Comic A.cbz"
+    target_file.write_bytes(b"temporary")
+    old_path = tmp_path / "missing" / "old.cbz"
+    record = _repair_record(old_path)
+    db = _RecordingHistoryDB(record)
+    errors = []
+
+    engine = MigrationEngine(history_db=db)
+    state = engine.plan_repair(str(target_dir))
+    target_file.unlink()
+    engine.execute(on_error=errors.append)
+
+    assert record["output_path"] == str(old_path)
+    assert state.completed_items == 0
+    assert state.plan[0].status == "failed"
+    assert "Repair target not found" in state.failed_items[0]["error"]
+    assert errors[0]["file_path"] == str(target_file)
+
+
+def test_execute_repair_db_failure_preserves_target_and_old_path(tmp_path):
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    target_file = target_dir / "Author A-Comic A.cbz"
+    original_bytes = b"must-remain-unchanged"
+    target_file.write_bytes(original_bytes)
+    old_path = tmp_path / "missing" / "old.cbz"
+    record = _repair_record(old_path)
+    db = _RecordingHistoryDB(record, update_error=RuntimeError("database unavailable"))
+
+    engine = MigrationEngine(history_db=db)
+    state = engine.plan_repair(str(target_dir))
+    engine.execute()
+
+    assert record["output_path"] == str(old_path)
+    assert target_file.read_bytes() == original_bytes
+    assert state.completed_items == 0
+    assert state.plan[0].status == "failed"
+    assert "database unavailable" in state.failed_items[0]["error"]
+
+
+def test_execute_full_mode_still_moves_file_and_updates_path(tmp_path):
+    source_dir = tmp_path / "source"
+    target_dir = tmp_path / "target"
+    source_dir.mkdir()
+    target_dir.mkdir()
+    source_file = source_dir / "Author A-Comic A.cbz"
+    source_file.write_bytes(b"full-migration-content")
+    record = _repair_record(source_file)
+    db = _RecordingHistoryDB(record)
+
+    engine = MigrationEngine(history_db=db)
+    state = engine.plan_full_migration(str(source_dir), str(target_dir))
+    engine.execute()
+    target_file = target_dir / source_file.name
+
+    assert state.mode == "full"
+    assert not source_file.exists()
+    assert target_file.read_bytes() == b"full-migration-content"
+    assert record["output_path"] == str(target_file)
+    assert state.completed_items == 1
+    assert state.failed_items == []
 
 
 # ── State persistence ─────────────────────────────────────────────────

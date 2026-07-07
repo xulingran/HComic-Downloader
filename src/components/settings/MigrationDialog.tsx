@@ -30,6 +30,7 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
   const [targetDir, setTargetDir] = useState('')
   const [preview, setPreview] = useState<MigrationPlanPreview | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [isCancelling, setIsCancelling] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -40,9 +41,33 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
   }, [complete, phase])
 
   useEffect(() => {
-    if (isOpen) {
-      syncFromBackend()
+    if (!isOpen) return
+    let disposed = false
+    const sync = async () => {
+      const status = await syncFromBackend()
+      if (disposed || !status) return
+      if (status.status === 'ready') {
+        setMode(status.mode)
+        setTargetDir(status.target_dir)
+        setPreview({
+          migrationId: status.id,
+          totalItems: status.total_items,
+          sourceDir: status.source_dir,
+          targetDir: status.target_dir,
+          isSameDrive: status.is_same_drive,
+        })
+        setPhase('preview')
+      } else if (status.status === 'running' || status.status === 'paused') {
+        setPhase('executing')
+      } else if (status.status === 'completed') {
+        setPhase('done')
+      } else {
+        setPhase('select')
+        setPreview(null)
+      }
     }
+    void sync()
+    return () => { disposed = true }
   }, [isOpen, syncFromBackend])
 
   useEffect(() => {
@@ -86,6 +111,7 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
   }
 
   const handleCancel = async () => {
+    setIsCancelling(true)
     try {
       await cancelMigration()
       resetState()
@@ -93,12 +119,34 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
       onClose()
     } catch (err: unknown) {
       setError((err instanceof Error ? err.message : '') || '取消失败')
+    } finally {
+      setIsCancelling(false)
     }
   }
 
-  const handleClose = () => {
+  const abandonPreview = async (close: boolean) => {
+    setError(null)
+    setIsCancelling(true)
+    try {
+      await cancelMigration()
+      resetState()
+      setPhase('select')
+      setPreview(null)
+      if (close) onClose()
+    } catch (err: unknown) {
+      setError((err instanceof Error ? err.message : '') || '取消迁移计划失败')
+    } finally {
+      setIsCancelling(false)
+    }
+  }
+
+  const handleClose = async () => {
     if (phase === 'executing' && isActive) {
       onClose()
+      return
+    }
+    if (phase === 'preview' && preview) {
+      await abandonPreview(true)
       return
     }
     resetState()
@@ -115,7 +163,7 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
   return (
     <Modal
       isOpen={isOpen}
-      onClose={handleClose}
+      onClose={() => { void handleClose() }}
       // 迁移执行中禁止遮罩关闭，避免误触中断迁移；其余阶段统一支持点击遮罩关闭
       closeOnOverlayClick={!(phase === 'executing' && isActive)}
       contentClassName="bg-[var(--bg-primary)] rounded-xl shadow-2xl w-full max-w-lg max-h-[80vh] overflow-hidden flex flex-col"
@@ -337,14 +385,15 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
           {phase === 'preview' && (
             <>
               <button
-                onClick={() => { setPhase('select'); setPreview(null) }}
-                className="px-4 py-2 text-sm rounded-lg bg-[var(--bg-secondary)] text-[var(--text-primary)]"
+                onClick={() => { void abandonPreview(false) }}
+                disabled={isCancelling}
+                className="px-4 py-2 text-sm rounded-lg bg-[var(--bg-secondary)] text-[var(--text-primary)] disabled:opacity-50"
               >
                 返回
               </button>
               <button
                 onClick={handleStart}
-                disabled={!preview || preview.totalItems === 0}
+                disabled={!preview || preview.totalItems === 0 || isCancelling}
                 className="px-4 py-2 text-sm rounded-lg bg-[var(--accent)] text-white disabled:opacity-50"
               >
                 开始迁移
@@ -362,7 +411,8 @@ export function MigrationDialog({ isOpen, onClose, currentDownloadDir, onSelectD
               </button>
               <button
                 onClick={handleCancel}
-                className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white"
+                disabled={isCancelling}
+                className="px-4 py-2 text-sm rounded-lg bg-red-500 text-white disabled:opacity-50"
               >
                 取消迁移
               </button>

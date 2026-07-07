@@ -244,14 +244,23 @@ export interface MigrationErrorEvent {
   file_path: string
 }
 
-export interface MigrationStatusResponse {
-  status: 'none' | 'running' | 'completed' | 'paused' | 'ready' | 'error' | 'cancelled'
+export interface MigrationEmptyStatusResponse {
+  status: 'none'
+}
+
+export interface MigrationStateStatusResponse {
+  status: 'planning' | 'ready' | 'running' | 'completed' | 'paused' | 'failed' | 'error' | 'cancelled'
+  id: string
+  mode: 'full' | 'repair'
   completed_items: number
   total_items: number
-  failed_items: Array<{ source: string; error: string }>
+  failed_items: Array<{ path: string; error: string }>
   source_dir: string
   target_dir: string
+  is_same_drive: boolean
 }
+
+export type MigrationStatusResponse = MigrationEmptyStatusResponse | MigrationStateStatusResponse
 
 export interface HealthCheckIssue {
   kind: string

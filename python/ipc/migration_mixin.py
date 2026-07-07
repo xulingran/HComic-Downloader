@@ -47,16 +47,23 @@ class MigrationMixin:
         state = self._migration_engine.state
         return bool(state and state.status not in _TERMINAL_MIGRATION_STATUSES)
 
-    def _init_migration(self):
+    def _init_migration(self) -> None:
         """Initialize migration state. Call from IPCServer.__init__."""
+        previous_engine = getattr(self, "_migration_engine", None)
+        if previous_engine is not None:
+            previous_engine.close()
+
         state_path = os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "migration_state.json")
         self._migration_engine = MigrationEngine(
             history_db=self._history_db,
             state_path=state_path,
         )
-        self._migration_thread: threading.Thread | None = None
-        self._migration_lock = threading.Lock()
-        self._migration_paused_dm: bool = False
+        if not hasattr(self, "_migration_thread"):
+            self._migration_thread: threading.Thread | None = None
+        if not hasattr(self, "_migration_lock"):
+            self._migration_lock = threading.Lock()
+        if not hasattr(self, "_migration_paused_dm"):
+            self._migration_paused_dm: bool = False
 
     def _migration_progress_callback(self, progress):
         self._write_response(
@@ -259,7 +266,11 @@ class MigrationMixin:
         state = self._migration_engine.state
         if not state:
             return {"status": "none"}
-        return state.to_dict()
+        result = state.to_dict()
+        result["is_same_drive"] = (
+            MigrationEngine._is_same_drive(state.source_dir, state.target_dir) if state.source_dir else False
+        )
+        return result
 
     def handle_resolve_unmatched(self, matches: list) -> dict:
         state = self._migration_engine.state

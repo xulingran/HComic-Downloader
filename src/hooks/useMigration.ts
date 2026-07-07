@@ -71,12 +71,13 @@ export function useMigration() {
   const syncFromBackend = useCallback(async () => {
     try {
       const status: MigrationStatusResponse = await invoke(() => window.hcomic!.getMigrationStatus())
-      if (!status || status.status === 'none') {
+      if (status.status === 'none') {
         resetState()
-        return
+        return status
       }
-      if (status.status === 'running') {
+      if (status.status === 'running' || status.status === 'paused') {
         setIsActive(true)
+        setComplete(null)
         setProgress({
           completed: status.completed_items,
           total: status.total_items,
@@ -92,18 +93,14 @@ export function useMigration() {
           elapsed: 0,
         })
         setIsActive(false)
-      } else if (status.status === 'paused') {
-        setIsActive(true)
-        setProgress({
-          completed: status.completed_items,
-          total: status.total_items,
-          currentFile: '',
-          speed: 0,
-          phase: 'moving',
-        })
+        setProgress(null)
+      } else {
+        resetState()
       }
+      return status
     } catch {
       // IPC call failed, keep default empty state
+      return null
     }
   }, [invoke, resetState])
 

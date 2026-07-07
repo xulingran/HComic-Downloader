@@ -35,6 +35,63 @@ def mixin(tmp_path):
     return m
 
 
+class TestPlanLifecycle:
+    def test_cancelled_ready_plan_allows_a_new_plan(self, mixin, tmp_path):
+        target = str(tmp_path / "library")
+
+        first = mixin.handle_start_migration(target, "repair")
+        assert mixin._migration_engine.state.status == "ready"
+        with pytest.raises(RuntimeError, match="already in progress"):
+            mixin.handle_start_migration(target, "repair")
+
+        mixin.handle_cancel_migration()
+        assert mixin._migration_engine.state.status == "cancelled"
+
+        second = mixin.handle_start_migration(target, "repair")
+        assert second["migrationId"] != first["migrationId"]
+        assert mixin._migration_engine.state.status == "ready"
+
+    @pytest.mark.parametrize("status", ["running", "paused"])
+    def test_active_plan_cannot_be_replaced(self, mixin, tmp_path, status):
+        target = str(tmp_path / "library")
+        first = mixin.handle_start_migration(target, "repair")
+        active_engine = mixin._migration_engine
+        mixin._migration_engine.state.status = status
+
+        with pytest.raises(RuntimeError, match="already in progress"):
+            mixin.handle_start_migration(target, "repair")
+
+        assert mixin._migration_engine.state.id == first["migrationId"]
+        assert mixin._migration_engine.state.status == status
+        assert mixin._migration_engine is active_engine
+        assert active_engine._log_handler is not None
+
+    def test_ready_status_contains_preview_recovery_fields(self, mixin, tmp_path):
+        target = str(tmp_path / "library")
+        preview = mixin.handle_start_migration(target, "repair")
+
+        status = mixin.handle_get_migration_status()
+
+        assert status["status"] == "ready"
+        assert status["id"] == preview["migrationId"]
+        assert status["mode"] == "repair"
+        assert status["target_dir"] == target
+        assert status["total_items"] == preview["totalItems"]
+        assert status["is_same_drive"] is False
+
+    def test_replacing_cancelled_plan_closes_old_engine_and_keeps_lock(self, mixin, tmp_path):
+        target = str(tmp_path / "library")
+        lifecycle_lock = mixin._migration_lock
+        mixin.handle_start_migration(target, "repair")
+        old_engine = mixin._migration_engine
+
+        mixin.handle_cancel_migration()
+        mixin.handle_start_migration(target, "repair")
+
+        assert old_engine._log_handler is None
+        assert mixin._migration_lock is lifecycle_lock
+
+
 class TestDMRecovery:
     def test_confirm_migration_pauses_dm(self, mixin):
         dm = MagicMock()

@@ -42,6 +42,35 @@ describe('useMigration', () => {
   })
 
   describe('syncFromBackend', () => {
+    it('returns a ready plan so the dialog can restore its preview', async () => {
+      const readyStatus = {
+        status: 'ready' as const,
+        id: 'ready-id',
+        mode: 'repair' as const,
+        completed_items: 0,
+        total_items: 5,
+        failed_items: [],
+        source_dir: '',
+        target_dir: 'E:/library',
+        is_same_drive: false,
+      }
+      createMockHcomic({
+        getMigrationStatus: vi.fn().mockResolvedValue(readyStatus),
+      })
+
+      const { result } = renderHook(() => useMigration())
+      let syncedStatus: unknown
+
+      await act(async () => {
+        syncedStatus = await result.current.syncFromBackend()
+      })
+
+      expect(syncedStatus).toEqual(readyStatus)
+      expect(result.current.isActive).toBe(false)
+      expect(result.current.progress).toBeNull()
+      expect(result.current.complete).toBeNull()
+    })
+
     it('should sync running state from backend', async () => {
       createMockHcomic({
         getMigrationStatus: vi.fn().mockResolvedValue({
@@ -65,6 +94,26 @@ describe('useMigration', () => {
         speed: 0,
         phase: 'moving',
       })
+    })
+
+    it('should sync paused state as active progress', async () => {
+      createMockHcomic({
+        getMigrationStatus: vi.fn().mockResolvedValue({
+          status: 'paused',
+          completed_items: 4,
+          total_items: 10,
+        }),
+      })
+
+      const { result } = renderHook(() => useMigration())
+
+      await act(async () => {
+        await result.current.syncFromBackend()
+      })
+
+      expect(result.current.isActive).toBe(true)
+      expect(result.current.progress?.completed).toBe(4)
+      expect(result.current.progress?.total).toBe(10)
     })
 
     it('should sync completed state from backend', async () => {
@@ -102,6 +151,32 @@ describe('useMigration', () => {
       await act(async () => {
         await result.current.syncFromBackend()
       })
+
+      expect(result.current.isActive).toBe(false)
+      expect(result.current.progress).toBeNull()
+      expect(result.current.complete).toBeNull()
+    })
+
+    it('should reset active state when backend returns a failed terminal state', async () => {
+      const statuses = [
+        {
+          status: 'running', completed_items: 1, total_items: 2,
+        },
+        {
+          status: 'failed', id: 'failed-id', mode: 'repair', completed_items: 1, total_items: 2,
+          failed_items: [{ path: '/target/missing.cbz', error: 'missing' }], source_dir: '',
+          target_dir: '/target', is_same_drive: false,
+        },
+      ]
+      createMockHcomic({
+        getMigrationStatus: vi.fn().mockImplementation(() => Promise.resolve(statuses.shift())),
+      })
+
+      const { result } = renderHook(() => useMigration())
+
+      await act(async () => { await result.current.syncFromBackend() })
+      expect(result.current.isActive).toBe(true)
+      await act(async () => { await result.current.syncFromBackend() })
 
       expect(result.current.isActive).toBe(false)
       expect(result.current.progress).toBeNull()

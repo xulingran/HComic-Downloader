@@ -339,26 +339,34 @@ class MigrationEngine:
                 self._save_state_if_needed()
                 return
 
+            item_path = item.target if self._state.mode == "repair" else item.source
             try:
-                self._move_item(item)
+                if self._state.mode == "repair":
+                    self._repair_item(item)
+                    action = "Repaired"
+                elif self._state.mode == "full":
+                    self._move_item(item)
+                    action = "Moved"
+                else:
+                    raise ValueError(f"Unsupported migration mode: {self._state.mode}")
                 item.status = "done"
                 self._state.completed_items += 1
                 self._write_log(
                     "INFO",
-                    f"Moved: {os.path.basename(item.source)} -> {os.path.basename(item.target)}",
+                    f"{action}: {os.path.basename(item.source)} -> {os.path.basename(item.target)}",
                 )
             except Exception as e:
                 item.status = "failed"
                 self._state.failed_items.append(
                     {
-                        "path": item.source,
+                        "path": item_path,
                         "error": str(e),
                     }
                 )
-                self._write_log("ERROR", f"Failed: {os.path.basename(item.source)} — {e}")
-                logger.error("Migration failed for %s: %s", item.source, e)
+                self._write_log("ERROR", f"Failed: {os.path.basename(item_path)} — {e}")
+                logger.error("Migration failed for %s: %s", item_path, e)
                 if on_error:
-                    on_error({"message": str(e), "file_path": item.source})
+                    on_error({"message": str(e), "file_path": item_path})
 
             self._save_state_if_needed()
 
@@ -367,13 +375,19 @@ class MigrationEngine:
                     MigrationProgress(
                         completed=self._state.completed_items,
                         total=self._state.total_items,
-                        current_file=os.path.basename(item.source),
+                        current_file=os.path.basename(item_path),
                         phase="moving",
                     )
                 )
 
         self._state.status = "completed"
         self._save_state_if_needed()
+
+    def _repair_item(self, item: MigrationPlanItem) -> None:
+        """Update one history record to an existing target without moving files."""
+        if not os.path.exists(item.target):
+            raise FileNotFoundError(f"Repair target not found: {item.target}")
+        self._history_db.update_output_path(item.db_key, item.target)
 
     def _move_item(self, item: MigrationPlanItem):
         """Move a single file or directory."""
