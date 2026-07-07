@@ -17,10 +17,10 @@
 | jm   | jm（含镜像） | ✅   | ✅   | curl 导入 / 内嵌浏览器            |
 | bika      | 哔咔           | ✅   | ✅   | 应用内用户名密码（API 登录）           |
 | nh        | nhentai.net  | ✅   | ✅   | API Key（账号密码登录已移除，升级时清理旧凭据）|
-| copymanga | 拷贝漫画         | —   | —   | curl 导入                    |
+| copymanga | 拷贝漫画         | ✅   | —   | curl 导入（Cookie）                    |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
-- **随机推荐**：hcomic、jm 支持
+- **随机推荐**：hcomic、jm、bika 支持
 - **漫画详情**：封面预览、标签、作者、章节列表（含 `album` 多章节本）
 
 ### 搜索与浏览
@@ -59,7 +59,7 @@
 
 ### 其他功能
 
-- 工具箱标签页（标签过滤、推荐标签管理、重复漫画检测）
+- 工具箱标签页（标签过滤、推荐标签管理、重复漫画检测、查缺补漏）
 - 维护中心：下载健康检查、孤儿临时目录清理、存储空间分析
 - 亮色 / 暗色 / 跟随系统 三种主题
 - 自定义字体（跨平台 CJK 字体自动检测）与字号（12-20）
@@ -88,12 +88,12 @@
 
 ### 前端技术栈
 
-- **Electron 28** — 桌面容器（contextIsolation + sandbox）
+- **Electron 42** — 桌面容器（contextIsolation + sandbox）
 - **React 18** + **TypeScript 5.3** — UI 框架
 - **Zustand 4** — 状态管理
 - **Tailwind CSS 3.4** — 样式
-- **electron-vite 2** + **Vite 5** — 构建 / 开发服务器
-- **Vitest 4** + Testing Library — 单元测试（46 个测试文件）
+- **electron-vite 5** + **Vite 5** — 构建 / 开发服务器
+- **Vitest 4** + Testing Library — 单元测试（91 个 TS/TSX 测试文件，68 个 Python 测试文件）
 
 ### 后端技术栈
 
@@ -123,8 +123,15 @@ hcomic_downloader/
 │   ├── preload.ts             # 预加载脚本（contextBridge + 参数校验）
 │   ├── python-bridge.ts       # Python 子进程桥接（stdin/stdout + 重启）
 │   ├── login-window.ts        # 内嵌登录窗口（hcomic / jm）
+│   ├── login-preload.ts       # 登录窗口预加载脚本
+│   ├── validators.ts          # IPC 参数验证器（组合式）
+│   ├── image-protocol.ts      # 自定义协议托管图片
+│   ├── csp-relaxed-registry.ts # CSP 策略按环境分发
+│   ├── update-checker.ts      # 启动更新检查
 │   ├── notification-manager.ts# 系统通知
-│   └── validators.ts          # IPC 参数验证器（组合式）
+│   ├── diagnostics.ts         # 客户端日志与错误诊断
+│   ├── jm-challenge-recovery.ts # JM 反爬挑战恢复
+│   └── log-init.ts            # 日志初始化
 │
 ├── src/                       # React 前端
 │   ├── main.tsx               # 入口
@@ -134,16 +141,18 @@ hcomic_downloader/
 │   │   ├── DownloadPage.tsx
 │   │   ├── FavouritesPage.tsx
 │   │   ├── HistoryPage.tsx
-│   │   ├── ToolboxPage.tsx    # 工具箱（标签过滤 / 推荐标签 / 重复检测）
+│   │   ├── ToolboxPage.tsx    # 工具箱（标签过滤 / 推荐标签 / 重复检测 / 查缺补漏）
 │   │   ├── MaintenancePage.tsx # 维护中心（健康检查 / 孤儿清理 / 存储分析）
-│   │   └── SettingsPage.tsx
+│   │   ├── SettingsPage.tsx
+│   │   └── AboutPage.tsx
 │   ├── components/            # 业务组件（Reader / Drawer / Sidebar / ChapterPicker 等）
 │   ├── components/common/     # 通用组件（Toast / Pagination / ProgressBar 等）
 │   ├── components/maintenance/# 维护中心面板（HealthCheckPanel / OrphanCleanupPanel / StorageStatsPanel）
 │   ├── components/settings/   # 设置面板分组（外观 / 下载 / 认证 / 通知 / 代理 / 缓存 / 标签过滤 / 推荐标签 / 迁移）
-│   ├── components/tools/      # 工具箱组件（DuplicateDetector 等）
+│   ├── components/tools/      # 工具箱组件（DuplicateDetector / MissingChapterDetector 等）
 │   ├── hooks/                 # React hooks（useIpc / useTheme / useComicReader / useMigration 等）
-│   ├── stores/                # Zustand 状态仓库
+│   ├── stores/                # Zustand 状态仓库（12 个）
+│   ├── lib/                   # 工具库（anim 动画 variants / image-url / prefetch / scheduler）
 │   └── styles/                # 全局样式
 │
 ├── python/                    # Python 后端
@@ -161,12 +170,14 @@ hcomic_downloader/
 │       ├── maintenance_mixin.py # 维护中心（健康检查 / 孤儿清理 / 存储分析）
 │       ├── history_mixin.py
 │       ├── favourite_tags_mixin.py  # 收藏标签推荐
+│       ├── tag_list_mixin.py        # 标签列表
 │       ├── cover_cache.py     # 封面缓存（SQLite）
 │       ├── preview_cache.py   # 预览图片缓存（带大小上限）
 │       ├── image_utils.py
 │       └── types.py
 │
 ├── sources/                   # 漫画来源解析器
+│   ├── __init__.py            # MultiSourceParser 分发层
 │   ├── base.py                # 解析器基类（ParserContextMixin）
 │   ├── hcomic/                # h-comic 解析器
 │   ├── moeimg/                # moeimg 解析器
@@ -182,52 +193,56 @@ hcomic_downloader/
 │   │   └── constants.py
 │   ├── nh/                    # nhentai 解析器（API Key + 收藏夹）
 │   │   ├── parser.py
-│   │   ├── constants.py
-│   │   └── descrambler.py
+│   │   └── constants.py
 │   └── copymanga/             # 拷贝漫画解析器（AES 解密）
 │       ├── parser.py
 │       ├── crypto.py          # AES-CBC 解密工具
 │       └── constants.py
 │
 ├── shared/                    # 前后端共享类型
-│   └── types.ts               # TypeScript 类型 + IPC 通道常量 + JSON-RPC 契约
+│   └── types.ts               # TypeScript 类型 + IPC 通道常量 + JSON-RPC 契约 + 来源元数据
 │
 ├── assets/                    # 应用图标
 │   ├── icon.svg / icon.ico / icon.icns / icon.png
 │   └── icon_16/32/48/64/128/256/512.png
 │
-├── docs/                      # 文档
+├── docs/                      # 文档（含 animation-performance.md、规划/设计稿）
 │
 ├── scripts/                   # 构建与工具脚本
-│   ├── lint-py.mjs            # 跨平台 Python lint 封装
+│   ├── lint-py.mjs            # 跨平台 Python lint 封装（ruff）
 │   ├── format-py.mjs          # Python 格式化封装（black）
-│   └── generate-icons.mjs     # 图标生成
+│   ├── lint-test-quality.mjs  # 测试质量闸门（前端 + Python）
+│   ├── lint-test-quality.py   # Python AST 扫描（裸 mock 调用断言检测）
+│   ├── generate-icons.mjs     # 图标生成
+│   ├── set-version-from-tag.mjs # 从 git tag 提取版本号写入 package.json
+│   └── extract-changelog.py   # CHANGELOG 提取
 │
 ├── tests/                     # 测试
-│   ├── test_*.py              # Python 单元测试
-│   └── unit/                  # TypeScript/React 单元测试
+│   ├── test_*.py              # Python 单元测试（68 个）
+│   └── unit/                  # TypeScript/React 单元测试（91 个）
 │
 ├── config.py                  # 配置管理（dataclass + JSON 持久化）
 ├── downloader.py              # 多线程下载器（断点续传 + 重试）
 ├── download_manager.py        # 下载任务队列与状态机
 ├── download_history.py        # 下载历史数据库（SQLite）
+├── album_coordinator.py       # 多章节本下载编排
 ├── output_staging.py          # 输出暂存（临时目录 + 原子移动）
 ├── cbz_builder.py             # CBZ 打包 + ComicInfo.xml 生成
 ├── auth_parser.py             # 从 curl 命令提取 Cookie / User-Agent
 ├── url_validator.py           # URL 校验工具
+├── migration.py               # 迁移引擎（计划、执行、状态持久化）
 ├── constants.py
+├── utils.py                   # 系统代理注入 / 会话工厂等通用工具
 ├── image_downloader.py
 ├── image_formats.py
 ├── models.py                  # 数据模型（ComicInfo / PaginationInfo / DownloadTask）
-├── migration.py               # 迁移引擎（计划、执行、状态持久化）
-├── utils.py
 │
 ├── electron-builder.yml       # 打包配置
 ├── electron.vite.config.ts
 ├── tailwind.config.js
 ├── postcss.config.js
 ├── vitest.config.ts
-├── eslint.config.js
+├── eslint.config.js           # flat config（含自定义规则 eslint-rules/test-quality.js）
 ├── tsconfig.json
 ├── pyproject.toml
 ├── package.json
@@ -303,39 +318,54 @@ pytest --cov=. --cov-report=html         # 覆盖率
 npm run lint
 npm run lint:fix
 
-# Python（ruff + black）
+# Python（ruff + black，均通过跨平台封装脚本调用 venv）
 npm run lint:py          # ruff 检查
 npm run lint:py:fix      # ruff 自动修复
-# 格式化（在 venv 中已安装 black）
-venv\Scripts\black.exe --check .    # 仅检查
-venv\Scripts\black.exe .            # 格式化
+npm run format:py        # black 检查（--check）
+npm run format:py:fix    # black 格式化
+
+# 测试质量闸门（拦截裸 mock 调用断言 / 纯 store CRUD 往返）
+npm run lint:test-quality        # 前端 + Python 全量
+npm run lint:test-quality:py     # 仅 Python AST 扫描
 ```
 
 ## 配置
 
 应用配置存储在用户数据目录下的 JSON 文件中（`~/.hcomic_downloader/config.json`），支持以下配置项：
 
-| 配置项                       | 类型      | 说明             | 默认值                                  | 范围                                                     |
-| ------------------------- | ------- | -------------- | ------------------------------------ | ------------------------------------------------------ |
-| `themeMode`               | string  | 主题模式           | `auto`                               | `light` / `dark` / `auto`                              |
-| `outputFormat`            | string  | 输出格式           | `cbz`                                | `folder` / `zip` / `cbz`                               |
-| `downloadDir`             | string  | 下载目录           | `~/Downloads/hcomic`                 | 绝对路径                                                   |
-| `concurrentDownloads`     | number  | 并发下载线程数        | 4                                    | 1-10                                                   |
-| `timeout`                 | number  | 请求超时（秒）        | 30                                   | 5-300                                                  |
-| `retryTimes`              | number  | 单请求重试次数        | 3                                    | 0-10                                                   |
-| `cbzFilenameTemplate`     | string  | CBZ 文件名模板      | `{author}-{title}.cbz`               | 占位符 `{author}` `{title}` `{id}`                        |
-| `batchDownloadDelay`      | number  | 批量下载间隔（秒）      | 1                                    | 0-60                                                   |
-| `autoRetryMaxAttempts`    | number  | 失败自动重试次数       | 2                                    | 0-5                                                    |
-| `notifyOnComplete`        | boolean | 下载完成系统通知       | `true`                               | —                                                      |
-| `notifyWhenForeground`    | string  | 通知触发策略         | `inactive`                           | `inactive` / `always`                                  |
-| `defaultSource`           | string  | 默认搜索来源         | `hcomic`                             | `hcomic` / `moeimg` / `jm` / `bika` / `copymanga` / `nh` |
-| `fontName`                | string  | 自定义字体          | `""`（自动检测 CJK）                       | —                                                      |
-| `fontSize`                | number  | 基础字号           | 12                                   | 12-20                                                  |
-| `sfwMode`                 | boolean | SFW 安全模式（隐藏封面） | `true`                               | —                                                      |
-| `tagBlacklist`            | object  | 标签黑名单（按来源）     | `{hcomic:[], moeimg:[], jm:[]}` | 每项 ≤ 64 字符                                             |
-| `previewCacheSizeLimitMB` | number  | 预览缓存上限（MB）     | 500                                  | 100-2048                                               |
-| `jmDomain`           | string  | jm 自定义域名  | `""`（自动）                             | —                                                      |
-| `favouriteTagHighlight`   | boolean | 收藏标签推荐高亮       | `false`                              | —                                                      |
+| 配置项                       | 类型      | 说明                   | 默认值                                  | 范围                                                     |
+| ------------------------- | ------- | -------------------- | ------------------------------------ | ------------------------------------------------------ |
+| `themeMode`               | string  | 主题模式                 | `auto`                               | `light` / `dark` / `auto`                              |
+| `outputFormat`            | string  | 输出格式                 | `folder`                             | `folder` / `zip` / `cbz`                               |
+| `downloadDir`             | string  | 下载目录                 | `~/Downloads/hcomic`                 | 绝对路径                                                   |
+| `concurrentDownloads`     | number  | 并发下载线程数              | 4                                    | 1-10                                                   |
+| `timeout`                 | number  | 请求超时（秒）              | 30                                   | 5-300                                                  |
+| `retryTimes`              | number  | 单请求重试次数              | 3                                    | 0-10                                                   |
+| `cbzFilenameTemplate`     | string  | CBZ 文件名模板            | `{author}-{title}.cbz`               | 占位符 `{author}` `{title}` `{id}`                        |
+| `batchDownloadDelay`      | number  | 批量下载间隔（秒）            | 1                                    | 0-60                                                   |
+| `autoRetryMaxAttempts`    | number  | 失败自动重试次数             | 2                                    | 0-5                                                    |
+| `notifyOnComplete`        | boolean | 下载完成系统通知             | `true`                               | —                                                      |
+| `notifyWhenForeground`    | string  | 通知触发策略               | `inactive`                           | `inactive` / `always`                                  |
+| `defaultSource`           | string  | 默认搜索来源               | `hcomic`                             | `hcomic` / `moeimg` / `jm` / `bika` / `copymanga` / `nh` |
+| `defaultFavouriteSource`  | string  | 默认收藏夹来源              | `""`（未设置，前端引导选择）                      | 同上，且需支持收藏                                             |
+| `fontName`                | string  | 自定义字体                | `""`（自动检测 CJK）                       | —                                                      |
+| `fontSize`                | number  | 基础字号                 | 12                                   | 12-20                                                  |
+| `sfwMode`                 | boolean | SFW 安全模式（隐藏封面）       | `true`                               | —                                                      |
+| `cardStyle`               | string  | 卡片样式                 | `cover`                              | `cover`（封面+标题）/ `detailed`（详细列表）                       |
+| `tagBlacklist`            | object  | 标签黑名单（按来源）           | 各来源空数组                               | 每项 ≤ 64 字符                                             |
+| `myTags`                  | object  | 推荐标签白名单（按来源，搜索高亮生效源） | 各来源空数组                               | —                                                      |
+| `duplicateBlacklist`      | object  | 重复检测已忽略组（按来源）        | 各来源空数组                               | 每项 `{fingerprint, memberCount}`                        |
+| `missingBlacklist`        | object  | 查缺补漏已忽略组（按来源，独立存储）   | 各来源空数组                               | 每项 `{fingerprint, memberCount}`                        |
+| `previewCacheSizeLimitMB` | number  | 预览缓存上限（MB）           | 500                                  | 100-2048                                               |
+| `jmDomain`                | string  | jm 自定义域名             | `""`（自动）                             | —                                                      |
+| `favouriteTagHighlight`   | boolean | 收藏标签推荐高亮             | `false`                              | —                                                      |
+| `favouriteTagMinMatches`  | number  | 推荐标签最少命中数            | 1                                    | ≥ 1                                                    |
+| `checkUpdateOnStart`      | boolean | 启动时检查更新              | `true`                               | —                                                      |
+| `bikaImageQuality`        | string  | Bika 预览图片清晰度（下载始终原画） | `original`                           | `low` / `medium` / `high` / `original`                 |
+| `previewPreloadForward`   | number  | 阅读器向前预加载页数           | 8                                    | 0-30（0 禁用）                                            |
+| `previewPreloadBackward`  | number  | 阅读器向后预加载页数           | 2                                    | 0-10                                                   |
+| `previewPreloadConcurrency` | number | 预加载并发 worker 数       | 3                                    | 1-6                                                    |
+| `previewPreloadAdaptive`  | boolean | 自适应预加载（按翻页速度动态调节）    | `false`                              | —                                                      |
 
 ## 致谢
 
