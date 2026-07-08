@@ -668,7 +668,8 @@ describe('SearchPage', () => {
 
       expect(await screen.findByText('最近更新')).toBeInTheDocument()
       expect(screen.getByText('热门排行')).toBeInTheDocument()
-      expect(screen.getByText('热门标签')).toBeInTheDocument()
+      // 标题含 emoji（🔥 热门标签），用完整串匹配避免误中 TagDialog 的「热门」排序文案
+      expect(screen.getByText('🔥 热门标签')).toBeInTheDocument()
       expect(mockSearch).not.toHaveBeenCalled()
       expect(mockRandom).not.toHaveBeenCalled()
       expect(mockVerifyAuth).not.toHaveBeenCalled()
