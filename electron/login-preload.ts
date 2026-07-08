@@ -92,7 +92,7 @@ const OVERLAY_HOST_ID = 'hcomic-login-overlay'
 const COUNTDOWN_START = 3
 const WINDOW_MODE = process.argv.includes('--hcomic-window-mode=challenge') ? 'challenge' : 'login'
 
-type OverlayState = 'idle' | 'expanded' | 'extracting' | 'counting'
+type OverlayState = 'idle' | 'extracting' | 'counting' | 'error'
 type WindowMode = 'login' | 'challenge'
 
 /** 按 location.hostname 推断 source，传给主进程提取 */
@@ -124,17 +124,18 @@ function injectOverlay(source: string, mode: WindowMode): void {
 const OVERLAY_STYLES = `
   :host { all: initial; }
   * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-  .dot {
-    width: 28px; height: 28px; border-radius: 50%;
-    background: rgba(17,24,39,.92); backdrop-filter: blur(8px);
-    border: 2px solid rgba(59,130,246,.9);
-    cursor: pointer; display: flex; align-items: center; justify-content: center;
-    color: #f9fafb; font-size: 14px; font-weight: 700;
-    box-shadow: 0 2px 8px rgba(0,0,0,.3);
-    transition: transform .12s ease;
-    user-select: none;
+  .pill {
+    min-height: 36px; padding: 0 16px; border-radius: 18px;
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border: none; cursor: pointer; user-select: none;
+    display: inline-flex; align-items: center; gap: 6px;
+    color: #fff; font-size: 13px; font-weight: 600; line-height: 1;
+    box-shadow: 0 4px 12px rgba(37,99,235,.4);
+    transition: transform .12s ease, box-shadow .12s ease;
   }
-  .dot:hover { transform: scale(1.1); }
+  .pill:hover { transform: scale(1.04); box-shadow: 0 6px 16px rgba(37,99,235,.55); }
+  .pill:active { transform: scale(.98); }
+  .pill-mark { font-size: 14px; font-weight: 700; }
   .card {
     width: 220px; border-radius: 12px;
     background: rgba(17,24,39,.92); backdrop-filter: blur(8px);
@@ -185,15 +186,18 @@ function buildOverlay(source: string, mode: WindowMode): void {
   let resultCleanup: (() => void) | null = null
 
   // ── 渲染函数 ──────────────────────────────────────────────
-  function renderDot(): void {
+  function renderPill(): void {
     mount.innerHTML = ''
-    const dot = document.createElement('div')
-    dot.className = 'dot'
-    dot.textContent = '✓'
-    dot.addEventListener('click', () => {
-      if (state === 'idle') setState('expanded')
-    })
-    mount.appendChild(dot)
+    const pill = document.createElement('button')
+    pill.className = 'pill'
+    pill.type = 'button'
+    const mark = document.createElement('span')
+    mark.className = 'pill-mark'
+    mark.textContent = '✓'
+    pill.appendChild(mark)
+    pill.appendChild(document.createTextNode(mode === 'challenge' ? '我已完成验证' : '我已登录'))
+    pill.addEventListener('click', onExtractClick)
+    mount.appendChild(pill)
   }
 
   function renderCard(opts: {
@@ -250,11 +254,15 @@ function buildOverlay(source: string, mode: WindowMode): void {
     mount.appendChild(card)
   }
 
-  function renderExpanded(hintText: string, hintClass?: string): void {
+  /**
+   * 错误卡片渲染：展示失败 hint + 「重试」按钮（click → onExtractClick）+ ✕（click → idle 胶囊）。
+   * 复用 renderCard（含 head/✕），hint 走 .err 红色样式。
+   */
+  function renderError(hintText: string): void {
     renderCard({
       hint: hintText,
-      hintClass,
-      btnText: mode === 'challenge' ? '我已完成验证' : '我已登录',
+      hintClass: 'err',
+      btnText: '重试',
       btnOnClick: onExtractClick,
     })
   }
@@ -298,10 +306,7 @@ function buildOverlay(source: string, mode: WindowMode): void {
   // ── 状态切换 ──────────────────────────────────────────────
   function setState(next: OverlayState): void {
     state = next
-    if (next === 'idle') renderDot()
-    else if (next === 'expanded') {
-      renderExpanded(mode === 'challenge' ? '完成站点人机验证后点此继续' : '登录后点此获取凭证')
-    }
+    if (next === 'idle') renderPill()
     else if (next === 'extracting') {
       renderCard({
         hint: mode === 'challenge' ? '正在确认验证状态…' : '正在获取凭证…',
@@ -312,17 +317,23 @@ function buildOverlay(source: string, mode: WindowMode): void {
     } else if (next === 'counting') {
       renderCounting()
     }
+    // error 态必须携带 hint 文案，统一通过 goError 进入（不在此无参渲染）
+  }
+
+  /** 进入错误态：设状态 + 渲染错误卡片（含重试按钮 + ✕ 回胶囊）。 */
+  function goError(hint: string): void {
+    state = 'error'
+    renderError(hint)
   }
 
   // ── 事件处理 ──────────────────────────────────────────────
   function onExtractClick(): void {
-    if (state !== 'expanded') return
+    if (state === 'extracting') return // 防抖：提取中重复点击不再触发
     setState('extracting')
     // invoke 仅拿 accepted 快响应；结果由 LOGIN_EXTRACT_RESULT 推送
     void ipcRenderer.invoke(LOGIN_EXTRACT_CHANNEL, source).catch((err) => {
       console.error('[HComicLoginOverlay] LOGIN_EXTRACT invoke failed:', err)
-      setState('expanded')
-      renderExpanded('请求失败，请重试', 'err')
+      goError('请求失败，请重试')
     })
   }
 
@@ -332,18 +343,16 @@ function buildOverlay(source: string, mode: WindowMode): void {
       return
     }
     if (payload.notLoggedIn) {
-      setState('expanded')
-      renderExpanded(mode === 'challenge' ? '未检测到登录状态，请先在当前窗口登录' : '未检测到登录状态', 'err')
+      goError(mode === 'challenge' ? '未检测到登录状态，请先在当前窗口登录' : '未检测到登录状态')
       return
     }
     // 其他失败：显示后端返回的 message
-    setState('expanded')
-    renderExpanded(payload.message || '获取失败，请重试', 'err')
+    goError(payload.message || '获取失败，请重试')
   }
 
   function cancelCountdown(): void {
     clearTimer()
-    setState('expanded')
+    setState('idle')
   }
 
   function clearTimer(): void {

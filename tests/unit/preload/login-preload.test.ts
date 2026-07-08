@@ -98,7 +98,7 @@ describe('login-preload: overlay injection', () => {
   })
 })
 
-describe('login-preload: overlay state machine', () => {
+describe('login-preload: overlay state machine (one-click)', () => {
   beforeEach(async () => {
     document.getElementById(OVERLAY_HOST_ID)?.remove()
     mockInvoke.mockClear()
@@ -107,52 +107,77 @@ describe('login-preload: overlay state machine', () => {
     await loadPreload()
   })
 
-  it('idle dot → click → expanded; click 我已登录 fires LOGIN_EXTRACT', () => {
+  it('idle renders pill button (not dot); click pill fires LOGIN_EXTRACT directly', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    const dot = queryShadow(host, '.dot') as HTMLElement
-    dot.click()
-    const btn = queryShadow(host, '.btn') as HTMLElement
-    expect(btn.textContent).toContain('我已登录')
-    btn.click()
-    expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_EXTRACT, expect.any(String))
-  })
+    // idle 态渲染胶囊按钮（.pill），不再是 .dot
+    expect(queryShadow(host, '.pill')).not.toBeNull()
+    expect(queryShadow(host, '.dot')).toBeNull()
+    // 胶囊文字包含「我已登录」
+    const pill = queryShadow(host, '.pill') as HTMLElement
+    expect(pill.textContent).toContain('我已登录')
 
-  it('expanded → click ✕ → back to idle', () => {
-    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    expect(queryShadow(host, '.card')).not.toBeNull()
-    ;(queryShadow(host, '.close') as HTMLElement).click()
-    expect(queryShadow(host, '.dot')).not.toBeNull()
-    expect(queryShadow(host, '.card')).toBeNull()
+    // 单击胶囊直接触发 LOGIN_EXTRACT（一步路径，无中间展开）
+    pill.click()
+    expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_EXTRACT, expect.any(String))
   })
 
   it('extract result success → counting state with countdown number 3', () => {
     vi.useFakeTimers()
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: true, message: 'ok' })
     const num = queryShadow(host, '.count-num') as HTMLElement
     expect(num.textContent).toBe('3')
     vi.useRealTimers()
   })
 
-  it('extract result notLoggedIn → back to expanded with 未检测到登录状态', () => {
+  it('extract result notLoggedIn → error card with 未检测到登录状态 + retry button enabled', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: false, notLoggedIn: true })
     const hint = queryShadow(host, '.hint') as HTMLElement
     expect(hint.textContent).toContain('未检测到登录状态')
     const btn = queryShadow(host, '.btn') as HTMLElement
+    expect(btn.textContent).toContain('重试')
     expect(btn.disabled).toBeFalsy()
+  })
+
+  it('extract result generic failure → error card shows backend message', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
+    ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, {
+      success: false,
+      message: '服务端校验未通过',
+    })
+    const hint = queryShadow(host, '.hint') as HTMLElement
+    expect(hint.textContent).toContain('服务端校验未通过')
+    const btn = queryShadow(host, '.btn') as HTMLElement
+    expect(btn.textContent).toContain('重试')
+  })
+
+  it('error card 重试 button → fires LOGIN_EXTRACT again', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
+    ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: false, notLoggedIn: true })
+    mockInvoke.mockClear()
+    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_EXTRACT, expect.any(String))
+  })
+
+  it('error card ✕ → back to idle pill', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
+    ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: false, notLoggedIn: true })
+    expect(queryShadow(host, '.card')).not.toBeNull()
+    ;(queryShadow(host, '.close') as HTMLElement).click()
+    expect(queryShadow(host, '.pill')).not.toBeNull()
+    expect(queryShadow(host, '.card')).toBeNull()
   })
 
   it('countdown reaches 0 → fires LOGIN_FINISH', async () => {
     vi.useFakeTimers()
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: true, message: 'ok' })
     mockInvoke.mockClear()
     await vi.advanceTimersByTimeAsync(3_000)
@@ -160,19 +185,31 @@ describe('login-preload: overlay state machine', () => {
     vi.useRealTimers()
   })
 
-  it('countdown cancel → no LOGIN_FINISH, back to expanded', async () => {
+  it('countdown cancel → no LOGIN_FINISH, back to idle pill', async () => {
     vi.useFakeTimers()
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: true, message: 'ok' })
     const cancel = queryShadow(host, '.count-cancel') as HTMLElement
     cancel.click()
     mockInvoke.mockClear()
     await vi.advanceTimersByTimeAsync(10_000)
     expect(mockInvoke).not.toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_FINISH)
-    expect(queryShadow(host, '.btn')).not.toBeNull()
+    expect(queryShadow(host, '.pill')).not.toBeNull()
     vi.useRealTimers()
+  })
+
+  it('extracting state disables retry and debounces repeat clicks (no second LOGIN_EXTRACT)', () => {
+    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
+    const pill = queryShadow(host, '.pill') as HTMLElement
+    pill.click()
+    // extracting 态：按钮 disabled
+    const extractingBtn = queryShadow(host, '.btn') as HTMLElement
+    expect(extractingBtn.disabled).toBe(true)
+    // 重复点击不再触发新的 LOGIN_EXTRACT（防抖）
+    mockInvoke.mockClear()
+    extractingBtn.click()
+    expect(mockInvoke).not.toHaveBeenCalled()
   })
 })
 
@@ -184,34 +221,36 @@ describe('login-preload: overlay fixed (undraggable)', () => {
 
   it('pointer drag does not move host (stays fixed at top/right)', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    const dot = queryShadow(host, '.dot') as HTMLElement
+    const pill = queryShadow(host, '.pill') as HTMLElement
     // 初始定位锚：固定右上角
     expect(host.style.top).toBe('12px')
     expect(host.style.right).toBe('12px')
     expect(host.style.left).toBe('')
-    // 模拟大幅指针拖动（曾超过位移阈值）→ host 定位禁止改变
-    dot.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointermove', { clientX: 250, clientY: 200, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointerup', { clientX: 250, clientY: 200, bubbles: true }))
+    // 模拟大幅指针拖动 → host 定位禁止改变
+    pill.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }))
+    pill.dispatchEvent(new PointerEvent('pointermove', { clientX: 250, clientY: 200, bubbles: true }))
+    pill.dispatchEvent(new PointerEvent('pointerup', { clientX: 250, clientY: 200, bubbles: true }))
     expect(host.style.top).toBe('12px')
     expect(host.style.right).toBe('12px')
     expect(host.style.left).toBe('')
   })
 
-  it('click on dot expands directly (no drag swallow)', () => {
+  it('click on pill triggers extraction directly (no drag swallow, no expand step)', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    const dot = queryShadow(host, '.dot') as HTMLElement
-    // 即便指针发生过移动，点击圆点也必须直接展开（无吞咽 click 的逻辑）
-    dot.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointermove', { clientX: 120, clientY: 105, bubbles: true }))
-    dot.dispatchEvent(new PointerEvent('pointerup', { clientX: 120, clientY: 105, bubbles: true }))
-    dot.click()
+    const pill = queryShadow(host, '.pill') as HTMLElement
+    // 即便指针发生过移动，点击胶囊也必须直接触发提取（无吞咽 click、无中间展开）
+    pill.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, bubbles: true }))
+    pill.dispatchEvent(new PointerEvent('pointermove', { clientX: 120, clientY: 105, bubbles: true }))
+    pill.dispatchEvent(new PointerEvent('pointerup', { clientX: 120, clientY: 105, bubbles: true }))
+    pill.click()
+    // 点击后应进入 extracting 态（渲染 card + disabled 按钮），而非停留 idle
     expect(queryShadow(host, '.card')).not.toBeNull()
+    expect(queryShadow(host, '.pill')).toBeNull()
   })
 })
 
-// ── 任务 4.3：挑战模式叠层文案与提交流程 ──────────────────────────────────
-// 通过 process.argv 注入 --hcomic-window-mode=challenge，验证叠层文案切换、
+// ── 挑战模式叠层文案与提交流程 ──────────────────────────────────────────
+// 通过 process.argv 注入 --hcomic-window-mode=challenge，验证胶囊文案切换、
 // 挑战未完成不关闭、成功倒计时与 extracting 态防抖。
 
 describe('login-preload: challenge mode overlay', () => {
@@ -231,64 +270,33 @@ describe('login-preload: challenge mode overlay', () => {
     process.argv = originalArgv
   })
 
-  it('shows 验证助手 title in challenge mode', () => {
+  it('idle pill shows 我已完成验证 wording in challenge mode', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    // title 仅在 card 态存在，需先展开
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    const title = queryShadow(host, '.head-title') as HTMLElement
-    expect(title.textContent).toBe('验证助手')
+    const pill = queryShadow(host, '.pill') as HTMLElement
+    expect(pill.textContent).toContain('我已完成验证')
   })
 
-  it('expanded state shows 我已完成验证 button in challenge mode', () => {
+  it('clicking pill fires LOGIN_EXTRACT in challenge mode', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    const btn = queryShadow(host, '.btn') as HTMLElement
-    expect(btn.textContent).toContain('我已完成验证')
-  })
-
-  it('expanded hint uses verification wording in challenge mode', () => {
-    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    const hint = queryShadow(host, '.hint') as HTMLElement
-    expect(hint.textContent).toContain('人机验证')
-  })
-
-  it('clicking 提交 fires LOGIN_EXTRACT in challenge mode', () => {
-    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     expect(mockInvoke).toHaveBeenCalledWith(IPC_CHANNELS.LOGIN_EXTRACT, expect.any(String))
   })
 
-  it('extracting state shows verification wording and disables button (debounce)', () => {
+  it('challenge incomplete (主进程推回失败) → error card, does not close', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    const btn = queryShadow(host, '.btn') as HTMLElement
-    btn.click()
-    // extracting 态：按钮禁用 + 验证文案
-    const hint = queryShadow(host, '.hint') as HTMLElement
-    expect(hint.textContent).toContain('确认')
-    const extractingBtn = queryShadow(host, '.btn') as HTMLElement
-    expect(extractingBtn.disabled).toBe(true)
-    // 重复点击不再触发新的 LOGIN_EXTRACT（防抖）
-    mockInvoke.mockClear()
-    extractingBtn.click()
-    expect(mockInvoke).not.toHaveBeenCalled()
-  })
-
-  it('challenge incomplete (主进程推回失败) → stays expanded, does not close', () => {
-    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     // 主进程推回"验证尚未完成"
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, {
       success: false,
       message: '验证尚未完成，请继续完成人机验证',
     })
-    // 回到 expanded 态，未进入 counting（未关闭）
+    // 进入 error 态（card），未进入 counting（未关闭）
     const card = queryShadow(host, '.card')
     expect(card).not.toBeNull()
+    const hint = queryShadow(host, '.hint') as HTMLElement
+    expect(hint.textContent).toContain('验证尚未完成')
     const btn = queryShadow(host, '.btn') as HTMLElement
+    expect(btn.textContent).toContain('重试')
     expect(btn.disabled).toBeFalsy()
     expect(queryShadow(host, '.count-num')).toBeNull()
   })
@@ -296,8 +304,7 @@ describe('login-preload: challenge mode overlay', () => {
   it('verification success → counting state with countdown 3', () => {
     vi.useFakeTimers()
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, {
       success: true,
       message: '人机验证已完成',
@@ -312,8 +319,7 @@ describe('login-preload: challenge mode overlay', () => {
   it('countdown reaches 0 → fires LOGIN_FINISH (closes window)', async () => {
     vi.useFakeTimers()
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, {
       success: true,
       message: '人机验证已完成',
@@ -326,8 +332,7 @@ describe('login-preload: challenge mode overlay', () => {
 
   it('notLoggedIn in challenge mode hints to log in within the window', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    ;(queryShadow(host, '.btn') as HTMLElement).click()
+    ;(queryShadow(host, '.pill') as HTMLElement).click()
     ipcListeners[NOTIFICATION_CHANNELS.LOGIN_EXTRACT_RESULT]({}, { success: false, notLoggedIn: true })
     const hint = queryShadow(host, '.hint') as HTMLElement
     expect(hint.textContent).toContain('登录')
@@ -345,17 +350,9 @@ describe('login-preload: login mode wording regression', () => {
     await loadPreload()
   })
 
-  it('keeps 登录助手 title in login mode', () => {
+  it('idle pill keeps 我已登录 wording in login mode', () => {
     const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    const title = queryShadow(host, '.head-title') as HTMLElement
-    expect(title.textContent).toBe('登录助手')
-  })
-
-  it('keeps 我已登录 button in login mode', () => {
-    const host = document.getElementById(OVERLAY_HOST_ID) as HTMLElement
-    ;(queryShadow(host, '.dot') as HTMLElement).click()
-    const btn = queryShadow(host, '.btn') as HTMLElement
-    expect(btn.textContent).toContain('我已登录')
+    const pill = queryShadow(host, '.pill') as HTMLElement
+    expect(pill.textContent).toContain('我已登录')
   })
 })
