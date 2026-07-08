@@ -346,7 +346,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     currentPage,
     totalPages: pagination?.totalPages ?? 1,
     contextKey: `favourites:${source}`,
-    enabled: !needsLogin && !isLoading && Boolean(pagination && pagination.totalPages > 1),
+    // JM 收藏夹禁用相邻页预加载（jm-favourites-no-preload 规范）：
+    // JM 是唯一在收藏夹路径触发 Cloudflare 挑战的来源，预加载会放大请求
+    // 把信任额度烧光，反而让用户真实翻页时被挑战。其他来源走纯 API 不受影响。
+    enabled: source !== 'jm' && !needsLogin && !isLoading && Boolean(pagination && pagination.totalPages > 1),
     hasPage: hasFavouritesPage,
     loadPage: preloadFavouritesPage,
     commitPage: commitPreloadedFavouritesPage,

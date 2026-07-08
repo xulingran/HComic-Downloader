@@ -558,4 +558,147 @@ describe('FavouritesPage', () => {
       expect(screen.queryByText('已取消')).not.toBeInTheDocument()
     })
   })
+
+  // ── jm-favourites-no-preload：JM 来源在收藏夹禁用相邻页预加载 ──────────────
+  // JM 是唯一在收藏夹路径触发 Cloudflare 挑战的来源，预加载会放大请求把信任额度
+  // 烧光。这组测试守护 `enabled: source !== 'jm' && ...` 这一行不被无声删除。
+  describe('JM 收藏夹禁用相邻页预加载（jm-favourites-no-preload）', () => {
+    // 用「来源 + 页码」键控 getFavourites：来源 jm 第 1 页返回多页结果（触发预加载
+    // 候选页生成条件 totalPages > 1），其他页/来源返回空多页或单页。
+    function mockJmMultiPage() {
+      mockGetFavourites.mockImplementation((page: number, source?: string) => {
+        if (source === 'jm' && page === 1) {
+          return Promise.resolve({
+            comics: [{ id: 'jm-1', title: 'JM Page1', url: '', coverUrl: '', source: 'jm' }],
+            pagination: { currentPage: 1, totalPages: 5, totalItems: 50 },
+            needsLogin: false,
+          })
+        }
+        // jm 相邻页（2、3）若被预加载，会落到这里——测试通过断言「这里永不被调用」来证伪
+        if (source === 'jm') {
+          return Promise.resolve({
+            comics: [{ id: `jm-${page}`, title: `JM Page${page}`, url: '', coverUrl: '', source: 'jm' }],
+            pagination: { currentPage: page, totalPages: 5, totalItems: 50 },
+            needsLogin: false,
+          })
+        }
+        return Promise.resolve({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+      })
+    }
+
+    it('JM 来源加载第 1 页后不发起相邻页预加载请求', async () => {
+      mockJmMultiPage()
+
+      render(<FavouritesPage />)
+      // 初始来源 hcomic，切到 jm
+      await userEvent.click(screen.getByRole('button', { name: 'JM' }))
+      // 等待 JM 第 1 页真实渲染（证明主动加载成功，source 已是 jm、多页 pagination 已就位）
+      await screen.findByText('JM Page1')
+
+      // 给预加载调度留出窗口（若 enabled 误为 true，page 2/3 会在此期间被请求）
+      await new Promise((r) => setTimeout(r, 50))
+
+      // 断言真实行为：JM 相邻页（2、3）永不被预加载调用
+      const jmPreloadCalls = mockGetFavourites.mock.calls.filter(
+        ([page, source]) => source === 'jm' && (page === 2 || page === 3),
+      )
+      expect(jmPreloadCalls).toHaveLength(0)
+      // 对照：JM 第 1 页的主动加载确实发生了（证明断言不是因「JM 根本没加载」而空过）
+      expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm', true)
+    })
+
+    it('非 JM 来源（hcomic）加载后仍正常预加载相邻页', async () => {
+      // 对照测试：守护「禁用 JM 预加载」没有误伤其他来源
+      mockGetFavourites.mockResolvedValue({
+        comics: [{ id: 'h-1', title: 'HComic Page1', url: '', coverUrl: '', source: 'hcomic' }],
+        pagination: { currentPage: 1, totalPages: 5, totalItems: 50 },
+        needsLogin: false,
+      })
+
+      render(<FavouritesPage />)
+      // hcomic 是默认来源，挂载即加载第 1 页
+      await screen.findByText('HComic Page1')
+
+      // hcomic 相邻页（page 2）必须被预加载（证明 enabled 对非 JM 仍为 true）
+      await waitFor(() => {
+        expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic', false)
+      })
+    })
+
+    it('从 JM 切换到非 JM 来源后相邻页预加载恢复', async () => {
+      mockGetFavourites.mockImplementation((page: number, source?: string) => {
+        if (source === 'jm' && page === 1) {
+          return Promise.resolve({
+            comics: [{ id: 'jm-1', title: 'JM Page1', url: '', coverUrl: '', source: 'jm' }],
+            pagination: { currentPage: 1, totalPages: 5, totalItems: 50 },
+            needsLogin: false,
+          })
+        }
+        if (source === 'hcomic' && page === 1) {
+          return Promise.resolve({
+            comics: [{ id: 'h-1', title: 'HComic Page1', url: '', coverUrl: '', source: 'hcomic' }],
+            pagination: { currentPage: 1, totalPages: 5, totalItems: 50 },
+            needsLogin: false,
+          })
+        }
+        // hcomic 相邻页（2）若恢复预加载，会落到这里
+        return Promise.resolve({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+      })
+
+      render(<FavouritesPage />)
+      // 先切到 JM（验证 JM 禁用），再切回 hcomic（验证恢复）
+      await userEvent.click(screen.getByRole('button', { name: 'JM' }))
+      await screen.findByText('JM Page1')
+
+      await userEvent.click(screen.getByRole('button', { name: 'HComic' }))
+      await screen.findByText('HComic Page1')
+
+      // 切回 hcomic 后，相邻页（page 2）必须恢复预加载
+      await waitFor(() => {
+        expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic', false)
+      })
+    })
+
+    it('从非 JM 来源切换到 JM 后停止相邻页预加载', async () => {
+      mockGetFavourites.mockImplementation((page: number, source?: string) => {
+        if (source === 'hcomic' && page === 1) {
+          return Promise.resolve({
+            comics: [{ id: 'h-1', title: 'HComic Page1', url: '', coverUrl: '', source: 'hcomic' }],
+            pagination: { currentPage: 1, totalPages: 5, totalItems: 50 },
+            needsLogin: false,
+          })
+        }
+        if (source === 'jm' && page === 1) {
+          return Promise.resolve({
+            comics: [{ id: 'jm-1', title: 'JM Page1', url: '', coverUrl: '', source: 'jm' }],
+            pagination: { currentPage: 1, totalPages: 5, totalItems: 50 },
+            needsLogin: false,
+          })
+        }
+        // jm 相邻页（2）若误启用预加载，会落到这里
+        return Promise.resolve({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+      })
+
+      render(<FavouritesPage />)
+      // hcomic 是默认来源：先验证它确实预加载了相邻页（证明预加载机制本身在工作）
+      await screen.findByText('HComic Page1')
+      await waitFor(() => {
+        expect(mockGetFavourites).toHaveBeenCalledWith(2, 'hcomic', false)
+      })
+
+      // 切换到 JM——验证切换生效（JM 第 1 页主动加载，allowInteractiveChallenge=true）
+      await userEvent.click(screen.getByRole('button', { name: 'JM' }))
+      await screen.findByText('JM Page1')
+      expect(mockGetFavourites).toHaveBeenCalledWith(1, 'jm', true)
+
+      // 给预加载调度留出窗口（若 enabled 误为 true，JM 相邻页会在此期间被请求）
+      await new Promise((r) => setTimeout(r, 50))
+
+      // 断言：切换到 JM 后，JM 的相邻页（2、3）禁止被预加载
+      const jmPreloadCalls = mockGetFavourites.mock.calls.filter(
+        ([page, source]) => source === 'jm' && (page === 2 || page === 3),
+      )
+      expect(jmPreloadCalls).toHaveLength(0)
+    })
+  })
 })
