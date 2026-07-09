@@ -53,6 +53,21 @@ def _extract_eps_id(image_url: str) -> int:
     return int(m.group(1)) if m else 0
 
 
+def _resolve_eps_id(image_url: str, comic_id: str = "") -> int:
+    """解析反混淆所需的 eps_id。
+
+    优先从图片 URL 路径提取（多章节专辑每章有独立 eps_id，这是正确值），
+    URL 无法提取时回退到传入的 comic_id。两者皆无则返回 0。
+    """
+    eps_id = _extract_eps_id(image_url)
+    if eps_id:
+        return eps_id
+    try:
+        return int(comic_id)
+    except (ValueError, TypeError):
+        return 0
+
+
 def _get_image_format(img: Image.Image, original_bytes: bytes) -> tuple[str, dict]:
     """检测图片格式并返回适合保存的格式和参数。
 

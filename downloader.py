@@ -182,24 +182,45 @@ class ComicDownloader:
 
     @staticmethod
     def _maybe_postprocess_images(comic: ComicInfo, temp_dir: Path) -> None:
-        """下载完成后对图片进行后处理（如 jm 反混淆）。"""
+        """下载完成后对图片进行后处理（如 jm 反混淆）。
+
+        反混淆参数（eps_id 与 page_num）必须从每页的原始图片 URL 解析，
+        与预览路径（PreviewMixin._apply_descramble）保持一致：eps_id 取自
+        URL 路径 /media/photos/{eps_id}/，page_num 由 descrambler 从 URL 末段
+        提取（5 位，如 "00001"）。禁止用章节 id 或 3 位填充的文件名 stem 作
+        为反混淆输入——它们会产生不同的 MD5 摘要导致分块数错误、产物损坏。
+        """
         if comic.source_site != "jm" or not comic.scramble_id:
             return
         try:
-            from sources.jm.descrambler import descramble_image
+            from sources.jm.descrambler import _resolve_eps_id, descramble_image
         except ImportError:
             logger.warning("jm descrambler not available, skipping postprocess")
             return
-        try:
-            eps_id = int(comic.id)
-        except (ValueError, TypeError):
-            return
+        image_urls = comic.image_urls or []
         for img_file in sorted(temp_dir.iterdir()):
             if not img_file.is_file():
                 continue
+            # 文件名形如 "001.jpg"（PAGE_FILENAME_WIDTH=3，1-based 页号），
+            # 据此映射回 comic.image_urls[page-1] 取该页原始 URL。
+            try:
+                page_no = int(img_file.stem)
+            except ValueError:
+                continue
+            idx = page_no - 1
+            if idx < 0 or idx >= len(image_urls):
+                logger.warning(
+                    "Skip descramble for %s: page %d out of image_urls range %d",
+                    img_file.name,
+                    page_no,
+                    len(image_urls),
+                )
+                continue
+            url = image_urls[idx]
             try:
                 original = img_file.read_bytes()
-                descrambled = descramble_image(original, eps_id, img_file.stem)
+                eps_id = _resolve_eps_id(url, comic.id)
+                descrambled = descramble_image(original, eps_id, image_url=url)
                 if descrambled != original:
                     img_file.write_bytes(descrambled)
             except Exception as e:

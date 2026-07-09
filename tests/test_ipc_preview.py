@@ -158,7 +158,7 @@ def test_fetch_preview_image_uses_downloader_auth_and_referer():
 
 def test_resolve_eps_id_prefers_url():
     """多章节：反混淆 eps_id 应取自图片 URL，而非传入的专辑 comic_id。"""
-    from python.ipc.preview_mixin import _resolve_eps_id
+    from sources.jm.descrambler import _resolve_eps_id
 
     url = "https://cdn.test.one/media/photos/999002/00001.webp"
     # comic_id 传专辑 id 999001，但图片属于章节 999002
@@ -167,7 +167,7 @@ def test_resolve_eps_id_prefers_url():
 
 def test_resolve_eps_id_falls_back_to_comic_id():
     """URL 无 eps_id 时回退到 comic_id。"""
-    from python.ipc.preview_mixin import _resolve_eps_id
+    from sources.jm.descrambler import _resolve_eps_id
 
     assert _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="430371") == 430371
     assert _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="") == 0
