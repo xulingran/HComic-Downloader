@@ -8,7 +8,7 @@ interface FavouriteSourceSidebarProps {
 /** 收藏夹页内的常驻来源导航；仅负责展示和上报选择。 */
 export function FavouriteSourceSidebar({ activeSource, onSelect }: FavouriteSourceSidebarProps) {
   return (
-    <aside className="w-[150px] shrink-0 self-start" aria-label="收藏来源">
+    <aside className="w-[150px] shrink-0 self-start pt-6" aria-label="收藏来源">
       <nav className="sticky top-6 space-y-0.5 pr-3">
         <div className="px-3 py-2 text-xs font-semibold tracking-wide text-[var(--text-secondary)]">
           收藏来源
