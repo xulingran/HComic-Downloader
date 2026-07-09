@@ -13,6 +13,7 @@ import { PaginationControls } from '../components/common/PaginationControls'
 import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
+import { LoadingOverlay } from '../components/common/LoadingOverlay'
 import { SourcePickerModal } from '../components/common/SourcePickerModal'
 import { FavouriteSourceSidebar } from '../components/favourites/FavouriteSourceSidebar'
 import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
@@ -472,11 +473,10 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
             </AnimatePresence>
           </LayoutGroup>
 
-          {/* 翻页加载遮罩：保留旧结果（Direction B），仅在加载中且仍有旧结果时显示 */}
+          {/* 翻页加载遮罩：保留旧结果，仅在加载中且仍有旧结果时显示。
+              统一 LoadingOverlay（light 档：旧结果基本不可辨认 + spinner + 「加载中...」文案）。 */}
           {isLoading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-primary)]/60 backdrop-blur-[1px] rounded-xl">
-              <span className="text-sm text-[var(--text-secondary)]">加载中...</span>
-            </div>
+            <LoadingOverlay intensity="light" />
           )}
         </div>
       ))}

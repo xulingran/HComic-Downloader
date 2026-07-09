@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComicInfo, HistoryItem } from '@shared/types'
 
@@ -98,6 +98,13 @@ function makeHistoryItem(overrides: Partial<HistoryItem>): HistoryItem {
   }
 }
 
+// 控制某次 getHistory 的返回时机，用于让翻页加载挂起以观测遮罩
+function createDeferredHistory() {
+  let resolve!: (value: { items: HistoryItem[]; pagination: { currentPage: number; totalPages: number; totalItems: number } }) => void
+  const promise = new Promise<{ items: HistoryItem[]; pagination: { currentPage: number; totalPages: number; totalItems: number } }>((res) => { resolve = res })
+  return { promise, resolve }
+}
+
 describe('HistoryPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -168,6 +175,50 @@ describe('HistoryPage', () => {
 
     await screen.findByText('Current History')
     await waitFor(() => expect(mockGetHistory).toHaveBeenCalledWith(6))
+  })
+
+  it('首次加载（无旧结果）显示居中 spinner，无遮罩层', async () => {
+    // getHistory 挂起 → isLoading 持续 true，且 items 为空 → 走居中 spinner 分支
+    mockGetHistory.mockReturnValue(new Promise(() => {}))
+
+    render(<HistoryPage />)
+
+    // 居中 spinner + 文案可见
+    expect(screen.getByText('加载中...')).toBeInTheDocument()
+    expect(document.querySelector('.rounded-full.motion-safe\\:animate-spin')).not.toBeNull()
+    // 无遮罩层（LoadingOverlay 的 fixed inset-0 backdrop-blur）
+    expect(document.querySelector('.fixed.inset-0.backdrop-blur-\\[8px\\]')).toBeNull()
+  })
+
+  it('翻页未命中缓存时保留旧网格并叠加 light 档遮罩（backdrop-blur-[8px] + spinner）', async () => {
+    // 首屏第 1 页立即返回带分页结果（旧内容 + 翻页按钮），第 2 页未命中缓存且加载挂起
+    const deferredPage2 = createDeferredHistory()
+    mockGetHistory.mockImplementation((page: number) =>
+      page === 2
+        ? deferredPage2.promise
+        : Promise.resolve({
+          items: [makeHistoryItem({ id: 1, comicId: 'old', title: 'Old History' })],
+          pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+        })
+    )
+
+    render(<HistoryPage />)
+    await screen.findByText('Old History')
+
+    // 翻页到第 2 页（无缓存 → 加载挂起 → 旧网格保留 + 遮罩）
+    await userEvent.click((await screen.findAllByText('下一页'))[0])
+
+    // 旧结果仍渲染（未被卸载）
+    expect(screen.getByText('Old History')).toBeInTheDocument()
+    // LoadingOverlay light 档：backdrop-blur-[8px] + bg/80 + spinner
+    const overlay = document.querySelector('.fixed.inset-0.backdrop-blur-\\[8px\\]') as HTMLElement | null
+    expect(overlay).not.toBeNull()
+    expect(overlay?.className).toContain('bg-[var(--bg-primary)]/80')
+    expect(overlay?.querySelector('.rounded-full.motion-safe\\:animate-spin')).not.toBeNull()
+    expect(overlay?.textContent).toContain('加载中')
+
+    deferredPage2.resolve({ items: [], pagination: { currentPage: 2, totalPages: 3, totalItems: 30 } })
+    await act(async () => { await deferredPage2.promise.catch(() => {}) })
   })
 
   it('renders cover thumbnail in detailed card style', async () => {

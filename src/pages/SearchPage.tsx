@@ -7,6 +7,7 @@ import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
 import { AnimatedCardWrapper } from '../components/common/AnimatedCardWrapper'
 import { Skeleton } from '../components/common/Skeleton'
+import { LoadingOverlay } from '../components/common/LoadingOverlay'
 import { ChapterDownloadDialog } from '../components/ChapterDownloadDialog'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { PaginationControls } from '../components/common/PaginationControls'
@@ -36,13 +37,6 @@ import { useTagPanel } from '../hooks/useTagPanel'
 
 interface SearchPageProps {
   onNavigateToSettings?: () => void
-}
-
-// 加载遮罩强度 → 视觉映射。文案统一「加载中...」（避免与 SearchBar 按钮「搜索中...」撞车），
-// 仅靠背景不透明度 + 模糊强度区分场景：翻页用 light（旧结果可读），换来源/新查询用 strong（几乎不可辨认）。
-const OVERLAY_STYLES: Record<'light' | 'strong', string> = {
-  light: 'bg-[var(--bg-primary)]/40 backdrop-blur-[2px]',
-  strong: 'bg-[var(--bg-primary)]/85 backdrop-blur-[10px]',
 }
 
 // 尚无已加载搜索结果时的容器占位 key。loadedContextKey 为 null 时使用，
@@ -1033,11 +1027,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
           </LayoutGroup>
 
           {/* 加载遮罩：保留旧结果，仅在 isLoading 且仍有旧结果时显示。
-              强度由 overlayIntensity 决定：light=翻页（旧结果可读），strong=换来源/新查询（几乎不可辨认）。 */}
+              强度由 overlayIntensity 决定：light=翻页（旧结果基本不可辨认），strong=换来源/新查询（几乎完全遮蔽）。
+              统一 LoadingOverlay 组件：spinner + 辅助文案「加载中...」（与 SearchBar 按钮「搜索中...」区分）。 */}
           {isLoading && overlayIntensity && (
-            <div className={`absolute inset-0 flex items-center justify-center ${OVERLAY_STYLES[overlayIntensity]} rounded-xl`}>
-              <span className="text-sm text-[var(--text-secondary)]">加载中...</span>
-            </div>
+            <LoadingOverlay intensity={overlayIntensity} />
           )}
         </div>
       )}

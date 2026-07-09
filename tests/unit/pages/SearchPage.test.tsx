@@ -1078,16 +1078,16 @@ describe('SearchPage', () => {
     })
   })
 
-  // 加载遮罩分级：翻页用 light 档（旧结果可读），换来源/新查询用 strong 档（几乎不可辨认）。
-  // 文案统一「加载中...」，仅靠 backdrop-blur 像素值与 bg 不透明度区分。
+  // 加载遮罩分级：翻页用 light 档（旧结果基本不可辨认），换来源/新查询用 strong 档（几乎完全遮蔽）。
+  // 统一 LoadingOverlay 组件：spinner + 辅助文案「加载中...」，两档靠 backdrop-blur 像素值与 bg 不透明度区分。
   describe('加载遮罩分级（light / strong）', () => {
     const comicsWithResults: ComicInfo[] = [
       { id: '1', title: 'Comic A', url: 'https://example.com/1', coverUrl: '', source: 'test' }
     ]
 
-    // 取遮罩容器（含 backdrop-blur class 的 div）。遮罩文案为「加载中」，需排除按钮「搜索中...」。
+    // 取遮罩容器（fixed inset-0 + backdrop-blur）。遮罩文案为「加载中」，需排除按钮「搜索中...」。
     const getOverlay = () => {
-      const overlays = document.querySelectorAll('div.absolute.inset-0')
+      const overlays = document.querySelectorAll('div.fixed.inset-0')
       return Array.from(overlays).find(el => el.textContent?.includes('加载中')) ?? null
     }
 
@@ -1097,7 +1097,7 @@ describe('SearchPage', () => {
       mockStoreState.setLoading = vi.fn((loading: boolean) => { mockStoreState.isLoading = loading })
     })
 
-    it('翻页（keepExisting=true）时遮罩为 light 档：backdrop-blur-[2px] + bg/40', async () => {
+    it('翻页（keepExisting=true）时遮罩为 light 档：backdrop-blur-[8px] + bg/80', async () => {
       // 挂载首屏返回带 sections 的结果，使挂载 effect 设置 loadedContextKeyRef
       // （挂载 effect 仅在有 sections 时设此 ref；非 sections 源首次翻页会被判为新查询）。
       // 随后翻页 isPaging=true → keepExisting=true → light。
@@ -1123,16 +1123,16 @@ describe('SearchPage', () => {
 
       const overlay = getOverlay()
       expect(overlay).not.toBeNull()
-      expect(overlay?.className).toContain('backdrop-blur-[2px]')
-      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/40')
-      expect(overlay?.className).not.toContain('backdrop-blur-[10px]')
+      expect(overlay?.className).toContain('backdrop-blur-[8px]')
+      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/80')
+      expect(overlay?.className).not.toContain('backdrop-blur-[16px]')
       expect(overlay?.textContent).toContain('加载中')
 
       deferred.resolve({ comics: [], pagination: { currentPage: 2, totalPages: 3, totalItems: 30 } })
       await act(async () => { await deferred.promise.catch(() => {}) })
     })
 
-    it('换来源认证窗口遮罩为 strong 档：backdrop-blur-[10px] + bg/85', async () => {
+    it('换来源认证窗口遮罩为 strong 档：backdrop-blur-[16px] + bg/92', async () => {
       mockStoreState.comics = comicsWithResults
       mockStoreState.pagination = { currentPage: 1, totalPages: 1, totalItems: 1 }
       // verifyAuth 挂起，使认证校验窗口可观测
@@ -1148,9 +1148,9 @@ describe('SearchPage', () => {
 
       const overlay = getOverlay()
       expect(overlay).not.toBeNull()
-      expect(overlay?.className).toContain('backdrop-blur-[10px]')
-      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/85')
-      expect(overlay?.className).not.toContain('backdrop-blur-[2px]')
+      expect(overlay?.className).toContain('backdrop-blur-[16px]')
+      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/92')
+      expect(overlay?.className).not.toContain('backdrop-blur-[8px]')
 
       resolveAuth({ valid: true })
       await act(async () => { await authPromise.catch(() => {}) })
@@ -1186,8 +1186,8 @@ describe('SearchPage', () => {
 
       const overlay = getOverlay()
       expect(overlay).not.toBeNull()
-      expect(overlay?.className).toContain('backdrop-blur-[10px]')
-      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/85')
+      expect(overlay?.className).toContain('backdrop-blur-[16px]')
+      expect(overlay?.className).toContain('bg-[var(--bg-primary)]/92')
 
       deferredRandom.resolve({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
       await act(async () => { await deferredRandom.promise.catch(() => {}) })

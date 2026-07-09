@@ -9,6 +9,7 @@ import { PaginationControls } from '../components/common/PaginationControls'
 import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
+import { LoadingOverlay } from '../components/common/LoadingOverlay'
 import { HistoryItem, PaginationInfo, type ComicInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useToastStore } from '../stores/useToastStore'
@@ -241,10 +242,13 @@ export function HistoryPage() {
     commitPage: commitPreloadedHistoryPage,
   })
 
-  if (isLoading) {
+  // 首次加载（无旧结果）：居中 spinner + 文案（无网格可遮罩）。
+  // 翻页加载（有旧结果）：不 early-return，进入主结构保留旧网格并叠加 LoadingOverlay（见下方网格渲染）。
+  if (isLoading && items.length === 0) {
     return (
-      <div className="flex items-center justify-center py-12">
-        <div className="text-[var(--text-secondary)]">加载中...</div>
+      <div className="flex flex-col items-center justify-center gap-3 py-12">
+        <div className="w-8 h-8 border-2 border-[var(--text-tertiary)] border-t-[var(--accent)] rounded-full motion-safe:animate-spin" />
+        <div className="text-sm text-[var(--text-secondary)]">加载中...</div>
       </div>
     )
   }
@@ -296,28 +300,34 @@ export function HistoryPage() {
       {items.length === 0 ? (
         <EmptyState message="还没有阅读记录，去搜索页发现感兴趣的漫画吧" />
       ) : (
-        <LayoutGroup>
-          <AnimatePresence mode="popLayout">
-            <div className={cardStyle === 'detailed'
-              ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
-              : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
-            }>
-              {items.map((item, index) => (
-                <AnimatedCardWrapper key={`${item.comicId}-${item.source}`} index={index}>
-                  <HistoryCard
-                    item={item}
-                    cardStyle={cardStyle}
-                    onOpen={() => handleOpenReader(item)}
-                    onOpenDrawer={() => openDrawer(historyItemToComicInfo(item))}
-                    onDelete={() => handleDelete(item)}
-                    onDownload={handleDownload}
-                    activeDownload={activeDownloadMap.get(item.comicId)}
-                  />
-                </AnimatedCardWrapper>
-              ))}
-            </div>
-          </AnimatePresence>
-        </LayoutGroup>
+        <div className="relative">
+          <LayoutGroup>
+            <AnimatePresence mode="popLayout">
+              <div className={cardStyle === 'detailed'
+                ? 'flex flex-col bg-[var(--bg-primary)] rounded-xl shadow-sm overflow-hidden'
+                : 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4'
+              }>
+                {items.map((item, index) => (
+                  <AnimatedCardWrapper key={`${item.comicId}-${item.source}`} index={index}>
+                    <HistoryCard
+                      item={item}
+                      cardStyle={cardStyle}
+                      onOpen={() => handleOpenReader(item)}
+                      onOpenDrawer={() => openDrawer(historyItemToComicInfo(item))}
+                      onDelete={() => handleDelete(item)}
+                      onDownload={handleDownload}
+                      activeDownload={activeDownloadMap.get(item.comicId)}
+                    />
+                  </AnimatedCardWrapper>
+                ))}
+              </div>
+            </AnimatePresence>
+          </LayoutGroup>
+
+          {/* 翻页加载遮罩：保留旧网格（不卸载），叠加 light 档遮罩 + spinner。
+              首次加载（items 为空）已在上方 early-return 居中显示，不会进入此分支。 */}
+          {isLoading && <LoadingOverlay intensity="light" />}
+        </div>
       )}
 
       {!isLoading && pagination && pagination.totalPages > 1 && (

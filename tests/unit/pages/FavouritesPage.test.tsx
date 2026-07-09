@@ -194,6 +194,40 @@ describe('FavouritesPage', () => {
     expect(screen.getByText('加载中...')).toBeInTheDocument()
   })
 
+  it('翻页未命中缓存时保留旧结果并叠加 light 档遮罩（backdrop-blur-[8px] + spinner）', async () => {
+    // 首屏第 1 页立即返回带分页结果（使翻页按钮 + 旧内容可见），第 2 页未命中缓存且加载挂起
+    const deferredPage2 = createDeferredFavourites()
+    mockGetFavourites.mockImplementation((page: number, _source?: string, _interactive?: boolean) =>
+      page === 2
+        ? deferredPage2.promise
+        : Promise.resolve({
+          comics: [{ id: '1', title: 'Old Favourite', url: 'https://example.com/1', coverUrl: '', source: 'test' }],
+          pagination: { currentPage: 1, totalPages: 3, totalItems: 30 },
+          needsLogin: false,
+        })
+    )
+    // 目标页无缓存 → 走 isLoading 遮罩路径（非缓存即时显示）
+    mockFavouritesStore.hasPage.mockReturnValue(false)
+
+    render(<FavouritesPage />)
+    await screen.findByText('Old Favourite')
+
+    // 翻页到第 2 页（无缓存 → 加载挂起 → 旧结果保留 + 遮罩）
+    await userEvent.click((await screen.findAllByText('下一页'))[0])
+
+    // 旧结果仍渲染（未被卸载）
+    expect(screen.getByText('Old Favourite')).toBeInTheDocument()
+    // LoadingOverlay light 档：backdrop-blur-[8px] + bg/80 + spinner
+    const overlay = document.querySelector('.fixed.inset-0.backdrop-blur-\\[8px\\]') as HTMLElement | null
+    expect(overlay).not.toBeNull()
+    expect(overlay?.className).toContain('bg-[var(--bg-primary)]/80')
+    expect(overlay?.querySelector('.rounded-full.motion-safe\\:animate-spin')).not.toBeNull()
+    expect(overlay?.textContent).toContain('加载中')
+
+    deferredPage2.resolve({ comics: [], pagination: { currentPage: 2, totalPages: 3, totalItems: 30 }, needsLogin: false })
+    await act(async () => { await deferredPage2.promise.catch(() => {}) })
+  })
+
   it('shows cached favourites page immediately and refreshes it in background', async () => {
     mockFavouritesStore.hasPage.mockReturnValue(true)
     mockGetFavourites.mockResolvedValueOnce({
