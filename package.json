@@ -1,6 +1,6 @@
 {
   "name": "hcomic-downloader",
-  "version": "1.7.0",
+  "version": "2.0.0",
   "type": "module",
   "description": "HComic Downloader - Electron Edition",
   "main": "out/main/main.js",

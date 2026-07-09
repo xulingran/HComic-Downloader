@@ -7,6 +7,10 @@
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-09
+
+> 本版本因 NH 认证方式发生不兼容变更，主版本号升至 2.0.0。
+
 ### 🚀 新增（Added）
 
 #### 来源与内容
@@ -14,15 +18,26 @@
   - 支持 API Key（`Authorization: Key <key>`）认证方式。
   - 支持拉取收藏夹、加入收藏、取消收藏与查询收藏状态。
   - 收藏夹页来源选择器新增 NH 选项。
+- **nh**：补充登出 / 清除凭证功能。
+- **nh**：新增中文语言筛选。
+- **nh**：热门标签按热度分档呈现，复用 stagger 动画。
+- **jm**：搜索页接入 Cloudflare 人机验证恢复机制。
+- **jm**：搜索挑战恢复增加 DOM 快照兜底 + TLS 指纹对齐。
+- **moeimg**：独立采集 parody 与 characters，不再混入 tags。
+- **favourites**：新增收藏来源侧边栏。
 
 #### UI 与交互
 - **设置页**：新增 NH 认证区域，提供 API Key 输入、应用、登录状态检测与清除认证按钮。
+- **search**：加载遮罩分级为轻 / 重两档，换来源时更直观。
+- **reader**：统一预览加载中占位为阅读器背景色 + spinner。
+- **login**：叠层改为胶囊一步触发并显眼呈现。
+- **ui**：加深标签推荐高亮色值，提升深色背景下辨识度。
+
+#### 认证与登录
+- **jm**：会话凭据改为会话级，禁止持久化与启动恢复。
 
 #### 工程与测试
 - 更新 `tests/unit/main/main.test.ts` 与 `FavouriteSourceSidebar.test.tsx`，覆盖 NH 新增 IPC 通道与收藏夹来源。
-
-### 📝 文档
-- `README.md`：补充 NH 来源说明、收藏夹列表与项目结构中的 `sources/nh/` 目录。
 
 ### ⚠️ 变更（Changed）
 
@@ -34,6 +49,40 @@
   - 配置归一化在升级时清空 `source_auth.nh` 中的 username/password/cookie/user_agent 以及带 `User ` / `Token ` / `Bearer ` 前缀的旧 bearer_token，并通过既有原子写入一次性回写磁盘；保留无前缀或 `Key ` 前缀的有效 API Key。
   - 通用 curl `apply_auth` 对 NH 来源禁用，必须走专用 API Key handler。
   - 其他来源（hcomic、moeimg、jm、bika、copymanga）的认证方式不受影响。
+- **jm**：收藏夹禁用相邻页预加载，避免 Cloudflare 挑战请求放大。
+
+### 🐛 修复（Fixed）
+
+#### 阅读器
+- 修复首次挂载后滚轮翻页永久失效。
+- 翻页方向推断改为渲染期间同步，修复逆向连续翻页方向错误。
+- 翻页动画端点改为完全透明，修复旧页滑出后突然消失。
+- 缩小预览模式翻页触发区至左右边缘，中央保留拖拽安全区。
+- 切换显示模式时叶子组件回写共享缓存，避免重载。
+- 清除认证时归零运行期状态，换章清空图片缓存。
+
+#### 搜索
+- 修复搜索栏打字 / 删除时结果列表闪烁。
+- 清除全部标签也透传交互挑战恢复标志。
+
+#### 来源与路由
+- **nh**：修复认证、收藏夹与入口路由；入口子功能内搜索后保留「返回 NH 入口」按钮。
+- **comic-card**：卡片 body 点击回退到详情抽屉，消除死区。
+- **favourites**：来源侧栏 sticky 位置不受右侧内容高度影响。
+- **history**：封面卡片来源行加正向留白与顶部分割线。
+- **dev**：修复冷启动 TUN 代理劫持 dev server 首次加载。
+- 修复数据库重建与迁移状态生命周期。
+
+### 📝 文档
+- 同步 `README.md` 与 `AGENTS.md` 至真实项目结构。
+- 补全 / 标记多个 OpenSpec 主规范的「目的」段落与任务状态。
+
+### 🔧 工程
+- 清理 JM 挑战恢复工作的过程记录文件。
+- 归档多个 OpenSpec 变更并同步主规范（nh-auth-favorites、fix-favourite-tags-review-issues、add-jm-home-sections、fix-jm-search-challenge-target-validation）。
+- 修复 cookie-escape 探测假阳性，探测与调用复用同一命令。
+- 格式化 `extract-changelog.py` 以符合 black 行长。
+- 修复 OpenSpec 规范格式。
 
 ## [1.7.0] - 2026-06-30
 
@@ -111,5 +160,6 @@
 
 首次建立发布流水线的稳定版本。
 
+[2.0.0]: https://github.com/xulingran/HComic-Downloader/releases/tag/2.0.0
 [1.7.0]: https://github.com/xulingran/HComic-Downloader/releases/tag/1.7.0
 [1.6.0]: https://github.com/xulingran/HComic-Downloader/releases/tag/1.6.0
