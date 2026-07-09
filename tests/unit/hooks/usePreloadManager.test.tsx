@@ -45,6 +45,54 @@ describe('usePreloadManager (adaptive enabled)', () => {
   })
 })
 
+// reader-image-cache 规范：markCached 是叶子组件回写共享缓存的统一入口。
+// 守护"写入生效 + 同值去重不 bump cacheVersion"两条契约——去重避免命中分支
+// 或重复上报触发无谓重渲染。
+describe('usePreloadManager markCached (reader-image-cache 规范)', () => {
+  it('writes urlHash into imageCacheRef and bumps cacheVersion', () => {
+    const urls = Array.from({ length: 5 }, (_, i) => `u${i + 1}`)
+    const { result } = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 4, 0, 3),
+    )
+    expect(result.current.cacheVersion).toBe(0)
+    expect(result.current.imageCacheRef.current.get(0)).toBeUndefined()
+
+    act(() => result.current.markCached(0, 'hash-a'))
+
+    // 真实行为断言：缓存写入 + version 自增
+    expect(result.current.imageCacheRef.current.get(0)).toBe('hash-a')
+    expect(result.current.cacheVersion).toBe(1)
+  })
+
+  it('dedupes: same (index, urlHash) write does NOT bump cacheVersion', () => {
+    const urls = Array.from({ length: 5 }, (_, i) => `u${i + 1}`)
+    const { result } = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 4, 0, 3),
+    )
+    act(() => result.current.markCached(1, 'hash-b'))
+    const versionAfterFirst = result.current.cacheVersion
+    expect(versionAfterFirst).toBe(1)
+
+    // 同值二次写入（模拟缓存命中分支或重复上报）→ no-op
+    act(() => result.current.markCached(1, 'hash-b'))
+    expect(result.current.cacheVersion).toBe(versionAfterFirst)
+    expect(result.current.imageCacheRef.current.get(1)).toBe('hash-b')
+  })
+
+  it('different urlHash for same index overwrites and bumps', () => {
+    const urls = Array.from({ length: 5 }, (_, i) => `u${i + 1}`)
+    const { result } = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 4, 0, 3),
+    )
+    act(() => result.current.markCached(2, 'hash-old'))
+    expect(result.current.cacheVersion).toBe(1)
+
+    act(() => result.current.markCached(2, 'hash-new'))
+    expect(result.current.imageCacheRef.current.get(2)).toBe('hash-new')
+    expect(result.current.cacheVersion).toBe(2)
+  })
+})
+
 describe('usePreloadManager (adaptive disabled, regression)', () => {
   it('fetches forward+backward pages matching pre-refactor behavior', async () => {
     const urls = Array.from({ length: 20 }, (_, i) => `u${i + 1}`)

@@ -34,13 +34,17 @@ const mockSetPageGap = vi.fn()
 const mockSetImageWidth = vi.fn()
 const mockSetDisplayMode = vi.fn()
 
+// 可控制的 displayMode，供切模式集成测试动态修改后 rerender。
+// 初始 'scroll'，测试中切换以验证缓存命中行为。
+let mockDisplayMode: 'scroll' | 'single' | 'double' = 'scroll'
+
 vi.mock('@/hooks/useReaderSettings', () => ({
   useReaderSettings: vi.fn(() => ({
     pageGap: 4,
     imageWidth: 70,
     setPageGap: mockSetPageGap,
     setImageWidth: mockSetImageWidth,
-    displayMode: 'scroll',
+    displayMode: mockDisplayMode,
     setDisplayMode: mockSetDisplayMode,
   })),
 }))
@@ -79,6 +83,7 @@ describe('ComicReaderModal', () => {
     mockSetPageGap.mockClear()
     mockSetImageWidth.mockClear()
     mockSetDisplayMode.mockClear()
+    mockDisplayMode = 'scroll'
     vi.mocked(useComicReader).mockReturnValue(createReaderState())
     mockFetchPreviewImage.mockResolvedValue({ urlHash: 'c'.repeat(64) })
     Object.defineProperty(window, 'hcomic', {
@@ -312,7 +317,9 @@ describe('ComicReaderModal', () => {
       // 明确表达"初始加载至少触发一次"而非模糊的"被调过"
       await waitFor(() => expect(mockFetchPreviewImage.mock.calls.length).toBeGreaterThan(0))
 
-      mockFetchPreviewImage.mockClear()
+      // 记录初始加载快照：scroll 模式下 IntersectionObserver mock 立即触发可见，
+      // 加之 reader-image-cache 回写，可见页会进入共享缓存。
+      const initialCalls = mockFetchPreviewImage.mock.calls.length
 
       // Simulate dragging to page 10
       const slider = screen.getByRole('slider')
@@ -324,10 +331,14 @@ describe('ComicReaderModal', () => {
       fireEvent.pointerDown(slider, { clientX: 150, pointerId: 1 })
       fireEvent.pointerUp(slider, { pointerId: 1 })
 
-      // Verify concurrent preloading was triggered starting from page 11 (skips current page 10)
-      await waitFor(() => {
-        expect(mockFetchPreviewImage).toHaveBeenCalledWith('https://img.example.com/11.jpg', '', '', undefined)
-      })
+      // slider drag 核心行为：触发 setCurrentPage(10) 跳转。
+      // 预加载的 worker 细节（哪些页被预加载）由 usePreloadManager 单测覆盖；
+      // 此处只验证跳转发生且未导致已缓存页重复抓取（回写后 page11 若已缓存则不重抓）。
+      await waitFor(() => expect(setCurrentPage).toHaveBeenCalledWith(10))
+      // 给 worker 一点时间；已缓存页不应被重复请求（回写去重生效）
+      await new Promise<void>((r) => setTimeout(r, 30))
+      // 切换后 fetch 次数不应暴涨（已缓存页命中共享缓存，去重保护生效）
+      expect(mockFetchPreviewImage.mock.calls.length).toBeLessThanOrEqual(initialCalls + 1)
     })
   })
 
@@ -386,6 +397,46 @@ describe('ComicReaderModal', () => {
       expect(screen.getByLabelText('连续滚动')).toBeInTheDocument()
       expect(screen.getByLabelText('单页显示')).toBeInTheDocument()
       expect(screen.getByLabelText('双页显示')).toBeInTheDocument()
+    })
+
+    // reader-image-cache 规范核心场景：切换显示模式时已加载页命中共享缓存、不重载。
+    // 模拟真实路径——scroll 模式下当前页由 ReaderPage 懒加载（IntersectionObserver
+    // mock 立即触发 isIntersecting），回写共享缓存后切到 single，FlipPage 必须命中。
+    // 守护点：fetchPreviewImage 在切模式后不应再为当前页被调用（IPC 计数断言）。
+    it('does NOT refetch current page when switching scroll → single (cache writeback)', async () => {
+      // >9 页触发 scroll 模式预加载门控；currentPage=1 让 page1 经 ReaderPage 懒加载路径
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: Array.from({ length: 12 }, (_, i) => `https://img.example.com/${i + 1}.jpg`),
+        totalPages: 12,
+        currentPage: 1,
+      }))
+      const { rerender } = render(
+        <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
+      )
+
+      // 等待 scroll 模式下 page1（url .../1.jpg）被 ReaderPage 加载并回写共享缓存
+      await waitFor(() => {
+        expect(mockFetchPreviewImage).toHaveBeenCalledWith(
+          'https://img.example.com/1.jpg', '', '', undefined,
+        )
+      })
+
+      // 清零计数：切模式后不应再为当前页发请求
+      mockFetchPreviewImage.mockClear()
+
+      // 切换到 single 模式并 rerender（模拟用户点选单页显示）
+      mockDisplayMode = 'single'
+      rerender(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+
+      // 给 FlipPage 挂载 + effect 一点时间
+      await new Promise<void>((r) => setTimeout(r, 50))
+
+      // 核心断言：当前页 page1 不应被重新请求——它已被回写进共享缓存，
+      // FlipPage 通过 imageCacheRef.get(0) 命中。若回写失效，此处会捕获到 /1.jpg 被重复请求。
+      const callsForPage1 = mockFetchPreviewImage.mock.calls.filter(
+        (c) => c[0] === 'https://img.example.com/1.jpg',
+      )
+      expect(callsForPage1).toHaveLength(0)
     })
   })
 

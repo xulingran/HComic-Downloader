@@ -84,6 +84,15 @@ export function usePreloadManager(
     resetPace() // 同步清空翻页节奏样本，避免残留间隔影响新漫画/章节的初始判定
   }, [resetPace])
 
+  // 叶子组件（ReaderPage / FlipPage）取图成功后回写共享缓存的统一入口。
+  // 去重：同索引同 urlHash 的写入跳过，避免命中分支或重复上报触发无谓重渲染。
+  // 见 specs/reader-image-cache：覆盖懒加载 / 翻页 / 重试三条路径的写入契约。
+  const markCached = useCallback((index: number, urlHash: string) => {
+    if (imageCacheRef.current.get(index) === urlHash) return
+    imageCacheRef.current.set(index, urlHash)
+    setCacheVersion((v) => v + 1)
+  }, [])
+
   // 计算动态参数（关闭自适应时恒为基线 + alternation:false，行为不变）
   const params = useMemo(() => {
     if (!adaptive?.enabled) {
@@ -183,5 +192,6 @@ export function usePreloadManager(
     preloadTarget,
     setPreloadTarget,
     clearCache,
+    markCached,
   }
 }

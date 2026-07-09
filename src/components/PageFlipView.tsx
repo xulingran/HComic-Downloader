@@ -38,6 +38,8 @@ interface PageFlipViewProps {
   onFailed?: (index: number) => void
   /** 加载成功时上报 */
   onLoaded?: (index: number) => void
+  /** 取图成功后回写共享缓存（透传给内部 FlipPage，见 specs/reader-image-cache） */
+  onCached?: (index: number, urlHash: string) => void
   /** 父级"全部重试"代数；变化时若当前 FlipPage 处于 error 态则重置触发重载 */
   retryGen?: number
 }
@@ -59,6 +61,7 @@ export function PageFlipView({
   imageQuality,
   onFailed,
   onLoaded,
+  onCached,
   retryGen,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -223,13 +226,13 @@ export function PageFlipView({
         <div className="h-full flex items-center justify-center" style={{ gap: '4px' }}>
           <div className="h-full flex items-center justify-center">
             {leftIsBlank ? <BlankPage /> : (
-              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
+              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} />
             )}
           </div>
           {(rightRealIdx !== null || rightIsBlank) && (
             <div className="h-full flex items-center justify-center">
               {rightIsBlank ? <BlankPage /> : (
-                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedUrlHash={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
+                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedUrlHash={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} />
               )}
             </div>
           )}
@@ -239,7 +242,7 @@ export function PageFlipView({
     // single 模式
     return (
       <div className="h-full flex items-center justify-center">
-        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} retryGen={retryGen} />
+        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} />
       </div>
     )
   }
@@ -343,16 +346,18 @@ function BlankPage() {
   )
 }
 
-function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: { url: string; index: number; cachedUrlHash?: string; scrambleId?: string; comicId?: string; imageQuality?: string; onFailed?: (index: number) => void; onLoaded?: (index: number) => void; retryGen?: number }) {
+function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, onCached, retryGen }: { url: string; index: number; cachedUrlHash?: string; scrambleId?: string; comicId?: string; imageQuality?: string; onFailed?: (index: number) => void; onLoaded?: (index: number) => void; onCached?: (index: number, urlHash: string) => void; retryGen?: number }) {
   const [urlHash, setUrlHash] = useState<string | null>(() => cachedUrlHash ?? null)
   const [error, setError] = useState(false)
   const [retryTick, setRetryTick] = useState(0)
   // 用 ref 保存最新回调，避免进入下方 effect 依赖数组
   const onFailedRef = useRef(onFailed)
   const onLoadedRef = useRef(onLoaded)
+  const onCachedRef = useRef(onCached)
   useEffect(() => {
     onFailedRef.current = onFailed
     onLoadedRef.current = onLoaded
+    onCachedRef.current = onCached
   })
 
   useEffect(() => {
@@ -362,6 +367,7 @@ function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality
       setUrlHash(cachedUrlHash)
       setError(false)
       onLoadedRef.current?.(index)
+      // 命中分支不调 onCached：值本就读自共享缓存，回写是 no-op（语义跳过）。
       return
     }
 
@@ -376,6 +382,8 @@ function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality
         if (result?.urlHash) {
           setUrlHash(result.urlHash)
           onLoadedRef.current?.(index)
+          // 回写共享缓存，使切换显示模式时新子树命中（见 specs/reader-image-cache）。
+          onCachedRef.current?.(index, result.urlHash)
         } else {
           throw new Error('Empty response')
         }

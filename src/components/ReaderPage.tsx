@@ -14,11 +14,13 @@ interface ReaderPageProps {
   onFailed?: (index: number) => void
   /** 加载成功时上报（用于从失败集合中移除） */
   onLoaded?: (index: number) => void
+  /** 取图成功后回写共享缓存（见 specs/reader-image-cache） */
+  onCached?: (index: number, urlHash: string) => void
   /** 父级"全部重试"代数；变化时若当前处于 error 态则重置触发重载 */
   retryGen?: number
 }
 
-export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, retryGen }: ReaderPageProps) {
+export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, onCached, retryGen }: ReaderPageProps) {
   const [error, setError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [urlHash, setUrlHash] = useState<string | null>(null)
@@ -28,9 +30,11 @@ export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, co
   // 用 ref 保存最新回调，避免它们进入下方 effect 依赖数组导致重载循环
   const onFailedRef = useRef(onFailed)
   const onLoadedRef = useRef(onLoaded)
+  const onCachedRef = useRef(onCached)
   useEffect(() => {
     onFailedRef.current = onFailed
     onLoadedRef.current = onLoaded
+    onCachedRef.current = onCached
   })
 
   useEffect(() => {
@@ -72,6 +76,9 @@ export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, co
         }
         setUrlHash(result.urlHash)
         onLoadedRef.current?.(index)
+        // 回写共享缓存，使切换显示模式时新子树命中（见 specs/reader-image-cache）。
+        // 缓存命中分支（上方 cachedUrlHash）不调：该值本就读自共享缓存，回写是 no-op。
+        onCachedRef.current?.(index, result.urlHash)
       })
       .catch((err) => {
         if (cancelled) return

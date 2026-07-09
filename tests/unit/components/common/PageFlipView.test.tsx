@@ -273,6 +273,35 @@ describe('PageFlipView', () => {
   // 三条用例承担，"动画中丢弃"语义由代码评审 + 手动验证覆盖。
 })
 
+// reader-image-cache 规范：翻页模式叶子组件 FlipPage 取图成功后必须回写共享缓存。
+// 守护"IPC 成功分支回写、缓存命中分支不回写"两条契约。
+describe('PageFlipView shared cache writeback (reader-image-cache 规范)', () => {
+  it('calls onCached with (index, urlHash) after IPC succeeds', async () => {
+    mockFetchPreviewImage.mockResolvedValue({ urlHash: 'd'.repeat(64) })
+    const onCached = vi.fn()
+    render(<PageFlipView {...defaultProps} onCached={onCached} />)
+    await waitFor(() => expect(onCached).toHaveBeenCalledWith(0, 'd'.repeat(64)))
+  })
+
+  it('does NOT call onCached when cache hits (cachedUrlHash present)', async () => {
+    // 命中分支：imageCacheRef 预置 index 0 的 urlHash，FlipPage 直接采用，不回写、不发 IPC
+    const cachedMap = new Map<number, string>([[0, 'e'.repeat(64)]])
+    mockFetchPreviewImage.mockResolvedValue({ urlHash: 'd'.repeat(64) })
+    const onCached = vi.fn()
+    render(
+      <PageFlipView
+        {...defaultProps}
+        imageCacheRef={{ current: cachedMap }}
+        onCached={onCached}
+      />
+    )
+    await new Promise<void>((r) => setTimeout(r, 20))
+    expect(onCached).not.toHaveBeenCalled()
+    // 缓存命中分支不应发起 IPC
+    expect(mockFetchPreviewImage).not.toHaveBeenCalled()
+  })
+})
+
 // 回归：翻页方向必须在渲染期间同步推断。
 // 旧实现把 setDirection 放进 useEffect，导致"先下一页、再上一页"时退出页在首次
 // 提交仍朝 forward 方向飞（应为 backward）。inferPageDirection 是抽出的纯函数，

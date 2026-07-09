@@ -77,6 +77,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     preloadTarget,
     setPreloadTarget,
     clearCache,
+    markCached,
   } = usePreloadManager(
     imageUrls,
     loadingState,
@@ -88,6 +89,12 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     preloadConcurrency,
     { enabled: adaptiveEnabled },
   )
+
+  // 叶子组件取图成功后回写共享缓存（见 specs/reader-image-cache）。
+  // markCached 内部已去重 + bump cacheVersion，此处仅透传。
+  const handleCached = useCallback((index: number, urlHash: string) => {
+    markCached(index, urlHash)
+  }, [markCached])
 
   const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
   const {
@@ -534,6 +541,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                     imageQuality={comic?.sourceSite === 'bika' ? bikaImageQuality : undefined}
                     onFailed={markFailed}
                     onLoaded={markLoaded}
+                    onCached={handleCached}
                     retryGen={retryGen}
                   />
                 </div>
@@ -571,6 +579,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               imageQuality={comic?.sourceSite === 'bika' ? bikaImageQuality : undefined}
               onFailed={markFailed}
               onLoaded={markLoaded}
+              onCached={handleCached}
               retryGen={retryGen}
             />
           )}
