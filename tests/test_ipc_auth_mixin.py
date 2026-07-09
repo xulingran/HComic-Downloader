@@ -496,7 +496,9 @@ def test_clear_source_auth_clears_credentials_and_parser_state():
     assert auth["user_agent"] == ""
     assert auth["bearer_token"] == ""
     # NH 不再持久化 username/password（remove-nh-password-login spec）。
-    nh_parser.configure_auth.assert_called_once_with(cookie="", user_agent="", bearer_token="")
+    # 清除必须走与登录相同的通道：MultiSourceParser.configure_auth（auth-clear-runtime-state spec），
+    # 禁止只调 per-source parser.configure_auth（碰不到运行期 source_auth 字典）。
+    server.parser.configure_auth.assert_called_once_with(cookie="", user_agent="", bearer_token="", source="nh")
 
 
 def test_clear_source_auth_rejects_invalid_source():

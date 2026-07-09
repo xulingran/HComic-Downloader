@@ -240,3 +240,71 @@ describe('usePreloadManager (adaptive enabled, fast pace drives boost)', () => {
     expect(maxPage).toBeGreaterThanOrEqual(11)
   })
 })
+
+// reader-chapter-cache-invalidation 规范：换章（imageUrls/comicId/scrambleId/imageQuality
+// 引用变化）时必须清空共享缓存，禁止跨章复用上一章同 index 的 urlHash。清空由 hook 内部
+// effect 自动触发，调用方零知识。守护三条：换章清空、仅解码参数变也清空、输入不变则不清。
+describe('换章清缓存 (reader-chapter-cache-invalidation 规范)', () => {
+  it('imageUrls 引用变化（换章）后共享缓存被清空', () => {
+    const urlsCh1 = Array.from({ length: 5 }, (_, i) => `ch1-u${i + 1}`)
+    const { result, rerender } = renderHook(
+      ({ urls }: { urls: string[] }) =>
+        usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 4, 0, 3),
+      { initialProps: { urls: urlsCh1 } },
+    )
+    // 写入第一章缓存
+    act(() => result.current.markCached(0, 'ch1-hash-0'))
+    act(() => result.current.markCached(1, 'ch1-hash-1'))
+    expect(result.current.imageCacheRef.current.get(0)).toBe('ch1-hash-0')
+    expect(result.current.imageCacheRef.current.get(1)).toBe('ch1-hash-1')
+    expect(result.current.cacheVersion).toBe(2)
+
+    // 换章：imageUrls 产生新引用（fetchChapterUrls 每次 setImageUrls 新数组）
+    const urlsCh2 = Array.from({ length: 5 }, (_, i) => `ch2-u${i + 1}`)
+    rerender({ urls: urlsCh2 })
+
+    // 真实行为断言：缓存被清空，version 归零，ranges 清空
+    expect(result.current.imageCacheRef.current.get(0)).toBeUndefined()
+    expect(result.current.imageCacheRef.current.get(1)).toBeUndefined()
+    expect(result.current.cacheVersion).toBe(0)
+    expect(result.current.preloadedRanges).toEqual([])
+  })
+
+  it('仅 comicId 变化（imageUrls 不变）也必须清空缓存', () => {
+    const urls = Array.from({ length: 5 }, (_, i) => `u${i + 1}`)
+    const { result, rerender } = renderHook(
+      ({ comicId }: { comicId: string }) =>
+        usePreloadManager(urls, 'loaded', undefined, comicId, undefined, 4, 0, 3),
+      { initialProps: { comicId: 'comic-A' } },
+    )
+    act(() => result.current.markCached(2, 'hash-A-2'))
+    expect(result.current.imageCacheRef.current.get(2)).toBe('hash-A-2')
+
+    // comicId 变化（反混淆参数更新导致同一 URL 解码结果不同），imageUrls 数组引用未变
+    rerender({ comicId: 'comic-B' })
+
+    expect(result.current.imageCacheRef.current.get(2)).toBeUndefined()
+    expect(result.current.cacheVersion).toBe(0)
+  })
+
+  it('imageUrls/comicId/scrambleId/imageQuality 引用均不变时缓存保持（模式切换不清）', () => {
+    // 守护 reader-image-cache 规范的"模式切换不清"不变量：确保新增清缓存 effect
+    // 不会因无关重渲染误清。模式切换不改变这四个输入的引用。
+    const urls = Array.from({ length: 5 }, (_, i) => `u${i + 1}`)
+    const { result, rerender } = renderHook(
+      ({ forward }: { forward: number }) =>
+        // forward 不是清缓存 effect 的依赖，其变化模拟"模式切换等无关重渲染"
+        usePreloadManager(urls, 'loaded', 'scramble', 'comic', 'high', forward, 0, 3),
+      { initialProps: { forward: 4 } },
+    )
+    act(() => result.current.markCached(3, 'persistent-hash'))
+    expect(result.current.imageCacheRef.current.get(3)).toBe('persistent-hash')
+
+    // 无关重渲染（forward 变化，但 imageUrls/comicId/scrambleId/imageQuality 不变）
+    rerender({ forward: 8 })
+
+    // 缓存必须保留——禁止误清
+    expect(result.current.imageCacheRef.current.get(3)).toBe('persistent-hash')
+    expect(result.current.cacheVersion).toBe(1)
+  })
+})

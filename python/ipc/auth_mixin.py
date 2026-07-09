@@ -267,9 +267,12 @@ class AuthMixin:
             )
             self.config.save(_get_config_path())
 
-        parser = self.parser.parsers.get(source)
-        if parser is not None and hasattr(parser, "configure_auth"):
-            parser.configure_auth(cookie="", user_agent="", bearer_token="")
+        # 清除运行期鉴权态必须走与登录/应用相同的通道（MultiSourceParser.configure_auth），
+        # 该方法会同时归零 JM 的 _jm_session_auth 与非 JM 的 source_auth 字典（get_runtime_auth
+        # 的真值来源），并把空值传播到活动 parser 实例。禁止只调 per-source parser.configure_auth
+        # ——它碰不到 MultiSourceParser 级别的运行期字典，会导致"持久化已清但鉴权仍判已登录"的幽灵态
+        # （auth-clear-runtime-state spec）。与 handle_apply_auth/_do_password_login 的写法对称。
+        self.parser.configure_auth(cookie="", user_agent="", bearer_token="", source=source)
 
         if source == "hcomic":
             self.downloader.configure_auth(cookie="", user_agent="", bearer_token="")

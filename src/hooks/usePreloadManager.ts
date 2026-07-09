@@ -84,6 +84,19 @@ export function usePreloadManager(
     resetPace() // 同步清空翻页节奏样本，避免残留间隔影响新漫画/章节的初始判定
   }, [resetPace])
 
+  // 换章或解码参数变化时清空共享缓存：imageCacheRef 以页码 index 为键，其内容绑定
+  // 具体章节的图片集合。新章节的 imageUrls/comicId/scrambleId/imageQuality 变化时必须清空，
+  // 禁止跨章复用 urlHash（reader-chapter-cache-invalidation spec）——否则换章后当前页及
+  // 相邻页会命中上一章同 index 的 urlHash，而消费者（ReaderPage/FlipPage）命中即采用、
+  // 跳过 IPC 重取，导致渲染上一章图片。清空由 hook 自管，调用方（ComicReaderModal 换章路径）
+  // 零知识。与 modal 关闭分支的 clearCache() 互不冲突（关闭时输入亦变 → 幂等）。
+  // 此处是"输入变化即重置派生状态"的合法模式（与 StorageStatsPanel/ComicInfoDrawer 同类），
+  // clearCache 内含 setState，故按项目约定显式豁免 set-state-in-effect。
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    clearCache()
+  }, [imageUrls, comicId, scrambleId, imageQuality, clearCache])
+
   // 叶子组件（ReaderPage / FlipPage）取图成功后回写共享缓存的统一入口。
   // 去重：同索引同 urlHash 的写入跳过，避免命中分支或重复上报触发无谓重渲染。
   // 见 specs/reader-image-cache：覆盖懒加载 / 翻页 / 重试三条路径的写入契约。
