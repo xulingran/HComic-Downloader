@@ -60,6 +60,12 @@ describe('IPC Channel Consistency', () => {
       'force_pack_album', 'get_album_progress',
       'pause_album', 'resume_album', 'cancel_album',
       'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',
+      'library_list', 'library_stats', 'library_detail', 'library_chapters',
+      'library_scan_status', 'library_start_scan', 'library_cancel_scan',
+      'library_cover', 'library_page_manifest', 'library_get_page',
+      'library_get_reading_progress', 'library_save_reading_progress',
+      'library_reveal_asset', 'library_health_check', 'library_prepare_delete',
+      'library_commit_delete', 'library_rename', 'library_edit_metadata',
     ]
 
     for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {

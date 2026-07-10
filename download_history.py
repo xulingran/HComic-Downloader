@@ -390,6 +390,93 @@ class DownloadHistoryDB:
             self._conn.commit()
             return cursor.rowcount
 
+    @staticmethod
+    def _path_matches_asset(candidate: str, asset_path: str, include_descendants: bool) -> bool:
+        """Return whether *candidate* belongs to the selected library asset.
+
+        Paths in ``download_history`` may no longer exist after a trash/rename
+        operation, so this intentionally uses lexical absolute normalization
+        rather than requiring filesystem access.
+        """
+        if not candidate:
+            return False
+        normalized_candidate = os.path.normcase(os.path.abspath(candidate))
+        normalized_asset = os.path.normcase(os.path.abspath(asset_path))
+        if normalized_candidate == normalized_asset:
+            return True
+        if not include_descendants:
+            return False
+        try:
+            return os.path.commonpath([normalized_candidate, normalized_asset]) == normalized_asset
+        except ValueError:
+            return False
+
+    def delete_records_for_output_path(self, output_path: str, *, include_descendants: bool = False) -> int:
+        """Delete history rows that point at one library asset.
+
+        Directory assets include chapter output paths below the asset root;
+        file assets only remove exact-path rows. The selection and deletion are
+        performed under the existing DB lock in one transaction.
+        """
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT source_site, comic_id, comic_source, output_path FROM download_history"
+            ).fetchall()
+            keys = [
+                (row[0], row[1], row[2])
+                for row in rows
+                if self._path_matches_asset(row[3], output_path, include_descendants)
+            ]
+            try:
+                for key in keys:
+                    self._conn.execute(
+                        "DELETE FROM download_history WHERE source_site = ? AND comic_id = ? AND comic_source = ?",
+                        key,
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+            return len(keys)
+
+    def move_records_for_output_path(
+        self,
+        old_path: str,
+        new_path: str,
+        *,
+        include_descendants: bool = False,
+    ) -> int:
+        """Move exact/descendant history paths after an app-managed rename."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT source_site, comic_id, comic_source, output_path FROM download_history"
+            ).fetchall()
+            updates: list[tuple[str, str, str, str]] = []
+            for source_site, comic_id, comic_source, candidate in rows:
+                if not self._path_matches_asset(candidate, old_path, include_descendants):
+                    continue
+                normalized_candidate = os.path.abspath(candidate)
+                normalized_old = os.path.abspath(old_path)
+                if os.path.normcase(normalized_candidate) == os.path.normcase(normalized_old):
+                    target = new_path
+                else:
+                    relative = os.path.relpath(normalized_candidate, normalized_old)
+                    target = os.path.join(new_path, relative)
+                updates.append((target, source_site, comic_id, comic_source))
+
+            try:
+                for target, source_site, comic_id, comic_source in updates:
+                    self._conn.execute(
+                        "UPDATE download_history SET output_path = ? "
+                        "WHERE source_site = ? AND comic_id = ? AND comic_source = ?",
+                        (target, source_site, comic_id, comic_source),
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+            return len(updates)
+
     def close(self):
         if self._conn:
             self._conn.close()

@@ -142,6 +142,16 @@ class HealthChecker:
 
         return {"scanned": total, "issues": issues}
 
+    def check_asset(self, record: dict) -> HealthCheckResult:
+        """Check one explicit asset while reusing the canonical health logic.
+
+        Library assets are allowed to be untracked, so callers can construct a
+        record from the library index instead of requiring a matching history
+        row. A single-record album aggregate keeps the same page-count fallback
+        semantics as :meth:`check_all`.
+        """
+        return self._check_record(record, self._aggregate_album_expected_pages([record]))
+
     def _aggregate_album_expected_pages(self, records: list[dict]) -> dict[tuple[str, str, str], int]:
         """按 (source_site, album_id, comic_source) 聚合期望页数。"""
         agg: dict[tuple[str, str, str], int] = defaultdict(int)

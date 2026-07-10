@@ -13,11 +13,12 @@ import path from 'path'
 /** Strict SHA-256 hex pattern for the url_hash path segment. */
 export const URL_HASH_RE = /^[A-Fa-f0-9]{64}$/
 
-export type ImageCacheKind = 'cover' | 'preview'
+export type ImageCacheKind = 'cover' | 'preview' | 'library'
 
 export interface ImageCacheDirs {
   cover: string
   preview: string
+  library?: string
 }
 
 /**
@@ -49,7 +50,10 @@ export function resolveImageCacheFile(
   let baseDir: string
   if (kind === 'cover') baseDir = dirs.cover
   else if (kind === 'preview') baseDir = dirs.preview
-  else return { status: 400, reason: 'Bad kind' }
+  else if (kind === 'library') {
+    if (!dirs.library) return { status: 400, reason: 'Library cache not configured' }
+    baseDir = dirs.library
+  } else return { status: 400, reason: 'Bad kind' }
 
   const urlHash = urlPathname.replace(/^\/+/, '')
   if (!URL_HASH_RE.test(urlHash)) {

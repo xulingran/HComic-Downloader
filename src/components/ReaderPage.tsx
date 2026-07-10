@@ -18,9 +18,11 @@ interface ReaderPageProps {
   onCached?: (index: number, urlHash: string) => void
   /** 父级"全部重试"代数；变化时若当前处于 error 态则重置触发重载 */
   retryGen?: number
+  /** Optional local/custom image loader. Returns a final browser-readable URL. */
+  imageLoader?: (url: string, index: number) => Promise<string>
 }
 
-export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, onCached, retryGen }: ReaderPageProps) {
+export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, onCached, retryGen, imageLoader }: ReaderPageProps) {
   const [error, setError] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [urlHash, setUrlHash] = useState<string | null>(null)
@@ -68,27 +70,30 @@ export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, co
     let cancelled = false
 
     Promise.resolve()
-      .then(() => window.hcomic!.fetchPreviewImage(url, scrambleId, comicId, imageQuality))
+      .then(async () => {
+        if (imageLoader) return imageLoader(url, index)
+        const result = await window.hcomic!.fetchPreviewImage(url, scrambleId, comicId, imageQuality)
+        if (!result?.urlHash) throw new Error('Empty preview image response')
+        return result.urlHash
+      })
       .then((result) => {
         if (cancelled) return
-        if (!result?.urlHash) {
-          throw new Error('Empty preview image response')
-        }
-        setUrlHash(result.urlHash)
+        if (!result) throw new Error('Empty image response')
+        setUrlHash(result)
         onLoadedRef.current?.(index)
         // 回写共享缓存，使切换显示模式时新子树命中（见 specs/reader-image-cache）。
         // 缓存命中分支（上方 cachedUrlHash）不调：该值本就读自共享缓存，回写是 no-op。
-        onCachedRef.current?.(index, result.urlHash)
+        onCachedRef.current?.(index, result)
       })
       .catch((err) => {
         if (cancelled) return
-        console.error('[preview] fetchPreviewImage failed', { url, err })
+        console.error(imageLoader ? '[library-reader] image load failed' : '[preview] fetchPreviewImage failed', { url, err })
         setErrorMessage(err instanceof Error ? err.message : '图片加载失败')
         setError(true)
         onFailedRef.current?.(index)
       })
     return () => { cancelled = true }
-  }, [cachedUrlHash, urlHash, error, isVisible, priority, retryTick, url, scrambleId, comicId, imageQuality, index])
+  }, [cachedUrlHash, urlHash, error, isVisible, priority, retryTick, url, scrambleId, comicId, imageQuality, index, imageLoader])
 
   // 父级"全部重试"：retryGen 变化时，仅当当前处于 error 态才重置触发重载。
   // 已成功页（urlHash 存在、无 error）不受打扰。
@@ -143,7 +148,7 @@ export function ReaderPage({ url, index, priority, cachedUrlHash, scrambleId, co
           )}
           {urlHash && (
             <img
-              src={buildImageUrl('preview', urlHash)}
+              src={imageLoader ? urlHash : buildImageUrl('preview', urlHash)}
               alt={`第 ${index + 1} 页`}
               onError={() => {
                 setErrorMessage('浏览器无法解码后端返回的图片')

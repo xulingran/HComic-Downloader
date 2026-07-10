@@ -328,6 +328,241 @@ export interface MaintenanceProgressEvent {
   label: string
 }
 
+// ── 漫画库（Library）类型 ──────────────────────────────────────────
+
+/** 漫画库资产支持的格式 */
+export const LIBRARY_FORMATS = ['cbz', 'zip', 'folder'] as const
+export type LibraryFormat = typeof LIBRARY_FORMATS[number]
+
+/** 漫画库查询排序方式 */
+export const LIBRARY_SORTS = ['recent_added', 'recent_read', 'title', 'size', 'mtime'] as const
+export type LibrarySort = typeof LIBRARY_SORTS[number]
+
+/** 漫画库健康状态汇总 */
+export type LibraryHealthStatus = 'unknown' | 'healthy' | 'warning' | 'error'
+
+/**
+ * 漫画库资产摘要——用于卡片和列表展示。
+ * 不包含真实磁盘路径和压缩包条目名，渲染进程只能通过 assetId 操作资产。
+ */
+export interface LibraryAssetSummary {
+  assetId: string
+  title: string
+  author: string
+  /** 标签列表（合并自 ComicInfo / 历史 / 文件名） */
+  tags: string[]
+  /** 来源站点（hcomic/jm/bika/copymanga/moeimg/nh）；未关联历史的本地资产为空串 */
+  sourceSite: string
+  format: LibraryFormat
+  /** 总页数（多章节为各章页数之和） */
+  pageCount: number
+  /** 磁盘占用字节 */
+  sizeBytes: number
+  /** 是否多章节专辑 */
+  isAlbum: boolean
+  /** 章节数量（非专辑为 1） */
+  chapterCount: number
+  /** 封面缓存键（SHA-256 hex），用于 app-image://library/<key> */
+  coverKey: string | null
+  /** 健康状态摘要 */
+  healthStatus: LibraryHealthStatus
+  /** 最后阅读时间戳（毫秒），无阅读记录为 null */
+  lastReadAt: number | null
+  /** 索引创建时间戳（毫秒） */
+  createdAt: number
+  /** 元数据来源说明：哪些字段来自 override（仅应用内编辑） */
+  metadataOverridden: boolean
+}
+
+/**
+ * 漫画库章节信息。
+ * 真实路径/压缩包条目前缀只在后端使用，不通过 IPC 暴露。
+ */
+export interface LibraryChapter {
+  chapterId: string
+  name: string
+  /** 自然排序索引（从 0 开始） */
+  index: number
+  pageCount: number
+}
+
+/** 漫画库资产详情——在详情抽屉中按需请求。 */
+export interface LibraryAssetDetail {
+  assetId: string
+  title: string
+  author: string
+  tags: string[]
+  sourceSite: string
+  /** 下载关联的 comic_id（来自 download_history，未关联为空） */
+  comicId: string
+  /** 下载关联的 comic_source（来自 download_history） */
+  comicSource: string
+  /** 专辑 ID（多章节资产为下载来源专辑 ID，单本为空） */
+  albumId: string
+  albumTotalChapters: number
+  format: LibraryFormat
+  pageCount: number
+  sizeBytes: number
+  /** 修改时间戳（毫秒） */
+  modifiedAt: number
+  /** 章节列表（多章节资产才有多个，单本为一个隐含章节） */
+  chapters: LibraryChapter[]
+  coverKey: string | null
+  healthStatus: LibraryHealthStatus
+  lastReadAt: number | null
+  /** 阅读进度：当前页（从 1 开始） */
+  readingPage: number | null
+  /** 阅读进度：所在章节 ID */
+  readingChapterId: string | null
+  /** 路径摘要（仅展示文件名，不含完整目录） */
+  pathSummary: string
+  /** 是否有应用内覆盖的元数据 */
+  metadataOverridden: boolean
+  /** 资产版本令牌（随内容/元数据变化递增，用于缓存失效） */
+  version: number
+}
+
+/** 漫画库分页查询结果 */
+export interface LibraryListResult {
+  items: LibraryAssetSummary[]
+  pagination: PaginationInfo
+}
+
+/** 漫画库查询参数 */
+export interface LibraryQuery {
+  page?: number
+  pageSize?: number
+  query?: string
+  sourceSite?: string
+  format?: LibraryFormat
+  healthStatus?: LibraryHealthStatus
+  sort?: LibrarySort
+}
+
+/** 漫画库扫描状态 */
+export interface LibraryScanState {
+  phase: 'idle' | 'discovering' | 'parsing' | 'committing' | 'reconciling'
+  scanId: string | null
+  isScanning: boolean
+  current: number
+  total: number
+  currentLabel: string
+  lastScanCompletedAt: number | null
+  lastScanCancelled: boolean
+  lastScanError: string | null
+}
+
+/** 漫画库扫描进度事件（Python → 主进程 → 渲染进程） */
+export interface LibraryScanProgressEvent {
+  phase: string
+  current: number
+  total: number
+  label: string
+}
+
+/** 本地漫画页面响应 */
+export interface LibraryPageResult {
+  /** app-image://library/<sha256> 形式的 URL */
+  imageUrl: string
+  /** 资产版本令牌 */
+  version: number
+  /** 媒体类型（image/jpeg 等） */
+  mediaType: string
+}
+
+/** 本地阅读进度记录 */
+export interface LibraryReadingProgress {
+  assetId: string
+  chapterId: string | null
+  page: number
+  totalPages: number
+  lastReadAt: number
+}
+
+/** 漫画库扫描触发结果 */
+export interface LibraryScanResult {
+  scanId: string
+  started: boolean
+  /** 若已有扫描进行中则返回该扫描 ID */
+  alreadyRunning: boolean
+}
+
+/** 漫画库取消扫描结果 */
+export interface LibraryCancelScanResult {
+  cancelled: boolean
+  scanId: string | null
+}
+
+/** 漫画库统计信息（用于工作区头部） */
+export interface LibraryStats {
+  totalAssets: number
+  totalPages: number
+  totalSizeBytes: number
+  byFormat: Record<LibraryFormat, number>
+  bySource: Record<string, number>
+  byHealth: Record<LibraryHealthStatus, number>
+}
+
+/** 封面提取结果 */
+export interface LibraryCoverResult {
+  coverKey: string
+  mediaType: string
+}
+
+/** 页面 manifest（章节内所有页的元信息） */
+export interface LibraryPageManifest {
+  chapterId: string
+  version: number
+  pages: Array<{ index: number; mediaType: string }>
+}
+
+/** 单项健康检查结果（复用 HealthCheckResultItem 语义） */
+export interface LibraryHealthCheckResult {
+  assetId: string
+  healthy: boolean
+  issues: HealthCheckIssue[]
+}
+
+/** 删除准备令牌结果 */
+export interface LibraryDeletePrepareResult {
+  token: string
+  title: string
+  format: LibraryFormat
+  sizeBytes: number
+  isAlbum: boolean
+}
+
+/** 删除提交结果 */
+export interface LibraryDeleteCommitResult {
+  success: boolean
+  freedBytes: number
+  message?: string
+}
+
+/** 重命名结果 */
+export interface LibraryRenameResult {
+  success: boolean
+  assetId: string
+  newPathSummary?: string
+  message?: string
+}
+
+/** 元数据编辑结果 */
+export interface LibraryEditMetadataResult {
+  success: boolean
+  assetId: string
+  /** 是否写回了 CBZ 文件（ZIP/文件夹为 false=仅应用内覆盖） */
+  writtenToFile: boolean
+  version?: number
+  message?: string
+}
+
+/** 定位资产结果（主进程调用 shell API，仅返回成功/失败） */
+export interface LibraryRevealResult {
+  success: boolean
+  message?: string
+}
+
 export interface UpdateInfo {
   latestVersion: string
   changelog: string
@@ -755,6 +990,91 @@ export interface IPCMethods {
     params: Record<string, never>
     result: StorageStats
   }
+  // ── 漫画库（Library）方法 ──
+  library_list: {
+    params: {
+      page?: number
+      page_size?: number
+      query?: string
+      source_site?: string
+      format?: LibraryFormat
+      health_status?: LibraryHealthStatus
+      sort?: LibrarySort
+    }
+    result: LibraryListResult
+  }
+  library_stats: {
+    params: Record<string, never>
+    result: LibraryStats
+  }
+  library_detail: {
+    params: { asset_id: string }
+    result: LibraryAssetDetail
+  }
+  library_chapters: {
+    params: { asset_id: string }
+    result: { chapters: LibraryChapter[]; version: number }
+  }
+  library_scan_status: {
+    params: Record<string, never>
+    result: LibraryScanState
+  }
+  library_start_scan: {
+    params: Record<string, never>
+    result: LibraryScanResult
+  }
+  library_cancel_scan: {
+    params: Record<string, never>
+    result: LibraryCancelScanResult
+  }
+  library_cover: {
+    params: { asset_id: string }
+    result: LibraryCoverResult
+  }
+  library_page_manifest: {
+    params: { asset_id: string; chapter_id?: string }
+    result: LibraryPageManifest
+  }
+  library_get_page: {
+    params: { asset_id: string; chapter_id?: string; page: number; version: number }
+    result: LibraryPageResult
+  }
+  library_get_reading_progress: {
+    params: { asset_id: string }
+    result: LibraryReadingProgress | null
+  }
+  library_save_reading_progress: {
+    params: { asset_id: string; chapter_id?: string; page: number; total_pages: number }
+    result: { success: boolean }
+  }
+  library_reveal_asset: {
+    params: { asset_id: string; expected_version: number }
+    result: LibraryRevealResult
+  }
+  library_health_check: {
+    params: { asset_id: string; expected_version: number }
+    result: LibraryHealthCheckResult
+  }
+  library_prepare_delete: {
+    params: { asset_id: string; expected_version: number }
+    result: LibraryDeletePrepareResult
+  }
+  library_commit_delete: {
+    params: { token: string }
+    result: LibraryDeleteCommitResult
+  }
+  library_rename: {
+    params: { asset_id: string; new_name: string; rename_file: boolean; expected_version: number }
+    result: LibraryRenameResult
+  }
+  library_edit_metadata: {
+    params: {
+      asset_id: string
+      fields: { title?: string; author?: string; tags?: string[] }
+      expected_version: number
+    }
+    result: LibraryEditMetadataResult
+  }
 }
 
 /** Python IPC channel to method name mapping. Only covers python:* channels. */
@@ -828,6 +1148,24 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:scan-orphan-temps': 'scan_orphan_temps',
   'python:cleanup-orphan-temps': 'cleanup_orphan_temps',
   'python:get-storage-stats': 'get_storage_stats',
+  'python:library-list': 'library_list',
+  'python:library-stats': 'library_stats',
+  'python:library-detail': 'library_detail',
+  'python:library-chapters': 'library_chapters',
+  'python:library-scan-status': 'library_scan_status',
+  'python:library-start-scan': 'library_start_scan',
+  'python:library-cancel-scan': 'library_cancel_scan',
+  'python:library-cover': 'library_cover',
+  'python:library-page-manifest': 'library_page_manifest',
+  'python:library-get-page': 'library_get_page',
+  'python:library-get-reading-progress': 'library_get_reading_progress',
+  'python:library-save-reading-progress': 'library_save_reading_progress',
+  'python:library-reveal-asset': 'library_reveal_asset',
+  'python:library-health-check': 'library_health_check',
+  'python:library-prepare-delete': 'library_prepare_delete',
+  'python:library-commit-delete': 'library_commit_delete',
+  'python:library-rename': 'library_rename',
+  'python:library-edit-metadata': 'library_edit_metadata',
 } as const
 
 /** Validated notification event for download progress (Python -> Main -> Renderer) */
@@ -948,6 +1286,26 @@ export interface HcomicAPI {
   cleanupOrphanTemps(paths?: string[]): Promise<CleanupOrphanResult>
   getStorageStats(): Promise<StorageStats>
   onMaintenanceProgress(callback: (data: MaintenanceProgressEvent) => void): () => void
+  // ── 漫画库（Library）API ──
+  libraryList(query?: LibraryQuery): Promise<LibraryListResult>
+  libraryStats(): Promise<LibraryStats>
+  libraryDetail(assetId: string): Promise<LibraryAssetDetail>
+  libraryChapters(assetId: string): Promise<{ chapters: LibraryChapter[]; version: number }>
+  libraryScanStatus(): Promise<LibraryScanState>
+  libraryStartScan(): Promise<LibraryScanResult>
+  libraryCancelScan(): Promise<LibraryCancelScanResult>
+  libraryCover(assetId: string): Promise<LibraryCoverResult>
+  libraryPageManifest(assetId: string, chapterId?: string): Promise<LibraryPageManifest>
+  libraryGetPage(assetId: string, chapterId: string | null, page: number, version: number): Promise<LibraryPageResult>
+  libraryGetReadingProgress(assetId: string): Promise<LibraryReadingProgress | null>
+  librarySaveReadingProgress(assetId: string, chapterId: string | null, page: number, totalPages: number): Promise<{ success: boolean }>
+  libraryRevealAsset(assetId: string, expectedVersion: number): Promise<LibraryRevealResult>
+  libraryHealthCheck(assetId: string, expectedVersion: number): Promise<LibraryHealthCheckResult>
+  libraryPrepareDelete(assetId: string, expectedVersion: number): Promise<LibraryDeletePrepareResult>
+  libraryCommitDelete(token: string): Promise<LibraryDeleteCommitResult>
+  libraryRename(assetId: string, newName: string, renameFile: boolean, expectedVersion: number): Promise<LibraryRenameResult>
+  libraryEditMetadata(assetId: string, fields: { title?: string; author?: string; tags?: string[] }, expectedVersion: number): Promise<LibraryEditMetadataResult>
+  onLibraryScanProgress(callback: (data: LibraryScanProgressEvent) => void): () => void
   onUpdateAvailable(callback: (info: UpdateInfo) => void): () => void
   onFatalError(callback: (data: FatalErrorEvent) => void): () => void
   /** 订阅启动进度事件（Python __init__ 各阶段经 stderr → PythonBridge → 渲染进程） */
@@ -1126,6 +1484,24 @@ export const IPC_CHANNELS = {
   SCAN_ORPHAN_TEMPS: 'python:scan-orphan-temps',
   CLEANUP_ORPHAN_TEMPS: 'python:cleanup-orphan-temps',
   GET_STORAGE_STATS: 'python:get-storage-stats',
+  LIBRARY_LIST: 'python:library-list',
+  LIBRARY_STATS: 'python:library-stats',
+  LIBRARY_DETAIL: 'python:library-detail',
+  LIBRARY_CHAPTERS: 'python:library-chapters',
+  LIBRARY_SCAN_STATUS: 'python:library-scan-status',
+  LIBRARY_START_SCAN: 'python:library-start-scan',
+  LIBRARY_CANCEL_SCAN: 'python:library-cancel-scan',
+  LIBRARY_COVER: 'python:library-cover',
+  LIBRARY_PAGE_MANIFEST: 'python:library-page-manifest',
+  LIBRARY_GET_PAGE: 'python:library-get-page',
+  LIBRARY_GET_READING_PROGRESS: 'python:library-get-reading-progress',
+  LIBRARY_SAVE_READING_PROGRESS: 'python:library-save-reading-progress',
+  LIBRARY_REVEAL_ASSET: 'python:library-reveal-asset',
+  LIBRARY_HEALTH_CHECK: 'python:library-health-check',
+  LIBRARY_PREPARE_DELETE: 'python:library-prepare-delete',
+  LIBRARY_COMMIT_DELETE: 'python:library-commit-delete',
+  LIBRARY_RENAME: 'python:library-rename',
+  LIBRARY_EDIT_METADATA: 'python:library-edit-metadata',
   OPEN_DOWNLOAD_DIR: 'python:open-download-dir',
   GET_DOWNLOAD_DETAIL: 'python:get-download-detail',
   GET_PREVIEW_URLS: 'python:get-preview-urls',
@@ -1171,6 +1547,7 @@ export const NOTIFICATION_CHANNELS = {
   UPDATE_CHECK_RESULT: 'update:check-result',
   ALBUM_PROGRESS: 'album:progress',
   MAINTENANCE_PROGRESS: 'maintenance:progress',
+  LIBRARY_SCAN_PROGRESS: 'library:scan-progress',
   TAG_LIST_PROGRESS: 'tag-list:progress',
   FAVOURITE_TAGS_PROGRESS: 'favourite-tags:progress',
   FATAL_ERROR: 'fatal:error',
@@ -1238,6 +1615,7 @@ export const PYTHON_NOTIFICATION_METHODS = {
   MIGRATION_ERROR: 'migration_error',
   ALBUM_PROGRESS: 'album_progress',
   MAINTENANCE_PROGRESS: 'maintenance_progress',
+  LIBRARY_SCAN_PROGRESS: 'library_scan_progress',
   TAG_LIST_PROGRESS: 'tag_list_progress',
   FAVOURITE_TAGS_PROGRESS: 'favourite_tags_progress',
 } as const

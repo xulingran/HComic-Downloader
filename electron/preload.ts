@@ -3,6 +3,7 @@ import {
   CONFIG_KEYS, IMAGE_QUALITIES, SOURCE_VALUES,
   SEARCH_MODES, SEARCH_LANGUAGE_FILTERS, TAG_LIST_SORTS,
   IPC_CHANNELS, NOTIFICATION_CHANNELS,
+  LIBRARY_FORMATS, LIBRARY_SORTS,
 } from '../shared/types'
 
 const VALID_SEARCH_MODES = new Set<string>(SEARCH_MODES)
@@ -10,6 +11,9 @@ const VALID_SEARCH_LANGUAGE_FILTERS = new Set<string>(SEARCH_LANGUAGE_FILTERS)
 const VALID_TAG_LIST_SORTS = new Set<string>(TAG_LIST_SORTS)
 const VALID_SOURCES = SOURCE_VALUES
 const VALID_CONFIG_KEYS = new Set<string>(CONFIG_KEYS)
+const VALID_LIBRARY_FORMATS = new Set<string>(LIBRARY_FORMATS)
+const VALID_LIBRARY_SORTS = new Set<string>(LIBRARY_SORTS)
+const VALID_LIBRARY_HEALTH = new Set(['unknown', 'healthy', 'warning', 'error'])
 
 function validatePage(page: unknown): asserts page is number {
   if (typeof page !== 'number' || !Number.isFinite(page) || !Number.isInteger(page) || page < 1 || page > 1000) {
@@ -19,6 +23,11 @@ function validatePage(page: unknown): asserts page is number {
 
 function validateTaskId(id: unknown): asserts id is string {
   if (typeof id !== 'string' || id.length === 0 || id.length > 256) throw new Error('Invalid taskId')
+}
+
+/** Asset ID 校验：漫画库资产 ID 使用 UUID 格式，长度和格式严格限制。 */
+function validateAssetId(id: unknown): asserts id is string {
+  if (typeof id !== 'string' || id.length === 0 || id.length > 100) throw new Error('Invalid assetId')
 }
 
 /**
@@ -592,5 +601,114 @@ contextBridge.exposeInMainWorld('hcomic', {
 
   onMaintenanceProgress: (callback: unknown) => {
     return onChannel(NOTIFICATION_CHANNELS.MAINTENANCE_PROGRESS, callback)
+  },
+
+  // ── 漫画库（Library）API ──
+  libraryList: (query?: unknown) => {
+    const q = (query ?? {}) as Record<string, unknown>
+    const page = q.page !== undefined ? q.page : 1
+    const pageSize = q.pageSize !== undefined ? q.pageSize : 50
+    validatePage(page)
+    if (typeof pageSize !== 'number' || pageSize < 1 || pageSize > 200) throw new Error('Invalid pageSize')
+    const queryStr = typeof q.query === 'string' ? q.query.slice(0, 500) : ''
+    const sourceSite = typeof q.sourceSite === 'string' ? q.sourceSite : ''
+    const format = typeof q.format === 'string' && VALID_LIBRARY_FORMATS.has(q.format) ? q.format : ''
+    const healthStatus = typeof q.healthStatus === 'string' && VALID_LIBRARY_HEALTH.has(q.healthStatus) ? q.healthStatus : ''
+    const sort = typeof q.sort === 'string' && VALID_LIBRARY_SORTS.has(q.sort) ? q.sort : 'recent_added'
+    return ipcRenderer.invoke(
+      IPC_CHANNELS.LIBRARY_LIST, page, pageSize, queryStr, sourceSite, format, healthStatus, sort,
+    )
+  },
+
+  libraryStats: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_STATS),
+
+  libraryDetail: (assetId: unknown) => {
+    validateAssetId(assetId)
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_DETAIL, assetId)
+  },
+
+  libraryChapters: (assetId: unknown) => {
+    validateAssetId(assetId)
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_CHAPTERS, assetId)
+  },
+
+  libraryScanStatus: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_SCAN_STATUS),
+
+  libraryStartScan: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_START_SCAN),
+
+  libraryCancelScan: () => ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_CANCEL_SCAN),
+
+  libraryCover: (assetId: unknown) => {
+    validateAssetId(assetId)
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_COVER, assetId)
+  },
+
+  libraryPageManifest: (assetId: unknown, chapterId?: unknown) => {
+    validateAssetId(assetId)
+    const ch = typeof chapterId === 'string' && chapterId.length > 0 && chapterId.length <= 100 ? chapterId : undefined
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_PAGE_MANIFEST, assetId, ch)
+  },
+
+  libraryGetPage: (assetId: unknown, chapterId: unknown, page: unknown, version: unknown) => {
+    validateAssetId(assetId)
+    validatePage(page as number)
+    if (typeof version !== 'number' || version < 1) throw new Error('Invalid version')
+    const ch = typeof chapterId === 'string' && chapterId.length > 0 && chapterId.length <= 100 ? chapterId : null
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_PAGE, assetId, ch, page, version)
+  },
+
+  libraryGetReadingProgress: (assetId: unknown) => {
+    validateAssetId(assetId)
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_GET_READING_PROGRESS, assetId)
+  },
+
+  librarySaveReadingProgress: (assetId: unknown, chapterId: unknown, page: unknown, totalPages: unknown) => {
+    validateAssetId(assetId)
+    validatePage(page as number)
+    if (typeof totalPages !== 'number' || totalPages < 0) throw new Error('Invalid totalPages')
+    const ch = typeof chapterId === 'string' && chapterId.length > 0 && chapterId.length <= 100 ? chapterId : null
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_SAVE_READING_PROGRESS, assetId, ch, page, totalPages)
+  },
+
+  libraryRevealAsset: (assetId: unknown, expectedVersion: unknown) => {
+    validateAssetId(assetId)
+    if (typeof expectedVersion !== 'number' || expectedVersion < 1) throw new Error('Invalid version')
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_REVEAL_ASSET, assetId, expectedVersion)
+  },
+
+  libraryHealthCheck: (assetId: unknown, expectedVersion: unknown) => {
+    validateAssetId(assetId)
+    if (typeof expectedVersion !== 'number' || expectedVersion < 1) throw new Error('Invalid version')
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_HEALTH_CHECK, assetId, expectedVersion)
+  },
+
+  libraryPrepareDelete: (assetId: unknown, expectedVersion: unknown) => {
+    validateAssetId(assetId)
+    if (typeof expectedVersion !== 'number' || expectedVersion < 1) throw new Error('Invalid version')
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_PREPARE_DELETE, assetId, expectedVersion)
+  },
+
+  libraryCommitDelete: (token: unknown) => {
+    if (typeof token !== 'string' || token.length === 0 || token.length > 200) throw new Error('Invalid token')
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_COMMIT_DELETE, token)
+  },
+
+  libraryRename: (assetId: unknown, newName: unknown, renameFile: unknown, expectedVersion: unknown) => {
+    validateAssetId(assetId)
+    if (typeof newName !== 'string' || newName.length === 0 || newName.length > 500) throw new Error('Invalid newName')
+    if (typeof renameFile !== 'boolean') throw new Error('Invalid renameFile')
+    if (typeof expectedVersion !== 'number' || expectedVersion < 1) throw new Error('Invalid version')
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_RENAME, assetId, newName, renameFile, expectedVersion)
+  },
+
+  libraryEditMetadata: (assetId: unknown, fields: unknown, expectedVersion: unknown) => {
+    validateAssetId(assetId)
+    if (typeof fields !== 'object' || fields === null) throw new Error('Invalid fields')
+    if (typeof expectedVersion !== 'number' || expectedVersion < 1) throw new Error('Invalid version')
+    return ipcRenderer.invoke(IPC_CHANNELS.LIBRARY_EDIT_METADATA, assetId, fields, expectedVersion)
+  },
+
+  onLibraryScanProgress: (callback: unknown) => {
+    return onChannel(NOTIFICATION_CHANNELS.LIBRARY_SCAN_PROGRESS, callback)
   },
 })

@@ -42,6 +42,8 @@ interface PageFlipViewProps {
   onCached?: (index: number, urlHash: string) => void
   /** 父级"全部重试"代数；变化时若当前 FlipPage 处于 error 态则重置触发重载 */
   retryGen?: number
+  /** Optional local/custom image loader. Returns a final browser-readable URL. */
+  imageLoader?: (url: string, index: number) => Promise<string>
 }
 
 export function PageFlipView({
@@ -63,6 +65,7 @@ export function PageFlipView({
   onLoaded,
   onCached,
   retryGen,
+  imageLoader,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [panOffset, setPanOffset] = useState(0)
@@ -226,13 +229,13 @@ export function PageFlipView({
         <div className="h-full flex items-center justify-center" style={{ gap: '4px' }}>
           <div className="h-full flex items-center justify-center">
             {leftIsBlank ? <BlankPage /> : (
-              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} />
+              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} imageLoader={imageLoader} />
             )}
           </div>
           {(rightRealIdx !== null || rightIsBlank) && (
             <div className="h-full flex items-center justify-center">
               {rightIsBlank ? <BlankPage /> : (
-                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedUrlHash={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} />
+                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedUrlHash={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} imageLoader={imageLoader} />
               )}
             </div>
           )}
@@ -242,7 +245,7 @@ export function PageFlipView({
     // single 模式
     return (
       <div className="h-full flex items-center justify-center">
-        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} />
+        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} imageLoader={imageLoader} />
       </div>
     )
   }
@@ -346,7 +349,7 @@ function BlankPage() {
   )
 }
 
-function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, onCached, retryGen }: { url: string; index: number; cachedUrlHash?: string; scrambleId?: string; comicId?: string; imageQuality?: string; onFailed?: (index: number) => void; onLoaded?: (index: number) => void; onCached?: (index: number, urlHash: string) => void; retryGen?: number }) {
+function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality, onFailed, onLoaded, onCached, retryGen, imageLoader }: { url: string; index: number; cachedUrlHash?: string; scrambleId?: string; comicId?: string; imageQuality?: string; onFailed?: (index: number) => void; onLoaded?: (index: number) => void; onCached?: (index: number, urlHash: string) => void; retryGen?: number; imageLoader?: (url: string, index: number) => Promise<string> }) {
   const [urlHash, setUrlHash] = useState<string | null>(() => cachedUrlHash ?? null)
   const [error, setError] = useState(false)
   const [retryTick, setRetryTick] = useState(0)
@@ -376,7 +379,10 @@ function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality
     setError(false)
 
     let cancelled = false
-    window.hcomic!.fetchPreviewImage(url, scrambleId, comicId, imageQuality)
+    const request = imageLoader
+      ? imageLoader(url, index).then((imageUrl) => ({ urlHash: imageUrl }))
+      : window.hcomic!.fetchPreviewImage(url, scrambleId, comicId, imageQuality)
+    request
       .then((result) => {
         if (cancelled) return
         if (result?.urlHash) {
@@ -395,7 +401,7 @@ function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality
         }
       })
     return () => { cancelled = true }
-  }, [url, cachedUrlHash, scrambleId, comicId, imageQuality, retryTick, index])
+  }, [url, cachedUrlHash, scrambleId, comicId, imageQuality, retryTick, index, imageLoader])
 
   // 父级"全部重试"：retryGen 变化时，仅当当前处于 error 态才重置触发重载
   useEffect(() => {
@@ -439,7 +445,7 @@ function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality
 
   return (
     <img
-      src={buildImageUrl('preview', urlHash)}
+      src={imageLoader ? urlHash : buildImageUrl('preview', urlHash)}
       alt={`第 ${index + 1} 页`}
       className="h-full w-auto max-w-none"
       draggable={false}

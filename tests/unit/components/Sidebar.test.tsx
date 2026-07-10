@@ -16,7 +16,7 @@ import { useSidebarStore } from '@/stores/useSidebarStore'
 describe('Sidebar', () => {
   const menuItems = [
     { id: 'search', label: '搜索', icon: '🔍' },
-    { id: 'downloads', label: '下载管理', icon: '📥' },
+    { id: 'downloads', label: '漫画库', icon: '📥' },
     { id: 'favourites', label: '收藏夹', icon: '⭐' },
     { id: 'history', label: '历史记录', icon: '🕐' },
     { id: 'toolbox', label: '工具箱', icon: '🧰' },
@@ -92,8 +92,8 @@ describe('Sidebar', () => {
     expect(sidebarRoot).not.toHaveClass('w-52')
 
     // 标签文本不在 DOM 中（仅 title tooltip）
-    expect(screen.queryByText('下载管理')).not.toBeInTheDocument()
-    expect(screen.getByTitle('下载管理')).toBeInTheDocument()
+    expect(screen.queryByText('漫画库')).not.toBeInTheDocument()
+    expect(screen.getByTitle('漫画库')).toBeInTheDocument()
   })
 
   it('点击 toggle 后展开：容器变为 w-52，标签出现，菜单 title 被移除', async () => {
@@ -101,16 +101,16 @@ describe('Sidebar', () => {
     const sidebarRoot = container.firstElementChild as HTMLElement
 
     expect(sidebarRoot).toHaveClass('w-16')
-    expect(screen.queryByText('下载管理')).not.toBeInTheDocument()
+    expect(screen.queryByText('漫画库')).not.toBeInTheDocument()
 
     await userEvent.click(screen.getByTitle('展开侧边栏'))
 
     expect(sidebarRoot).toHaveClass('w-52')
     expect(sidebarRoot).not.toHaveClass('w-16')
     // 标签现在可见
-    expect(screen.getByText('下载管理')).toBeInTheDocument()
+    expect(screen.getByText('漫画库')).toBeInTheDocument()
     // 展开态菜单按钮不再设置 title（避免与可见标签重复）
-    expect(screen.queryByTitle('下载管理')).not.toBeInTheDocument()
+    expect(screen.queryByTitle('漫画库')).not.toBeInTheDocument()
   })
 
   it('展开态再次点击 toggle 回到收起态', async () => {
@@ -123,8 +123,8 @@ describe('Sidebar', () => {
     await userEvent.click(screen.getByTitle('收起侧边栏'))
 
     expect(sidebarRoot).toHaveClass('w-16')
-    expect(screen.queryByText('下载管理')).not.toBeInTheDocument()
-    expect(screen.getByTitle('下载管理')).toBeInTheDocument()
+    expect(screen.queryByText('漫画库')).not.toBeInTheDocument()
+    expect(screen.getByTitle('漫画库')).toBeInTheDocument()
   })
 
   it('toggle 按钮位于菜单项之后，且图标反映即将执行的动作', () => {
@@ -149,6 +149,6 @@ describe('Sidebar', () => {
     // 功能仍可用：点击 toggle 展开
     await userEvent.click(screen.getByTitle('展开侧边栏'))
     expect(sidebarRoot).toHaveClass('w-52')
-    expect(screen.getByText('下载管理')).toBeInTheDocument()
+    expect(screen.getByText('漫画库')).toBeInTheDocument()
   })
 })

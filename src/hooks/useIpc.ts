@@ -1,5 +1,5 @@
 import { useCallback, useState, useEffect, useMemo, useRef } from 'react'
-import type { HcomicAPI, ConfigKey, ConfigValueMap, FavouriteTagsProgressEvent, MaintenanceProgressEvent, TagListProgressEvent } from '@shared/types'
+import type { HcomicAPI, ConfigKey, ConfigValueMap, FavouriteTagsProgressEvent, MaintenanceProgressEvent, TagListProgressEvent, LibraryScanProgressEvent, LibraryQuery } from '@shared/types'
 import { ComicInfo, ACTIVE_DOWNLOAD_STATUSES } from '@shared/types'
 
 declare global {
@@ -410,6 +410,51 @@ export function useMaintenanceProgress() {
   }, [])
 
   // 暴露 clear() 让调用方在开始新扫描时重置残留进度，避免上次扫描的 progress 闪烁
+  const clear = useCallback(() => setProgress(null), [])
+  return { progress, clear }
+}
+
+// ── 漫画库（Library）hooks ──────────────────────────────────────────
+
+export function useLibrary() {
+  const { invoke } = useIpc()
+  return useMemo(() => ({
+    list: (query?: LibraryQuery) => invoke(() => window.hcomic!.libraryList(query)),
+    stats: () => invoke(() => window.hcomic!.libraryStats()),
+    detail: (assetId: string) => invoke(() => window.hcomic!.libraryDetail(assetId)),
+    chapters: (assetId: string) => invoke(() => window.hcomic!.libraryChapters(assetId)),
+    cover: (assetId: string) => invoke(() => window.hcomic!.libraryCover(assetId)),
+    pageManifest: (assetId: string, chapterId?: string) =>
+      invoke(() => window.hcomic!.libraryPageManifest(assetId, chapterId)),
+    getPage: (assetId: string, chapterId: string | null, page: number, version: number) =>
+      invoke(() => window.hcomic!.libraryGetPage(assetId, chapterId, page, version)),
+    getReadingProgress: (assetId: string) =>
+      invoke(() => window.hcomic!.libraryGetReadingProgress(assetId)),
+    saveReadingProgress: (assetId: string, chapterId: string | null, page: number, totalPages: number) =>
+      invoke(() => window.hcomic!.librarySaveReadingProgress(assetId, chapterId, page, totalPages)),
+  }), [invoke])
+}
+
+export function useLibraryScan() {
+  const { invoke } = useIpc()
+  return useMemo(() => ({
+    status: () => invoke(() => window.hcomic!.libraryScanStatus()),
+    start: () => invoke(() => window.hcomic!.libraryStartScan()),
+    cancel: () => invoke(() => window.hcomic!.libraryCancelScan()),
+  }), [invoke])
+}
+
+export function useLibraryScanProgress() {
+  const [progress, setProgress] = useState<LibraryScanProgressEvent | null>(null)
+
+  useEffect(() => {
+    if (!window.hcomic?.onLibraryScanProgress) return
+    const unsubscribe = window.hcomic.onLibraryScanProgress((data: LibraryScanProgressEvent) => {
+      setProgress(data)
+    })
+    return unsubscribe
+  }, [])
+
   const clear = useCallback(() => setProgress(null), [])
   return { progress, clear }
 }

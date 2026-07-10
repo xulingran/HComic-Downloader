@@ -52,6 +52,7 @@ from ipc.cover_mixin import CoverMixin  # noqa: E402
 from ipc.download_mixin import DownloadMixin  # noqa: E402
 from ipc.favourite_tags_mixin import FavouriteTagsMixin  # noqa: E402
 from ipc.history_mixin import HistoryMixin  # noqa: E402
+from ipc.library_mixin import LibraryMixin  # noqa: E402
 from ipc.maintenance_mixin import MaintenanceMixin  # noqa: E402
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
@@ -82,6 +83,7 @@ class IPCServer(
     FavouriteTagsMixin,
     TagListMixin,
     MaintenanceMixin,
+    LibraryMixin,
 ):
     def __init__(self):
         import time as _time
@@ -225,6 +227,9 @@ class IPCServer(
 
         # Tag list catalog database
         self._init_tag_list()
+
+        # Library index database
+        self._init_library()
         self._emit_progress(85, "数据库已就绪")
         _mark("all-dbs-ready")
 
@@ -356,6 +361,27 @@ class IPCServer(
         "scan_orphan_temps": "handle_scan_orphan_temps",
         "cleanup_orphan_temps": "handle_cleanup_orphan_temps",
         "get_storage_stats": "handle_get_storage_stats",
+        "library_list": "handle_library_list",
+        "library_stats": "handle_library_stats",
+        "library_detail": "handle_library_detail",
+        "library_chapters": "handle_library_chapters",
+        "library_scan_status": "handle_library_scan_status",
+        "library_start_scan": "handle_library_start_scan",
+        "library_cancel_scan": "handle_library_cancel_scan",
+        "library_cover": "handle_library_cover",
+        "library_page_manifest": "handle_library_page_manifest",
+        "library_get_page": "handle_library_get_page",
+        "library_get_reading_progress": "handle_library_get_reading_progress",
+        "library_save_reading_progress": "handle_library_save_reading_progress",
+        "library_reveal_asset": "handle_library_reveal_asset",
+        "library_execute_reveal": "handle_library_execute_reveal",
+        "library_health_check": "handle_library_health_check",
+        "library_prepare_delete": "handle_library_prepare_delete",
+        "library_commit_delete": "handle_library_commit_delete",
+        "library_execute_delete": "handle_library_execute_delete",
+        "library_abort_delete": "handle_library_abort_delete",
+        "library_rename": "handle_library_rename",
+        "library_edit_metadata": "handle_library_edit_metadata",
     }
 
     async def _dispatch_request(self, request: dict) -> None:
@@ -638,16 +664,19 @@ class IPCServer(
         return {"dir": self._cover_cache.db_dir}
 
     def handle_get_image_cache_dirs(self) -> dict:
-        """Return absolute files_dir paths for cover and preview image caches.
+        """Return absolute files_dir paths for cover, preview and library image caches.
 
         Used by the Electron main process to register the ``app-image://``
         protocol handler — it must know where to find raw image byte files
         keyed by url_hash. Derived from live cache instances so injected test
         paths are honored (see cache-directory-access spec).
         """
+        from ipc.library_cache import get_default_library_cache_dir
+
         return {
             "cover": self._cover_cache.files_dir,
             "preview": self._preview_cache.files_dir,
+            "library": get_default_library_cache_dir(),
         }
 
     def handle_clear_preview_cache(self) -> dict:

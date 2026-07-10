@@ -102,6 +102,13 @@ class MigrationMixin:
                     "Download dir auto-updated to migration target: %s",
                     state.target_dir,
                 )
+                # 目录迁移成功后切换 root generation、使旧令牌失效并触发完整重建
+                migrate_fn = getattr(self, "on_download_dir_migrated", None)
+                if migrate_fn:
+                    try:
+                        migrate_fn()
+                    except Exception:
+                        logger.warning("Failed to trigger library rebuild after migration", exc_info=True)
             except Exception as e:
                 logger.error("Failed to auto-update download_dir after migration: %s", e)
 

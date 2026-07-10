@@ -9,7 +9,7 @@ interface SidebarProps {
 
 const menuItems = [
   { id: 'search', label: '搜索', icon: '🔍' },
-  { id: 'downloads', label: '下载管理', icon: '📥' },
+  { id: 'downloads', label: '漫画库', icon: '📥' },
   { id: 'favourites', label: '收藏夹', icon: '⭐' },
   { id: 'history', label: '历史记录', icon: '🕐' },
   { id: 'toolbox', label: '工具箱', icon: '🧰' },

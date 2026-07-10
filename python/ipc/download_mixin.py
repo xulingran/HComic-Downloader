@@ -63,7 +63,7 @@ class DownloadMixin:
         self._write_response(notification)
 
     def _on_download_success_record(self, comic, output_path: str, output_format: str):
-        """Record a successful download to the history database."""
+        """Record a successful download to the history database and trigger library index."""
         try:
             # 持久化实际页数，供健康检查页数对账使用。
             pages = getattr(comic, "pages", 0) or 0
@@ -71,6 +71,14 @@ class DownloadMixin:
             logger.info("Recorded download history for %s", comic.title)
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
+
+        # 下载最终产物落盘后触发单路径增量索引（仅最终原子产物，不含临时目录阶段）
+        try:
+            index_fn = getattr(self, "index_completed_download", None)
+            if index_fn and output_path:
+                index_fn(output_path)
+        except Exception:
+            logger.warning("Failed to index completed download: %s", output_path, exc_info=True)
 
     def _build_virtual_chapter_comic(
         self,

@@ -160,9 +160,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 75 total
+      // 93 total (75 original + 18 library)
       const count = handleCalls.length
-      expect(count).toBe(75)
+      expect(count).toBe(93)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -236,6 +236,24 @@ describe('main.ts', () => {
       'python:scan-orphan-temps',
       'python:cleanup-orphan-temps',
       'python:get-storage-stats',
+      'python:library-list',
+      'python:library-stats',
+      'python:library-detail',
+      'python:library-chapters',
+      'python:library-scan-status',
+      'python:library-start-scan',
+      'python:library-cancel-scan',
+      'python:library-cover',
+      'python:library-page-manifest',
+      'python:library-get-page',
+      'python:library-get-reading-progress',
+      'python:library-save-reading-progress',
+      'python:library-reveal-asset',
+      'python:library-health-check',
+      'python:library-prepare-delete',
+      'python:library-commit-delete',
+      'python:library-rename',
+      'python:library-edit-metadata',
       'update:check',
     ]
 
@@ -283,6 +301,12 @@ describe('main.ts', () => {
         'force_pack_album', 'get_album_progress',
         'pause_album', 'resume_album', 'cancel_album',
         'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',
+        'library_list', 'library_stats', 'library_detail', 'library_chapters',
+        'library_scan_status', 'library_start_scan', 'library_cancel_scan',
+        'library_cover', 'library_page_manifest', 'library_get_page',
+        'library_get_reading_progress', 'library_save_reading_progress',
+        'library_reveal_asset', 'library_health_check', 'library_prepare_delete',
+        'library_commit_delete', 'library_rename', 'library_edit_metadata',
       ])
       for (const [channel, method] of Object.entries(PYTHON_IPC_CHANNEL_MAP)) {
         expect(validMethods.has(method),

@@ -565,3 +565,24 @@ def test_legacy_jmcomic_history_conflict_merges_into_canonical(tmp_path):
     assert rec["pages"] == 12
     assert rec["album_total_chapters"] == 2
     db.close()
+
+
+def test_move_and_delete_records_for_folder_asset(tmp_path):
+    from download_history import DownloadHistoryDB
+
+    db = DownloadHistoryDB(str(tmp_path / "history_paths.db"))
+    root = tmp_path / "library" / "album"
+    comic1 = ComicInfo(id="1", title="One", source_site="jm", comic_source="JM", album_id="album")
+    comic2 = ComicInfo(id="2", title="Two", source_site="jm", comic_source="JM", album_id="album")
+    db.record_download(comic1, str(root / "ch1"), "folder")
+    db.record_download(comic2, str(root / "ch2"), "folder")
+
+    renamed = tmp_path / "library" / "renamed"
+    assert db.move_records_for_output_path(str(root), str(renamed), include_descendants=True) == 2
+    assert {record["output_path"] for record in db.get_all_records()} == {
+        str(renamed / "ch1"),
+        str(renamed / "ch2"),
+    }
+    assert db.delete_records_for_output_path(str(renamed), include_descendants=True) == 2
+    assert db.get_all_records() == []
+    db.close()

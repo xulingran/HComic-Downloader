@@ -416,13 +416,13 @@ function loadWithRetry(win: BrowserWindow, url: string, attempt = 0) {
  * handler must use the *real* files_dir of the cache instances (not a
  * hardcoded default) so injected test paths are honored.
  */
-let imageCacheDirs: { cover: string; preview: string } | null = null
+let imageCacheDirs: { cover: string; preview: string; library: string } | null = null
 
-async function getImageCacheDirs(): Promise<{ cover: string; preview: string }> {
+async function getImageCacheDirs(): Promise<{ cover: string; preview: string; library: string }> {
   if (imageCacheDirs) return imageCacheDirs
-  const dirs = await getPythonBridge().call('get_image_cache_dirs') as { cover: string; preview: string }
+  const dirs = await getPythonBridge().call('get_image_cache_dirs') as { cover: string; preview: string; library: string }
   imageCacheDirs = dirs
-  return dirs
+  return imageCacheDirs
 }
 
 /**
@@ -444,7 +444,7 @@ function setupImageProtocol() {
     // (e.g. "cover" in app-image://cover/<hash>).
     const kind = url.hostname
 
-    let dirs: { cover: string; preview: string }
+    let dirs: { cover: string; preview: string; library: string }
     try {
       dirs = await getImageCacheDirs()
     } catch {
@@ -743,6 +743,10 @@ function registerNotificationHandlers(bridge: Bridge) {
 
   bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.FAVOURITE_TAGS_PROGRESS, (params) => {
     mainWindow?.webContents.send(NOTIFICATION_CHANNELS.FAVOURITE_TAGS_PROGRESS, params)
+  })
+
+  bridge.setNotificationHandler(PYTHON_NOTIFICATION_METHODS.LIBRARY_SCAN_PROGRESS, (params) => {
+    mainWindow?.webContents.send(NOTIFICATION_CHANNELS.LIBRARY_SCAN_PROGRESS, params)
   })
 
   // 致命错误：后端进程启动失败或重启超限时转发到渲染进程横幅。
@@ -1512,6 +1516,188 @@ function registerMaintenanceHandlers(bridge: Bridge) {
   })
 }
 
+function registerLibraryHandlers(bridge: Bridge) {
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_LIST, async (
+    _, page?: unknown, pageSize?: unknown, query?: unknown,
+    sourceSite?: unknown, format?: unknown, healthStatus?: unknown, sort?: unknown,
+  ) => {
+    const params: Record<string, unknown> = {}
+    if (page !== undefined && page !== null) {
+      assert(and(integer(), minValue(1)), page, 'libraryList page')
+      params.page = page
+    }
+    if (pageSize !== undefined && pageSize !== null) {
+      assert(and(integer(), range(1, 200)), pageSize, 'libraryList pageSize')
+      params.page_size = pageSize
+    }
+    if (query !== undefined && query !== null && query !== '') {
+      assert(and(string(), maxLength(500), noControlChars()), query, 'libraryList query')
+      params.query = query
+    }
+    if (sourceSite !== undefined && sourceSite !== null && sourceSite !== '') {
+      assert(and(string(), maxLength(50), noControlChars()), sourceSite, 'libraryList sourceSite')
+      params.source_site = sourceSite
+    }
+    if (format !== undefined && format !== null && format !== '') {
+      assert(and(string(), oneOf(['cbz', 'zip', 'folder'])), format, 'libraryList format')
+      params.format = format
+    }
+    if (healthStatus !== undefined && healthStatus !== null && healthStatus !== '') {
+      assert(and(string(), oneOf(['unknown', 'healthy', 'warning', 'error'])), healthStatus, 'libraryList healthStatus')
+      params.health_status = healthStatus
+    }
+    if (sort !== undefined && sort !== null && sort !== '') {
+      assert(and(string(), oneOf(['recent_added', 'recent_read', 'title', 'size', 'mtime'])), sort, 'libraryList sort')
+      params.sort = sort
+    }
+    return bridge.call('library_list', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_STATS, async () => {
+    return bridge.call('library_stats')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_DETAIL, async (_, assetId?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryDetail assetId')
+    return bridge.call('library_detail', { asset_id: assetId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_CHAPTERS, async (_, assetId?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryChapters assetId')
+    return bridge.call('library_chapters', { asset_id: assetId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_SCAN_STATUS, async () => {
+    return bridge.call('library_scan_status')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_START_SCAN, async () => {
+    return bridge.call('library_start_scan')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_CANCEL_SCAN, async () => {
+    return bridge.call('library_cancel_scan')
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_COVER, async (_, assetId?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryCover assetId')
+    return bridge.call('library_cover', { asset_id: assetId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_PAGE_MANIFEST, async (_, assetId?: unknown, chapterId?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryPageManifest assetId')
+    const params: Record<string, unknown> = { asset_id: assetId }
+    if (chapterId !== undefined && chapterId !== null) {
+      assert(and(string(), length(1, 100)), chapterId, 'libraryPageManifest chapterId')
+      params.chapter_id = chapterId
+    }
+    return bridge.call('library_page_manifest', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_PAGE, async (_, assetId?: unknown, chapterId?: unknown, page?: unknown, version?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryGetPage assetId')
+    assert(and(integer(), minValue(1)), page, 'libraryGetPage page')
+    assert(and(integer(), minValue(1)), version, 'libraryGetPage version')
+    const params: Record<string, unknown> = { asset_id: assetId, page, version }
+    if (chapterId !== undefined && chapterId !== null) {
+      assert(and(string(), length(1, 100)), chapterId, 'libraryGetPage chapterId')
+      params.chapter_id = chapterId
+    }
+    return bridge.call('library_get_page', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_GET_READING_PROGRESS, async (_, assetId?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryGetReadingProgress assetId')
+    return bridge.call('library_get_reading_progress', { asset_id: assetId })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_SAVE_READING_PROGRESS, async (_, assetId?: unknown, chapterId?: unknown, page?: unknown, totalPages?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'librarySaveReadingProgress assetId')
+    assert(and(integer(), minValue(1)), page, 'librarySaveReadingProgress page')
+    assert(and(integer(), minValue(0)), totalPages, 'librarySaveReadingProgress totalPages')
+    const params: Record<string, unknown> = { asset_id: assetId, page, total_pages: totalPages }
+    if (chapterId !== undefined && chapterId !== null) {
+      assert(and(string(), length(1, 100)), chapterId, 'librarySaveReadingProgress chapterId')
+      params.chapter_id = chapterId
+    }
+    return bridge.call('library_save_reading_progress', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_REVEAL_ASSET, async (_, assetId?: unknown, expectedVersion?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryRevealAsset assetId')
+    assert(and(integer(), minValue(1)), expectedVersion, 'libraryRevealAsset expectedVersion')
+    // Step 1: Python validates and returns a one-time reveal token (no path leaks to renderer).
+    const result = await bridge.call('library_reveal_asset', { asset_id: assetId, expected_version: expectedVersion }) as { success: boolean; revealToken?: string }
+    // Step 2: Main process internally exchanges token for resolved path, then calls shell API.
+    if (result.success && result.revealToken) {
+      const revealResult = await bridge.call('library_execute_reveal', { reveal_token: result.revealToken }) as { success: boolean; resolved_path?: string }
+      if (revealResult.success && revealResult.resolved_path) {
+        shell.showItemInFolder(revealResult.resolved_path)
+      }
+    }
+    return { success: result.success }
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_HEALTH_CHECK, async (_, assetId?: unknown, expectedVersion?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryHealthCheck assetId')
+    assert(and(integer(), minValue(1)), expectedVersion, 'libraryHealthCheck expectedVersion')
+    return bridge.call('library_health_check', { asset_id: assetId, expected_version: expectedVersion })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_PREPARE_DELETE, async (_, assetId?: unknown, expectedVersion?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryPrepareDelete assetId')
+    assert(and(integer(), minValue(1)), expectedVersion, 'libraryPrepareDelete expectedVersion')
+    // Python prepares and returns token + metadata for confirmation dialog.
+    // The resolved path is stored server-side keyed by token, not returned to renderer.
+    return bridge.call('library_prepare_delete', { asset_id: assetId, expected_version: expectedVersion })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_COMMIT_DELETE, async (_, token?: unknown) => {
+    assert(and(string(), length(1, 200)), token, 'libraryCommitDelete token')
+    // Step 1: Exchange token for resolved path (main-process internal, no path reaches renderer).
+    const deleteResult = await bridge.call('library_execute_delete', { token }) as { success: boolean; resolved_path?: string }
+    if (!deleteResult.success || !deleteResult.resolved_path) {
+      return { success: false, message: '无法解析删除路径' }
+    }
+    // Step 2: Move file to system trash via Electron shell API.
+    try {
+      await shell.trashItem(deleteResult.resolved_path)
+    } catch (e) {
+      // 回收站失败：保留文件和索引不变
+      await bridge.call('library_abort_delete', { token }).catch(() => {})
+      return { success: false, message: e instanceof Error ? e.message : '移入回收站失败' }
+    }
+    // Step 3: Commit — clean up index, chapters, progress, and history.
+    return bridge.call('library_commit_delete', { token })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_RENAME, async (_, assetId?: unknown, newName?: unknown, renameFile?: unknown, expectedVersion?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryRename assetId')
+    assert(and(string(), maxLength(500), noControlChars(), noPathSeparators()), newName, 'libraryRename newName')
+    assert(and(boolean()), renameFile, 'libraryRename renameFile')
+    assert(and(integer(), minValue(1)), expectedVersion, 'libraryRename expectedVersion')
+    return bridge.call('library_rename', {
+      asset_id: assetId, new_name: newName, rename_file: renameFile, expected_version: expectedVersion,
+    })
+  })
+
+  ipcMain.handle(IPC_CHANNELS.LIBRARY_EDIT_METADATA, async (_, assetId?: unknown, fields?: unknown, expectedVersion?: unknown) => {
+    assert(and(string(), length(1, 100)), assetId, 'libraryEditMetadata assetId')
+    assert(and(integer(), minValue(1)), expectedVersion, 'libraryEditMetadata expectedVersion')
+    if (typeof fields !== 'object' || fields === null) {
+      throw new ValidationError('fields must be an object')
+    }
+    const f = fields as Record<string, unknown>
+    if (f.title !== undefined) assert(and(string(), maxLength(500)), f.title, 'libraryEditMetadata title')
+    if (f.author !== undefined) assert(and(string(), maxLength(500)), f.author, 'libraryEditMetadata author')
+    if (f.tags !== undefined) {
+      if (!Array.isArray(f.tags) || f.tags.length > 100) throw new ValidationError('tags must be array of ≤100 strings')
+      for (const t of f.tags) assert(and(string(), maxLength(100)), t, 'libraryEditMetadata tag')
+    }
+    return bridge.call('library_edit_metadata', { asset_id: assetId, fields, expected_version: expectedVersion })
+  })
+}
+
 function registerIPCHandlers() {
   const bridge = getPythonBridge()
 
@@ -1530,6 +1716,7 @@ function registerIPCHandlers() {
   registerTagListHandlers(bridge)
   registerAlbumHandlers(bridge)
   registerMaintenanceHandlers(bridge)
+  registerLibraryHandlers(bridge)
 
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async () => {
     return checkForUpdates()
