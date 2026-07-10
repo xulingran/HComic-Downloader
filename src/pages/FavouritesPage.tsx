@@ -20,6 +20,7 @@ import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/type
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore, type FavouritesPageCache } from '../stores/useFavouritesStore'
 import { usePaginatedPreloader, type PreloadReason } from '../hooks/usePaginatedPreloader'
+import { prefetchCovers } from '@/lib/cover-prefetch'
 import { useReaderStore } from '../stores/useReaderStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import type { DownloadProgressData } from '../hooks/useIpc'
@@ -37,6 +38,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
   const [currentPage, setCurrentPage] = useState(1)
   const [needsLogin, setNeedsLogin] = useState(false)
   const { cardStyle, defaultFavouriteSource } = useSettingsStore()
+  const sfwMode = useSettingsStore((s) => s.sfwMode)
   const cache = useFavouritesStore()
   const sessionPickerShown = useFavouritesStore((s) => s.sessionPickerShown)
   const markPickerShown = useFavouritesStore((s) => s.markPickerShown)
@@ -329,13 +331,17 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     })
   }, [getFavourites, checkDownloadedStatus, source])
 
-  const commitPreloadedFavouritesPage = useCallback((page: number, contextKey: string) => {
+  const commitPreloadedFavouritesPage = useCallback((page: number, contextKey: string, signal: AbortSignal) => {
     const requestKey = `${contextKey}:${page}`
     const cached = preloadedPagesRef.current.get(requestKey)
     if (!cached) return
     preloadedPagesRef.current.delete(requestKey)
     cache.setPage(source, page, cached, false)
-  }, [cache, source])
+    // 封面预载：commit 之后对已落盘页的 coverUrl 限并发预热，SFW 关闭时才触发。
+    // JM 收藏页已被 enabled 门控排除数据预载，不会走到此处；其他来源正常预载。
+    // signal 跟随数据预载的 contextKey 切换中断——停止发起新请求，在途结果仍写入 memo。
+    void prefetchCovers(cached.comics, { signal, sfwMode })
+  }, [cache, source, sfwMode])
 
   useEffect(() => {
     preloadedPagesRef.current.clear()

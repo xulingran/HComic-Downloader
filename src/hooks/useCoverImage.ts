@@ -14,8 +14,45 @@ import { buildImageUrl } from '@/lib/image-url'
  * app-image:// protocol — they never enter the renderer JS heap, so there is
  * nothing large to evict here. This map holds only short hex strings / nulls.
  */
-const coverOutcome = new Map<string, string | null>()
-const pendingRequests = new Map<string, Promise<string | null>>()
+export const coverOutcome = new Map<string, string | null>()
+export const pendingRequests = new Map<string, Promise<string | null>>()
+
+/**
+ * 对单个 coverUrl 执行 fetchCover IPC，复用 coverOutcome memo + pendingRequests 去重。
+ *
+ * 这是从 useCoverImage.fetchCover 提炼的共享逻辑，供按需加载（useCoverImage）和
+ * 预加载（prefetchCovers）共用同一份 memo + dedup，避免独立缓存导致重复 IPC。
+ *
+ * - 命中 coverOutcome（含 null 失败标记）→ 直接返回，不发 IPC
+ * - 命中 pendingRequests（in-flight）→ 复用同一 promise，不新建 IPC
+ * - 否则发起 fetchCover IPC，结果写入 coverOutcome，finally 清理 pendingRequests
+ *
+ * @returns urlHash（成功）/ null（失败或命中失败标记）；命中成功标记时返回缓存的 urlHash
+ */
+export function fetchCoverToMemo(url: string): Promise<string | null> {
+  const cached = coverOutcome.get(url)
+  if (cached !== undefined) return Promise.resolve(cached)
+
+  const existing = pendingRequests.get(url)
+  if (existing) return existing
+
+  const promise = (async (): Promise<string | null> => {
+    try {
+      const result = await window.hcomic!.fetchCover(url)
+      const urlHash = result.urlHash as string
+      coverOutcome.set(url, urlHash)
+      return urlHash
+    } catch {
+      coverOutcome.set(url, null)
+      return null
+    } finally {
+      pendingRequests.delete(url)
+    }
+  })()
+
+  pendingRequests.set(url, promise)
+  return promise
+}
 
 // Shared IntersectionObserver for all cover images
 let sharedObserver: IntersectionObserver | null = null
@@ -107,27 +144,9 @@ export function useCoverImage(coverUrl: string | undefined, containerRef?: React
     let cancelled = false
     setImageUrl(undefined)
 
-    // Deduplicate: reuse an in-flight request for the same URL
-    const existing = pendingRequests.get(url)
-    const promise = existing ?? (async (): Promise<string | null> => {
-      try {
-        const result = await window.hcomic!.fetchCover(url)
-        const urlHash = result.urlHash as string
-        coverOutcome.set(url, urlHash)
-        return urlHash
-      } catch {
-        coverOutcome.set(url, null)
-        return null
-      } finally {
-        pendingRequests.delete(url)
-      }
-    })()
-
-    if (!existing) {
-      pendingRequests.set(url, promise)
-    }
-
-    promise.then((urlHash) => {
+    // 复用共享的 fetchCoverToMemo：memo 查询 + pendingRequests 去重 + IPC 调用 + 结果写入。
+    // 与 prefetchCovers 共用同一份逻辑，禁止独立缓存或去重。
+    fetchCoverToMemo(url).then((urlHash) => {
       if (cancelled) return
       if (currentUrlRef.current === url) {
         setImageUrl(urlHash ? buildImageUrl('cover', urlHash) : null)

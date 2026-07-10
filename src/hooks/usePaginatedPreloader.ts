@@ -11,7 +11,9 @@ interface UsePaginatedPreloaderArgs {
   // signal: 当前 contextKey 的 AbortSignal，contextKey 变化或卸载时 abort()。
   // loadPage 实现必须在 IPC await 完成后、写入缓存前检查 signal.aborted 并丢弃结果。
   loadPage: (page: number, reason: PreloadReason, signal: AbortSignal) => Promise<void>
-  commitPage?: (page: number, contextKey: string) => void | Promise<void>
+  // signal: 同 loadPage 的 AbortSignal。commitPage 之后若需派生异步任务（如封面预载），
+  // 可用此 signal 跟随 contextKey 切换中断。commit 本身已受 generation 检查保护。
+  commitPage?: (page: number, contextKey: string, signal: AbortSignal) => void | Promise<void>
   onPreloadError?: (page: number, error: unknown) => void
   concurrency?: number
 }
@@ -28,7 +30,7 @@ interface PreloadState {
   enabled: boolean
   hasPage: (page: number) => boolean
   loadPage: (page: number, reason: PreloadReason, signal: AbortSignal) => Promise<void>
-  commitPage?: (page: number, contextKey: string) => void | Promise<void>
+  commitPage?: (page: number, contextKey: string, signal: AbortSignal) => void | Promise<void>
   onPreloadError?: (page: number, error: unknown) => void
   concurrency: number
   generation: number
@@ -77,7 +79,7 @@ export function usePaginatedPreloader({
         try {
           await state.loadPage(page, 'preload', abortControllerRef.current.signal)
           if (!state.cancelled && state.generation === generationRef.current) {
-            await state.commitPage?.(page, state.contextKey)
+            await state.commitPage?.(page, state.contextKey, abortControllerRef.current.signal)
           }
         } catch (error) {
           if (!state.cancelled && state.generation === generationRef.current) {

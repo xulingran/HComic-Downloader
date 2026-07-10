@@ -59,6 +59,8 @@ interface HookProps {
   currentPage: number
   totalPages: number
   enabled: boolean
+  // SFW 开启时跳过封面预载——既有测试关注数据预载中断语义，设 true 隔离封面预载副作用。
+  sfwMode: boolean
   searchFn: SearchFn
   cacheSearchPage: (contextKey: string, page: number, data: SearchPageCache, setCurrent?: boolean) => void
 }
@@ -108,6 +110,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -126,6 +129,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -169,6 +173,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -186,6 +191,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -221,6 +227,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -238,6 +245,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -280,6 +288,7 @@ describe('useSearchPreloader — signal.aborted 检查的集成守护', () => {
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -326,6 +335,7 @@ describe('useSearchPreloader — languageFilter 维度（add-nh-chinese-language
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -353,6 +363,7 @@ describe('useSearchPreloader — languageFilter 维度（add-nh-chinese-language
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -371,6 +382,7 @@ describe('useSearchPreloader — languageFilter 维度（add-nh-chinese-language
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })
@@ -411,6 +423,7 @@ describe('useSearchPreloader — languageFilter 维度（add-nh-chinese-language
       currentPage: 1,
       totalPages: 5,
       enabled: true,
+      sfwMode: true,
       searchFn,
       cacheSearchPage,
     })

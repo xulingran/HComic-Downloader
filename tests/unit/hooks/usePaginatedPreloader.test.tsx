@@ -370,7 +370,7 @@ describe('usePaginatedPreloader', () => {
       await secondRequest.promise
     })
 
-    await waitFor(() => expect(commitPage).toHaveBeenCalledWith(2, 'search:second'))
+    await waitFor(() => expect(commitPage).toHaveBeenCalledWith(2, 'search:second', expect.any(AbortSignal)))
     expect(commitPage).toHaveBeenCalledTimes(1)
   })
 

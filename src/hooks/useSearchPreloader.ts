@@ -6,6 +6,7 @@ import {
   useSearchCacheStore,
   type SearchPageCache,
 } from '../stores/useSearchCacheStore'
+import { prefetchCovers } from '@/lib/cover-prefetch'
 
 /**
  * 预加载搜索页的 IPC 函数签名（与 useIpc().search 对齐）。
@@ -48,6 +49,8 @@ interface UseSearchPreloaderArgs {
   totalPages: number
   /** needsLogin / isLoading 等抑制条件归并为此开关。 */
   enabled: boolean
+  /** SFW 模式开关；true 时封面预载跳过（封面不显示，预载纯浪费）。 */
+  sfwMode: boolean
   /** 中转 → 持久缓存的搬运注入点（来自 SearchPage 的 cacheSearchPage wrapper）。 */
   cacheSearchPage: CacheSearchPageFn
 }
@@ -70,8 +73,10 @@ interface UseSearchPreloaderResult {
    * 消费预加载中转结果：把 preloadedPagesRef 中对应条目搬到持久缓存。
    * 若对应条目不存在（迟到结果被 signal.aborted 丢弃、或已被 clear），则静默返回。
    * 这是中转 → 持久层的唯一搬运路径。
+   * signal 由 usePaginatedPreloader 的 commitPage 传入，用于封面预载的中断；
+   * 外部手动调用时可省略（缺省为无中断信号的预载）。
    */
-  consumePreloaded: (page: number, contextKey: string) => void
+  consumePreloaded: (page: number, contextKey: string, signal?: AbortSignal) => void
 }
 
 /**
@@ -95,6 +100,7 @@ export function useSearchPreloader({
   currentPage,
   totalPages,
   enabled,
+  sfwMode,
   cacheSearchPage,
 }: UseSearchPreloaderArgs): UseSearchPreloaderResult {
   // 5 个上下文 ref：渲染期同步，供 preloadSearchPage 在异步 await 之后读到最新值。
@@ -160,14 +166,18 @@ export function useSearchPreloader({
   )
 
   const consumePreloaded = useCallback(
-    (page: number, pageContextKey: string) => {
+    (page: number, pageContextKey: string, signal?: AbortSignal) => {
       const requestKey = `${pageContextKey}:${page}`
       const cached = preloadedPagesRef.current.get(requestKey)
       if (!cached) return
       preloadedPagesRef.current.delete(requestKey)
       cacheSearchPage(pageContextKey, page, cached, false)
+      // 封面预载：commit 之后对已落盘页的 coverUrl 限并发预热，SFW 关闭时才触发。
+      // signal 跟随数据预载的 contextKey 切换中断——停止发起新请求，在途结果仍写入 memo。
+      // 外部手动调用（无 signal）时用永不 abort 的信号，预载完整执行。
+      void prefetchCovers(cached.comics, { signal: signal ?? new AbortController().signal, sfwMode })
     },
-    [cacheSearchPage],
+    [cacheSearchPage, sfwMode],
   )
 
   // contextKey 变化时清空中转缓存，防止旧 contextKey 的残留数据被新 contextKey 的 commit 误搬运。
