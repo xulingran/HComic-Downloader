@@ -14,6 +14,7 @@ import { BatchControls } from '../components/common/BatchControls'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { LoadingOverlay } from '../components/common/LoadingOverlay'
+import { InlineLoading } from '../components/common/InlineLoading'
 import { SourcePickerModal } from '../components/common/SourcePickerModal'
 import { FavouriteSourceSidebar } from '../components/favourites/FavouriteSourceSidebar'
 import { ComicInfo, PaginationInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
@@ -449,9 +450,7 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
         </div>
       ) : comics.length === 0 ? (
         isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <span className="text-sm text-[var(--text-secondary)]">加载中...</span>
-          </div>
+          <InlineLoading />
         ) : <EmptyState message="暂无收藏" />
       ) : (
         <div className="relative">

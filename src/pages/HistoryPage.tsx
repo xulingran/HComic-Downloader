@@ -10,6 +10,7 @@ import { PageJumpDialog } from '../components/common/PageJumpDialog'
 import { ErrorDisplay } from '../components/common/ErrorDisplay'
 import { EmptyState } from '../components/common/EmptyState'
 import { LoadingOverlay } from '../components/common/LoadingOverlay'
+import { InlineLoading } from '../components/common/InlineLoading'
 import { HistoryItem, PaginationInfo, type ComicInfo, PROGRESS_BADGE_STATUSES } from '@shared/types'
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useToastStore } from '../stores/useToastStore'
@@ -245,12 +246,7 @@ export function HistoryPage() {
   // 首次加载（无旧结果）：居中 spinner + 文案（无网格可遮罩）。
   // 翻页加载（有旧结果）：不 early-return，进入主结构保留旧网格并叠加 LoadingOverlay（见下方网格渲染）。
   if (isLoading && items.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center gap-3 py-12">
-        <div className="w-8 h-8 border-2 border-[var(--text-tertiary)] border-t-[var(--accent)] rounded-full motion-safe:animate-spin" />
-        <div className="text-sm text-[var(--text-secondary)]">加载中...</div>
-      </div>
-    )
+    return <InlineLoading />
   }
 
   if (error) {

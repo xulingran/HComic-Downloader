@@ -191,7 +191,9 @@ describe('FavouritesPage', () => {
 
     render(<FavouritesPage />)
 
+    // InlineLoading：居中 spinner + 「加载中...」文案（与历史页首次加载一致）
     expect(screen.getByText('加载中...')).toBeInTheDocument()
+    expect(document.querySelector('.rounded-full.motion-safe\\:animate-spin')).not.toBeNull()
   })
 
   it('翻页未命中缓存时保留旧结果并叠加 light 档遮罩（backdrop-blur-[8px] + spinner）', async () => {
