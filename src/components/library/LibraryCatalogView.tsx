@@ -193,9 +193,10 @@ export function LibraryCatalogView() {
     loadStats()
   }, [justClosedAssetId, loadList, loadStats])
 
+  // 仅翻 detailOpen，保留 detailAsset 供 AnimatePresence 退场动画期间渲染面板内容；
+  // 下次打开或组件卸载时自然清空，与 ComicInfoDrawer 的 closeDrawer 行为对齐
   const handleCloseDetail = useCallback(() => {
     setDetailOpen(false)
-    setDetailAsset(null)
   }, [])
 
   // 详情变更后刷新列表

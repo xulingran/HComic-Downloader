@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { HcomicAPI, LibraryAssetDetail } from '@shared/types'
@@ -34,6 +34,10 @@ describe('LibraryAssetDetailDrawer', () => {
     await userEvent.click(screen.getByRole('button', { name: '保存' }))
 
     expect(await screen.findByText('元数据已写入 ComicInfo.xml')).toBeInTheDocument()
-    expect(screen.queryByTestId('library-detail-drawer')).not.toBeInTheDocument()
+    // onClose 翻 open=false 后，AnimatePresence 会在退场动画窗口内保留面板节点，
+    // 需用 waitFor 等待退场动画结束、面板真正从 DOM 移除
+    await waitFor(() => {
+      expect(screen.queryByTestId('library-detail-drawer')).not.toBeInTheDocument()
+    })
   })
 })

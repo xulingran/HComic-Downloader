@@ -1,6 +1,13 @@
 import { useState, useCallback } from 'react'
+import { AnimatePresence, motion } from 'framer-motion'
 import type { LibraryAssetDetail } from '@shared/types'
 import { useToastStore } from '../../stores/useToastStore'
+import {
+  drawerPresenceVariants,
+  overlayPresenceVariants,
+  reduceSafe,
+  useReducedMotionPreference,
+} from '../../lib/anim'
 
 interface LibraryAssetDetailDrawerProps {
   asset: LibraryAssetDetail | null
@@ -115,22 +122,36 @@ export function LibraryAssetDetailDrawer({
     }
   }, [asset, metadataAuthor, metadataTags, metadataTitle, onChanged, onClose])
 
-  if (!open || !asset) return null
+  // 与 ComicInfoDrawer 一致的动画令牌：reduced-motion 时降级为纯 opacity
+  const reduceMotion = useReducedMotionPreference()
+  const drawerVariants = reduceMotion ? reduceSafe(drawerPresenceVariants) : drawerPresenceVariants
 
   return (
-    <>
-      {/* 背景遮罩 */}
-      <div
-        className="fixed inset-0 z-40 bg-black/40"
-        onClick={onClose}
-        data-testid="detail-drawer-overlay"
-      />
+    <AnimatePresence>
+      {open && asset && (
+        <>
+          {/* 背景遮罩 */}
+          <motion.div
+            key="library-drawer-overlay"
+            variants={overlayPresenceVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="fixed inset-0 z-40 bg-black/40"
+            onClick={onClose}
+            data-testid="detail-drawer-overlay"
+          />
 
-      {/* 抽屉面板 */}
-      <div
-        className="fixed right-0 top-0 z-50 h-full w-full max-w-md overflow-y-auto border-l border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-xl"
-        data-testid="library-detail-drawer"
-      >
+          {/* 抽屉面板 */}
+          <motion.div
+            key="library-drawer-panel"
+            variants={drawerVariants}
+            initial="initial"
+            animate="animate"
+            exit="exit"
+            className="fixed right-0 top-0 z-50 h-full w-full max-w-md overflow-y-auto border-l border-[var(--border)] bg-[var(--bg-primary)] p-6 shadow-xl"
+            data-testid="library-detail-drawer"
+          >
         {/* 关闭按钮 */}
         <button
           onClick={onClose}
@@ -330,8 +351,10 @@ export function LibraryAssetDetailDrawer({
             </div>
           </div>
         )}
-      </div>
-    </>
+      </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   )
 }
 
