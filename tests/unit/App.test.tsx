@@ -3,11 +3,42 @@ import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useSettingsStore } from '@/stores/useSettingsStore'
 
-const { mockGetConfig, mockSetConfig, mockPrefetch } = vi.hoisted(() => ({
+const { mockGetConfig, mockSetConfig, mockPrefetch, enterTargetSpy, exitTargetSpy, reducedMotionValue } = vi.hoisted(() => ({
   mockGetConfig: vi.fn(),
   mockSetConfig: vi.fn(),
-  mockPrefetch: vi.fn().mockResolvedValue(undefined)
+  mockPrefetch: vi.fn().mockResolvedValue(undefined),
+  // 捕获 KeepAlivePage 调用的进入/退出动画目标函数。
+  // KeepAlivePage 在 isActive 切换时调用 getTabEnterTarget/getTabExitTarget 获取目标对象，
+  // 再交给真实 controls.start() 执行。spy 这些调用可验证「切回重播」与「方向参数」真实行为。
+  enterTargetSpy: vi.fn(),
+  exitTargetSpy: vi.fn(),
+  // 可变标志：测试用例切换后，useReducedMotionPreference 返回此值，驱动 reduced-motion 分支。
+  reducedMotionValue: { current: false }
 }))
+
+// 拦截 @/lib/anim 的进入/退出目标函数为 spy + useReducedMotionPreference 为可控 flag，
+// 其余导出（TAB_ORDER、useTabPageVariants）保留真实实现。real controls.start() 消费 spy 返回的目标对象。
+vi.mock('@/lib/anim', async (importActual) => {
+  const actual = await importActual<typeof import('@/lib/anim')>()
+  return {
+    ...actual,
+    useReducedMotionPreference: () => reducedMotionValue.current,
+    getTabEnterTarget: (dir: number, reduceMotion: boolean) => {
+      const target = reduceMotion
+        ? { opacity: 1, transition: { duration: 0.15 } }
+        : { x: 0, opacity: 1, transition: actual.smoothTransition }
+      enterTargetSpy(dir, reduceMotion, target)
+      return target
+    },
+    getTabExitTarget: (dir: number, reduceMotion: boolean) => {
+      const target = reduceMotion
+        ? { opacity: 0, transition: { duration: 0.15 } }
+        : { x: dir > 0 ? '-8%' : dir < 0 ? '8%' : 0, opacity: 0, transition: actual.smoothTransition }
+      exitTargetSpy(dir, reduceMotion, target)
+      return target
+    },
+  }
+})
 
 vi.mock('@/hooks/useIpc', () => ({
   useConfig: vi.fn().mockReturnValue({
@@ -104,6 +135,7 @@ import App from '@/App'
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    reducedMotionValue.current = false
     useSettingsStore.setState({
       themeMode: 'auto',
       cardStyle: 'cover',
@@ -276,6 +308,134 @@ describe('App', () => {
         expect(screen.getByTestId('settings-page')).toBeInTheDocument()
       })
       expect(screen.getByTestId('active-page')).toHaveTextContent('settings')
+    })
+  })
+
+  describe('tab 切换动画重播（fix-tab-switch-animation）', () => {
+    beforeEach(() => {
+      enterTargetSpy.mockClear()
+      exitTargetSpy.mockClear()
+    })
+
+    it('切回已访问页面重播进入动画（而非瞬间显示）', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      // 注：首屏 mount 与懒创建首访不播进入动画（防 controls 绑定时序竞态白屏），
+      // 故首次进入 downloads 不触发 enterTarget；只有切回已存活页面才播进入动画。
+
+      // 切到 downloads（懒创建首访：无进入动画，但 search 退出动画触发）
+      await user.click(screen.getByText('Downloads'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
+      })
+      // 此时 enterTarget 尚未被调用（downloads 是首次 mount）
+      expect(enterTargetSpy).not.toHaveBeenCalled()
+
+      // 切回 search（search 实例已存活，必须重播进入动画）
+      await user.click(screen.getByText('Search'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
+      })
+
+      // 关键断言：切回后进入目标函数被调用，证明切回已存活页面重播了进入动画。
+      expect(enterTargetSpy).toHaveBeenCalled()
+      // 最后一次进入调用的 dir 参数应为 -1（search<downloads，向左导航）
+      const lastEnterCall = enterTargetSpy.mock.calls[enterTargetSpy.mock.calls.length - 1]
+      expect(lastEnterCall[0]).toBe(-1)
+    })
+
+    it('连续多次切换每次都触发动画（禁止仅首次触发）', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      // search → downloads → search → downloads，记录每次切换后的进入目标调用次数
+      await user.click(screen.getByText('Downloads'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
+      })
+      const afterFirst = enterTargetSpy.mock.calls.length
+
+      await user.click(screen.getByText('Search'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
+      })
+      expect(enterTargetSpy.mock.calls.length).toBeGreaterThan(afterFirst)
+      const afterSecond = enterTargetSpy.mock.calls.length
+
+      await user.click(screen.getByText('Downloads'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
+      })
+      // 第三次切换（downloads 实例已存活）仍触发进入动画，证明非仅首次触发。
+      expect(enterTargetSpy.mock.calls.length).toBeGreaterThan(afterSecond)
+    })
+
+    it('方向感知：向右导航时退出目标 x=-8%', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      // search(index 0) → downloads(index 1)，direction=+1（向右导航）
+      await user.click(screen.getByText('Downloads'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
+      })
+
+      // search 退出动画：direction=+1 → 退出目标函数收到 dir=1，目标 x='-8%'
+      const exitCalls = exitTargetSpy.mock.calls
+      expect(exitCalls.length).toBeGreaterThan(0)
+      expect(exitCalls[exitCalls.length - 1][0]).toBe(1) // dir=+1
+      expect(exitCalls[exitCalls.length - 1][2]).toMatchObject({ x: '-8%', opacity: 0 })
+    })
+
+    it('方向感知：向左导航时退出目标 x=8%', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      // 先切到 downloads，再切回 search（direction=-1，向左导航）
+      await user.click(screen.getByText('Downloads'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
+      })
+      exitTargetSpy.mockClear()
+
+      await user.click(screen.getByText('Search'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
+      })
+
+      // downloads 退出动画：direction=-1 → 退出目标函数收到 dir=-1，目标 x='8%'
+      const exitCalls = exitTargetSpy.mock.calls
+      expect(exitCalls.length).toBeGreaterThan(0)
+      expect(exitCalls[exitCalls.length - 1][0]).toBe(-1) // dir=-1
+      expect(exitCalls[exitCalls.length - 1][2]).toMatchObject({ x: '8%', opacity: 0 })
+    })
+
+    it('reduced-motion 下进入动画用纯 opacity 目标（无 x 位移）', async () => {
+      // 开启 reduced-motion，验证切回已存活页面时进入目标函数 reduceMotion=true，
+      // 且返回的目标无 x 字段（纯 opacity crossfade）。
+      reducedMotionValue.current = true
+      const user = userEvent.setup()
+      render(<App />)
+
+      // downloads 首访（懒创建，无进入动画）→ search 切回（触发进入动画，reduceMotion=true）
+      await user.click(screen.getByText('Downloads'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
+      })
+
+      await user.click(screen.getByText('Search'))
+      await waitFor(() => {
+        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
+      })
+
+      // 进入目标应 reduceMotion=true 且无 x 字段（仅 opacity:1）
+      expect(enterTargetSpy).toHaveBeenCalled()
+      const enterCalls = enterTargetSpy.mock.calls
+      const lastEnter = enterCalls[enterCalls.length - 1]
+      expect(lastEnter[1]).toBe(true) // reduceMotion
+      expect(lastEnter[2]).toMatchObject({ opacity: 1 })
+      expect(lastEnter[2].x).toBeUndefined()
     })
   })
 })

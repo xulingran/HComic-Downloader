@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
-import { TAB_ORDER, useTabPageVariants } from './lib/anim'
+import { AnimatePresence } from 'framer-motion'
+import { TAB_ORDER } from './lib/anim'
 import { prefetchHighFrequencyChunks } from './lib/prefetch'
 import { useTheme } from './hooks/useTheme'
 import { useSettingsStore } from './stores/useSettingsStore'
@@ -8,6 +8,7 @@ import { useConfig } from './hooks/useIpc'
 import { useInitConfig } from './hooks/useInitConfig'
 import { useStartupProgress, markStartupReady } from './hooks/useStartupProgress'
 import { Sidebar } from './components/Sidebar'
+import { KeepAlivePage } from './components/KeepAlivePage'
 import { PageSkeleton } from './components/common/PageSkeleton'
 import { SearchPage } from './pages/SearchPage'
 import { Toast } from './components/common/Toast'
@@ -101,7 +102,6 @@ function App() {
   const { pendingSearch } = useDrawerStore()
   const { readerComic, closeReader } = useReaderStore()
   const { readerAsset: localReaderAsset, open: localReaderOpen, closeReader: closeLocalReader } = useLocalReaderStore()
-  const tabVariants = useTabPageVariants()
 
   const handlePageChange = useCallback((page: string) => {
     const oldIndex = TAB_ORDER.indexOf(activePage as typeof TAB_ORDER[number])
@@ -182,29 +182,18 @@ function App() {
         {/* 致命错误横幅：位于内容区顶部，不阻塞操作 */}
         <FatalBanner />
         <main className="flex-1 relative px-6 py-3">
-          {/* keep-alive 容器：遍历已访问页面，每个页面一个常驻 motion.div。
+          {/* keep-alive 容器：遍历已访问页面，每个页面一个常驻 KeepAlivePage 实例。
               激活页 display:block 并播放进入动画（slide 8% + fade，方向感知）；
               非激活页 display:none 不参与渲染（跳过 layout 与 paint）。
-              切回已访问页面时实例复用，无 mount、无 stagger 重播。
+              动画由 KeepAlivePage 内的 useAnimationControls 命令式驱动——
+              切回已访问页面时重播进入动画（修复 keep-alive 下首访后切回无动画的问题）。
               首次进入直接渲染真实内容——chunk 已由 idle prefetch 预热，
               数据走 store 缓存快路径，无需骨架兜底（避免骨架闪现）。 */}
-          {visitedPages.map((page) => {
-            const isActive = page === activePage
-            return (
-              <motion.div
-                key={page}
-                variants={tabVariants}
-                custom={direction}
-                initial="initial"
-                animate="animate"
-                aria-hidden={!isActive}
-                className="absolute inset-0 overflow-auto"
-                style={{ display: isActive ? 'block' : 'none' }}
-              >
-                {renderPageContent(page)}
-              </motion.div>
-            )
-          })}
+          {visitedPages.map((page) => (
+            <KeepAlivePage key={page} isActive={page === activePage} direction={direction}>
+              {renderPageContent(page)}
+            </KeepAlivePage>
+          ))}
         </main>
       </div>
       <Suspense fallback={null}><ComicInfoDrawer /></Suspense>
