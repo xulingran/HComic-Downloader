@@ -19,6 +19,18 @@ export function inferPageDirection(current: number, previous: number): 'forward'
   return current > previous ? 'forward' : 'backward'
 }
 
+/**
+ * isFlipping 兜底解锁硬上限（毫秒）。
+ *
+ * 翻页过渡用 smoothTransition（DURATION.slow=300ms）。正常路径下 framer-motion 的
+ * onAnimationComplete 会在动画结束（~300ms）时把 isFlipping 置回 false；但若某次
+ * currentPage 变更没有真正播动画（图仍在加载、AnimatePresence 重挂载、reduced-motion
+ * 跳过等），onAnimationComplete 不触发，isFlipping 永久停在 true，滚轮/拖拽被吞掉。
+ * 兜底定时器到点强制解锁，取 600ms（2 倍裕量覆盖真实抖动）作为硬上限——即便回调丢失，
+ * 锁最多持续 600ms 后自愈。详见上锁 effect 的注释。
+ */
+const FLIP_LOCK_TIMEOUT = 600
+
 interface PageFlipViewProps {
   imageUrls: string[]
   totalPages: number
@@ -89,6 +101,14 @@ export function PageFlipView({
   // 首次执行——AnimatePresence initial={false} 首次挂载不播动画、不触发
   // onAnimationComplete，首次若上锁将永久锁死 isFlipping。详见下面该 effect。
   const hasMountedRef = useRef(false)
+  // 安全网：上锁 effect 与 framer-motion onAnimationComplete 解锁源可能失步——
+  // fetchUrls / 历史续读 / 模式切换等异步路径在首次挂载后改 currentPage，若该次
+  // 变更没有真正播动画（图仍在加载、AnimatePresence 重挂载、reduced-motion 等），
+  // onAnimationComplete 不触发，isFlipping 永久停在 true，滚轮/拖拽被永久吞掉。
+  // 兜底：上锁时启动一个不超过最大动画时长的定时器强制解锁；正常 onAnimationComplete
+  // 提前解锁则清掉定时器。翻页过渡用 smoothTransition（DURATION.slow=300ms），取
+  // 600ms（2 倍裕量覆盖真实抖动）作为硬上限——任何"卡死"最多持续 600ms 后自愈。
+  const flipLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isDoubleMode = displayMode === 'double'
   const step = isDoubleMode ? 2 : 1
@@ -204,6 +224,17 @@ export function PageFlipView({
 
   const handleAnimationComplete = useCallback(() => {
     setIsFlipping(false)
+    if (flipLockTimerRef.current) {
+      clearTimeout(flipLockTimerRef.current)
+      flipLockTimerRef.current = null
+    }
+  }, [])
+
+  // 组件卸载时清掉兜底定时器，避免卸载后仍 setState。
+  useEffect(() => {
+    return () => {
+      if (flipLockTimerRef.current) clearTimeout(flipLockTimerRef.current)
+    }
   }, [])
 
   // currentPage 变化即触发翻页动画，置 isFlipping=true。
@@ -214,12 +245,24 @@ export function PageFlipView({
   // 若首次挂载也上锁，解锁回调不来，isFlipping 永久停在 true，滚轮/拖拽平移/
   // pointerEvents 全部失效。跳过首次挂载让上锁源(effect)与解锁源(动画完成回调)
   // 在首次挂载时都"不动作"，状态机恢复对称。
+  //
+  // 但跳过首次挂载只挡得住"首帧"。父级 ComicReaderModal 在 fetchUrls / 历史续读 /
+  // 模式切换等异步路径里改 currentPage，此时首帧已过、hasMountedRef 为 true，
+  // effect 会正常上锁；若该次变更没有真正播动画，onAnimationComplete 不触发，
+  // isFlipping 永久停在 true（滚轮/拖拽失效，只有点击边缘按钮能间接触发一次真动画
+  // 解锁——即"必须先点按钮才能滚轮"的 bug）。兜底：上锁同时启动 FLIP_LOCK_TIMEOUT
+  // 定时器，到点强制解锁；正常 onAnimationComplete 提前解锁时清掉它。
   useEffect(() => {
     if (!hasMountedRef.current) {
       hasMountedRef.current = true
       return // 首次挂载：无动画可等，不上锁
     }
     setIsFlipping(true)
+    if (flipLockTimerRef.current) clearTimeout(flipLockTimerRef.current)
+    flipLockTimerRef.current = setTimeout(() => {
+      flipLockTimerRef.current = null
+      setIsFlipping(false)
+    }, FLIP_LOCK_TIMEOUT)
   }, [currentPage])
 
   const renderPageContent = () => {

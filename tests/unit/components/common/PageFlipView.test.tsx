@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
 import { PageFlipView, inferPageDirection } from '@/components/PageFlipView'
 import type { DisplayMode } from '@/hooks/useReaderSettings'
 
@@ -13,6 +13,12 @@ beforeEach(() => {
     writable: true,
     configurable: true,
   })
+})
+
+// 兜底恢复真实定时器：个别用例用 vi.useFakeTimers() 推进 isFlipping 兜底定时器，
+// 确保不泄漏到后续依赖真实 setTimeout/Promise 的异步用例（否则 waitFor 永久挂起）。
+afterEach(() => {
+  vi.useRealTimers()
 })
 
 class MockIntersectionObserver {
@@ -271,6 +277,36 @@ describe('PageFlipView', () => {
   // framer-motion 的 onAnimationComplete 在 jsdom 下依赖 raf/微任务链，行为不稳定，
   // 强行 mock 会绑定实现细节且偏离真实行为。核心回归（首次挂载滚轮可用）由上面
   // 三条用例承担，"动画中丢弃"语义由代码评审 + 手动验证覆盖。
+
+  // 回归（bug：滚轮翻页必须在首次挂载后、首次用户翻页之前就可用）。
+  // 失败路径：父级 ComicReaderModal 在 fetchUrls / 历史续读 / 模式切换等场景里
+  // 异步调用 setCurrentPage——此时 PageFlipView 已完成首次挂载，hasMountedRef 为
+  // true，于是上锁 effect 把 isFlipping 置为 true。如果该次 currentPage 变更在
+  // 真实运行时没有触发 framer-motion 的 onAnimationComplete（首屏图仍在加载、
+  // AnimatePresence 重挂载等），isFlipping 永久停在 true，handleWheel 的
+  // `if (isFlipping) return` 永远吞掉滚轮；只有点击边缘按钮（绕过 isFlipping）才会
+  // 间接解锁——与"先点按钮才能滚轮"的真实症状完全吻合。jsdom 下 onAnimationComplete
+  // 不稳定，正好暴露这一失败。修复：上锁同时启动兜底定时器（FLIP_LOCK_TIMEOUT），
+  // 到点强制解锁。用 fake timers 把"等动画结束"的时间推进掉，断言滚轮随后恢复可用。
+  it('still allows wheel flip after a programmatic setCurrentPage post-mount (once lock safety-net elapses)', () => {
+    vi.useFakeTimers()
+    const setCurrentPage = vi.fn()
+    const { container, rerender } = render(
+      <PageFlipView {...defaultProps} currentPage={1} setCurrentPage={setCurrentPage} />
+    )
+    // 模拟父级异步把页码改成 2（fetchUrls / 历史续读 / 模式切换等触发源）。
+    // 首帧已过，上锁 effect 正常把 isFlipping 置 true。
+    rerender(
+      <PageFlipView {...defaultProps} currentPage={2} setCurrentPage={setCurrentPage} />
+    )
+    // 真实运行时 onAnimationComplete 在 ~300ms 触发解锁；此处模拟"回调丢失"场景，
+    // 只靠兜底定时器自愈。FLIP_LOCK_TIMEOUT 到点前滚轮被吞（与真实"动画进行中"一致）。
+    // act() 包裹 advanceTimersByTime：兜底定时器内 setIsFlipping(false) 是脱离
+    // React 事件流的状态更新，必须 flush 后 handleWheel 闭包才能拿到新的 isFlipping。
+    act(() => { vi.advanceTimersByTime(600) })
+    fireEvent.wheel(container.firstChild as Element, { deltaY: 100 })
+    expect(setCurrentPage).toHaveBeenCalledWith(3)
+  })
 })
 
 // reader-image-cache 规范：翻页模式叶子组件 FlipPage 取图成功后必须回写共享缓存。
