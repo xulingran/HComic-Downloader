@@ -1,92 +1,41 @@
 import { describe, it, expect } from 'vitest'
 import {
-  smoothTransition,
   DURATION,
+  getTabPageEnterStart,
   getTabPageEnterTarget,
   getTabPageExitTarget,
-  getReducedTabPageEnterTarget,
-  getReducedTabPageExitTarget,
-  getTabEnterTarget,
-  getTabExitTarget,
+  tabPhaseTransition,
   TAB_ORDER,
 } from '@/lib/anim'
 
-describe('tab page animation targets', () => {
-  describe('getTabPageEnterTarget（完整路径）', () => {
-    it('向右导航时进入目标滑回原位并淡入', () => {
-      const target = getTabPageEnterTarget(1)
-      expect(target.x).toBe(0)
-      expect(target.opacity).toBe(1)
-      expect(target.transition).toBe(smoothTransition)
-    })
-
-    it('向左导航时进入目标同样滑回原位（方向对称）', () => {
-      const target = getTabPageEnterTarget(-1)
-      expect(target.x).toBe(0)
-      expect(target.opacity).toBe(1)
-    })
+describe('tab fade-through animation targets', () => {
+  it('向右导航时旧页向左退出、新页从右侧进入', () => {
+    expect(getTabPageExitTarget(1)).toMatchObject({ x: '-8%', opacity: 0 })
+    expect(getTabPageEnterStart(1)).toEqual({ x: '8%', opacity: 0 })
+    expect(getTabPageEnterTarget()).toMatchObject({ x: 0, opacity: 1 })
   })
 
-  describe('getTabPageExitTarget（完整路径）', () => {
-    it('向右导航时旧页向左滑出', () => {
-      const target = getTabPageExitTarget(1)
-      expect(target.x).toBe('-8%')
-      expect(target.opacity).toBe(0)
-      expect(target.transition).toBe(smoothTransition)
-    })
-
-    it('向左导航时旧页向右滑出', () => {
-      const target = getTabPageExitTarget(-1)
-      expect(target.x).toBe('8%')
-      expect(target.opacity).toBe(0)
-    })
-
-    it('方向为 0 时退出无位移（仅淡出）', () => {
-      const target = getTabPageExitTarget(0)
-      expect(target.x).toBe(0)
-      expect(target.opacity).toBe(0)
-    })
+  it('向左导航时旧页向右退出、新页从左侧进入', () => {
+    expect(getTabPageExitTarget(-1)).toMatchObject({ x: '8%', opacity: 0 })
+    expect(getTabPageEnterStart(-1)).toEqual({ x: '-8%', opacity: 0 })
   })
 
-  describe('getReducedTabPageEnterTarget / ExitTarget（reduced-motion）', () => {
-    it('进入目标无 x 位移，纯 opacity 淡入', () => {
-      const target = getReducedTabPageEnterTarget()
-      expect(target.x).toBeUndefined()
-      expect(target.opacity).toBe(1)
-    })
-
-    it('退出目标无 x 位移，纯 opacity 淡出', () => {
-      const target = getReducedTabPageExitTarget()
-      expect(target.x).toBeUndefined()
-      expect(target.opacity).toBe(0)
-    })
-
-    it('时长均为 DURATION.fast（150ms）', () => {
-      expect(getReducedTabPageEnterTarget().transition).toMatchObject({ duration: DURATION.fast })
-      expect(getReducedTabPageExitTarget().transition).toMatchObject({ duration: DURATION.fast })
-    })
-  })
-})
-
-describe('getTabEnterTarget / getTabExitTarget（reduced-motion 分发）', () => {
-  it('reducedMotion=false 时走完整路径（含 x 位移）', () => {
-    const enter = getTabEnterTarget(1, false)
-    expect(enter.x).toBe(0)
-    expect(enter.opacity).toBe(1)
-
-    const exit = getTabExitTarget(1, false)
-    expect(exit.x).toBe('-8%')
-    expect(exit.opacity).toBe(0)
+  it('方向为 0 时只执行顺序淡出和淡入', () => {
+    expect(getTabPageExitTarget(0)).toMatchObject({ x: 0, opacity: 0 })
+    expect(getTabPageEnterStart(0)).toEqual({ x: 0, opacity: 0 })
   })
 
-  it('reducedMotion=true 时走纯 opacity 路径（无 x 位移）', () => {
-    const enter = getTabEnterTarget(1, true)
-    expect(enter.x).toBeUndefined()
-    expect(enter.opacity).toBe(1)
+  it('进入和退出各使用 150ms，总时长为 300ms', () => {
+    expect(tabPhaseTransition).toMatchObject({ type: 'tween', duration: DURATION.fast })
+    expect(getTabPageExitTarget(1).transition).toBe(tabPhaseTransition)
+    expect(getTabPageEnterTarget().transition).toBe(tabPhaseTransition)
+    expect(DURATION.fast * 2).toBe(DURATION.slow)
+  })
 
-    const exit = getTabExitTarget(-1, true)
-    expect(exit.x).toBeUndefined()
-    expect(exit.opacity).toBe(0)
+  it('reduced-motion 由协调器瞬时切换，不存在独立透明度动画目标', async () => {
+    const exports = await import('@/lib/anim')
+    expect(exports).not.toHaveProperty('getReducedTabPageEnterTarget')
+    expect(exports).not.toHaveProperty('getReducedTabPageExitTarget')
   })
 })
 

@@ -1,40 +1,39 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useDrawerStore } from '@/stores/useDrawerStore'
 
-const { mockGetConfig, mockSetConfig, mockPrefetch, enterTargetSpy, exitTargetSpy, reducedMotionValue } = vi.hoisted(() => ({
+const { mockGetConfig, mockSetConfig, mockPrefetch, enterStartSpy, enterTargetSpy, exitTargetSpy, reducedMotionValue } = vi.hoisted(() => ({
   mockGetConfig: vi.fn(),
   mockSetConfig: vi.fn(),
   mockPrefetch: vi.fn().mockResolvedValue(undefined),
-  // 捕获 KeepAlivePage 调用的进入/退出动画目标函数。
-  // KeepAlivePage 在 isActive 切换时调用 getTabEnterTarget/getTabExitTarget 获取目标对象，
-  // 再交给真实 controls.start() 执行。spy 这些调用可验证「切回重播」与「方向参数」真实行为。
+  enterStartSpy: vi.fn(),
   enterTargetSpy: vi.fn(),
   exitTargetSpy: vi.fn(),
   // 可变标志：测试用例切换后，useReducedMotionPreference 返回此值，驱动 reduced-motion 分支。
   reducedMotionValue: { current: false }
 }))
 
-// 拦截 @/lib/anim 的进入/退出目标函数为 spy + useReducedMotionPreference 为可控 flag，
-// 其余导出（TAB_ORDER、useTabPageVariants）保留真实实现。real controls.start() 消费 spy 返回的目标对象。
+// 捕获 fade-through 的阶段目标，并让 reduced-motion 偏好可控。
 vi.mock('@/lib/anim', async (importActual) => {
   const actual = await importActual<typeof import('@/lib/anim')>()
   return {
     ...actual,
     useReducedMotionPreference: () => reducedMotionValue.current,
-    getTabEnterTarget: (dir: number, reduceMotion: boolean) => {
-      const target = reduceMotion
-        ? { opacity: 1, transition: { duration: 0.15 } }
-        : { x: 0, opacity: 1, transition: actual.smoothTransition }
-      enterTargetSpy(dir, reduceMotion, target)
+    getTabPageEnterStart: (dir: number) => {
+      const target = actual.getTabPageEnterStart(dir)
+      enterStartSpy(dir, target)
       return target
     },
-    getTabExitTarget: (dir: number, reduceMotion: boolean) => {
-      const target = reduceMotion
-        ? { opacity: 0, transition: { duration: 0.15 } }
-        : { x: dir > 0 ? '-8%' : dir < 0 ? '8%' : 0, opacity: 0, transition: actual.smoothTransition }
-      exitTargetSpy(dir, reduceMotion, target)
+    getTabPageEnterTarget: () => {
+      const target = actual.getTabPageEnterTarget()
+      enterTargetSpy(target)
+      return target
+    },
+    getTabPageExitTarget: (dir: number) => {
+      const target = actual.getTabPageExitTarget(dir)
+      exitTargetSpy(dir, target)
       return target
     },
   }
@@ -100,14 +99,26 @@ vi.mock('@/components/Sidebar', () => ({
 }))
 
 vi.mock('@/pages/SearchPage', () => ({
-  SearchPage: () => <div data-testid="search-page">Search Page</div>,
+  SearchPage: ({ onNavigateToSettings }: { onNavigateToSettings: () => void }) => (
+    <div data-testid="search-page">Search Page<button onClick={onNavigateToSettings}>Go Settings</button></div>
+  ),
   default: () => <div data-testid="search-page">Search Page</div>
 }))
 
-vi.mock('@/pages/DownloadPage', () => ({
-  DownloadPage: () => <div data-testid="download-page">Download Page</div>,
-  default: () => <div data-testid="download-page">Download Page</div>
-}))
+vi.mock('@/pages/DownloadPage', async () => {
+  const { useState } = await import('react')
+  const MockDownloadPage = () => {
+    const [count, setCount] = useState(0)
+    return (
+      <div data-testid="download-page">
+        Download Page
+        <output data-testid="download-local-state">{count}</output>
+        <button onClick={() => setCount((value) => value + 1)}>Increment Download State</button>
+      </div>
+    )
+  }
+  return { DownloadPage: MockDownloadPage, default: MockDownloadPage }
+})
 
 vi.mock('@/pages/FavouritesPage', () => ({
   FavouritesPage: () => <div data-testid="favourites-page">Favourites Page</div>,
@@ -132,10 +143,30 @@ vi.mock('@/pages/HistoryPage', () => ({
 // Import App after all mocks
 import App from '@/App'
 
+function getTabPage(page: string): HTMLElement {
+  const element = document.querySelector<HTMLElement>(`[data-tab-page="${page}"]`)
+  if (!element) throw new Error(`Tab page wrapper not found: ${page}`)
+  return element
+}
+
+function expectOnlyDisplayed(page: string): void {
+  const displayed = [...document.querySelectorAll<HTMLElement>('[data-tab-visible="true"]')]
+  expect(displayed).toHaveLength(1)
+  expect(displayed[0]).toHaveAttribute('data-tab-page', page)
+}
+
+async function waitForVisiblePage(page: string): Promise<void> {
+  await waitFor(() => {
+    expect(getTabPage(page)).toHaveAttribute('data-tab-phase', 'visible')
+    expectOnlyDisplayed(page)
+  })
+}
+
 describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     reducedMotionValue.current = false
+    useDrawerStore.setState({ pendingSearch: null })
     useSettingsStore.setState({
       themeMode: 'auto',
       cardStyle: 'cover',
@@ -273,28 +304,32 @@ describe('App', () => {
   })
 
   describe('keep-alive', () => {
-    it('切走后页面实例保留在 DOM（display:none），切回复用', async () => {
+    it('切走后页面实例、局部状态与滚动位置均保留', async () => {
+      const user = userEvent.setup()
       render(<App />)
 
       // 首屏只有 search
       expect(screen.getByTestId('search-page')).toBeInTheDocument()
 
       // 切到 downloads（首次进入，走 deferred mount）
-      await userEvent.click(screen.getByText('Downloads'))
-      await waitFor(() => {
-        expect(screen.getByTestId('download-page')).toBeInTheDocument()
-      })
+      await user.click(screen.getByText('Downloads'))
+      await waitForVisiblePage('downloads')
+      await user.click(screen.getByText('Increment Download State'))
+      getTabPage('downloads').scrollTop = 137
 
       // 切回 search
-      await userEvent.click(screen.getByText('Search'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
-      })
+      await user.click(screen.getByText('Search'))
+      await waitForVisiblePage('search')
 
       // keep-alive：downloads 页元素应仍在 DOM（display:none 隐藏但未卸载）
       expect(screen.getByTestId('download-page')).toBeInTheDocument()
-      // search 页可见
-      expect(screen.getByTestId('search-page')).toBeInTheDocument()
+      expect(screen.getByTestId('download-local-state')).toHaveTextContent('1')
+      expect(getTabPage('downloads').scrollTop).toBe(137)
+
+      await user.click(screen.getByText('Downloads'))
+      await waitForVisiblePage('downloads')
+      expect(screen.getByTestId('download-local-state')).toHaveTextContent('1')
+      expect(getTabPage('downloads').scrollTop).toBe(137)
     })
 
     it('首次进入非首屏页面直接渲染真实内容（无骨架闪现）', async () => {
@@ -311,131 +346,119 @@ describe('App', () => {
     })
   })
 
-  describe('tab 切换动画重播（fix-tab-switch-animation）', () => {
+  describe('tab fade-through（fix-tab-content-overlap）', () => {
     beforeEach(() => {
+      enterStartSpy.mockClear()
       enterTargetSpy.mockClear()
       exitTargetSpy.mockClear()
     })
 
-    it('切回已访问页面重播进入动画（而非瞬间显示）', async () => {
+    it('退出阶段仅旧页可见，进入阶段仅新页可见', async () => {
       const user = userEvent.setup()
       render(<App />)
 
-      // 注：首屏 mount 与懒创建首访不播进入动画（防 controls 绑定时序竞态白屏），
-      // 故首次进入 downloads 不触发 enterTarget；只有切回已存活页面才播进入动画。
-
-      // 切到 downloads（懒创建首访：无进入动画，但 search 退出动画触发）
       await user.click(screen.getByText('Downloads'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
-      })
-      // 此时 enterTarget 尚未被调用（downloads 是首次 mount）
-      expect(enterTargetSpy).not.toHaveBeenCalled()
+      expect(getTabPage('search')).toHaveAttribute('data-tab-phase', 'exiting')
+      expect(getTabPage('downloads')).toHaveAttribute('data-tab-phase', 'hidden')
+      expectOnlyDisplayed('search')
 
-      // 切回 search（search 实例已存活，必须重播进入动画）
+      await waitFor(() => {
+        expect(getTabPage('downloads')).toHaveAttribute('data-tab-phase', 'entering')
+        expectOnlyDisplayed('downloads')
+      })
+
+      await waitForVisiblePage('downloads')
+    })
+
+    it('首次访问与切回已访问页面都播放方向感知的进入动画', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByText('Downloads'))
+      await waitForVisiblePage('downloads')
+      expect(enterStartSpy).toHaveBeenLastCalledWith(1, { x: '8%', opacity: 0 })
+
+      enterStartSpy.mockClear()
       await user.click(screen.getByText('Search'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
-      })
-
-      // 关键断言：切回后进入目标函数被调用，证明切回已存活页面重播了进入动画。
-      expect(enterTargetSpy).toHaveBeenCalled()
-      // 最后一次进入调用的 dir 参数应为 -1（search<downloads，向左导航）
-      const lastEnterCall = enterTargetSpy.mock.calls[enterTargetSpy.mock.calls.length - 1]
-      expect(lastEnterCall[0]).toBe(-1)
+      await waitForVisiblePage('search')
+      expect(enterStartSpy).toHaveBeenLastCalledWith(-1, { x: '-8%', opacity: 0 })
     })
 
-    it('连续多次切换每次都触发动画（禁止仅首次触发）', async () => {
+    it('左右导航使用正确的退出方向', async () => {
       const user = userEvent.setup()
       render(<App />)
 
-      // search → downloads → search → downloads，记录每次切换后的进入目标调用次数
       await user.click(screen.getByText('Downloads'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
-      })
-      const afterFirst = enterTargetSpy.mock.calls.length
+      expect(exitTargetSpy).toHaveBeenLastCalledWith(1, expect.objectContaining({ x: '-8%', opacity: 0 }))
+      await waitForVisiblePage('downloads')
 
-      await user.click(screen.getByText('Search'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
-      })
-      expect(enterTargetSpy.mock.calls.length).toBeGreaterThan(afterFirst)
-      const afterSecond = enterTargetSpy.mock.calls.length
-
-      await user.click(screen.getByText('Downloads'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
-      })
-      // 第三次切换（downloads 实例已存活）仍触发进入动画，证明非仅首次触发。
-      expect(enterTargetSpy.mock.calls.length).toBeGreaterThan(afterSecond)
-    })
-
-    it('方向感知：向右导航时退出目标 x=-8%', async () => {
-      const user = userEvent.setup()
-      render(<App />)
-
-      // search(index 0) → downloads(index 1)，direction=+1（向右导航）
-      await user.click(screen.getByText('Downloads'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
-      })
-
-      // search 退出动画：direction=+1 → 退出目标函数收到 dir=1，目标 x='-8%'
-      const exitCalls = exitTargetSpy.mock.calls
-      expect(exitCalls.length).toBeGreaterThan(0)
-      expect(exitCalls[exitCalls.length - 1][0]).toBe(1) // dir=+1
-      expect(exitCalls[exitCalls.length - 1][2]).toMatchObject({ x: '-8%', opacity: 0 })
-    })
-
-    it('方向感知：向左导航时退出目标 x=8%', async () => {
-      const user = userEvent.setup()
-      render(<App />)
-
-      // 先切到 downloads，再切回 search（direction=-1，向左导航）
-      await user.click(screen.getByText('Downloads'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
-      })
       exitTargetSpy.mockClear()
-
       await user.click(screen.getByText('Search'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('search')
-      })
-
-      // downloads 退出动画：direction=-1 → 退出目标函数收到 dir=-1，目标 x='8%'
-      const exitCalls = exitTargetSpy.mock.calls
-      expect(exitCalls.length).toBeGreaterThan(0)
-      expect(exitCalls[exitCalls.length - 1][0]).toBe(-1) // dir=-1
-      expect(exitCalls[exitCalls.length - 1][2]).toMatchObject({ x: '8%', opacity: 0 })
+      expect(exitTargetSpy).toHaveBeenLastCalledWith(-1, expect.objectContaining({ x: '8%', opacity: 0 }))
+      await waitForVisiblePage('search')
     })
 
-    it('reduced-motion 下进入动画用纯 opacity 目标（无 x 位移）', async () => {
-      // 开启 reduced-motion，验证切回已存活页面时进入目标函数 reduceMotion=true，
-      // 且返回的目标无 x 字段（纯 opacity crossfade）。
+    it('同页点击不启动动画', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByText('Search'))
+      expect(getTabPage('search')).toHaveAttribute('data-tab-phase', 'visible')
+      expect(exitTargetSpy).not.toHaveBeenCalled()
+      expect(enterTargetSpy).not.toHaveBeenCalled()
+    })
+
+    it('退出阶段连续点击只进入最新目标', async () => {
+      render(<App />)
+
+      fireEvent.click(screen.getByText('Downloads'))
+      expect(getTabPage('search')).toHaveAttribute('data-tab-phase', 'exiting')
+      fireEvent.click(screen.getByText('Favourites'))
+
+      expect(screen.getByTestId('active-page')).toHaveTextContent('favourites')
+      expectOnlyDisplayed('search')
+      await waitForVisiblePage('favourites')
+      expect(getTabPage('downloads')).toHaveAttribute('data-tab-phase', 'hidden')
+    })
+
+    it('进入阶段收到新目标时完成当前半阶段后继续，始终只有一页可见', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByText('Downloads'))
+      await waitFor(() => expect(getTabPage('downloads')).toHaveAttribute('data-tab-phase', 'entering'))
+      await user.click(screen.getByText('Favourites'))
+
+      expectOnlyDisplayed('downloads')
+      await waitForVisiblePage('favourites')
+      expectOnlyDisplayed('favourites')
+    })
+
+    it('reduced-motion 瞬时切换且不调用动画目标', async () => {
       reducedMotionValue.current = true
       const user = userEvent.setup()
       render(<App />)
 
-      // downloads 首访（懒创建，无进入动画）→ search 切回（触发进入动画，reduceMotion=true）
       await user.click(screen.getByText('Downloads'))
-      await waitFor(() => {
-        expect(screen.getByTestId('active-page')).toHaveTextContent('downloads')
-      })
+      expect(getTabPage('downloads')).toHaveAttribute('data-tab-phase', 'visible')
+      expectOnlyDisplayed('downloads')
+      expect(exitTargetSpy).not.toHaveBeenCalled()
+      expect(enterTargetSpy).not.toHaveBeenCalled()
+    })
 
-      await user.click(screen.getByText('Search'))
+    it('程序化跳转与侧边栏点击共用过渡状态机', async () => {
+      const user = userEvent.setup()
+      render(<App />)
+
+      await user.click(screen.getByText('Go Settings'))
+      expect(screen.getByTestId('active-page')).toHaveTextContent('settings')
+      await waitForVisiblePage('settings')
+
+      act(() => useDrawerStore.getState().setPendingSearch('query', 'name'))
       await waitFor(() => {
         expect(screen.getByTestId('active-page')).toHaveTextContent('search')
       })
-
-      // 进入目标应 reduceMotion=true 且无 x 字段（仅 opacity:1）
-      expect(enterTargetSpy).toHaveBeenCalled()
-      const enterCalls = enterTargetSpy.mock.calls
-      const lastEnter = enterCalls[enterCalls.length - 1]
-      expect(lastEnter[1]).toBe(true) // reduceMotion
-      expect(lastEnter[2]).toMatchObject({ opacity: 1 })
-      expect(lastEnter[2].x).toBeUndefined()
+      await waitForVisiblePage('search')
     })
   })
 })

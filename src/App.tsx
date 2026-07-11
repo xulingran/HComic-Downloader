@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { AnimatePresence } from 'framer-motion'
-import { TAB_ORDER } from './lib/anim'
+import { TAB_ORDER, useReducedMotionPreference } from './lib/anim'
 import { prefetchHighFrequencyChunks } from './lib/prefetch'
 import { useTheme } from './hooks/useTheme'
 import { useSettingsStore } from './stores/useSettingsStore'
@@ -8,7 +8,7 @@ import { useConfig } from './hooks/useIpc'
 import { useInitConfig } from './hooks/useInitConfig'
 import { useStartupProgress, markStartupReady } from './hooks/useStartupProgress'
 import { Sidebar } from './components/Sidebar'
-import { KeepAlivePage } from './components/KeepAlivePage'
+import { KeepAlivePage, type TabPagePhase } from './components/KeepAlivePage'
 import { PageSkeleton } from './components/common/PageSkeleton'
 import { SearchPage } from './pages/SearchPage'
 import { Toast } from './components/common/Toast'
@@ -34,6 +34,18 @@ const ComicInfoDrawer = lazy(() => import('./components/ComicInfoDrawer').then(m
 const ComicReaderModal = lazy(() => import('./components/ComicReaderModal').then(m => ({ default: m.ComicReaderModal })))
 const LocalLibraryReaderModal = lazy(() => import('./components/library/LocalLibraryReaderModal').then(m => ({ default: m.LocalLibraryReaderModal })))
 const UpdateDialog = lazy(() => import('./components/UpdateDialog').then(m => ({ default: m.UpdateDialog })))
+
+type TabTransitionPhase = 'idle' | 'exiting' | 'entering'
+
+interface TabTransitionState {
+  /** 侧边栏和程序化导航表达的最新目标。 */
+  targetPage: string
+  /** 当前唯一允许显示真实内容的页面。 */
+  visiblePage: string
+  phase: TabTransitionPhase
+  direction: number
+  transitionId: number
+}
 
 function App() {
   const { sfwToastDismissed, dismissSfwToast } = useSettingsStore()
@@ -93,9 +105,16 @@ function App() {
     return () => { unsubscribe?.() }
   }, [setFatalError])
 
-  const [activePage, setActivePage] = useState('search')
+  const reduceMotion = useReducedMotionPreference()
+  const [tabTransition, setTabTransition] = useState<TabTransitionState>({
+    targetPage: 'search',
+    visiblePage: 'search',
+    phase: 'idle',
+    direction: 0,
+    transitionId: 0,
+  })
+  const activePage = tabTransition.targetPage
   const [scrollTarget, setScrollTarget] = useState<string | null>(null)
-  const [direction, setDirection] = useState(0)
   // keep-alive：已访问页面集合，懒创建——首屏只含 search，用户访问新 tab 时才加入。
   // 切走不卸载、切回复用实例，消除重复 mount 与 stagger 重播。
   const [visitedPages, setVisitedPages] = useState<string[]>(['search'])
@@ -103,14 +122,88 @@ function App() {
   const { readerComic, closeReader } = useReaderStore()
   const { readerAsset: localReaderAsset, open: localReaderOpen, closeReader: closeLocalReader } = useLocalReaderStore()
 
+  const getPageDirection = useCallback((from: string, to: string) => {
+    const oldIndex = TAB_ORDER.indexOf(from as typeof TAB_ORDER[number])
+    const newIndex = TAB_ORDER.indexOf(to as typeof TAB_ORDER[number])
+    return oldIndex === -1 || newIndex === -1 || from === to ? 0 : newIndex > oldIndex ? 1 : -1
+  }, [])
+
   const handlePageChange = useCallback((page: string) => {
-    const oldIndex = TAB_ORDER.indexOf(activePage as typeof TAB_ORDER[number])
-    const newIndex = TAB_ORDER.indexOf(page as typeof TAB_ORDER[number])
-    setDirection(oldIndex === -1 || page === activePage ? 0 : newIndex > oldIndex ? 1 : -1)
-    setActivePage(page)
-    // 懒创建：首次访问新页面时加入存活集合
     setVisitedPages((prev) => (prev.includes(page) ? prev : [...prev, page]))
-  }, [activePage])
+    setTabTransition((prev) => {
+      if (page === prev.targetPage) return prev
+      if (reduceMotion) {
+        return {
+          targetPage: page,
+          visiblePage: page,
+          phase: 'idle',
+          direction: 0,
+          transitionId: prev.transitionId + 1,
+        }
+      }
+      if (prev.phase !== 'idle') {
+        // 当前半阶段继续完成，只替换最新目标；完成回调会跳过过时的中间页面。
+        return { ...prev, targetPage: page }
+      }
+      return {
+        targetPage: page,
+        visiblePage: prev.visiblePage,
+        phase: 'exiting',
+        direction: getPageDirection(prev.visiblePage, page),
+        transitionId: prev.transitionId + 1,
+      }
+    })
+  }, [getPageDirection, reduceMotion])
+
+  const handleTabPhaseComplete = useCallback((
+    page: string,
+    completedPhase: 'exiting' | 'entering',
+    transitionId: number,
+  ) => {
+    setTabTransition((prev) => {
+      if (
+        prev.transitionId !== transitionId
+        || prev.phase !== completedPhase
+        || prev.visiblePage !== page
+      ) return prev
+
+      if (completedPhase === 'exiting') {
+        const targetPage = prev.targetPage
+        return {
+          ...prev,
+          visiblePage: targetPage,
+          phase: 'entering',
+          direction: getPageDirection(page, targetPage),
+        }
+      }
+
+      if (prev.targetPage !== page) {
+        return {
+          ...prev,
+          phase: 'exiting',
+          direction: getPageDirection(page, prev.targetPage),
+          transitionId: prev.transitionId + 1,
+        }
+      }
+      return { ...prev, phase: 'idle', direction: 0 }
+    })
+  }, [getPageDirection])
+
+  // 用户在动画中途启用 reduced-motion 时，立即收敛到最新目标。
+  useEffect(() => {
+    if (!reduceMotion) return
+    // preference 可能在过渡中由系统设置实时切换，需要把动画状态立即归一到最新目标。
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTabTransition((prev) => prev.phase === 'idle' && prev.visiblePage === prev.targetPage
+      ? prev
+      : {
+          ...prev,
+          visiblePage: prev.targetPage,
+          phase: 'idle',
+          direction: 0,
+          transitionId: prev.transitionId + 1,
+        })
+  }, [reduceMotion])
 
   useEffect(() => {
     if (pendingSearch && activePage !== 'search') {
@@ -140,7 +233,7 @@ function App() {
       case 'search':
         return <SearchPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} />
       case 'downloads':
-        return <Suspense fallback={<PageSkeleton />}><DownloadPage isActive={activePage === 'downloads'} /></Suspense>
+        return <Suspense fallback={<PageSkeleton />}><DownloadPage isActive={tabTransition.visiblePage === 'downloads' && tabTransition.phase !== 'exiting'} /></Suspense>
       case 'favourites':
         return <Suspense fallback={<PageSkeleton />}><FavouritesPage onNavigateToSettings={() => { handlePageChange('settings'); setScrollTarget('login') }} /></Suspense>
       case 'history':
@@ -182,18 +275,26 @@ function App() {
         {/* 致命错误横幅：位于内容区顶部，不阻塞操作 */}
         <FatalBanner />
         <main className="flex-1 relative px-6 py-3">
-          {/* keep-alive 容器：遍历已访问页面，每个页面一个常驻 KeepAlivePage 实例。
-              激活页 display:block 并播放进入动画（slide 8% + fade，方向感知）；
-              非激活页 display:none 不参与渲染（跳过 layout 与 paint）。
-              动画由 KeepAlivePage 内的 useAnimationControls 命令式驱动——
-              切回已访问页面时重播进入动画（修复 keep-alive 下首访后切回无动画的问题）。
-              首次进入直接渲染真实内容——chunk 已由 idle prefetch 预热，
-              数据走 store 缓存快路径，无需骨架兜底（避免骨架闪现）。 */}
-          {visitedPages.map((page) => (
-            <KeepAlivePage key={page} isActive={page === activePage} direction={direction}>
-              {renderPageContent(page)}
-            </KeepAlivePage>
-          ))}
+          {/* keep-alive 页面永不卸载；集中状态机按退出→隐藏→进入顺序驱动，
+              任意时刻只允许一个页面的真实内容可见。 */}
+          {visitedPages.map((page) => {
+            let phase: TabPagePhase = 'hidden'
+            if (page === tabTransition.visiblePage) {
+              phase = tabTransition.phase === 'idle' ? 'visible' : tabTransition.phase
+            }
+            return (
+              <KeepAlivePage
+                key={page}
+                page={page}
+                phase={phase}
+                direction={tabTransition.direction}
+                transitionId={tabTransition.transitionId}
+                onPhaseComplete={handleTabPhaseComplete}
+              >
+                {renderPageContent(page)}
+              </KeepAlivePage>
+            )
+          })}
         </main>
       </div>
       <Suspense fallback={null}><ComicInfoDrawer /></Suspense>

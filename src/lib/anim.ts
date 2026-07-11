@@ -249,19 +249,11 @@ export function getReducedTaskItemVariants(): Variants {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tab 页面切换动画（fix-tab-switch-animation 重构）
+// Tab 页面切换动画（fix-tab-content-overlap 重构）
 //
-// 设计要点：方向感知的 slide + fade，位移幅度 8%（克制，非全页翻转），
-// 使用 smooth 曲线（cubic-bezier(0.4,0,0.2,1)），时长 300ms（DURATION.slow）。
-//
-// 驱动机制：keep-alive 下页面永不卸载（见 page-keep-alive 规范），AnimatePresence
-// 的 exit/mount 自动过渡不适用。改用 useAnimationControls 命令式驱动——
-// activePage 变化时对成为激活的页面 start(enter)、对失去激活的页面 start(exit)，
-// 两者同时播放，等效 AnimatePresence mode="sync" 的连续推送效果。
-//
-// - initial variant：仅用于首次 mount（懒创建触发），纯 opacity 淡入（无位移）
-// - getTabPageEnterTarget / getTabPageExitTarget：供 controls.start() 消费的目标对象，
-//   方向参数 dir 由 TAB_ORDER 索引差决定（+1 向右导航 / -1 向左 / 0 同页）
+// 方向感知的顺序式 fade-through：旧页先用 150ms 退出并隐藏，新页再用
+// 150ms 从对应方向进入，总时长仍为 300ms。两个页面禁止同时可见。
+// keep-alive 页面仍各自持有 AnimationControls，但阶段顺序由 App 集中协调。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** TAB_ORDER 常量：与 Sidebar 菜单顺序一致，作为方向计算的单一来源。 */
@@ -276,91 +268,37 @@ export const TAB_ORDER = [
   'about',
 ] as const
 
-/**
- * 方向感知的 tab 页面 variants（仅 initial 分支）。
- *
- * initial 用于首次 mount（懒创建触发）。注意：initial 不设 opacity:0 ——历史上
- * initial opacity:0 + animate={controls} 的组合在首次 mount 存在 controls 绑定
- * 时序竞态，若 controls.start() 未在绑定窗口内生效，元素会卡在 opacity:0 导致白屏。
- * 因此首次 mount 直接以可见态（opacity:1）渲染，不淡入；切换动画由 controls 命令式驱动，
- * 进出场目标由 getTabEnterTarget / getTabExitTarget 提供。
- */
-export function getTabPageVariants(): Variants {
+/** 单个 fade-through 半阶段：150ms；退出 + 进入合计 DURATION.slow（300ms）。 */
+export const tabPhaseTransition: Transition = {
+  type: 'tween',
+  ease: smoothTransition.ease,
+  duration: DURATION.fast,
+}
+
+/** 进入动画起点：向右导航从右侧进入，向左导航从左侧进入。 */
+export function getTabPageEnterStart(dir: number): Variant {
   return {
-    initial: { opacity: 1 },
+    x: dir > 0 ? '8%' : dir < 0 ? '-8%' : 0,
+    opacity: 0,
   }
 }
 
-/** reduced-motion tab 页面 variants（仅 initial 分支）：可见态（不淡入）。 */
-export function getReducedTabPageVariants(): Variants {
-  return {
-    initial: { opacity: 1 },
-  }
-}
-
-/** 进入动画目标对象：滑回原位 + 淡入。供 AnimationControls.start() 消费。 */
-export function getTabPageEnterTarget(_dir: number): Variant {
+/** 进入动画终点：滑回原位并淡入。 */
+export function getTabPageEnterTarget(): Variant {
   return {
     x: 0,
     opacity: 1,
-    transition: smoothTransition,
+    transition: tabPhaseTransition,
   }
 }
 
-/** 退出动画目标对象：向离开方向滑出 + 淡出。
- * dir > 0（向右导航）→ 旧页向左滑出（x: '-8%'）；
- * dir < 0（向左导航）→ 旧页向右滑出（x: '8%'）。
- */
+/** 退出动画目标：向导航反方向移动 8% 并淡出。 */
 export function getTabPageExitTarget(dir: number): Variant {
   return {
     x: dir > 0 ? '-8%' : dir < 0 ? '8%' : 0,
     opacity: 0,
-    transition: smoothTransition,
+    transition: tabPhaseTransition,
   }
-}
-
-/** reduced-motion 进入目标：纯 opacity 淡入（无 x），时长 DURATION.fast。 */
-export function getReducedTabPageEnterTarget(): Variant {
-  return {
-    opacity: 1,
-    transition: { duration: DURATION.fast },
-  }
-}
-
-/** reduced-motion 退出目标：纯 opacity 淡出（无 x），时长 DURATION.fast。 */
-export function getReducedTabPageExitTarget(): Variant {
-  return {
-    opacity: 0,
-    transition: { duration: DURATION.fast },
-  }
-}
-
-/**
- * 统一获取 tab 页面 initial variants：根据 reduced-motion 偏好自动选择。
- * 进出场动画由 KeepAlivePage 内的 useAnimationControls 命令式驱动，
- * 通过 getTabEnterTarget / getTabExitTarget 系列函数获取目标对象。
- */
-export function useTabPageVariants(): Variants {
-  const reduceMotion = useReducedMotionPreference()
-  return reduceMotion ? getReducedTabPageVariants() : getTabPageVariants()
-}
-
-/**
- * 根据方向与 reduced-motion 偏好，获取 tab 进入动画目标对象。
- * KeepAlivePage 在 isActive false→true 时调用此函数并传给 controls.start()。
- * 注意：reduceMotion 参数由组件层（hook）判断后传入，本函数为纯函数。
- */
-export function getTabEnterTarget(dir: number, reduceMotion: boolean): Variant {
-  return reduceMotion ? getReducedTabPageEnterTarget() : getTabPageEnterTarget(dir)
-}
-
-/**
- * 根据方向与 reduced-motion 偏好，获取 tab 退出动画目标对象。
- * KeepAlivePage 在 isActive true→false 时调用此函数并传给 controls.start()。
- * 注意：reduceMotion 参数由组件层（hook）判断后传入，本函数为纯函数。
- */
-export function getTabExitTarget(dir: number, reduceMotion: boolean): Variant {
-  return reduceMotion ? getReducedTabPageExitTarget() : getTabPageExitTarget(dir)
 }
 
 
