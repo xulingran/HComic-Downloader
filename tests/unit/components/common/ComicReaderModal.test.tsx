@@ -4,6 +4,7 @@ import { useComicReader } from '@/hooks/useComicReader'
 import userEvent from '@testing-library/user-event'
 import { ComicReaderModal } from '@/components/ComicReaderModal'
 import type { ComicInfo } from '@shared/types'
+import { useState } from 'react'
 
 // Mock IntersectionObserver for jsdom — triggers isIntersecting immediately
 class MockIntersectionObserver {
@@ -80,6 +81,7 @@ const mockComic: ComicInfo = {
 describe('ComicReaderModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    globalThis.IntersectionObserver = MockIntersectionObserver as unknown as typeof IntersectionObserver
     mockSetPageGap.mockClear()
     mockSetImageWidth.mockClear()
     mockSetDisplayMode.mockClear()
@@ -274,26 +276,45 @@ describe('ComicReaderModal', () => {
       expect(slider).toHaveAttribute('aria-valuenow', '2')
     })
 
-    it('updates displayed page on pointer drag', async () => {
-      const setCurrentPage = vi.fn()
-      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+    it('scrolls the visible content to the stateful target page on pointer drag', async () => {
+      globalThis.IntersectionObserver = class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+        takeRecords() { return [] }
+        root = null
+        rootMargin = ''
+        thresholds = []
+      } as unknown as typeof IntersectionObserver
+      const stableReaderState = createReaderState({
         imageUrls: Array.from({ length: 10 }, (_, i) => `url${i}`),
         totalPages: 10,
-        currentPage: 1,
-        setCurrentPage,
-      }))
-      render(
+      })
+      vi.mocked(useComicReader).mockImplementation(() => {
+        const [currentPage, setCurrentPage] = useState(1)
+        return {
+          ...stableReaderState,
+          currentPage,
+          setCurrentPage,
+        }
+      })
+      const { container } = render(
         <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
       )
 
       const slider = screen.getByRole('slider')
       slider.getBoundingClientRect = vi.fn(() => ({ left: 0, width: 300, right: 300, top: 0, bottom: 0, height: 24, x: 0, y: 0 }) as DOMRect)
       slider.setPointerCapture = vi.fn()
-      Element.prototype.scrollIntoView = vi.fn()
+      const targetPage = container.querySelector<HTMLElement>('[data-reader-page="5"]')
+      expect(targetPage).not.toBeNull()
+      const scrollIntoView = vi.fn()
+      Element.prototype.scrollIntoView = scrollIntoView
 
       // clientX=150 on a 300px-wide track → 50% → page 5
       fireEvent.pointerDown(slider, { clientX: 150, pointerId: 1 })
-      expect(setCurrentPage).toHaveBeenCalledWith(5)
+      expect(slider).toHaveAttribute('aria-valuenow', '5')
+      expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ behavior: 'instant', block: 'start' })
+      expect(scrollIntoView.mock.contexts[0]).toBe(targetPage)
     })
   })
 

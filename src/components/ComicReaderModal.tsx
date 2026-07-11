@@ -5,7 +5,7 @@ import { useReaderSettings, type BlankPosition } from '../hooks/useReaderSetting
 import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { useZoom } from '../hooks/useZoom'
-import { useSliderDrag } from '../hooks/useSliderDrag'
+import { useReaderProgressNavigation } from '../hooks/useReaderProgressNavigation'
 import { useFailedPages } from '../hooks/useFailedPages'
 import { useHistory } from '../hooks/useIpc'
 import { useHistoryStore } from '../stores/useHistoryStore'
@@ -92,16 +92,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     markCached(index, urlHash)
   }, [markCached])
 
-  const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
-  const {
-    isDragging,
-    sliderRef,
-    handleSliderPointerDown,
-    handleSliderPointerMove,
-    handleSliderPointerUp,
-    cancelDrag,
-  } = useSliderDrag(effectiveTotalPages, setCurrentPage, setPreloadTarget)
-
   const { addHistory } = useHistory()
   const historyStore = useHistoryStore()
   const { initialPage, initialChapterId } = useReaderStore()
@@ -155,26 +145,25 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
-  const freezePageTrackingRef = useRef(false)
-  const prevDragPageRef = useRef(currentPage)
-
-  // Shared scroll-to-page helper with two modes:
-  //  - immediate=false (default): rAF-wrapped + auto unfreeze after 50ms (display mode change)
-  //  - immediate=true: synchronous scroll, caller manages freeze/unfreeze (drag scroll)
-  const scrollToPage = useCallback((page: number, immediate = false) => {
-    const el = pageRefs.current[page - 1]
-    if (!el) return
-    const doScroll = () => el.scrollIntoView({ behavior: 'instant', block: 'start' })
-    if (immediate) {
-      doScroll()
-    } else {
-      freezePageTrackingRef.current = true
-      requestAnimationFrame(() => {
-        doScroll()
-        setTimeout(() => { freezePageTrackingRef.current = false }, 50)
-      })
-    }
-  }, [])
+  const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+  const {
+    isDragging,
+    sliderRef,
+    handleSliderPointerDown,
+    handleSliderPointerMove,
+    handleSliderPointerUp,
+    cancelDrag,
+    freezePageTrackingRef,
+    scrollToPage,
+  } = useReaderProgressNavigation({
+    totalPages: effectiveTotalPages,
+    currentPage,
+    setCurrentPage,
+    displayMode,
+    loadingState,
+    pageRefs,
+    onDragEnd: setPreloadTarget,
+  })
 
   usePageTracking(
     pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
@@ -368,27 +357,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayMode])
 
-  // Scroll to page during slider drag in scroll mode
-  useEffect(() => {
-    if (displayMode !== 'scroll' || !isDragging || loadingState !== 'loaded') {
-      prevDragPageRef.current = currentPage
-      return
-    }
-    if (currentPage === prevDragPageRef.current) return
-    prevDragPageRef.current = currentPage
-    freezePageTrackingRef.current = true
-    scrollToPage(currentPage, true)
-  }, [currentPage, isDragging, displayMode, loadingState, scrollToPage])
-
-  // Unfreeze page tracking after drag ends
-  useEffect(() => {
-    if (isDragging) return
-    const timer = setTimeout(() => {
-      freezePageTrackingRef.current = false
-    }, 200)
-    return () => clearTimeout(timer)
-  }, [isDragging])
-
   // 失败页阈值 Toast 逻辑（详见 openspec/changes/preview-retry-toast/design.md 决策 3）：
   // - failedCount > 3：常驻 Toast，文案"N 页加载失败"，带"全部重试"按钮
   // - failedCount 从 >0 变 0 且曾弹过失败 Toast：切 success Toast"已恢复全部页面"，自动消失
@@ -522,6 +490,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                 <div
                   key={idx}
                   ref={(el) => { pageRefs.current[idx] = el }}
+                  data-reader-page={idx + 1}
                   style={{ width: Math.min(imageWidth * zoom, 100) + '%' }}
                 >
                   <ReaderPage

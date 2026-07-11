@@ -3,7 +3,7 @@ import type { LibraryAssetDetail } from '@shared/types'
 import { useLocalLibraryProgress, useLocalLibraryReader } from '../../hooks/useLocalLibraryReader'
 import { useReaderSettings, type BlankPosition } from '../../hooks/useReaderSettings'
 import { usePageTracking } from '../../hooks/usePageTracking'
-import { useSliderDrag } from '../../hooks/useSliderDrag'
+import { useReaderProgressNavigation } from '../../hooks/useReaderProgressNavigation'
 import { useZoom } from '../../hooks/useZoom'
 import { useFailedPages } from '../../hooks/useFailedPages'
 import { ChapterPicker } from '../ChapterPicker'
@@ -120,16 +120,6 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     if (open && loadingState === 'loaded' && displayMode !== 'scroll') preloadAround(currentPage)
   }, [open, loadingState, displayMode, currentPage, preloadAround])
 
-  usePageTracking(
-    pageRefs,
-    scrollContainerRef,
-    false,
-    currentPage,
-    setCurrentPage,
-    loadingState,
-    imageUrls.length,
-  )
-
   const effectiveTotal = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
   const {
     isDragging,
@@ -138,7 +128,27 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     handleSliderPointerMove,
     handleSliderPointerUp,
     cancelDrag,
-  } = useSliderDrag(effectiveTotal, setCurrentPage, preloadAround)
+    freezePageTrackingRef,
+  } = useReaderProgressNavigation({
+    totalPages: effectiveTotal,
+    currentPage,
+    setCurrentPage,
+    displayMode,
+    loadingState,
+    pageRefs,
+    onDragEnd: preloadAround,
+  })
+
+  usePageTracking(
+    pageRefs,
+    scrollContainerRef,
+    isDragging,
+    currentPage,
+    setCurrentPage,
+    loadingState,
+    imageUrls.length,
+    freezePageTrackingRef,
+  )
 
   useEffect(() => {
     if (!open) return

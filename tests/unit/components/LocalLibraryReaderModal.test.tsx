@@ -1,10 +1,14 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LibraryAssetDetail } from '@shared/types'
 
+let latestIntersectionCallback: IntersectionObserverCallback | null = null
+
 class NoopIntersectionObserver {
-  constructor(_callback: IntersectionObserverCallback) {}
+  constructor(callback: IntersectionObserverCallback) {
+    latestIntersectionCallback = callback
+  }
   observe() {}
   disconnect() {}
   unobserve() {}
@@ -54,7 +58,9 @@ vi.mock('@/components/ReaderPage', () => ({
   ),
 }))
 vi.mock('@/components/PageFlipView', () => ({
-  PageFlipView: () => <div data-testid="local-page-flip">page flip</div>,
+  PageFlipView: ({ currentPage }: { currentPage: number }) => (
+    <div data-testid="local-page-flip">page {currentPage}</div>
+  ),
 }))
 
 import { LocalLibraryReaderModal } from '@/components/library/LocalLibraryReaderModal'
@@ -73,6 +79,7 @@ const asset: LibraryAssetDetail = {
 describe('LocalLibraryReaderModal', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    latestIntersectionCallback = null
     localStorage.setItem('hcomic-reader-display-mode', 'scroll')
     libraryApi.detail.mockResolvedValue(asset)
     libraryApi.pageManifest.mockImplementation((_assetId: string, chapterId?: string) => Promise.resolve({
@@ -208,5 +215,70 @@ describe('LocalLibraryReaderModal', () => {
     await userEvent.click(screen.getByLabelText('阅读设置'))
     await userEvent.click(screen.getByLabelText('双页显示'))
     expect(await screen.findByTestId('local-page-flip')).toBeInTheDocument()
+  })
+
+  it('drags the progress bar to the matching scroll page without observer rollback', async () => {
+    const pages = Array.from({ length: 10 }, (_, index) => ({ index, mediaType: 'image/jpeg' }))
+    const singleChapterAsset = {
+      ...asset,
+      chapters: [{ ...asset.chapters[0], pageCount: 10 }],
+      albumTotalChapters: 1,
+      pageCount: 10,
+    }
+    libraryApi.detail.mockResolvedValue(singleChapterAsset)
+    libraryApi.pageManifest.mockResolvedValue({ chapterId: 'ch1', version: 1, pages })
+    render(<LocalLibraryReaderModal asset={singleChapterAsset} open onClose={() => {}} />)
+
+    const slider = await screen.findByRole('slider')
+    slider.getBoundingClientRect = vi.fn(() => ({
+      left: 0, width: 200, right: 200, top: 0, bottom: 24, height: 24, x: 0, y: 0,
+    }) as DOMRect)
+    slider.setPointerCapture = vi.fn()
+    const targetPage = screen.getByTestId('local-reader-page-4').parentElement!
+    targetPage.scrollIntoView = vi.fn()
+
+    fireEvent.pointerDown(slider, { clientX: 100, pointerId: 1 })
+    expect(slider).toHaveAttribute('aria-valuenow', '5')
+    expect(targetPage.scrollIntoView).toHaveBeenCalledExactlyOnceWith({ behavior: 'instant', block: 'start' })
+
+    const oldPage = screen.getByTestId('local-reader-page-0').parentElement!
+    act(() => {
+      latestIntersectionCallback?.(
+        [{ isIntersecting: true, target: oldPage, boundingClientRect: { top: 0 } }] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      )
+    })
+    expect(slider).toHaveAttribute('aria-valuenow', '5')
+  })
+
+  it('jumps directly in single mode and respects the double-page front blank endpoint', async () => {
+    const singleChapterAsset = { ...asset, chapters: [asset.chapters[0]], albumTotalChapters: 1 }
+    libraryApi.detail.mockResolvedValue(singleChapterAsset)
+    render(<LocalLibraryReaderModal asset={singleChapterAsset} open onClose={() => {}} />)
+    await screen.findByTestId('local-reader-page-0')
+
+    await userEvent.click(screen.getByLabelText('阅读设置'))
+    await userEvent.click(screen.getByLabelText('单页显示'))
+    let slider = screen.getByRole('slider', { name: '页面进度' })
+    slider.getBoundingClientRect = vi.fn(() => ({
+      left: 0, width: 200, right: 200, top: 0, bottom: 24, height: 24, x: 0, y: 0,
+    }) as DOMRect)
+    slider.setPointerCapture = vi.fn()
+    fireEvent.pointerDown(slider, { clientX: 200, pointerId: 2 })
+    expect(screen.getByTestId('local-page-flip')).toHaveTextContent('page 2')
+    fireEvent.pointerUp(slider, { pointerId: 2 })
+
+    await userEvent.click(screen.getByLabelText('双页显示'))
+    await userEvent.click(screen.getByLabelText('前补白'))
+    slider = screen.getByRole('slider', { name: '页面进度' })
+    slider.getBoundingClientRect = vi.fn(() => ({
+      left: 0, width: 200, right: 200, top: 0, bottom: 24, height: 24, x: 0, y: 0,
+    }) as DOMRect)
+    slider.setPointerCapture = vi.fn()
+    fireEvent.pointerDown(slider, { clientX: 200, pointerId: 3 })
+
+    expect(slider).toHaveAttribute('aria-valuemax', '3')
+    expect(screen.getByTestId('local-page-flip')).toHaveTextContent('page 3')
+    expect(libraryApi.getPage.mock.calls.every((call) => Number(call[2]) <= 2)).toBe(true)
   })
 })
