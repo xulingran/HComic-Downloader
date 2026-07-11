@@ -167,6 +167,53 @@ class TestCoverExtraction:
         assert result is not None
         assert len(result["cover_key"]) == 64
 
+    def test_extract_cover_from_album_uses_first_indexed_chapter(self, db, download_dir, cache, reader):
+        import hashlib
+
+        indexer = LibraryIndexer(db, download_dir)
+        asset_id = seed_asset(db, indexer, download_dir, "album", make_album_folder)
+        assert asset_id is not None
+
+        result = reader.extract_cover(asset_id)
+
+        expected_key = hashlib.sha256(b"ch0pg0").hexdigest()
+        assert result == {"cover_key": expected_key, "media_type": "image/jpeg"}
+        assert cache.has(expected_key)
+        assert db.get_item(asset_id)["cover_key"] == expected_key
+
+    def test_extract_cover_from_album_skips_missing_first_chapter(self, db, download_dir, cache, reader):
+        import hashlib
+
+        indexer = LibraryIndexer(db, download_dir)
+        asset_id = seed_asset(db, indexer, download_dir, "album", make_album_folder)
+        assert asset_id is not None
+        first_chapter = db.get_chapters(asset_id)[0]
+        first_chapter_dir = os.path.join(download_dir, "album", first_chapter["rel_path"])
+        for image_path in os.listdir(first_chapter_dir):
+            os.remove(os.path.join(first_chapter_dir, image_path))
+
+        result = reader.extract_cover(asset_id)
+
+        expected_key = hashlib.sha256(b"ch1pg0").hexdigest()
+        assert result == {"cover_key": expected_key, "media_type": "image/jpeg"}
+        assert db.get_item(asset_id)["cover_key"] == expected_key
+
+    def test_extract_cover_from_album_without_readable_chapters_keeps_cover_empty(
+        self, db, download_dir, cache, reader
+    ):
+        indexer = LibraryIndexer(db, download_dir)
+        asset_id = seed_asset(db, indexer, download_dir, "album", make_album_folder)
+        assert asset_id is not None
+        for chapter in db.get_chapters(asset_id):
+            chapter_dir = os.path.join(download_dir, "album", chapter["rel_path"])
+            for image_path in os.listdir(chapter_dir):
+                os.remove(os.path.join(chapter_dir, image_path))
+
+        result = reader.extract_cover(asset_id)
+
+        assert result is None
+        assert db.get_item(asset_id)["cover_key"] is None
+
     def test_extract_cover_unknown_asset(self, reader):
         result = reader.extract_cover("nonexistent-asset")
         assert result is None

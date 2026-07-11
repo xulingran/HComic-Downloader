@@ -232,7 +232,10 @@ class LibraryPageReader:
         abs_path, item = resolved
 
         try:
-            data, media_type = self._read_first_image(abs_path, item["format"])
+            if item["format"] == "folder" and item["is_album"]:
+                data, media_type = self._read_album_cover(abs_path, item)
+            else:
+                data, media_type = self._read_first_image(abs_path, item["format"])
         except Exception as e:
             logger.warning("Failed to extract cover for %s: %s", asset_id, e)
             return None
@@ -337,6 +340,23 @@ class LibraryPageReader:
         }
 
     # ── 图片读取 ───────────────────────────────────────────────────
+
+    def _read_album_cover(self, abs_path: str, item: dict) -> tuple[bytes, str]:
+        """按索引章节顺序读取合集封面，跳过无法提供图片的章节。"""
+        for chapter in self._db.get_chapters(item["asset_id"]):
+            try:
+                data, media_type = self._read_chapter_page(abs_path, item, chapter["chapter_id"], 1)
+            except Exception as e:
+                logger.debug(
+                    "Skipping album cover candidate %s/%s: %s",
+                    item["asset_id"],
+                    chapter["chapter_id"],
+                    e,
+                )
+                continue
+            if data:
+                return data, media_type
+        return b"", ""
 
     def _read_first_image(self, abs_path: str, fmt: str) -> tuple[bytes, str]:
         """从资产读取第一张有效图片。"""
