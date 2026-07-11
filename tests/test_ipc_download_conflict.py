@@ -18,7 +18,15 @@ from python.ipc_server import IPCServer
 
 @pytest.fixture
 def ipc_server(tmp_path):
-    with patch("python.ipc_server._get_config_path", return_value=str(tmp_path / "config.json")):
+    from config import Config
+
+    download_dir = str(tmp_path / "downloads")
+    os.makedirs(download_dir, exist_ok=True)
+    with (
+        patch("python.ipc_server._get_config_path", return_value=str(tmp_path / "config.json")),
+        patch("config.Config.load", return_value=Config(download_dir=download_dir)),
+        patch("ipc.library_mixin.get_default_library_db_path", return_value=str(tmp_path / "library.db")),
+    ):
         server = IPCServer()
     yield server
     server._download_manager.stop()

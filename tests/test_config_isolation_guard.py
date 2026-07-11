@@ -1,11 +1,8 @@
-"""Guard: _get_config_path() must never resolve to the real HOME dir during tests.
+"""Guard: application data paths must never resolve to real HOME during tests.
 
 Protects against regression of the autouse `_isolate_config_dir` fixture in
-conftest.py (and the HCOMIC_CONFIG_DIR override in ipc/types.py). If that
-fixture is removed/broken, _get_config_path() would resolve to the real
-~/.hcomic_downloader/config.json and tests would clobber the user's config —
-silently wiping all source_auth cookies and credentials, exactly the bug
-this guard exists to prevent.
+conftest.py and the HCOMIC_CONFIG_DIR overrides. If that fixture is
+removed/broken, tests could clobber the user's config.json or library.db.
 
 The guard works because it depends on the autouse fixture being active: with
 it, HCOMIC_CONFIG_DIR redirects every binding to tmp_path; without it, the
@@ -22,6 +19,7 @@ sys.path.insert(
 )
 
 import python.ipc_server  # noqa: E402,F401  # ensure the re-exported binding exists
+from library_db import get_default_library_db_path  # noqa: E402
 from python.ipc import auth_mixin, config_mixin, migration_mixin, types  # noqa: E402
 
 # Modules that bind _get_config_path via `from .types import _get_config_path`
@@ -49,20 +47,24 @@ def test_config_path_bindings_redirect_away_from_real_home():
         )
 
 
-def test_env_var_override_takes_effect():
-    """HCOMIC_CONFIG_DIR must redirect _get_config_path() when set.
+def test_library_db_path_redirects_away_from_real_home(tmp_path):
+    """The autouse fixture must protect future unpatched IPCServer helpers."""
+    real_path = os.path.normpath(os.path.join(os.path.expanduser("~"), ".hcomic_downloader", "library.db"))
+    resolved = os.path.normpath(get_default_library_db_path())
+
+    assert resolved != real_path
+    assert resolved == os.path.normpath(str(tmp_path / ".hcomic_downloader" / "library.db"))
+
+
+def test_env_var_override_takes_effect(monkeypatch, tmp_path):
+    """HCOMIC_CONFIG_DIR must redirect config.json and library.db together.
 
     Independent of the autouse fixture (which may set it): directly setting
     the var must win over the HOME fallback. Guards the production code path
     in ipc/types.py against being reverted to the hardcoded HOME.
     """
-    saved = os.environ.get("HCOMIC_CONFIG_DIR")
-    try:
-        os.environ["HCOMIC_CONFIG_DIR"] = os.path.join(os.sep, "tmp", "hcomic_guard_probe")
-        expected = os.path.normpath(os.path.join(os.environ["HCOMIC_CONFIG_DIR"], "config.json"))
-        assert os.path.normpath(types._get_config_path()) == expected
-    finally:
-        if saved is None:
-            os.environ.pop("HCOMIC_CONFIG_DIR", None)
-        else:
-            os.environ["HCOMIC_CONFIG_DIR"] = saved
+    probe_dir = tmp_path / "hcomic_guard_probe"
+    monkeypatch.setenv("HCOMIC_CONFIG_DIR", str(probe_dir))
+
+    assert os.path.normpath(types._get_config_path()) == os.path.normpath(str(probe_dir / "config.json"))
+    assert os.path.normpath(get_default_library_db_path()) == os.path.normpath(str(probe_dir / "library.db"))

@@ -5,7 +5,8 @@
 数据库损坏时通过隔离旧文件并完整重建恢复，绝不修改漫画文件本身。
 
 设计约束（见 openspec/changes/local-comic-library/design.md §2）：
-- ``library.db`` 位于应用数据目录 ``~/.hcomic_downloader/``。
+- ``library.db`` 默认位于应用数据目录 ``~/.hcomic_downloader/``，并与
+  ``config.json`` 一样支持 ``HCOMIC_CONFIG_DIR`` 覆盖。
 - 资产 ID 使用持久化随机 UUID，路径未变化时复用 ID。
 - 页面 manifest 只在首次阅读或资产版本变化时生成。
 - 真实路径和压缩包条目名只在后端使用，不通过列表 IPC 暴露。
@@ -918,6 +919,6 @@ class LibraryDB:
 
 
 def get_default_library_db_path() -> str:
-    """获取默认漫画库索引数据库路径。"""
-    data_dir = Path.home() / ".hcomic_downloader"
+    """获取漫画库索引数据库路径，支持统一应用数据目录覆盖。"""
+    data_dir = Path(os.environ.get("HCOMIC_CONFIG_DIR") or Path.home() / ".hcomic_downloader")
     return str(data_dir / "library.db")

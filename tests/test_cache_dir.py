@@ -56,7 +56,7 @@ def test_cover_cache_db_dir_default_ends_with_app_dir():
         cache.close()
 
 
-def _create_test_server() -> IPCServer:
+def _create_test_server(tmp_path) -> IPCServer:
     """实例化 IPCServer，patch 掉重网络/重 IO 依赖，仅保留缓存逻辑。
 
     注意：故意**不** patch CoverCacheDB，以便 handle_get_cache_dir 取到真实实例，
@@ -73,13 +73,14 @@ def _create_test_server() -> IPCServer:
         patch("download_history.DownloadHistoryDB", return_value=MagicMock()),
         patch("concurrent.futures.ThreadPoolExecutor", MagicMock()),
         patch("album_coordinator.AlbumStagingCoordinator", return_value=MagicMock()),
+        patch("ipc.library_mixin.get_default_library_db_path", return_value=str(tmp_path / "library.db")),
     ):
         return IPCServer()
 
 
-def test_handle_get_cache_dir_returns_abs_path_from_cover_instance():
+def test_handle_get_cache_dir_returns_abs_path_from_cover_instance(tmp_path):
     """handle_get_cache_dir 必须返回 {dir: <abs path>}，且路径来自真实 cover 缓存实例。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     result = server.handle_get_cache_dir()
     assert isinstance(result, dict)
     assert set(result.keys()) == {"dir"}
@@ -91,9 +92,9 @@ def test_handle_get_cache_dir_returns_abs_path_from_cover_instance():
     server._preview_cache.close()
 
 
-def test_handle_get_cache_dir_default_dir_ends_with_app_dir():
+def test_handle_get_cache_dir_default_dir_ends_with_app_dir(tmp_path):
     """默认部署下，返回的缓存目录必须以 .hcomic_downloader 结尾。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     result = server.handle_get_cache_dir()
     assert result["dir"].endswith(os.path.join(os.path.expanduser("~"), ".hcomic_downloader"))
     server._cover_cache.close()

@@ -18,7 +18,7 @@ from models import ComicInfo
 from python.ipc_server import IPCServer
 
 
-def _create_test_server():
+def _create_test_server(tmp_path):
     """Create an IPCServer instance with all constructor dependencies mocked.
 
     Uses unittest.mock.patch to avoid side effects (file I/O, network,
@@ -33,12 +33,13 @@ def _create_test_server():
         patch("download_history.DownloadHistoryDB", return_value=MagicMock()),
         patch("concurrent.futures.ThreadPoolExecutor", MagicMock()),
         patch("python.ipc_server.CoverCacheDB", return_value=MagicMock()),
+        patch("ipc.library_mixin.get_default_library_db_path", return_value=str(tmp_path / "library.db")),
     ):
         return IPCServer()
 
 
-def test_fetch_preview_image_returns_url_hash(monkeypatch):
-    server = _create_test_server()
+def test_fetch_preview_image_returns_url_hash(monkeypatch, tmp_path):
+    server = _create_test_server(tmp_path)
     monkeypatch.setattr(
         server,
         "_do_fetch_preview_image",
@@ -58,15 +59,15 @@ def test_fetch_preview_image_returns_url_hash(monkeypatch):
         "",
     ],
 )
-def test_fetch_preview_image_rejects_invalid_urls(url):
-    server = _create_test_server()
+def test_fetch_preview_image_rejects_invalid_urls(url, tmp_path):
+    server = _create_test_server(tmp_path)
 
     with pytest.raises(ValueError):
         server.handle_fetch_preview_image(url)
 
 
-def test_get_preview_urls_uses_download_metadata_preparation():
-    server = _create_test_server()
+def test_get_preview_urls_uses_download_metadata_preparation(tmp_path):
+    server = _create_test_server(tmp_path)
     prepared = ComicInfo(
         id="123",
         title="Prepared",
@@ -97,8 +98,8 @@ def test_get_preview_urls_uses_download_metadata_preparation():
     }
 
 
-def test_fetch_preview_image_uses_downloader_auth_and_referer():
-    server = _create_test_server()
+def test_fetch_preview_image_uses_downloader_auth_and_referer(tmp_path):
+    server = _create_test_server(tmp_path)
     captured = {}
     png_bytes = b"\x89PNG\r\n\x1a\n" + b"\x00" * 16
 
@@ -173,11 +174,11 @@ def test_resolve_eps_id_falls_back_to_comic_id():
     assert _resolve_eps_id("https://cdn.test.one/cover.jpg", comic_id="") == 0
 
 
-def test_get_preview_urls_returns_chapters(monkeypatch):
+def test_get_preview_urls_returns_chapters(monkeypatch, tmp_path):
     """多章节专辑：不预取图片，返回章节列表。"""
     from models import ChapterInfo
 
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     comic = ComicInfo(
         id="999001",
         title="多章",
@@ -200,9 +201,9 @@ def test_get_preview_urls_returns_chapters(monkeypatch):
     assert result["albumTotalChapters"] == 2
 
 
-def test_get_chapter_preview_urls(monkeypatch):
+def test_get_chapter_preview_urls(monkeypatch, tmp_path):
     """get_chapter_preview_urls 取单章图片与 scramble_id。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     fake_jm = SimpleNamespace(
         get_chapter_images=lambda cid: (
             ["https://cdn/media/photos/999002/00001.webp"],
@@ -231,9 +232,9 @@ def _stub_fetch_image_bytes(server, monkeypatch):
     monkeypatch.setattr(server, "_fetch_image_bytes", lambda url, max_size, image_quality="": _PNG_BYTES)
 
 
-def test_do_fetch_preview_image_raises_when_write_cache_returns_none(monkeypatch):
+def test_do_fetch_preview_image_raises_when_write_cache_returns_none(monkeypatch, tmp_path):
     """写盘失败（_write_preview_cache 返回 None）必须抛 RuntimeError，禁止返回 hash。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _stub_fetch_image_bytes(server, monkeypatch)
     monkeypatch.setattr(server, "_write_preview_cache", lambda url, raw: None)
 
@@ -241,9 +242,9 @@ def test_do_fetch_preview_image_raises_when_write_cache_returns_none(monkeypatch
         server._do_fetch_preview_image(_PREVIEW_URL)
 
 
-def test_do_fetch_preview_image_raises_when_no_preview_cache_attribute(monkeypatch):
+def test_do_fetch_preview_image_raises_when_no_preview_cache_attribute(monkeypatch, tmp_path):
     """运行时缺少 _preview_cache 属性（_write_preview_cache 直接返回 None）也必须抛错。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _stub_fetch_image_bytes(server, monkeypatch)
     # _write_preview_cache 在无 _preview_cache 属性时返回 None
     if hasattr(server, "_preview_cache"):
@@ -253,9 +254,9 @@ def test_do_fetch_preview_image_raises_when_no_preview_cache_attribute(monkeypat
         server._do_fetch_preview_image(_PREVIEW_URL)
 
 
-def test_do_fetch_preview_image_returns_cached_hash(monkeypatch):
+def test_do_fetch_preview_image_returns_cached_hash(monkeypatch, tmp_path):
     """缓存命中路径仍返回 hash（写盘不触发）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     expected_hash = "a1b2c3d4" * 8
     write_called = False
 
@@ -272,9 +273,9 @@ def test_do_fetch_preview_image_returns_cached_hash(monkeypatch):
     assert write_called is False
 
 
-def test_do_fetch_preview_image_returns_hash_on_write_success(monkeypatch):
+def test_do_fetch_preview_image_returns_hash_on_write_success(monkeypatch, tmp_path):
     """写盘成功路径仍返回 hash（来自 _write_preview_cache）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _stub_fetch_image_bytes(server, monkeypatch)
     expected_hash = "b2c3d4e5" * 8
     monkeypatch.setattr(server, "_read_preview_cache", lambda url: None)
@@ -284,9 +285,9 @@ def test_do_fetch_preview_image_returns_hash_on_write_success(monkeypatch):
     assert result == expected_hash
 
 
-def test_async_fetch_preview_image_reports_error_on_write_failure(monkeypatch):
+def test_async_fetch_preview_image_reports_error_on_write_failure(monkeypatch, tmp_path):
     """写盘失败经 _async_fetch_preview_image 的 except 分支转为 JSON-RPC error 下发。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _stub_fetch_image_bytes(server, monkeypatch)
     monkeypatch.setattr(server, "_write_preview_cache", lambda url, raw: None)
 

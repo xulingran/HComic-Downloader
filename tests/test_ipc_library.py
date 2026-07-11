@@ -36,7 +36,7 @@ def _create_test_server(tmp_path) -> IPCServer:
         patch("python.ipc_server.CoverCacheDB", return_value=MagicMock()),
         patch("album_coordinator.AlbumStagingCoordinator", return_value=MagicMock()),
         patch(
-            "python.ipc.library_mixin.get_default_library_db_path",
+            "ipc.library_mixin.get_default_library_db_path",
             return_value=str(tmp_path / "library.db"),
         ),
     ):

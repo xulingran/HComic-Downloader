@@ -25,7 +25,7 @@ from config import AuthSourceData, Config
 from python.ipc_server import IPCServer
 
 
-def _create_test_server():
+def _create_test_server(tmp_path):
     """Create an IPCServer instance with all constructor dependencies mocked."""
     with (
         patch("config.Config.load", return_value=Config()),
@@ -36,6 +36,7 @@ def _create_test_server():
         patch("download_history.DownloadHistoryDB", return_value=MagicMock()),
         patch("concurrent.futures.ThreadPoolExecutor", MagicMock()),
         patch("python.ipc_server.CoverCacheDB", return_value=MagicMock()),
+        patch("ipc.library_mixin.get_default_library_db_path", return_value=str(tmp_path / "library.db")),
     ):
         return IPCServer()
 
@@ -70,8 +71,8 @@ def _wrap_save_with_lock_check(server):
 # ---------------------------------------------------------------------------
 
 
-def test_apply_auth_saves_under_config_write_lock():
-    server = _create_test_server()
+def test_apply_auth_saves_under_config_write_lock(tmp_path):
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     server.handle_apply_auth(
@@ -83,9 +84,9 @@ def test_apply_auth_saves_under_config_write_lock():
     assert save_calls[0] is True, "config.save 必须在 _config_write_lock 持有期间调用"
 
 
-def test_apply_auth_persists_source_auth():
+def test_apply_auth_persists_source_auth(tmp_path):
     """apply_auth 落库后 config.source_auth 应包含提取的 cookie/ua。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
 
     server.handle_apply_auth(
         "curl 'https://h-comic.link/' -H 'Cookie: sid=abc' -H 'User-Agent: UA'",
@@ -97,9 +98,9 @@ def test_apply_auth_persists_source_auth():
     assert hcomic_auth["user_agent"] == "UA"
 
 
-def test_apply_auth_preserves_existing_credentials():
+def test_apply_auth_preserves_existing_credentials(tmp_path):
     """curl 登录不得覆盖既有 username/password（credential-persistence spec 场景5）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     # 预设已有账号密码（模拟先前账号密码登录成功）
     server.config.set_source_auth(
         "hcomic",
@@ -119,10 +120,10 @@ def test_apply_auth_preserves_existing_credentials():
     assert hcomic_auth["password"] == "secret"
 
 
-def test_apply_auth_jm_source_does_not_persist_session_credentials():
+def test_apply_auth_jm_source_does_not_persist_session_credentials(tmp_path):
     """jm 会话凭据不落盘（jm-session-cookie spec / credential-persistence 修改后场景）：
     apply_auth 对 jm 禁止 config.set_source_auth + save，但必须 parser.configure_auth 注入内存。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     server.handle_apply_auth(
@@ -145,10 +146,10 @@ def test_apply_auth_jm_source_does_not_persist_session_credentials():
     assert call_kwargs.get("source") == "jm"
 
 
-def test_apply_auth_hcomic_still_persists_session_credentials():
+def test_apply_auth_hcomic_still_persists_session_credentials(tmp_path):
     """回归保护：非 JM 来源（hcomic）apply_auth 仍走 set_source_auth + save 落盘
     （jm-session-cookie spec 不得影响其他来源）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     server.handle_apply_auth(
@@ -168,9 +169,9 @@ def test_apply_auth_hcomic_still_persists_session_credentials():
     assert call_kwargs.get("source") == "hcomic"
 
 
-def test_apply_auth_nh_is_rejected():
+def test_apply_auth_nh_is_rejected(tmp_path):
     """NH 必须走专用 API Key handler，禁止通过通用 curl apply_auth 写入（remove-nh-password-login spec）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
 
     with pytest.raises(ValueError, match="API Key"):
         server.handle_apply_auth(
@@ -189,8 +190,8 @@ def test_apply_auth_nh_is_rejected():
 # ---------------------------------------------------------------------------
 
 
-def test_moeimg_login_saves_under_config_write_lock():
-    server = _create_test_server()
+def test_moeimg_login_saves_under_config_write_lock(tmp_path):
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     moeimg_parser = MagicMock()
@@ -207,8 +208,8 @@ def test_moeimg_login_saves_under_config_write_lock():
     assert server.config.get_source_auth("moeimg")["cookie"] == "moeimg-cookie"
 
 
-def test_bika_login_saves_under_config_write_lock():
-    server = _create_test_server()
+def test_bika_login_saves_under_config_write_lock(tmp_path):
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     bika_parser = MagicMock()
@@ -223,8 +224,8 @@ def test_bika_login_saves_under_config_write_lock():
     assert server.config.get_source_auth("bika")["bearer_token"] == "bika-token"
 
 
-def test_hcomic_login_saves_under_config_write_lock():
-    server = _create_test_server()
+def test_hcomic_login_saves_under_config_write_lock(tmp_path):
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     hcomic_parser = MagicMock()
@@ -244,8 +245,8 @@ def test_hcomic_login_saves_under_config_write_lock():
 # ---------------------------------------------------------------------------
 
 
-def test_nh_apply_api_key_saves_under_config_write_lock_and_persists_pure_key():
-    server = _create_test_server()
+def test_nh_apply_api_key_saves_under_config_write_lock_and_persists_pure_key(tmp_path):
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     result = server.handle_nh_apply_api_key("  Key nh-api-key-xxx  ")
@@ -264,8 +265,8 @@ def test_nh_apply_api_key_saves_under_config_write_lock_and_persists_pure_key():
     server.parser.configure_auth.assert_called_with(bearer_token="nh-api-key-xxx", source="nh")
 
 
-def test_nh_apply_api_key_rejects_user_token_prefix():
-    server = _create_test_server()
+def test_nh_apply_api_key_rejects_user_token_prefix(tmp_path):
+    server = _create_test_server(tmp_path)
     with pytest.raises(ValueError, match="User/Token/Bearer"):
         server.handle_nh_apply_api_key("User legacy-token")
     # 校验失败时禁止写盘、禁止注入 parser
@@ -273,16 +274,16 @@ def test_nh_apply_api_key_rejects_user_token_prefix():
     assert nh_auth["bearer_token"] == ""
 
 
-def test_nh_apply_api_key_rejects_empty_and_control_chars():
-    server = _create_test_server()
+def test_nh_apply_api_key_rejects_empty_and_control_chars(tmp_path):
+    server = _create_test_server(tmp_path)
     with pytest.raises(ValueError, match="请输入 NH API Key"):
         server.handle_nh_apply_api_key("   ")
     with pytest.raises(ValueError, match="控制字符"):
         server.handle_nh_apply_api_key("bad\nkey")
 
 
-def test_nh_apply_api_key_rejects_bearer_prefix():
-    server = _create_test_server()
+def test_nh_apply_api_key_rejects_bearer_prefix(tmp_path):
+    server = _create_test_server(tmp_path)
     with pytest.raises(ValueError, match="User/Token/Bearer"):
         server.handle_nh_apply_api_key("Bearer legacy")
 
@@ -292,8 +293,8 @@ def test_nh_apply_api_key_rejects_bearer_prefix():
 # ---------------------------------------------------------------------------
 
 
-def test_moeimg_login_success_persists_credentials_and_cookie():
-    server = _create_test_server()
+def test_moeimg_login_success_persists_credentials_and_cookie(tmp_path):
+    server = _create_test_server(tmp_path)
     moeimg_parser = MagicMock()
     moeimg_parser.login.return_value = "moeimg-cookie"
     server.parser.parsers = {"moeimg": moeimg_parser}
@@ -307,8 +308,8 @@ def test_moeimg_login_success_persists_credentials_and_cookie():
     moeimg_parser.set_stored_credentials.assert_called_once_with("u", "p")
 
 
-def test_bika_login_success_persists_credentials_and_token():
-    server = _create_test_server()
+def test_bika_login_success_persists_credentials_and_token(tmp_path):
+    server = _create_test_server(tmp_path)
     bika_parser = MagicMock()
     bika_parser.login.return_value = "bika-token"
     server.parser.parsers = {"bika": bika_parser}
@@ -322,8 +323,8 @@ def test_bika_login_success_persists_credentials_and_token():
     bika_parser.set_stored_credentials.assert_called_once_with("u", "p")
 
 
-def test_hcomic_login_success_persists_credentials_and_token():
-    server = _create_test_server()
+def test_hcomic_login_success_persists_credentials_and_token(tmp_path):
+    server = _create_test_server(tmp_path)
     hcomic_parser = MagicMock()
     hcomic_parser.login.return_value = "hcomic-token"
     server.parser.parsers = {"hcomic": hcomic_parser}
@@ -343,9 +344,9 @@ def test_hcomic_login_success_persists_credentials_and_token():
 # ---------------------------------------------------------------------------
 
 
-def test_moeimg_login_network_failure_persists_credentials():
+def test_moeimg_login_network_failure_persists_credentials(tmp_path):
     """网络异常导致登录失败时，凭据仍必须落盘且注入懒登录（spec 场景1/4）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     moeimg_parser = MagicMock()
@@ -365,11 +366,11 @@ def test_moeimg_login_network_failure_persists_credentials():
     moeimg_parser.set_stored_credentials.assert_called_once_with("u", "p")
 
 
-def test_bika_login_failure_persists_credentials():
+def test_bika_login_failure_persists_credentials(tmp_path):
     """bika 登录失败（ParserResponseError）时凭据仍落盘且注入懒登录（spec 场景2/4）。"""
     from sources.base import ParserResponseError
 
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     bika_parser = MagicMock()
@@ -387,9 +388,9 @@ def test_bika_login_failure_persists_credentials():
     bika_parser.set_stored_credentials.assert_called_once_with("u", "p")
 
 
-def test_hcomic_login_failure_persists_credentials():
+def test_hcomic_login_failure_persists_credentials(tmp_path):
     """hcomic 登录失败时凭据仍落盘且注入懒登录（spec 场景4）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     save_calls = _wrap_save_with_lock_check(server)
 
     hcomic_parser = MagicMock()
@@ -407,9 +408,9 @@ def test_hcomic_login_failure_persists_credentials():
     hcomic_parser.set_stored_credentials.assert_called_once_with("u", "p")
 
 
-def test_failed_login_then_successful_relogin_updates_token():
+def test_failed_login_then_successful_relogin_updates_token(tmp_path):
     """登录失败保留旧 token，再次成功登录后写入新 token（边界回归）。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     hcomic_parser = MagicMock()
     hcomic_parser.login.side_effect = [RuntimeError("network"), "new-token"]
     server.parser.parsers = {"hcomic": hcomic_parser}
@@ -434,9 +435,9 @@ def test_failed_login_then_successful_relogin_updates_token():
 # ---------------------------------------------------------------------------
 
 
-def test_concurrent_logins_do_not_corrupt_source_auth():
+def test_concurrent_logins_do_not_corrupt_source_auth(tmp_path):
     """moeimg 与 bika 登录并发执行，最终两个来源的 source_auth 都应正确落库。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     moeimg_parser = MagicMock()
     moeimg_parser.login.return_value = "moeimg-cookie"
     bika_parser = MagicMock()
@@ -478,8 +479,8 @@ def test_concurrent_logins_do_not_corrupt_source_auth():
 # ---------------------------------------------------------------------------
 
 
-def test_clear_source_auth_clears_credentials_and_parser_state():
-    server = _create_test_server()
+def test_clear_source_auth_clears_credentials_and_parser_state(tmp_path):
+    server = _create_test_server(tmp_path)
     # NH 收敛为仅 API Key（remove-nh-password-login spec）：仅 bearer_token 被持久化。
     server.config.set_source_auth(
         "nh",
@@ -501,7 +502,7 @@ def test_clear_source_auth_clears_credentials_and_parser_state():
     server.parser.configure_auth.assert_called_once_with(cookie="", user_agent="", bearer_token="", source="nh")
 
 
-def test_clear_source_auth_rejects_invalid_source():
-    server = _create_test_server()
+def test_clear_source_auth_rejects_invalid_source(tmp_path):
+    server = _create_test_server(tmp_path)
     with pytest.raises(ValueError, match="无效的来源"):
         server.handle_clear_source_auth("evil")

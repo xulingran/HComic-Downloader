@@ -9,6 +9,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from pathlib import Path
 
 import pytest
 
@@ -559,3 +560,9 @@ class TestDefaultPath:
         path = get_default_library_db_path()
         assert path.endswith("library.db")
         assert ".hcomic_downloader" in path
+
+    def test_default_path_falls_back_to_home(self, monkeypatch, tmp_path):
+        monkeypatch.delenv("HCOMIC_CONFIG_DIR", raising=False)
+        monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
+
+        assert get_default_library_db_path() == str(tmp_path / ".hcomic_downloader" / "library.db")

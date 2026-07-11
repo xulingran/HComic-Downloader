@@ -23,7 +23,7 @@ from python.ipc_server import IPCServer
 from sources.base import AntiBotChallengeError
 
 
-def _create_test_server():
+def _create_test_server(tmp_path):
     """IPCServer with all heavy constructor deps mocked.
 
     Mirrors the helper in tests/test_ipc_preview.py.
@@ -36,6 +36,7 @@ def _create_test_server():
         patch("download_manager.ComicDownloadManager", return_value=MagicMock()),
         patch("download_history.DownloadHistoryDB", return_value=MagicMock()),
         patch("python.ipc_server.CoverCacheDB", return_value=MagicMock()),
+        patch("ipc.library_mixin.get_default_library_db_path", return_value=str(tmp_path / "library.db")),
     ):
         # NOTE: do NOT mock ThreadPoolExecutor here — these tests want a real
         # _request_executor so we can observe concurrent dispatch.
@@ -68,10 +69,10 @@ def _capture_stdout(server):
     server._write_response = _write
 
 
-def test_dispatch_request_runs_sync_handler_in_request_executor():
+def test_dispatch_request_runs_sync_handler_in_request_executor(tmp_path):
     """A registered sync handler is dispatched to _request_executor and its
     result is written as a JSON-RPC response."""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
 
     captured_thread = {}
@@ -95,13 +96,13 @@ def test_dispatch_request_runs_sync_handler_in_request_executor():
     )
 
 
-def test_dispatch_request_handles_concurrent_handlers():
+def test_dispatch_request_handles_concurrent_handlers(tmp_path):
     """N concurrently-dispatched sync handlers must be able to overlap in time.
 
     Uses a Barrier: every handler blocks until all N participants arrive.
     If dispatch were serialized, the Barrier would dead-lock and time out.
     """
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
 
     n = 4
@@ -151,10 +152,10 @@ def test_dispatch_request_handles_concurrent_handlers():
     assert response_ids == [0, 1, 2, 3]
 
 
-def test_dispatch_request_runs_async_handler_directly_on_loop():
+def test_dispatch_request_runs_async_handler_directly_on_loop(tmp_path):
     """If a handler is `async def`, _dispatch_request must await it on the
     loop directly (not submit to executor). This is the Stage B back-door."""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
 
     main_thread_name = threading.current_thread().name
@@ -180,11 +181,11 @@ def test_dispatch_request_runs_async_handler_directly_on_loop():
     )
 
 
-def test_concurrent_responses_are_written_atomically():
+def test_concurrent_responses_are_written_atomically(tmp_path):
     """Even if multiple handlers complete simultaneously and each emits a
     multi-line-ish JSON payload, _stdout_lock must serialize writes so the
     captured output parses as N independent JSON objects (one per line)."""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
 
     n = 6
@@ -224,8 +225,8 @@ def test_concurrent_responses_are_written_atomically():
     assert parsed_ids == list(range(n))
 
 
-def test_handle_line_routes_unknown_method_to_minus32601():
-    server = _create_test_server()
+def test_handle_line_routes_unknown_method_to_minus32601(tmp_path):
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
 
     asyncio.run(server._handle_line(json.dumps({"jsonrpc": "2.0", "id": 9, "method": "no_such_method"})))
@@ -234,8 +235,8 @@ def test_handle_line_routes_unknown_method_to_minus32601():
     assert resp["error"]["code"] == -32601
 
 
-def test_dispatch_request_serializes_anti_bot_challenge_data():
-    server = _create_test_server()
+def test_dispatch_request_serializes_anti_bot_challenge_data(tmp_path):
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
     challenge_url = "https://18comic.vip/user/test/favorite/albums?page=2"
 
@@ -263,8 +264,8 @@ def test_dispatch_request_serializes_anti_bot_challenge_data():
     assert "user-agent" not in serialized
 
 
-def test_handle_line_rejects_non_object_params():
-    server = _create_test_server()
+def test_handle_line_rejects_non_object_params(tmp_path):
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
 
     asyncio.run(server._handle_line(json.dumps({"jsonrpc": "2.0", "id": 11, "method": "x", "params": [1, 2]})))
@@ -274,8 +275,8 @@ def test_handle_line_rejects_non_object_params():
     assert "must be an object" in resp["error"]["message"]
 
 
-def test_handle_line_handles_invalid_json():
-    server = _create_test_server()
+def test_handle_line_handles_invalid_json(tmp_path):
+    server = _create_test_server(tmp_path)
     _capture_stdout(server)
 
     asyncio.run(server._handle_line("{not json"))
@@ -285,10 +286,10 @@ def test_handle_line_handles_invalid_json():
     assert resp["id"] is None
 
 
-def test_handle_shutdown_shuts_down_request_executor():
+def test_handle_shutdown_shuts_down_request_executor(tmp_path):
     """handle_shutdown must shut down all three executors so no work
     survives between the response being sent and stdin EOF arriving."""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     server._download_manager.tasks = {}
     server._download_manager.stop = MagicMock()
     server._download_manager._worker_thread = None

@@ -12,14 +12,12 @@ from sources.moeimg import MoeImgParser
 
 @pytest.fixture(autouse=True)
 def _isolate_config_dir(tmp_path, monkeypatch):
-    """Redirect config.json to a per-test tmp dir.
+    """Redirect config.json and library.db to a per-test tmp dir.
 
-    `_get_config_path()` reads HCOMIC_CONFIG_DIR at call time, so setting it
-    here redirects every module's binding (auth_mixin / config_mixin /
-    migration_mixin / ipc_server) uniformly — no per-module patching needed.
-    Prevents tests from clobbering the real ~/.hcomic_downloader/config.json.
-    Harmless for tests that never trigger Config.save (the path function only
-    reads the env var when called).
+    `_get_config_path()` and `get_default_library_db_path()` both read
+    HCOMIC_CONFIG_DIR at call time. Setting it here redirects config bindings
+    and any future unpatched IPCServer helper uniformly, preventing tests from
+    clobbering the real ~/.hcomic_downloader/config.json or library.db.
     """
     config_dir = tmp_path / ".hcomic_downloader"
     monkeypatch.setenv("HCOMIC_CONFIG_DIR", str(config_dir))

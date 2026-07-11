@@ -67,7 +67,7 @@ PAGINATION_REQUIRED_KEYS: dict[str, type] = {
 }
 
 
-def _create_test_server() -> IPCServer:
+def _create_test_server(tmp_path) -> IPCServer:
     """实例化 IPCServer，patch 掉重网络/重 IO 依赖，仅保留配置与契约逻辑。
 
     每个测试调用一次新建实例，故测试内可就地修改 server.parser / server.config
@@ -83,6 +83,7 @@ def _create_test_server() -> IPCServer:
         patch("concurrent.futures.ThreadPoolExecutor", MagicMock()),
         patch("python.ipc_server.CoverCacheDB", return_value=MagicMock()),
         patch("album_coordinator.AlbumStagingCoordinator", return_value=MagicMock()),
+        patch("ipc.library_mixin.get_default_library_db_path", return_value=str(tmp_path / "library.db")),
     ):
         return IPCServer()
 
@@ -90,12 +91,12 @@ def _create_test_server() -> IPCServer:
 # ── 场景：get_config 返回结构匹配前端 AppConfig 类型 ──────────────────────
 
 
-def test_get_config_returns_structure_matching_app_config_type():
+def test_get_config_returns_structure_matching_app_config_type(tmp_path):
     """get_config 必须返回 {config: {...}}，其中 config 包含前端 AppConfig 的全部必需字段。
 
     这防止「Python config_mixin 改了字段名/类型，但前端 AppConfig 未同步」的漂移。
     """
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     result = server.handle_get_config()
 
     assert isinstance(result, dict)
@@ -144,7 +145,7 @@ def test_get_config_returns_reloaded_nh_credentials_without_exposing_api_key(tmp
     )
     persisted.save(config_path)
 
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     server.config = Config.load(config_path)
     server.parser.get_runtime_auth.return_value = ("", "")
 
@@ -167,7 +168,7 @@ def test_get_config_nh_legacy_credentials_reported_unauthenticated(tmp_path):
     persisted.source_auth["nh"] = {"cookie": "sessionid=legacy", "user_agent": "UA/legacy", "bearer_token": ""}
     persisted.save(config_path)
 
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     server.config = Config.load(config_path)
     server.parser.get_runtime_auth.return_value = ("", "")
 
@@ -179,9 +180,9 @@ def test_get_config_nh_legacy_credentials_reported_unauthenticated(tmp_path):
 # ── 场景：search 返回结构匹配前端 SearchResult 类型 ──────────────────────
 
 
-def test_maintenance_handlers_are_registered():
+def test_maintenance_handlers_are_registered(tmp_path):
     """维护中心四个 handler 必须在 IPCServer 启动时注册到 _HANDLER_NAMES。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     for method in (
         "run_health_check",
         "scan_orphan_temps",
@@ -191,9 +192,9 @@ def test_maintenance_handlers_are_registered():
         assert method in server._HANDLER_NAMES, f"handler {method} 未注册"
 
 
-def test_jm_snapshot_handlers_are_registered():
+def test_jm_snapshot_handlers_are_registered(tmp_path):
     """JM 快照解析 handler 必须在 IPCServer 启动时注册到 _HANDLER_NAMES。"""
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     for method in (
         "parse_jm_favourites_snapshot",
         "parse_jm_search_snapshot",
@@ -223,12 +224,12 @@ def test_get_all_records_with_album_returns_pages_key(tmp_path):
         db.close()
 
 
-def test_search_returns_structure_matching_search_result_type():
+def test_search_returns_structure_matching_search_result_type(tmp_path):
     """search 必须返回 {comics: [...], pagination: {...}}，结构匹配前端 SearchResult。
 
     用注入的假解析器返回构造好的 ComicInfo，验证 _comic_to_dict 序列化后字段匹配前端契约。
     """
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
 
     # 构造一个完整的 ComicInfo，经 _comic_to_dict 序列化后验证前端必需字段
     from models import ComicInfo
@@ -282,11 +283,11 @@ def test_search_returns_structure_matching_search_result_type():
     assert not pg_type_mismatches, f"pagination 字段类型不匹配: {pg_type_mismatches}"
 
 
-def test_jm_home_search_sections_only_reference_top_level_comics():
+def test_jm_home_search_sections_only_reference_top_level_comics(tmp_path):
     """JM 首页扩展契约必须保持顶层漫画唯一，且栏目引用全部可解析。"""
     from models import ComicInfo
 
-    server = _create_test_server()
+    server = _create_test_server(tmp_path)
     server._check_source_auth = lambda source: None  # type: ignore[method-assign]
     first = ComicInfo(id="jm-1", title="A", source_site="jm", comic_source="JM", media_id="jm-1")
     duplicate = ComicInfo(id="jm-1", title="A duplicate", source_site="jm", comic_source="JM", media_id="jm-1")
