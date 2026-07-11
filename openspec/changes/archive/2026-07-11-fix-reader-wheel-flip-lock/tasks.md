@@ -20,4 +20,4 @@
 - [x] 3.4 运行 `npm run lint:test-quality`，确认测试质量闸门通过
 - [x] 3.5 运行完整 `npm test`，确认 1661 条前端用例全绿、阅读器外行为无回归
 - [x] 3.6 运行 `openspec-cn validate fix-reader-wheel-flip-lock --strict` 并确保变更严格校验通过
-- [ ] 3.7 在真实 Electron（`npm run dev`）下手动验证：打开阅读器后不点按钮直接滚轮即可翻页；切换章节/续读定位后滚轮立即可用；快速连续滚轮仍受动画期间节流保护
+- [x] 3.7 在真实 Electron（`npm run dev`）下手动验证：打开阅读器后不点按钮直接滚轮即可翻页；切换章节/续读定位后滚轮立即可用；快速连续滚轮仍受动画期间节流保护
