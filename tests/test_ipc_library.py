@@ -162,6 +162,34 @@ class TestLibraryReadingProgressContract:
         assert progress["totalPages"] == 30
         assert "lastReadAt" in progress
 
+    def test_default_chapter_sentinel_is_not_persisted(self, tmp_path):
+        server = _create_test_server(tmp_path)
+        asset_id = server._library_db.upsert_item(
+            {
+                "rel_path": "single-folder",
+                "format": "folder",
+                "title": "Single volume",
+                "page_count": 3,
+            }
+        )
+
+        result = server.handle_library_save_reading_progress(
+            asset_id=asset_id,
+            chapter_id="default",
+            page=9,
+            total_pages=99,
+        )
+
+        assert result == {"success": True}
+        stored = server._library_db.get_reading_progress(asset_id)
+        assert stored is not None
+        assert stored["chapter_id"] is None
+        assert stored["page"] == 3
+        assert stored["total_pages"] == 3
+        detail = server.handle_library_detail(asset_id)
+        assert detail["readingChapterId"] is None
+        assert detail["readingPage"] == 3
+
 
 class TestLibraryDetailContract:
     """验证 library_detail 返回结构匹配 LibraryAssetDetail 类型。"""

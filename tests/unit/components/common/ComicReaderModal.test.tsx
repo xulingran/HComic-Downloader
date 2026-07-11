@@ -491,9 +491,9 @@ describe('ComicReaderModal', () => {
     it('footer 下一章 button loads the next chapter and is disabled on the last chapter', async () => {
       const fetchChapterUrls = vi.fn()
       vi.mocked(useComicReader).mockReturnValue(createReaderState({
-        imageUrls: [],
-        totalPages: 0,
-        currentPage: 0,
+        imageUrls: ['https://img.example.com/chapter-page.jpg'],
+        totalPages: 1,
+        currentPage: 1,
         chapters: [
           { id: '999001', name: '第 1 話', index: 1 },
           { id: '999002', name: '第 2 話', index: 2 },
@@ -520,9 +520,9 @@ describe('ComicReaderModal', () => {
 
     it('first chapter has 上一章 disabled', async () => {
       vi.mocked(useComicReader).mockReturnValue(createReaderState({
-        imageUrls: [],
-        totalPages: 0,
-        currentPage: 0,
+        imageUrls: ['https://img.example.com/chapter-page.jpg'],
+        totalPages: 1,
+        currentPage: 1,
         chapters: [
           { id: '999001', name: '第 1 話', index: 1 },
           { id: '999002', name: '第 2 話', index: 2 },

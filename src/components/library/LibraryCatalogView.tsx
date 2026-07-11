@@ -6,7 +6,7 @@ import { useDownloadStore } from '../../stores/useDownloadStore'
 import { useSettingsStore } from '../../stores/useSettingsStore'
 import { LIBRARY_FORMATS, LIBRARY_SORTS } from '@shared/types'
 import type { LibraryFormat, LibrarySort, LibraryAssetDetail } from '@shared/types'
-import { LocalLibraryReaderModal } from './LocalLibraryReaderModal'
+import { useLocalReaderStore } from '../../stores/useLocalReaderStore'
 import { LibraryAssetDetailDrawer } from './LibraryAssetDetailDrawer'
 
 /** 活跃下载任务数（供漫画库头部显示）。 */
@@ -42,9 +42,10 @@ export function LibraryCatalogView() {
   const { progress: scanProgress } = useLibraryScanProgress()
   const activeDownloadCount = useActiveDownloadCount()
 
-  // 阅读器状态
-  const [readerAsset, setReaderAsset] = useState<LibraryAssetDetail | null>(null)
-  const [readerOpen, setReaderOpen] = useState(false)
+  // 阅读器状态（提升到 App 根的 store，避免 fixed 定位被页面 motion.div 的
+  // transform 包含块截断）
+  const openLocalReader = useLocalReaderStore((s) => s.openReader)
+  const justClosedAssetId = useLocalReaderStore((s) => s.justClosedAssetId)
   // 详情抽屉状态
   const [detailAsset, setDetailAsset] = useState<LibraryAssetDetail | null>(null)
   const [detailOpen, setDetailOpen] = useState(false)
@@ -179,20 +180,18 @@ export function LibraryCatalogView() {
     try {
       const detail = await library.detail(assetId)
       setDetailOpen(false)
-      setReaderAsset(detail)
-      setReaderOpen(true)
+      openLocalReader(detail)
     } catch {
       // ignore
     }
-  }, [library])
+  }, [library, openLocalReader])
 
-  const handleCloseReader = useCallback(() => {
-    setReaderOpen(false)
-    setReaderAsset(null)
-    // 刷新列表（进度等可能已更新）
+  // 阅读器在 App 根关闭后，通过 justClosedAssetId 触发列表/统计刷新（进度可能已更新）
+  useEffect(() => {
+    if (!justClosedAssetId) return
     loadList()
     loadStats()
-  }, [loadList, loadStats])
+  }, [justClosedAssetId, loadList, loadStats])
 
   const handleCloseDetail = useCallback(() => {
     setDetailOpen(false)
@@ -418,9 +417,6 @@ export function LibraryCatalogView() {
           </button>
         </div>
       )}
-
-      {/* 本地阅读器 */}
-      <LocalLibraryReaderModal asset={readerAsset} open={readerOpen} onClose={handleCloseReader} />
 
       {/* 资产详情抽屉 */}
       <LibraryAssetDetailDrawer

@@ -261,6 +261,9 @@ class LibraryPageReader:
         验证资产版本、页码有效性，读取指定页图片并写入缓存。
         返回 ``{imageUrl, version, media_type}`` 或 None。
         """
+        # 渲染层对无章节记录的单章资产合成哨兵 'default'；归一化为 None 走单章路径。
+        if chapter_id == "default":
+            chapter_id = None
         item = self._db.get_item(asset_id)
         if not item:
             return None
@@ -300,6 +303,9 @@ class LibraryPageReader:
 
     def get_page_manifest(self, asset_id: str, chapter_id: str | None = None) -> dict | None:
         """生成或获取章节页面 manifest。"""
+        # 渲染层对无章节记录的单章资产合成哨兵 'default'；归一化为 None 走单章路径。
+        if chapter_id == "default":
+            chapter_id = None
         item = self._db.get_item(asset_id)
         if not item:
             return None

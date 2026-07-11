@@ -16,6 +16,7 @@ import { FatalBanner } from './components/FatalBanner'
 import { StartupScreen } from './components/StartupScreen'
 import { useDrawerStore } from './stores/useDrawerStore'
 import { useReaderStore } from './stores/useReaderStore'
+import { useLocalReaderStore } from './stores/useLocalReaderStore'
 import { useFatalErrorStore } from './stores/useFatalErrorStore'
 import { useSidebarStore } from './stores/useSidebarStore'
 import type { UpdateInfo, FatalErrorEvent } from '@shared/types'
@@ -30,6 +31,7 @@ const MaintenancePage = lazy(() => import('./pages/MaintenancePage').then(m => (
 const AboutPage = lazy(() => import('./pages/AboutPage').then(m => ({ default: m.AboutPage })))
 const ComicInfoDrawer = lazy(() => import('./components/ComicInfoDrawer').then(m => ({ default: m.ComicInfoDrawer })))
 const ComicReaderModal = lazy(() => import('./components/ComicReaderModal').then(m => ({ default: m.ComicReaderModal })))
+const LocalLibraryReaderModal = lazy(() => import('./components/library/LocalLibraryReaderModal').then(m => ({ default: m.LocalLibraryReaderModal })))
 const UpdateDialog = lazy(() => import('./components/UpdateDialog').then(m => ({ default: m.UpdateDialog })))
 
 function App() {
@@ -98,6 +100,7 @@ function App() {
   const [visitedPages, setVisitedPages] = useState<string[]>(['search'])
   const { pendingSearch } = useDrawerStore()
   const { readerComic, closeReader } = useReaderStore()
+  const { readerAsset: localReaderAsset, open: localReaderOpen, closeReader: closeLocalReader } = useLocalReaderStore()
   const tabVariants = useTabPageVariants()
 
   const handlePageChange = useCallback((page: string) => {
@@ -209,6 +212,11 @@ function App() {
         comic={readerComic}
         open={!!readerComic}
         onClose={closeReader}
+      /></Suspense>
+      <Suspense fallback={null}><LocalLibraryReaderModal
+        asset={localReaderAsset}
+        open={localReaderOpen}
+        onClose={closeLocalReader}
       /></Suspense>
       {updateInfo && (
         <Suspense fallback={null}><UpdateDialog

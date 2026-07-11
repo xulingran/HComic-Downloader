@@ -262,6 +262,23 @@ class TestPageManifest:
         result = reader.get_page_manifest("nonexistent", None)
         assert result is None
 
+    def test_manifest_single_chapter_with_default_sentinel(self, db, download_dir, cache, reader):
+        """单章资产传入前端合成哨兵 'default' 应等价于 None。
+
+        渲染层 (useLocalLibraryReader) 对无章节记录的单章资产合成
+        ``{ id: 'default' }`` 并以 ``'default'`` 作为 chapterId 发出。
+        后端必须把它归一化为 None，走单章路径而不是多章节 DB 查找。
+        """
+        indexer = LibraryIndexer(db, download_dir)
+        asset_id = seed_asset(db, indexer, download_dir, "single", make_single_folder)
+        baseline = reader.get_page_manifest(asset_id, None)
+        assert baseline is not None
+
+        result = reader.get_page_manifest(asset_id, "default")
+        assert result is not None
+        assert result["chapterId"] == baseline["chapterId"]
+        assert result["pages"] == baseline["pages"]
+
 
 # ── 多章节页面读取测试 ──────────────────────────────────────────────
 
@@ -288,6 +305,21 @@ class TestChapterPages:
         asset_id = seed_asset(db, indexer, download_dir, "album", make_album_folder)
         result = reader.materialize_page(asset_id, "nonexistent-chapter", 1, 1)
         assert result is None
+
+    def test_materialize_single_chapter_with_default_sentinel(self, db, download_dir, cache, reader):
+        """单章资产用哨兵 'default' 物化页面应与 None 等价。
+
+        与 manifest 配对：即使清单能生成，materialize_page 也必须归一化
+        'default' 否则会走多章节路径读取到空字节。
+        """
+        indexer = LibraryIndexer(db, download_dir)
+        asset_id = seed_asset(db, indexer, download_dir, "single", make_single_folder)
+        item = db.get_item(asset_id)
+        version = item["version"]
+
+        result = reader.materialize_page(asset_id, "default", 1, version)
+        assert result is not None
+        assert result["imageUrl"].startswith("app-image://library/")
 
 
 # ── 协议路径遍历测试 ────────────────────────────────────────────────

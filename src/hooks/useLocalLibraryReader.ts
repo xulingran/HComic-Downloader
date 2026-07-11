@@ -24,28 +24,32 @@ export function useLocalLibraryReader() {
   const [assetVersion, setAssetVersion] = useState<number>(1)
   const [currentChapterId, setCurrentChapterId] = useState<string | null>(null)
   const versionRef = useRef(1)
+  const requestGenerationRef = useRef(0)
 
-  /** 获取指定章节的页面 URL 列表。 */
+  /** 获取指定章节的页面 URL 列表，仅允许当前请求提交结果。 */
   const fetchChapterPages = useCallback(
-    async (assetId: string, chapterId: string | null, version: number) => {
-      try {
-        const manifest = await library.pageManifest(assetId, chapterId ?? undefined)
-        // 为每页生成占位 URL；实际图片 URL 在渲染时按需通过 getPage 获取
-        // 这里用合成 URL 携带 assetId/chapterId/page/version 信息
-        const urls = manifest.pages.map(
-          (p) => `library://${assetId}/${chapterId ?? 'default'}/${p.index + 1}/${version}`,
-        )
-        setImageUrls(urls)
-        setTotalPages(urls.length)
-        versionRef.current = version
-        setAssetVersion(version)
-        setCurrentChapterId(chapterId)
-        return urls.length
-      } catch (err) {
-        setErrorMessage(err instanceof Error ? err.message : '获取页面清单失败')
-        setLoadingState('error')
-        throw err
-      }
+    async (
+      assetId: string,
+      chapterId: string | null,
+      version: number,
+      requestGeneration: number,
+      targetPage = 1,
+    ): Promise<number | null> => {
+      const manifest = await library.pageManifest(assetId, chapterId ?? undefined)
+      if (requestGenerationRef.current !== requestGeneration) return null
+
+      // 为每页生成占位 URL；实际图片 URL 在渲染时按需通过 getPage 获取
+      // 这里用合成 URL 携带 assetId/chapterId/page/version 信息
+      const urls = manifest.pages.map(
+        (p) => `library://${assetId}/${chapterId ?? 'default'}/${p.index + 1}/${version}`,
+      )
+      setImageUrls(urls)
+      setTotalPages(urls.length)
+      versionRef.current = version
+      setAssetVersion(version)
+      setCurrentChapterId(chapterId)
+      setCurrentPage(Math.min(Math.max(1, targetPage), Math.max(1, urls.length)))
+      return urls.length
     },
     [library],
   )
@@ -53,12 +57,12 @@ export function useLocalLibraryReader() {
   /** 获取资产详情和初始章节目清单。 */
   const fetchAsset = useCallback(
     async (assetId: string, initialChapterId?: string | null, resumePage?: number | null) => {
+      const requestGeneration = ++requestGenerationRef.current
       setLoadingState('loading')
       setErrorMessage(null)
       try {
         const detail = await library.detail(assetId)
-        versionRef.current = detail.version
-        setAssetVersion(detail.version)
+        if (requestGenerationRef.current !== requestGeneration) return
 
         // 构建章节列表
         const chs: ChapterInfo[] =
@@ -71,22 +75,34 @@ export function useLocalLibraryReader() {
               }))
             : [{ id: 'default', name: detail.title, index: 0, pages: detail.pageCount }]
         setChapters(chs)
+        versionRef.current = detail.version
+        setAssetVersion(detail.version)
 
-        // 获取初始章节 manifest
-        const initialCh = initialChapterId && chs.some((chapter) => chapter.id === initialChapterId)
-          ? initialChapterId
-          : chs[0]?.id || null
-        const pageCount = await fetchChapterPages(assetId, initialCh, detail.version)
-
-        // 恢复阅读进度
-        if (resumePage && resumePage > 0) {
-          setCurrentPage(Math.min(resumePage, Math.max(1, pageCount)))
-        } else {
+        const savedChapterIsValid = Boolean(
+          initialChapterId && chs.some((chapter) => chapter.id === initialChapterId),
+        )
+        if (chs.length > 1 && !savedChapterIsValid) {
+          setImageUrls([])
+          setTotalPages(0)
           setCurrentPage(1)
+          setCurrentChapterId(null)
+          setLoadingState('loaded')
+          return
         }
+
+        const initialCh = savedChapterIsValid ? initialChapterId! : chs[0]?.id || null
+        const pageCount = await fetchChapterPages(
+          assetId,
+          initialCh,
+          detail.version,
+          requestGeneration,
+          resumePage && resumePage > 0 ? resumePage : 1,
+        )
+        if (pageCount === null || requestGenerationRef.current !== requestGeneration) return
 
         setLoadingState('loaded')
       } catch (err) {
+        if (requestGenerationRef.current !== requestGeneration) return
         setErrorMessage(err instanceof Error ? err.message : '加载漫画失败')
         setLoadingState('error')
       }
@@ -97,11 +113,24 @@ export function useLocalLibraryReader() {
   /** 切换章节。 */
   const goToChapter = useCallback(
     async (assetId: string, chapterId: string | null) => {
+      const requestGeneration = ++requestGenerationRef.current
       setLoadingState('loading')
       setErrorMessage(null)
-      setCurrentPage(1)
-      await fetchChapterPages(assetId, chapterId, versionRef.current)
-      setLoadingState('loaded')
+      try {
+        const pageCount = await fetchChapterPages(
+          assetId,
+          chapterId,
+          versionRef.current,
+          requestGeneration,
+        )
+        if (pageCount === null || requestGenerationRef.current !== requestGeneration) return
+        setLoadingState('loaded')
+      } catch (err) {
+        if (requestGenerationRef.current !== requestGeneration) return
+        setErrorMessage(err instanceof Error ? err.message : '获取页面清单失败')
+        setLoadingState('error')
+        throw err
+      }
     },
     [fetchChapterPages],
   )
@@ -116,6 +145,7 @@ export function useLocalLibraryReader() {
   )
 
   const reset = useCallback(() => {
+    requestGenerationRef.current += 1
     setImageUrls([])
     setTotalPages(0)
     setCurrentPage(1)

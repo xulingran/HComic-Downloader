@@ -317,6 +317,9 @@ class LibraryMixin:
         total_pages: int = 0,
     ) -> dict:
         """保存阅读进度。"""
+        # 渲染层对无章节记录的单章资产合成哨兵 'default'；归一化为 None 走单章路径。
+        if chapter_id == "default":
+            chapter_id = None
         item = self._library_db.get_item(asset_id)
         if not item or item["root_generation"] != self._library_db.get_root_generation():
             raise ValueError("资产不存在或属于旧漫画库")

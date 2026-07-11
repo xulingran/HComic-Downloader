@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
-import { motion } from 'framer-motion'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LibraryAssetDetail } from '@shared/types'
 import { useLocalLibraryProgress, useLocalLibraryReader } from '../../hooks/useLocalLibraryReader'
 import { useReaderSettings, type BlankPosition } from '../../hooks/useReaderSettings'
@@ -7,10 +6,10 @@ import { usePageTracking } from '../../hooks/usePageTracking'
 import { useSliderDrag } from '../../hooks/useSliderDrag'
 import { useZoom } from '../../hooks/useZoom'
 import { useFailedPages } from '../../hooks/useFailedPages'
-import { useReducedMotionPreference } from '../../lib/anim'
 import { ChapterPicker } from '../ChapterPicker'
 import { PageFlipView } from '../PageFlipView'
 import { ReaderPage } from '../ReaderPage'
+import { ReaderShell, ReaderLoadingState, ReaderErrorState } from '../common/ReaderShell'
 
 interface LocalLibraryReaderModalProps {
   asset: LibraryAssetDetail | null
@@ -18,7 +17,7 @@ interface LocalLibraryReaderModalProps {
   onClose: () => void
 }
 
-/** Local reader backed by the same presentation components as remote preview. */
+/** Local reader backed by the same presentation shell as remote preview. */
 export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryReaderModalProps) {
   const {
     imageUrls,
@@ -39,18 +38,19 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [chapterSelected, setChapterSelected] = useState(false)
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
-  const reduceMotion = useReducedMotionPreference()
-  const { failedCount, retryGen, markFailed, markLoaded, retryAll, clearAll } = useFailedPages()
+  const { failedCount, retryGen, retryAll, markFailed, markLoaded, clearAll } = useFailedPages()
   const { saveProgress, flush } = useLocalLibraryProgress(asset?.assetId ?? null)
 
   const imageCacheRef = useRef<Map<number, string>>(new Map())
   const pendingLoadsRef = useRef<Map<number, Promise<string>>>(new Map())
+  const cacheGenerationRef = useRef(0)
   const [cachedPageUrls, setCachedPageUrls] = useState<Map<number, string>>(new Map())
   const [cacheVersion, setCacheVersion] = useState(0)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
 
   const clearPageCache = useCallback(() => {
+    cacheGenerationRef.current += 1
     imageCacheRef.current.clear()
     pendingLoadsRef.current.clear()
     setCachedPageUrls(new Map())
@@ -77,9 +77,9 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
   /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
-    if (!open || !asset || totalPages <= 0 || currentPage <= 0) return
+    if (!open || !asset || loadingState !== 'loaded' || totalPages <= 0 || currentPage <= 0) return
     saveProgress(currentChapterId, currentPage, totalPages)
-  }, [open, asset, currentChapterId, currentPage, totalPages, saveProgress])
+  }, [open, asset, currentChapterId, currentPage, totalPages, loadingState, saveProgress])
 
   const loadLocalImage = useCallback(async (_url: string, index: number): Promise<string> => {
     if (!asset) throw new Error('漫画资产已关闭')
@@ -87,17 +87,21 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     if (cached) return cached
     const pending = pendingLoadsRef.current.get(index)
     if (pending) return pending
+    const requestGeneration = cacheGenerationRef.current
     const request = materializePage(asset.assetId, currentChapterId, index + 1)
       .then((imageUrl) => {
+        if (cacheGenerationRef.current !== requestGeneration) {
+          throw new Error('页面请求已失效')
+        }
         imageCacheRef.current.set(index, imageUrl)
-        pendingLoadsRef.current.delete(index)
         setCachedPageUrls((cached) => new Map(cached).set(index, imageUrl))
         setCacheVersion((version) => version + 1)
         return imageUrl
       })
-      .catch((error) => {
-        pendingLoadsRef.current.delete(index)
-        throw error
+      .finally(() => {
+        if (pendingLoadsRef.current.get(index) === request) {
+          pendingLoadsRef.current.delete(index)
+        }
       })
     pendingLoadsRef.current.set(index, request)
     return request
@@ -140,7 +144,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
-      if (displayMode === 'scroll') return
+      if (displayMode === 'scroll' || loadingState !== 'loaded' || totalPages <= 0) return
       const step = displayMode === 'double' ? 2 : 1
       if (event.key === 'ArrowRight' || event.key === 'PageDown') {
         event.preventDefault()
@@ -152,7 +156,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose, displayMode, currentPage, effectiveTotal, setCurrentPage])
+  }, [open, onClose, displayMode, loadingState, totalPages, currentPage, effectiveTotal, setCurrentPage])
 
   const handleCached = useCallback((index: number, imageUrl: string) => {
     if (imageCacheRef.current.get(index) === imageUrl) return
@@ -183,67 +187,77 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     void fetchAsset(asset.assetId, currentChapterId, currentPage)
   }, [asset, clearPageCache, currentChapterId, currentPage, fetchAsset])
 
+  // 从 currentChapterId 推导章节索引，供 ReaderShell 渲染上/下一章按钮
+  const currentChapterIndex = useMemo(() => {
+    if (chapters.length <= 1 || !currentChapterId) return -1
+    return chapters.findIndex((c) => c.id === currentChapterId)
+  }, [chapters, currentChapterId])
+
+  const handleGoToChapter = useCallback((index: number) => {
+    if (!asset || index < 0 || index >= chapters.length) return
+    const target = chapters[index]
+    if (!target) return
+    void handleChapterSelect(target.id)
+  }, [asset, chapters, handleChapterSelect])
+
+  const handleOpenChapterPicker = useCallback(() => {
+    flush()
+    setChapterSelected(false)
+  }, [flush])
+
   if (!open || !asset) return null
-  const showChapterPicker = chapters.length > 1 && !chapterSelected && loadingState !== 'loading'
+  const needsValidChapter = loadingState === 'loaded' && !currentChapterId && totalPages === 0
+  const showChapterPicker = chapters.length > 1
+    && (!chapterSelected || needsValidChapter)
+    && loadingState !== 'loading'
+  const navigationEnabled = loadingState === 'loaded' && totalPages > 0 && !showChapterPicker
 
   return (
-    <motion.div
-      className="fixed inset-0 z-50 flex flex-col bg-[var(--bg-reader)] text-white"
-      data-testid="local-library-reader"
-      initial={reduceMotion ? false : { opacity: 0 }}
-      animate={{ opacity: 1 }}
+    <ReaderShell
+      open={open}
+      onClose={onClose}
+      title={asset.title}
+      currentPage={currentPage}
+      effectiveTotal={effectiveTotal}
+      chapters={chapters}
+      currentChapterIndex={currentChapterIndex}
+      onGoToChapter={handleGoToChapter}
+      onOpenChapterPicker={handleOpenChapterPicker}
+      navigationEnabled={navigationEnabled}
+      displayMode={displayMode}
+      setDisplayMode={setDisplayMode}
+      imageWidth={imageWidth}
+      setImageWidth={setImageWidth}
+      pageGap={pageGap}
+      setPageGap={setPageGap}
+      blankPosition={blankPosition}
+      setBlankPosition={setBlankPosition}
+      zoom={zoom}
+      zoomIn={zoomIn}
+      zoomOut={zoomOut}
+      resetZoom={resetZoom}
+      settingsOpen={settingsOpen}
+      setSettingsOpen={setSettingsOpen}
+      sliderRef={sliderRef}
+      isDragging={isDragging}
+      handleSliderPointerDown={handleSliderPointerDown}
+      handleSliderPointerMove={handleSliderPointerMove}
+      handleSliderPointerUp={handleSliderPointerUp}
+      cancelDrag={cancelDrag}
+      preloadedRanges={[]}
     >
-      <header className="flex flex-wrap items-center gap-2 border-b border-white/10 px-4 py-2 text-sm">
-        <h3 className="min-w-0 flex-1 truncate">{asset.title}</h3>
-        {chapters.length > 1 && (
-          <button className="rounded bg-white/10 px-2 py-1 text-xs hover:bg-white/20" onClick={() => setChapterSelected(false)}>
-            章节
-          </button>
-        )}
-        <button aria-label="缩小" className="rounded bg-white/10 px-2 py-1" onClick={zoomOut}>−</button>
-        <button aria-label="重置缩放" className="rounded bg-white/10 px-2 py-1 text-xs" onClick={resetZoom}>{Math.round(zoom * 100)}%</button>
-        <button aria-label="放大" className="rounded bg-white/10 px-2 py-1" onClick={zoomIn}>＋</button>
-        <button className="rounded bg-white/10 px-2 py-1 text-xs" onClick={() => setSettingsOpen((open) => !open)}>设置</button>
-        <span className="text-xs text-gray-400">{currentPage} / {totalPages || '?'}</span>
-        <button className="rounded bg-white/10 px-3 py-1 text-xs hover:bg-white/20" onClick={onClose}>关闭 ✕</button>
-      </header>
-
-      {settingsOpen && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-white/10 bg-black/20 px-4 py-2 text-xs">
-          <label>模式
-            <select className="ml-1 rounded bg-black/40 px-2 py-1" value={displayMode} onChange={(event) => setDisplayMode(event.target.value as typeof displayMode)}>
-              <option value="scroll">滚动</option><option value="single">单页</option><option value="double">双页</option>
-            </select>
-          </label>
-          <label>宽度 <input type="range" min="25" max="100" value={imageWidth} onChange={(event) => setImageWidth(Number(event.target.value))} /></label>
-          <label>页距 <input type="range" min="0" max="64" value={pageGap} onChange={(event) => setPageGap(Number(event.target.value))} /></label>
-          {displayMode === 'double' && (
-            <label>空白页
-              <select className="ml-1 rounded bg-black/40 px-2 py-1" value={blankPosition} onChange={(event) => setBlankPosition(event.target.value as BlankPosition)}>
-                <option value="none">无</option><option value="front">开头</option><option value="end">结尾</option>
-              </select>
-            </label>
-          )}
-        </div>
-      )}
-
-      {failedCount > 0 && (
-        <div className="flex items-center justify-center gap-3 bg-red-950/50 px-4 py-2 text-xs">
-          <span>{failedCount} 页加载失败</span>
-          <button className="rounded bg-white/10 px-2 py-1" onClick={retryAll}>全部重试</button>
-          <button className="rounded bg-white/10 px-2 py-1" onClick={handleReload}>重新载入资产</button>
-        </div>
-      )}
-
+      {/* 内容区：loading/error/ChapterPicker/scroll/PageFlipView 分支 */}
       {showChapterPicker ? (
         <ChapterPicker chapters={chapters} onSelect={(id) => void handleChapterSelect(id)} title={asset.title} />
       ) : loadingState === 'loading' ? (
-        <div className="flex flex-1 items-center justify-center text-sm text-gray-400">正在加载本地漫画…</div>
+        <ReaderLoadingState className="flex-1" />
       ) : loadingState === 'error' ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-sm text-red-300">
-          <p>{errorMessage || '加载失败'}</p>
-          <button className="rounded bg-white/10 px-4 py-2" onClick={handleReload}>重新载入</button>
-        </div>
+        <ReaderErrorState
+          message={errorMessage || '加载失败'}
+          onRetry={handleReload}
+          onClose={onClose}
+          className="flex-1"
+        />
       ) : displayMode === 'scroll' ? (
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto" onPointerUp={cancelDrag}>
           <div className="mx-auto" style={{ width: `${imageWidth}%`, transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
@@ -285,23 +299,19 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
         />
       )}
 
-      {totalPages > 0 && !showChapterPicker && loadingState === 'loaded' && (
-        <footer className="border-t border-white/10 px-4 py-2">
+      {/* 失败页重试浮层（本地版用内联 banner；在线版用阈值 Toast） */}
+      {failedCount > 0 && (
+        <div className="pointer-events-none absolute left-1/2 bottom-24 -translate-x-1/2 z-10">
           <div
-            ref={sliderRef}
-            className="relative h-5 cursor-pointer"
-            onPointerDown={handleSliderPointerDown}
-            onPointerMove={handleSliderPointerMove}
-            onPointerUp={handleSliderPointerUp}
-            onPointerCancel={cancelDrag}
+            className="px-4 py-2 rounded-full text-sm text-white shadow-lg flex items-center gap-3"
+            style={{ background: 'rgba(180,40,40,0.9)', backdropFilter: 'blur(4px)' }}
           >
-            <div className="absolute left-0 right-0 top-2 h-1 rounded bg-white/15" />
-            <div className="absolute left-0 top-2 h-1 rounded bg-[var(--accent)]" style={{ width: `${(currentPage / Math.max(1, effectiveTotal)) * 100}%` }} />
-            <div className="absolute top-0 h-5 w-2 rounded bg-white" style={{ left: `calc(${(currentPage / Math.max(1, effectiveTotal)) * 100}% - 4px)` }} />
+            <span>{failedCount} 页加载失败</span>
+            <button className="rounded bg-white/20 px-2 py-0.5 text-xs pointer-events-auto" onClick={retryAll}>全部重试</button>
+            <button className="rounded bg-white/20 px-2 py-0.5 text-xs pointer-events-auto" onClick={handleReload}>重载</button>
           </div>
-          {isDragging && <div className="text-center text-xs text-gray-400">第 {currentPage} 页</div>}
-        </footer>
+        </div>
       )}
-    </motion.div>
+    </ReaderShell>
   )
 }

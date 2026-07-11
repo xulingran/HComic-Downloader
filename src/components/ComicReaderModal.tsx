@@ -7,8 +7,6 @@ import { usePageTracking } from '../hooks/usePageTracking'
 import { useZoom } from '../hooks/useZoom'
 import { useSliderDrag } from '../hooks/useSliderDrag'
 import { useFailedPages } from '../hooks/useFailedPages'
-import { motion } from 'framer-motion'
-import { readerPresenceVariants, overlayPresenceVariants, reduceSafe, useReducedMotionPreference } from '../lib/anim'
 import { useHistory } from '../hooks/useIpc'
 import { useHistoryStore } from '../stores/useHistoryStore'
 import { useReaderStore } from '../stores/useReaderStore'
@@ -16,6 +14,7 @@ import { useToastStore } from '../stores/useToastStore'
 import { PageFlipView } from './PageFlipView'
 import { ReaderPage } from './ReaderPage'
 import { ChapterPicker } from './ChapterPicker'
+import { ReaderShell, ReaderLoadingState, ReaderErrorState, ReaderEmptyState } from './common/ReaderShell'
 
 interface ComicReaderModalProps {
   comic: ComicInfo | null
@@ -48,9 +47,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const [preloadConcurrency, setPreloadConcurrency] = useState(3)
   const [adaptiveEnabled, setAdaptiveEnabled] = useState(false)
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
-  // 变更 2：改用 framer-motion AnimatePresence 驱动阅读器进出场，删除 useModalAnimation。
-  const reduceMotion = useReducedMotionPreference()
-  const readerVariants = reduceMotion ? reduceSafe(readerPresenceVariants) : readerPresenceVariants
 
   // 失败页聚合：跟踪所有加载失败的页索引，>3 时弹常驻重试 Toast。
   // 详见 openspec/changes/preview-retry-toast/design.md
@@ -159,7 +155,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
-  const settingsPanelRef = useRef<HTMLDivElement>(null)
   const freezePageTrackingRef = useRef(false)
   const prevDragPageRef = useRef(currentPage)
 
@@ -205,24 +200,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, initialPage, loadingState])
-
-  // Close settings panel on outside click
-  useEffect(() => {
-    if (!settingsOpen) return
-    const handler = (e: MouseEvent) => {
-      if (settingsPanelRef.current?.contains(e.target as Node)) return
-      const btn = (e.target as Element).closest('[aria-label="阅读设置"]')
-      if (btn) return
-      setSettingsOpen(false)
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [settingsOpen])
-
-  const handleSetDisplayMode = useCallback((mode: typeof displayMode) => {
-    setDisplayMode(mode)
-    if (mode !== 'double') setBlankPosition('none')
-  }, [setDisplayMode])
 
   const hasPrevChapter = currentChapterIndex > 0
   const hasNextChapter = currentChapterIndex >= 0 && currentChapterIndex < chapters.length - 1
@@ -315,7 +292,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     // eslint-disable-next-line react-hooks/exhaustive-deps -- comic?.id is sufficient; recordHistory already captures comic
   }, [open, comic?.id, currentPage, loadingState, recordHistory])
 
-  // Keyboard handler
+  // Keyboard handler（含边界翻章二次确认，留在 modal 内——ReaderShell 只管视觉）
   useEffect(() => {
     if (!open) return
     const handler = (e: KeyboardEvent) => {
@@ -454,55 +431,71 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     useToastStore.getState().dismiss()
   }, [imageUrls, clearFailedPages])
 
-  if (!open) return null
-
-  const progress = effectiveTotalPages > 0 ? Math.round((currentPage / effectiveTotalPages) * 100) : 0
+  // bika 图片清晰度设置面板插槽
+  const bikaImageQualitySlot = comic?.sourceSite === 'bika' ? (
+    <>
+      <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
+        <span>图片清晰度</span>
+        <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>
+          {bikaImageQuality === 'low' ? '低' : bikaImageQuality === 'medium' ? '中' : bikaImageQuality === 'high' ? '高' : '原画'}
+        </span>
+      </label>
+      <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
+        {IMAGE_QUALITIES.map((q) => (
+          <button
+            key={q}
+            onClick={() => {
+              setBikaImageQuality(q)
+              window.hcomic?.setConfig('bikaImageQuality', q).catch(() => {})
+            }}
+            className="flex-1 py-1 text-xs transition-colors"
+            style={{
+              background: bikaImageQuality === q ? 'rgba(108,140,255,0.2)' : 'transparent',
+              color: bikaImageQuality === q ? '#6c8cff' : 'rgba(255,255,255,0.4)',
+            }}
+          >
+            {q === 'low' ? '低' : q === 'medium' ? '中' : q === 'high' ? '高' : '原画'}
+          </button>
+        ))}
+      </div>
+    </>
+  ) : undefined
 
   return (
-    <div className="fixed inset-0 z-50">
-      {/* 注：阅读器是全屏接管场景，open=false 时整组件 unmount（无 exit 动画）。
-          这是有意的妥协——退出立即消失比慢慢滑出更干脆，且避免 hooks 在卸载后执行的复杂性。
-          进入动画（从下滑入）由 motion.div + initial/animate 驱动。 */}
-      <div>
-        <motion.div
-          key="reader-overlay"
-          variants={overlayPresenceVariants}
-          initial="initial"
-          animate="animate"
-          className="absolute inset-0 bg-black/50"
-          onClick={onClose}
-        />
-        <motion.div
-          key="reader-content"
-          variants={readerVariants}
-          initial="initial"
-          animate="animate"
-          className="absolute inset-0 flex flex-col bg-[#1a1a2e]"
-        >
-      {/* Header */}
-      <div
-        className="flex items-center justify-between px-5 py-3 shrink-0"
-        style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
-      >
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <button
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-md text-white text-sm hover:bg-white/10 transition-colors shrink-0"
-            style={{ background: 'rgba(255,255,255,0.1)' }}
-          >
-            关闭
-          </button>
-          <span className="text-sm text-gray-400 truncate">{comic?.title}</span>
-        </div>
-        <span
-          className="px-2.5 py-1 rounded-full text-xs text-white"
-          style={{ background: 'rgba(255,255,255,0.15)' }}
-        >
-          {currentPage} / {effectiveTotalPages}
-        </span>
-      </div>
-
-      {/* Content */}
+    <ReaderShell
+      open={open}
+      onClose={onClose}
+      title={comic?.title ?? ''}
+      currentPage={currentPage}
+      effectiveTotal={effectiveTotalPages}
+      chapters={chapters}
+      currentChapterIndex={currentChapterIndex}
+      onGoToChapter={goToChapter}
+      navigationEnabled={loadingState === 'loaded' && imageUrls.length > 0 && !showChapterPicker}
+      displayMode={displayMode}
+      setDisplayMode={setDisplayMode}
+      imageWidth={imageWidth}
+      setImageWidth={setImageWidth}
+      pageGap={pageGap}
+      setPageGap={setPageGap}
+      blankPosition={blankPosition}
+      setBlankPosition={setBlankPosition}
+      zoom={zoom}
+      zoomIn={zoomIn}
+      zoomOut={zoomOut}
+      resetZoom={resetZoom}
+      settingsOpen={settingsOpen}
+      setSettingsOpen={setSettingsOpen}
+      sliderRef={sliderRef}
+      isDragging={isDragging}
+      handleSliderPointerDown={handleSliderPointerDown}
+      handleSliderPointerMove={handleSliderPointerMove}
+      handleSliderPointerUp={handleSliderPointerUp}
+      cancelDrag={cancelDrag}
+      preloadedRanges={preloadedRanges}
+      bikaImageQualitySlot={bikaImageQualitySlot}
+    >
+      {/* 内容区：各 loading/error/empty/ChapterPicker/scroll/PageFlipView 分支 */}
       {showChapterPicker ? (
         <ChapterPicker
           chapters={chapters}
@@ -597,353 +590,6 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           </div>
         </div>
       )}
-
-      {/* Footer */}
-      <div
-        className="px-5 py-2 shrink-0 relative"
-        style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)' }}
-      >
-        <div className="flex items-center gap-3">
-          {chapters.length > 1 && (
-            <button
-              aria-label="上一章"
-              disabled={!hasPrevChapter}
-              onClick={() => goToChapter(currentChapterIndex - 1)}
-              className="px-2 py-1 rounded text-xs text-white transition-colors hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-              style={{ background: 'rgba(255,255,255,0.08)' }}
-            >
-              ‹ 上一章
-            </button>
-          )}
-          <span className="text-xs text-gray-500">{currentPage} / {effectiveTotalPages}</span>
-          <div
-            ref={sliderRef}
-            data-track
-            role="slider"
-            aria-valuemin={1}
-            aria-valuemax={effectiveTotalPages}
-            aria-valuenow={currentPage}
-            aria-label="页面进度"
-            className="flex-1 h-6 flex items-center cursor-pointer"
-            style={{ padding: '8px 0' }}
-            onPointerDown={handleSliderPointerDown}
-            onPointerMove={handleSliderPointerMove}
-            onPointerUp={handleSliderPointerUp}
-            onPointerCancel={cancelDrag}
-            onLostPointerCapture={cancelDrag}
-          >
-            <div className="w-full relative" style={{ height: '4px' }}>
-              <div className="absolute inset-0 rounded-full pointer-events-none" style={{ background: 'rgba(255,255,255,0.1)' }} />
-              {preloadedRanges.map((range, i) => {
-                const total = effectiveTotalPages
-                const left = ((range.start - 1) / total) * 100
-                const width = ((range.end - range.start + 1) / total) * 100
-                return (
-                  <div
-                    key={i}
-                    className="absolute top-0 bottom-0 rounded-full pointer-events-none"
-                    style={{ left: `${left}%`, width: `${Math.max(width, 0.3)}%`, background: 'rgba(108,140,255,0.25)' }}
-                  />
-                )
-              })}
-              <div
-                className="absolute left-0 top-0 bottom-0 rounded-full"
-                style={{ width: `${progress}%`, background: '#6c8cff' }}
-              />
-              <div
-                className="absolute top-1/2 rounded-full"
-                style={{
-                  left: `${progress}%`,
-                  transform: 'translate(-50%, -50%)',
-                  width: isDragging ? 18 : 14,
-                  height: isDragging ? 18 : 14,
-                  background: '#6c8cff',
-                  boxShadow: '0 0 6px rgba(108,140,255,0.5)',
-                  transition: isDragging ? 'none' : 'left 0.2s, width 0.15s, height 0.15s',
-                  ...(isDragging ? { touchAction: 'none' } : {}),
-                }}
-              />
-            </div>
-          </div>
-          {chapters.length > 1 && (
-            <button
-              aria-label="下一章"
-              disabled={!hasNextChapter}
-              onClick={() => goToChapter(currentChapterIndex + 1)}
-              className="px-2 py-1 rounded text-xs text-white transition-colors hover:bg-white/15 disabled:opacity-30 disabled:cursor-not-allowed shrink-0"
-              style={{ background: 'rgba(255,255,255,0.08)' }}
-            >
-              下一章 ›
-            </button>
-          )}
-          <span className="text-xs text-gray-500">
-            {displayMode === 'scroll' ? 'ESC 关闭 | ↑↓ 滚动' : 'ESC 关闭 | ←→ 翻页'}
-          </span>
-          <button
-            aria-label="阅读设置"
-            onClick={() => setSettingsOpen(!settingsOpen)}
-            className="p-1 rounded hover:bg-white/10 transition-colors"
-            style={{ color: settingsOpen ? '#6c8cff' : 'rgba(255,255,255,0.5)' }}
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="8" cy="8" r="2.5" />
-              <path d="M8 1.5v1.5M8 13v1.5M1.5 8h1.5M13 8h1.5M3.05 3.05l1.06 1.06M11.89 11.89l1.06 1.06M3.05 12.95l1.06-1.06M11.89 4.11l1.06-1.06" />
-            </svg>
-          </button>
-        </div>
-
-        {settingsOpen && (
-          <div
-            ref={settingsPanelRef}
-            className="absolute bottom-full right-4 mb-2 rounded-lg"
-            style={{
-              background: 'rgba(0,0,0,0.6)',
-              backdropFilter: 'blur(8px)',
-              padding: '12px 16px',
-              width: '220px',
-            }}
-          >
-            <div className="flex flex-col gap-3">
-              {/* Display mode switcher */}
-              <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                <ModeButton
-                  label="连续滚动"
-                  icon={scrollIcon}
-                  active={displayMode === 'scroll'}
-                  onClick={() => handleSetDisplayMode('scroll')}
-                />
-                <ModeButton
-                  label="单页显示"
-                  icon={singleIcon}
-                  active={displayMode === 'single'}
-                  onClick={() => handleSetDisplayMode('single')}
-                />
-                <ModeButton
-                  label="双页显示"
-                  icon={doubleIcon}
-                  active={displayMode === 'double'}
-                  onClick={() => handleSetDisplayMode('double')}
-                />
-              </div>
-              {displayMode === 'double' && (
-                <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                  <ModeButton
-                    label="无补白"
-                    icon={blankNoneIcon}
-                    active={blankPosition === 'none'}
-                    onClick={() => setBlankPosition('none')}
-                  />
-                  <ModeButton
-                    label="前补白"
-                    icon={blankFrontIcon}
-                    active={blankPosition === 'front'}
-                    onClick={() => setBlankPosition('front')}
-                  />
-                  <ModeButton
-                    label="后补白"
-                    icon={blankEndIcon}
-                    active={blankPosition === 'end'}
-                    onClick={() => setBlankPosition('end')}
-                  />
-                </div>
-              )}
-              {displayMode === 'scroll' && (
-                <>
-                  <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
-                    <span>页面间距</span>
-                    <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>{pageGap}px</span>
-                  </label>
-                  <input
-                    aria-label="页面间距"
-                    type="range"
-                    min={0}
-                    max={80}
-                    step={2}
-                    value={pageGap}
-                    onChange={(e) => setPageGap(Number(e.target.value))}
-                    className="w-full accent-[#6c8cff]"
-                  />
-                </>
-              )}
-              <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
-                <span>图片宽度</span>
-                <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>{imageWidth}%</span>
-              </label>
-              <input
-                aria-label="图片宽度"
-                type="range"
-                min={30}
-                max={100}
-                step={1}
-                value={imageWidth}
-                onChange={(e) => setImageWidth(Number(e.target.value))}
-                className="w-full accent-[#6c8cff]"
-              />
-              {/* Zoom controls */}
-              <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
-                <span>缩放</span>
-                <span className="text-gray-500" style={{ minWidth: '40px', textAlign: 'right' }}>{Math.round(zoom * 100)}%</span>
-              </label>
-              <div className="flex items-center gap-1">
-                <button
-                  onClick={zoomOut}
-                  className="px-2 py-0.5 text-xs rounded bg-white/10 hover:bg-white/20 transition-colors text-white/70 hover:text-white"
-                >
-                  −
-                </button>
-                <button
-                  onClick={zoomIn}
-                  className="px-2 py-0.5 text-xs rounded bg-white/10 hover:bg-white/20 transition-colors text-white/70 hover:text-white"
-                >
-                  +
-                </button>
-                <button
-                  onClick={resetZoom}
-                  className="px-2 py-0.5 text-xs rounded bg-white/10 hover:bg-white/20 transition-colors text-white/70 hover:text-white ml-auto"
-                >
-                  重置
-                </button>
-              </div>
-              {comic?.sourceSite === 'bika' && (
-                <>
-                  <label className="flex items-center justify-between gap-2 text-xs text-gray-300">
-                    <span>图片清晰度</span>
-                    <span className="text-gray-500" style={{ minWidth: '32px', textAlign: 'right' }}>
-                      {bikaImageQuality === 'low' ? '低' : bikaImageQuality === 'medium' ? '中' : bikaImageQuality === 'high' ? '高' : '原画'}
-                    </span>
-                  </label>
-                  <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                    {IMAGE_QUALITIES.map((q) => (
-                      <button
-                        key={q}
-                        onClick={() => {
-                          setBikaImageQuality(q)
-                          window.hcomic?.setConfig('bikaImageQuality', q).catch(() => {})
-                        }}
-                        className="flex-1 py-1 text-xs transition-colors"
-                        style={{
-                          background: bikaImageQuality === q ? 'rgba(108,140,255,0.2)' : 'transparent',
-                          color: bikaImageQuality === q ? '#6c8cff' : 'rgba(255,255,255,0.4)',
-                        }}
-                      >
-                        {q === 'low' ? '低' : q === 'medium' ? '中' : q === 'high' ? '高' : '原画'}
-                      </button>
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-        </motion.div>
-      </div>
-    </div>
-  )
-}
-
-function ModeButton({ label, icon, active, onClick }: {
-  label: string
-  icon: React.ReactNode
-  active: boolean
-  onClick: () => void
-}) {
-  return (
-    <button
-      aria-label={label}
-      title={label}
-      onClick={onClick}
-      className="flex-1 flex items-center justify-center py-1.5 transition-colors"
-      style={{
-        background: active ? 'rgba(108,140,255,0.2)' : 'transparent',
-        color: active ? '#6c8cff' : 'rgba(255,255,255,0.4)',
-      }}
-    >
-      {icon}
-    </button>
-  )
-}
-
-const scrollIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="4" y="1" width="8" height="14" rx="1" />
-    <path d="M8 11v2.5M6 12l2 1.5L10 12" />
-  </svg>
-)
-
-const singleIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="1" width="10" height="14" rx="1" />
-  </svg>
-)
-
-const doubleIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="1" width="6" height="14" rx="1" />
-    <rect x="9" y="1" width="6" height="14" rx="1" />
-  </svg>
-)
-
-const blankNoneIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="1" width="6" height="14" rx="1" />
-    <rect x="9" y="1" width="6" height="14" rx="1" />
-  </svg>
-)
-
-const blankFrontIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="1" width="6" height="14" rx="1" strokeDasharray="2 2" />
-    <rect x="9" y="1" width="6" height="14" rx="1" />
-  </svg>
-)
-
-const blankEndIcon = (
-  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <rect x="1" y="1" width="6" height="14" rx="1" />
-    <rect x="9" y="1" width="6" height="14" rx="1" strokeDasharray="2 2" />
-  </svg>
-)
-
-function ReaderLoadingState({ className }: { className: string }) {
-  return (
-    <div className={`flex items-center justify-center ${className} text-gray-400`}>
-      <svg className="animate-spin h-8 w-8 mr-3" viewBox="0 0 24 24" fill="none">
-        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-      </svg>
-      加载中...
-    </div>
-  )
-}
-
-function ReaderErrorState({ message, onClose, className }: { message: string; onClose: () => void; className: string }) {
-  return (
-    <div className={`flex flex-col items-center justify-center ${className} text-gray-400 gap-3`}>
-      <span>无法加载漫画内容</span>
-      <span className="text-xs text-gray-500">{message}</span>
-      <button
-        onClick={onClose}
-        className="px-4 py-2 rounded-lg text-sm text-white"
-        style={{ background: 'rgba(255,255,255,0.1)' }}
-      >
-        关闭
-      </button>
-    </div>
-  )
-}
-
-function ReaderEmptyState({ onClose, className }: { onClose: () => void; className: string }) {
-  return (
-    <div className={`flex flex-col items-center justify-center ${className} text-gray-400 gap-3`}>
-      <span>无可用图片</span>
-      <button
-        onClick={onClose}
-        className="px-4 py-2 rounded-lg text-sm text-white"
-        style={{ background: 'rgba(255,255,255,0.1)' }}
-      >
-        关闭
-      </button>
-    </div>
+    </ReaderShell>
   )
 }
