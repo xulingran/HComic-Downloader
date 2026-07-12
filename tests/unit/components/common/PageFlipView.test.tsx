@@ -157,6 +157,80 @@ describe('PageFlipView', () => {
     expect(setCurrentPage).toHaveBeenCalledWith(1)
   })
 
+  it('enters a non-image detail tail after the final single page', () => {
+    const setCurrentPage = vi.fn()
+    render(
+      <PageFlipView
+        {...defaultProps}
+        currentPage={4}
+        setCurrentPage={setCurrentPage}
+        tailContent={<div>尾页详情</div>}
+      />
+    )
+    fireEvent.click(screen.getByLabelText('下一页'))
+    expect(setCurrentPage).toHaveBeenCalledWith(5)
+  })
+
+  it('renders the detail tail alone and returns to the final image', () => {
+    const setCurrentPage = vi.fn()
+    render(
+      <PageFlipView
+        {...defaultProps}
+        currentPage={5}
+        setCurrentPage={setCurrentPage}
+        tailContent={<button>详情操作</button>}
+      />
+    )
+    expect(screen.getByTestId('reader-detail-tail')).toHaveTextContent('详情操作')
+    expect(screen.queryByLabelText('下一页')).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: '← 返回末页' }))
+    expect(setCurrentPage).toHaveBeenCalledWith(4)
+    expect(mockFetchPreviewImage).not.toHaveBeenCalled()
+  })
+
+  it.each([
+    ['none', 3, 5],
+    ['front', 5, 6],
+    ['end', 3, 5],
+  ] as const)('enters a dedicated double-mode tail with %s blank semantics', (blankPosition, currentPage, tailPage) => {
+    const setCurrentPage = vi.fn()
+    render(
+      <PageFlipView
+        {...defaultProps}
+        currentPage={currentPage}
+        displayMode="double"
+        blankPosition={blankPosition}
+        setCurrentPage={setCurrentPage}
+        tailContent={<div>双页详情</div>}
+      />
+    )
+    fireEvent.click(screen.getByLabelText('下一页'))
+    expect(setCurrentPage).toHaveBeenCalledWith(tailPage)
+  })
+
+  it('gates repeated input while animating from the final image into the detail tail', () => {
+    vi.useFakeTimers()
+    const setCurrentPage = vi.fn()
+    const { container, rerender } = render(
+      <PageFlipView
+        {...defaultProps}
+        currentPage={4}
+        setCurrentPage={setCurrentPage}
+        tailContent={<div>详情</div>}
+      />,
+    )
+    rerender(
+      <PageFlipView
+        {...defaultProps}
+        currentPage={5}
+        setCurrentPage={setCurrentPage}
+        tailContent={<div>详情</div>}
+      />,
+    )
+    fireEvent.wheel(container.firstChild as Element, { deltaY: -100 })
+    expect(setCurrentPage).not.toHaveBeenCalled()
+  })
+
   it('clamps next page to totalPages in double mode', () => {
     const setCurrentPage = vi.fn()
     render(

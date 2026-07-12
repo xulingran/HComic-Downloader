@@ -16,6 +16,7 @@ interface ReaderModeTransitionOptions {
   enabled?: boolean
   prepareTarget?: (mode: DisplayMode, anchorPage: number) => boolean
   reduceMotionOverride?: boolean
+  hasTail?: boolean
 }
 
 const PREPARE_RETRY_MS = 16
@@ -36,6 +37,7 @@ export function useReaderModeTransition({
   enabled = true,
   prepareTarget,
   reduceMotionOverride,
+  hasTail = false,
 }: ReaderModeTransitionOptions) {
   const systemReduceMotion = useReducedMotionPreference()
   const reduceMotion = reduceMotionOverride ?? systemReduceMotion
@@ -116,11 +118,12 @@ export function useReaderModeTransition({
       currentPageRef.current,
       totalPages,
       blankPositionRef.current,
+      hasTail,
     )
     pendingTargetRef.current = resolved
     commitTarget(mode, resolved)
     setTransitionPhase('preparing')
-  }, [commitTarget, setTransitionPhase, totalPages])
+  }, [commitTarget, hasTail, setTransitionPhase, totalPages])
 
   const requestDisplayMode = useCallback((mode: DisplayMode) => {
     if (mode === targetModeRef.current && phaseRef.current !== 'idle') return
@@ -137,6 +140,7 @@ export function useReaderModeTransition({
       currentPage,
       totalPages,
       blankPosition,
+      hasTail,
     )
     pendingTargetRef.current = resolved
 
@@ -177,6 +181,7 @@ export function useReaderModeTransition({
     scheduleFinish,
     setTransitionPhase,
     totalPages,
+    hasTail,
   ])
 
   useEffect(() => {

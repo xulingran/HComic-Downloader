@@ -57,7 +57,7 @@ vi.mock('@/hooks/useIpc', () => ({
   useComicDetail: () => ({ getComicDetail: mockGetComicDetail }),
 }))
 
-const { ComicInfoDrawer } = await import('@/components/ComicInfoDrawer')
+const { ComicInfoDrawer, ComicDetailSurface } = await import('@/components/ComicInfoDrawer')
 
 // --- Fixtures -------------------------------------------------------------
 
@@ -260,6 +260,36 @@ describe('ComicInfoDrawer - 元数据信息渲染', () => {
     expect(screen.queryByText(/更新/)).not.toBeInTheDocument()
     // category 文案不渲染
     expect(screen.queryByText('artist cg')).not.toBeInTheDocument()
+  })
+})
+
+describe('ComicDetailSurface - 阅读器复用表面', () => {
+  it('inactive 时不渲染详情，也不发起收藏检查', () => {
+    render(
+      <ComicDetailSurface comic={comicWithTags} active={false} surface="reader" onClose={vi.fn()} />,
+    )
+    expect(screen.queryByText('测试漫画')).not.toBeInTheDocument()
+    expect(mockCheckFavourite).not.toHaveBeenCalled()
+  })
+
+  it('reader 表面复用完整详情，并保持替换/追加搜索语义', async () => {
+    const onClose = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <ComicDetailSurface comic={comicWithTags} active surface="reader" onClose={onClose} />,
+    )
+    expect(screen.getByText('测试漫画')).toBeInTheDocument()
+    expect(screen.getByText('原作X')).toBeInTheDocument()
+    expect(screen.getByText('角色Y')).toBeInTheDocument()
+
+    await user.click(screen.getByText('作者A'))
+    expect(setPendingSearchSpy).toHaveBeenCalledWith('作者A', 'author', false)
+    expect(onClose).toHaveBeenCalledTimes(1)
+
+    onClose.mockClear()
+    await user.click(screen.getByText('NTR'))
+    expect(setPendingSearchSpy).toHaveBeenCalledWith('NTR', 'tag', true)
+    expect(onClose).not.toHaveBeenCalled()
   })
 })
 

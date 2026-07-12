@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -43,8 +43,19 @@ const TAG_BUTTON_STATE: Record<TagButtonState, { action: TagConfirmAction; icon:
   plain: { action: 'block', icon: '+', color: 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]', title: '加入屏蔽' },
 }
 
-export function ComicInfoDrawer() {
-  const { drawerComic, isOpen, closeDrawer, setPendingSearch } = useDrawerStore()
+interface ComicDetailSurfaceProps {
+  comic: ComicInfo | null
+  active: boolean
+  surface?: 'drawer' | 'reader'
+  onClose: () => void
+}
+
+/**
+ * Shared comic-detail experience used by both the drawer and the online reader tail page.
+ * Business state intentionally lives here so enrichment, favourites and tag actions cannot drift.
+ */
+export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose }: ComicDetailSurfaceProps) {
+  const { setPendingSearch } = useDrawerStore()
   const { tagBlacklist, myTags, favouriteTagHighlight, addTag, removeTag, addMyTag, removeMyTag } = useSettingsStore()
   const { addToFavourites } = useAddToFavourites()
   const { removeFromFavourites } = useRemoveFromFavourites()
@@ -73,7 +84,7 @@ export function ComicInfoDrawer() {
   // retryCount 驱动 enrich effect 重新执行（点击重试时自增），避免把 fetch 逻辑抽成独立函数。
   const [retryCount, setRetryCount] = useState(0)
 
-  const comicSource = drawerComic?.sourceSite || 'hcomic'
+  const comicSource = comic?.sourceSite || 'hcomic'
 
   // 推荐态数据源：用户主动确认的 my_tags（取代旧版被动反推的 drawerFavTags）。
   const recommendedTagSet = useMemo(() => {
@@ -83,10 +94,10 @@ export function ComicInfoDrawer() {
   }, [favouriteTagHighlight, comicSource, myTags])
 
   const displayComic = useMemo(() => {
-    if (!drawerComic) return null
-    if (!enrichedComic) return drawerComic
-    return { ...drawerComic, ...enrichedComic }
-  }, [drawerComic, enrichedComic])
+    if (!comic) return null
+    if (!enrichedComic) return comic
+    return { ...comic, ...enrichedComic }
+  }, [comic, enrichedComic])
 
   const isTagBlocked = (tag: string) => {
     const key = normalizeSourceKey(comicSource)
@@ -105,10 +116,10 @@ export function ComicInfoDrawer() {
   // 失败（请求抛错 或 comic===null，后者是 JM 详情页被 Cloudflare/限制级拦截的主要形态）
   // 必须置为 error 状态供 UI 反馈，禁止静默吞错。
   useEffect(() => {
-    if (!isOpen || !drawerComic?.id) {
+    if (!active || !comic?.id) {
       return
     }
-    const hasCompleteData = Array.isArray(drawerComic.tags) && drawerComic.tags.length > 0
+    const hasCompleteData = Array.isArray(comic.tags) && comic.tags.length > 0
     if (!sourceNeedsDetailEnrich(comicSource) && hasCompleteData) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setEnrichedComic(null)
@@ -118,7 +129,7 @@ export function ComicInfoDrawer() {
     let cancelled = false
     setEnrichedComic(null)
     setEnrichState('loading')
-    getComicDetail(drawerComic.id, comicSource, drawerComic.url || '')
+    getComicDetail(comic.id, comicSource, comic.url || '')
       .then((result) => {
         if (cancelled) return
         if (result.comic) {
@@ -136,7 +147,7 @@ export function ComicInfoDrawer() {
       })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, drawerComic?.id, comicSource, retryCount])
+  }, [active, comic?.id, comicSource, retryCount])
 
   // 手动重试 enrich：自增 retryCount 驱动上面的 effect 重新执行。
   // 不关闭抽屉、不重置其它状态（如收藏状态），仅重跑 enrich。
@@ -148,21 +159,21 @@ export function ComicInfoDrawer() {
   // enrich 状态 UI 的显示条件封装（与 enrich effect 的进入条件同构）。
   // shouldEnrich 保证只在"本就需要 enrich"的场景反馈，避免对列表项自带 tags 的来源误报；
   // tagsEmpty 保证列表项已有 tags 时即便 enrich 失败也正常展示 tags 而非状态 UI。
-  const hasCompleteData = Array.isArray(drawerComic?.tags) && drawerComic.tags.length > 0
+  const hasCompleteData = Array.isArray(comic?.tags) && comic.tags.length > 0
   const shouldEnrich = sourceNeedsDetailEnrich(comicSource) || !hasCompleteData
   const tagsEmpty = !(displayComic?.tags && displayComic.tags.length > 0)
   const showEnrichLoading = shouldEnrich && tagsEmpty && enrichState === 'loading'
   const showEnrichError = shouldEnrich && tagsEmpty && enrichState === 'error'
 
   useEffect(() => {
-    if (!isOpen || !drawerComic?.id || !sourceSupportsFavourites(comicSource)) {
+    if (!active || !comic?.id || !sourceSupportsFavourites(comicSource)) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setFavouritesState('idle')
       return
     }
     let cancelled = false
     setFavouritesState('loading')
-    checkFavourite(drawerComic.id, comicSource)
+    checkFavourite(comic.id, comicSource)
       .then((result: { isFavourited: boolean }) => {
         if (!cancelled) {
           setFavouritesState(result.isFavourited ? 'success' : 'idle')
@@ -175,20 +186,20 @@ export function ComicInfoDrawer() {
       })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, drawerComic?.id, comicSource])
+  }, [active, comic?.id, comicSource])
 
   useEffect(() => {
-    if (!isOpen) return
+    if (!active || surface !== 'drawer') return
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeDrawer()
+      if (e.key === 'Escape') onClose()
     }
     document.addEventListener('keydown', handler)
     return () => document.removeEventListener('keydown', handler)
-  }, [isOpen, closeDrawer])
+  }, [active, onClose, surface])
 
   const handleSearch = (query: string, mode: SearchMode, append = false) => {
     setPendingSearch(query, mode, append)
-    closeDrawer()
+    onClose()
   }
 
   // 点击 tag 加入搜索但不关闭抽屉，方便用户多选 tag 连续搜索。
@@ -240,12 +251,12 @@ export function ComicInfoDrawer() {
   }, [showTagOpToast])
 
   const handleToggleFavourites = async () => {
-    if (!drawerComic?.id || favouritesState === 'loading') return
+    if (!comic?.id || favouritesState === 'loading') return
     const isFavourited = favouritesState === 'success'
     setFavouritesState('loading')
     try {
       if (isFavourited) {
-        const result = await removeFromFavourites(drawerComic.id, comicSource)
+        const result = await removeFromFavourites(comic.id, comicSource)
         if (!result.success) {
           setFavouritesState('success')
           setFavToastMessage('移除收藏失败')
@@ -255,7 +266,7 @@ export function ComicInfoDrawer() {
         setFavouritesState('idle')
         setFavToastMessage('已移除收藏')
       } else {
-        const result = await addToFavourites(drawerComic.id, comicSource)
+        const result = await addToFavourites(comic.id, comicSource)
         if (!result.success) {
           setFavouritesState('error')
           setFavToastMessage('加入收藏夹失败')
@@ -289,8 +300,23 @@ export function ComicInfoDrawer() {
     return () => clearTimeout(timer)
   }, [showFavToast, favouritesState])
 
+  const readerSurfaceStyle = surface === 'reader' ? ({
+    '--bg-primary': '#1a1a2e',
+    '--bg-secondary': '#24253a',
+    '--bg-tertiary': '#303149',
+    '--text-primary': '#f4f4f7',
+    '--text-secondary': '#a7a8b7',
+    '--border': 'rgba(255,255,255,0.12)',
+  } as CSSProperties) : undefined
+
   return (
-    <div className="fixed inset-0 z-50 flex justify-end pointer-events-none">
+    <div
+      data-testid={`comic-detail-${surface}`}
+      className={surface === 'drawer'
+        ? 'fixed inset-0 z-50 flex justify-end pointer-events-none'
+        : 'relative w-full h-full flex justify-center pointer-events-auto'}
+      style={readerSurfaceStyle}
+    >
       <div className="pointer-events-auto">
         <Toast
           message={favToastMessage}
@@ -309,30 +335,35 @@ export function ComicInfoDrawer() {
         />
       </div>
       <AnimatePresence>
-        {isOpen && (
+        {active && (
           <>
+            {surface === 'drawer' && (
+              <motion.div
+                key="drawer-overlay"
+                variants={overlayPresenceVariants}
+                initial="initial"
+                animate="animate"
+                exit="exit"
+                className="absolute inset-0 bg-black/50 pointer-events-auto"
+                onClick={onClose}
+              />
+            )}
             <motion.div
-              key="drawer-overlay"
-              variants={overlayPresenceVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="absolute inset-0 bg-black/50 pointer-events-auto"
-              onClick={closeDrawer}
-            />
-            <motion.div
-              key="drawer-panel"
-              variants={drawerVariants}
-              initial="initial"
-              animate="animate"
-              exit="exit"
-              className="relative w-80 max-w-[85vw] bg-[var(--bg-primary)] shadow-2xl
-                         flex flex-col overflow-y-auto pointer-events-auto"
+              key={`${surface}-detail-panel`}
+              variants={surface === 'drawer' ? drawerVariants : undefined}
+              initial={surface === 'drawer' ? 'initial' : false}
+              animate={surface === 'drawer' ? 'animate' : undefined}
+              exit={surface === 'drawer' ? 'exit' : undefined}
+              className={surface === 'drawer'
+                ? 'relative w-80 max-w-[85vw] bg-[var(--bg-primary)] shadow-2xl flex flex-col overflow-y-auto pointer-events-auto'
+                : 'relative w-full max-w-3xl h-full bg-[var(--bg-primary)] flex flex-col overflow-y-auto pointer-events-auto rounded-xl'}
             >
+        {surface === 'drawer' && (
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
           <span className="text-sm text-[var(--text-secondary)]">漫画详情</span>
           <button
-            onClick={closeDrawer}
+            onClick={onClose}
+            aria-label="关闭漫画详情"
             className="w-7 h-7 flex items-center justify-center rounded-md
                        text-[var(--text-secondary)] hover:bg-[var(--bg-secondary)]
                        hover:text-[var(--text-primary)] transition-colors text-lg"
@@ -340,8 +371,9 @@ export function ComicInfoDrawer() {
             ✕
           </button>
         </div>
+        )}
 
-        <div className="px-5 py-4 space-y-4">
+        <div className={surface === 'drawer' ? 'px-5 py-4 space-y-4' : 'px-6 py-8 md:px-10 space-y-5'}>
           <h3 className="text-base font-medium text-[var(--text-primary)] leading-relaxed select-text">
             {displayComic?.title}
           </h3>
@@ -609,7 +641,7 @@ export function ComicInfoDrawer() {
         <Modal
           isOpen={!!confirmTag}
           onClose={() => setConfirmTag(null)}
-          zIndex={60}
+          zIndex={surface === 'reader' ? 70 : 60}
           contentClassName="bg-[var(--bg-primary)] rounded-xl p-6 shadow-lg max-w-sm w-full"
         >
         {confirmTag && (
@@ -705,5 +737,18 @@ export function ComicInfoDrawer() {
       </Modal>
       </div>
     </div>
+  )
+}
+
+/** Drawer chrome remains a thin adapter around the shared detail surface. */
+export function ComicInfoDrawer() {
+  const { drawerComic, isOpen, closeDrawer } = useDrawerStore()
+  return (
+    <ComicDetailSurface
+      comic={drawerComic}
+      active={isOpen}
+      surface="drawer"
+      onClose={closeDrawer}
+    />
   )
 }

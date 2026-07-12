@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveReaderModeTarget, resolveReaderSpread } from '@/lib/reader-mode'
+import { resolveReaderModeTarget, resolveReaderSpread, resolveReaderTailNavigation } from '@/lib/reader-mode'
 
 describe('resolveReaderSpread', () => {
   it.each([
@@ -18,6 +18,48 @@ describe('resolveReaderSpread', () => {
         leftBlank,
         rightBlank,
       })
+    },
+  )
+})
+
+describe('resolveReaderTailNavigation', () => {
+  it.each([
+    ['single', 'none', 4, 4, 5],
+    ['scroll', 'none', 5, 5, 6],
+    ['double', 'none', 4, 3, 5],
+    ['double', 'none', 5, 5, 6],
+    ['double', 'front', 4, 5, 6],
+    ['double', 'front', 5, 5, 7],
+    ['double', 'end', 4, 3, 5],
+    ['double', 'end', 5, 5, 6],
+  ] as const)(
+    '%s/%s with %i images resolves last spread %i and tail %i',
+    (displayMode, blankPosition, totalPages, lastImagePosition, tailPosition) => {
+      expect(resolveReaderTailNavigation(totalPages, displayMode, blankPosition)).toMatchObject({
+        lastImagePosition,
+        tailPosition,
+      })
+    },
+  )
+})
+
+describe('resolveReaderModeTarget with detail tail', () => {
+  it.each([
+    ['single', 'double', 5, 'none', 5],
+    ['scroll', 'double', 5, 'none', 5],
+    ['double', 'single', 6, 'front', 5],
+    ['double', 'scroll', 5, 'none', 5],
+  ] as const)(
+    'keeps the tail anchored across %s -> %s',
+    (currentMode, targetMode, currentPage, blankPosition, targetPage) => {
+      expect(resolveReaderModeTarget(
+        currentMode,
+        targetMode,
+        currentPage,
+        4,
+        blankPosition,
+        true,
+      )).toMatchObject({ targetPage, anchorPage: 5 })
     },
   )
 })

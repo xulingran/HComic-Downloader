@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ComicInfo, IMAGE_QUALITIES } from '@shared/types'
 import { useComicReader } from '../hooks/useComicReader'
 import { useReaderSettings, type BlankPosition } from '../hooks/useReaderSettings'
@@ -18,6 +18,8 @@ import { ReaderPage } from './ReaderPage'
 import { ChapterPicker } from './ChapterPicker'
 import { ReaderShell, ReaderLoadingState, ReaderErrorState, ReaderEmptyState } from './common/ReaderShell'
 import { ReaderModeStage } from './common/ReaderModeStage'
+import { OnlineReaderDetailPage } from './OnlineReaderDetailPage'
+import { resolveReaderTailNavigation } from '../lib/reader-mode'
 
 interface ComicReaderModalProps {
   comic: ComicInfo | null
@@ -34,12 +36,16 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     errorMessage,
     scrambleId,
     comicId,
-    chapters,
+    chapters: fetchedChapters,
     fetchUrls,
     fetchChapterUrls,
     setCurrentPage,
     reset,
   } = useComicReader()
+  const chapters = useMemo(
+    () => fetchedChapters.length > 0 ? fetchedChapters : (comic?.chapters ?? []),
+    [comic?.chapters, fetchedChapters],
+  )
 
   const { pageGap, imageWidth, setPageGap, setImageWidth, displayMode, setDisplayMode } = useReaderSettings()
   const [blankPosition, setBlankPosition] = useState<BlankPosition>('none')
@@ -105,6 +111,16 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const comicRef = useRef<ComicInfo | null>(null)
 
+  // History can open a chapter directly without first calling getPreviewUrls.
+  // Derive its index from the ComicInfo chapter list as soon as it is available.
+  useEffect(() => {
+    if (!selectedChapterId || chapters.length === 0) return
+    const index = chapters.findIndex((chapter) => chapter.id === selectedChapterId)
+    if (index < 0 || index === currentChapterIndex) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setCurrentChapterIndex(index)
+  }, [chapters, currentChapterIndex, selectedChapterId])
+
   // Keep a ref to the current comic so we can still access it on close
   useEffect(() => {
     if (comic) {
@@ -125,8 +141,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   }, [])
 
   const recordHistory = useCallback((page: number) => {
-    if (!comic || page === lastRecordedPageRef.current) return
-    lastRecordedPageRef.current = page
+    const imagePage = Math.min(page, totalPages)
+    if (!comic || imagePage <= 0 || imagePage === lastRecordedPageRef.current) return
+    lastRecordedPageRef.current = imagePage
     addHistory({
       comicId: comic.id,
       title: comic.title,
@@ -135,7 +152,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       sourceSite: comic.sourceSite || '',
       mediaId: comic.mediaId || '',
       sourceUrl: comic.url,
-      lastPage: page,
+      lastPage: imagePage,
       totalPages,
       lastChapterId: chapters[currentChapterIndex]?.id ?? '',
       lastChapterName: chapters[currentChapterIndex]?.name ?? '',
@@ -175,8 +192,15 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     setBlankPosition,
     enabled: open && loadingState === 'loaded' && totalPages > 0,
     prepareTarget: prepareModeTarget,
+    hasTail: totalPages > 0 && (chapters.length <= 1 || currentChapterIndex === chapters.length - 1),
   })
-  const effectiveTotalPages = targetMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+  const hasDetailTail = totalPages > 0 && (chapters.length <= 1 || currentChapterIndex === chapters.length - 1)
+  const targetTailNavigation = resolveReaderTailNavigation(totalPages, targetMode, blankPosition)
+  const visibleTailNavigation = resolveReaderTailNavigation(totalPages, visibleMode, blankPosition)
+  const effectiveTotalPages = hasDetailTail
+    ? targetTailNavigation.tailPosition
+    : targetTailNavigation.imageEffectiveTotal
+  const isDetailPage = hasDetailTail && currentPage === visibleTailNavigation.tailPosition
 
   // Stop pinning the scroll anchor once the mode transition has shown the
   // target view; the ResizeObserver re-scroll is only needed while preparing.
@@ -208,7 +232,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   usePageTracking(
     pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
-    loadingState, imageUrls.length, visibleMode, freezePageTrackingRef, isModeTransitioning,
+    loadingState, imageUrls.length + (hasDetailTail ? 1 : 0), visibleMode, freezePageTrackingRef, isModeTransitioning,
   )
 
   // Keep preload target in sync with current page during scroll mode
@@ -217,10 +241,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   // Suppress during drag — onDragEnd in useSliderDrag handles the final target
   useEffect(() => {
     if (isDragging) return
-    if (visibleMode === 'scroll' && loadingState === 'loaded' && imageUrls.length > 9) {
-      setPreloadTarget(currentPage)
+    if (visibleMode === 'scroll' && loadingState === 'loaded' && imageUrls.length > 9 && !isDetailPage) {
+      setPreloadTarget(Math.min(currentPage, totalPages))
     }
-  }, [visibleMode, currentPage, loadingState, imageUrls.length, isDragging, setPreloadTarget])
+  }, [visibleMode, currentPage, loadingState, imageUrls.length, isDragging, isDetailPage, setPreloadTarget, totalPages])
 
   // Jump to initial page when opening from history
   useEffect(() => {
@@ -269,8 +293,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     } else {
       // Modal closing — save current page immediately if needed
       const c = comicRef.current
-      if (c && currentPage > 0 && currentPage !== lastRecordedPageRef.current) {
-        lastRecordedPageRef.current = currentPage
+      const imagePage = Math.min(currentPage, totalPages)
+      if (c && imagePage > 0 && imagePage !== lastRecordedPageRef.current) {
+        lastRecordedPageRef.current = imagePage
         addHistory({
           comicId: c.id,
           title: c.title,
@@ -279,7 +304,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           sourceSite: c.sourceSite || '',
           mediaId: c.mediaId || '',
           sourceUrl: c.url,
-          lastPage: currentPage,
+          lastPage: imagePage,
           totalPages,
           lastChapterId: chapters[currentChapterIndex]?.id ?? '',
           lastChapterName: chapters[currentChapterIndex]?.name ?? '',
@@ -349,10 +374,16 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       } else {
         if (isModeTransitioning) return
         const step = visibleMode === 'double' ? 2 : 1
-        const navTotal = visibleMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+        const tailNavigation = resolveReaderTailNavigation(totalPages, visibleMode, blankPosition)
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
           e.preventDefault()
-          if (currentPage + step <= navTotal) {
+          if (hasDetailTail && currentPage === tailNavigation.tailPosition) {
+            return
+          }
+          if (hasDetailTail && currentPage >= tailNavigation.lastImagePosition) {
+            setChapterFlipHint(null)
+            setCurrentPage(tailNavigation.tailPosition)
+          } else if (currentPage + step <= tailNavigation.imageEffectiveTotal) {
             setChapterFlipHint(null)
             setCurrentPage(currentPage + step)
           } else if (hasNextChapter) {
@@ -364,7 +395,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           }
         } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp' || e.key === 'PageUp') {
           e.preventDefault()
-          if (currentPage > 1) {
+          if (hasDetailTail && currentPage === tailNavigation.tailPosition) {
+            setChapterFlipHint(null)
+            setCurrentPage(tailNavigation.lastImagePosition)
+          } else if (currentPage > 1) {
             setChapterFlipHint(null)
             setCurrentPage(Math.max(currentPage - step, 1))
           } else if (hasPrevChapter) {
@@ -381,7 +415,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     return () => window.removeEventListener('keydown', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, onClose, visibleMode, blankPosition, currentPage, totalPages, setCurrentPage, isModeTransitioning,
-      chapters.length, hasNextChapter, hasPrevChapter, chapterFlipHint, currentChapterIndex, goToChapter])
+      chapters.length, hasNextChapter, hasPrevChapter, hasDetailTail, chapterFlipHint, currentChapterIndex, goToChapter])
 
   // 失败页阈值 Toast 逻辑（详见 openspec/changes/preview-retry-toast/design.md 决策 3）：
   // - failedCount > 3：常驻 Toast，文案"N 页加载失败"，带"全部重试"按钮
@@ -461,6 +495,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       onClose={onClose}
       title={comic?.title ?? ''}
       currentPage={currentPage}
+      currentItemLabel={isDetailPage ? '详情' : undefined}
       effectiveTotal={effectiveTotalPages}
       chapters={chapters}
       currentChapterIndex={currentChapterIndex}
@@ -536,6 +571,20 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
                 </div>
                 )
               })}
+              {hasDetailTail && comic && (
+                <div
+                  ref={(el) => { pageRefs.current[imageUrls.length] = el }}
+                  data-reader-page={visibleTailNavigation.tailPosition}
+                  className="w-full min-h-[80vh]"
+                >
+                  <OnlineReaderDetailPage
+                    comic={comic}
+                    active={isDetailPage}
+                    observeVisibility
+                    onCloseReader={onClose}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -571,6 +620,13 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               onCached={handleCached}
               retryGen={retryGen}
               modeTransitioning={isModeTransitioning}
+              tailContent={hasDetailTail && comic ? (
+                <OnlineReaderDetailPage
+                  comic={comic}
+                  active={isDetailPage}
+                  onCloseReader={onClose}
+                />
+              ) : undefined}
             />
           )}
         </>

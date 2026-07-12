@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { act, render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { useComicReader } from '@/hooks/useComicReader'
 import userEvent from '@testing-library/user-event'
 import { ComicReaderModal } from '@/components/ComicReaderModal'
 import type { ComicInfo } from '@shared/types'
 import { useState } from 'react'
+import { useReaderStore } from '@/stores/useReaderStore'
 
 // Mock IntersectionObserver for jsdom — triggers isIntersecting immediately
 class MockIntersectionObserver {
@@ -30,6 +31,8 @@ class MockIntersectionObserver {
 (globalThis as any).IntersectionObserver = MockIntersectionObserver
 
 const mockFetchPreviewImage = vi.fn()
+const mockGetComicDetail = vi.fn()
+const mockCheckFavourite = vi.fn()
 
 const mockSetPageGap = vi.fn()
 const mockSetImageWidth = vi.fn()
@@ -86,10 +89,23 @@ describe('ComicReaderModal', () => {
     mockSetImageWidth.mockClear()
     mockSetDisplayMode.mockClear()
     mockDisplayMode = 'scroll'
+    useReaderStore.setState({ readerComic: null, initialPage: null, initialChapterId: null })
     vi.mocked(useComicReader).mockReturnValue(createReaderState())
     mockFetchPreviewImage.mockResolvedValue({ urlHash: 'c'.repeat(64) })
+    mockGetComicDetail.mockResolvedValue({ comic: { ...mockComic, tags: ['sample'] } })
+    mockCheckFavourite.mockResolvedValue({ isFavourited: false })
     Object.defineProperty(window, 'hcomic', {
-      value: { fetchPreviewImage: mockFetchPreviewImage, getConfig: vi.fn().mockResolvedValue({ config: {} }), setConfig: vi.fn().mockResolvedValue({ success: true }) },
+      value: {
+        fetchPreviewImage: mockFetchPreviewImage,
+        getConfig: vi.fn().mockResolvedValue({ config: {} }),
+        setConfig: vi.fn().mockResolvedValue({ success: true }),
+        getComicDetail: mockGetComicDetail,
+        checkFavourite: mockCheckFavourite,
+        addToFavourites: vi.fn().mockResolvedValue({ success: true }),
+        removeFromFavourites: vi.fn().mockResolvedValue({ success: true }),
+        openUrl: vi.fn().mockResolvedValue(undefined),
+        addHistory: vi.fn().mockResolvedValue({ success: true }),
+      },
       writable: true,
       configurable: true,
     })
@@ -106,8 +122,8 @@ describe('ComicReaderModal', () => {
     render(
       <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
     )
-    expect(screen.getByText('テスト漫画')).toBeInTheDocument()
-    expect(screen.getAllByText('1 / 2').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('テスト漫画').length).toBeGreaterThanOrEqual(1)
+    expect(screen.getAllByText('1 / 3').length).toBeGreaterThanOrEqual(1)
   })
 
   it('renders close button', () => {
@@ -239,7 +255,92 @@ describe('ComicReaderModal', () => {
     render(
       <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />
     )
-    expect(screen.getAllByText('1 / 2').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('1 / 3').length).toBeGreaterThanOrEqual(2)
+  })
+
+  it('renders a semantic detail endpoint without requesting a synthetic image', () => {
+    mockDisplayMode = 'single'
+    vi.mocked(useComicReader).mockReturnValue(createReaderState({
+      imageUrls: ['url1', 'url2'],
+      totalPages: 2,
+      currentPage: 3,
+    }))
+    render(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+
+    expect(screen.getByTestId('reader-detail-tail')).toBeInTheDocument()
+    expect(screen.getAllByText('详情').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '漫画详情')
+    expect(mockFetchPreviewImage).not.toHaveBeenCalledWith(undefined, expect.anything(), expect.anything(), expect.anything())
+  })
+
+  it('defers scroll-tail detail IPC until the tail approaches visibility', async () => {
+    let detailObserverCallback: IntersectionObserverCallback | null = null
+    globalThis.IntersectionObserver = class {
+      readonly root: Element | Document | null = null
+      readonly rootMargin: string
+      readonly thresholds: ReadonlyArray<number> = []
+      constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+        this.rootMargin = options?.rootMargin ?? ''
+        if (this.rootMargin === '400px 0px') detailObserverCallback = callback
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return [] }
+    } as unknown as typeof IntersectionObserver
+
+    render(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+    expect(mockGetComicDetail).not.toHaveBeenCalled()
+    expect(mockCheckFavourite).not.toHaveBeenCalled()
+
+    const target = document.querySelector('[data-reader-detail-page]')!
+    act(() => {
+      detailObserverCallback?.(
+        [{ isIntersecting: true, target }] as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      )
+    })
+    await waitFor(() => expect(mockGetComicDetail).toHaveBeenCalledWith('1', 'hcomic', mockComic.url))
+    expect(mockCheckFavourite).toHaveBeenCalledWith('1', 'hcomic')
+  })
+
+  it('clamps a detail-tail close event to the final real image in history', async () => {
+    mockDisplayMode = 'single'
+    vi.mocked(useComicReader).mockReturnValue(createReaderState({
+      imageUrls: ['url1', 'url2'],
+      totalPages: 2,
+      currentPage: 3,
+    }))
+    const { rerender } = render(
+      <ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />,
+    )
+    rerender(<ComicReaderModal comic={mockComic} open={false} onClose={vi.fn()} />)
+
+    await waitFor(() => expect(window.hcomic!.addHistory).toHaveBeenCalledWith(
+      expect.objectContaining({ lastPage: 2, totalPages: 2 }),
+    ))
+  })
+
+  it('does not restore an out-of-range history page as the detail tail', () => {
+    globalThis.IntersectionObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return [] }
+      root = null
+      rootMargin = ''
+      thresholds = []
+    } as unknown as typeof IntersectionObserver
+    const setCurrentPage = vi.fn()
+    useReaderStore.setState({ initialPage: 3 })
+    vi.mocked(useComicReader).mockReturnValue(createReaderState({
+      imageUrls: ['url1', 'url2'],
+      totalPages: 2,
+      currentPage: 1,
+      setCurrentPage,
+    }))
+    render(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+    expect(setCurrentPage).not.toHaveBeenCalledWith(3)
   })
 
   describe('ReaderPage cache and priority', () => {
@@ -272,7 +373,7 @@ describe('ComicReaderModal', () => {
       const slider = screen.getByRole('slider')
       expect(slider).toBeInTheDocument()
       expect(slider).toHaveAttribute('aria-valuemin', '1')
-      expect(slider).toHaveAttribute('aria-valuemax', '4')
+      expect(slider).toHaveAttribute('aria-valuemax', '5')
       expect(slider).toHaveAttribute('aria-valuenow', '2')
     })
 
@@ -305,14 +406,14 @@ describe('ComicReaderModal', () => {
       const slider = screen.getByRole('slider')
       slider.getBoundingClientRect = vi.fn(() => ({ left: 0, width: 300, right: 300, top: 0, bottom: 0, height: 24, x: 0, y: 0 }) as DOMRect)
       slider.setPointerCapture = vi.fn()
-      const targetPage = container.querySelector<HTMLElement>('[data-reader-page="5"]')
+      const targetPage = container.querySelector<HTMLElement>('[data-reader-page="6"]')
       expect(targetPage).not.toBeNull()
       const scrollIntoView = vi.fn()
       Element.prototype.scrollIntoView = scrollIntoView
 
-      // clientX=150 on a 300px-wide track → 50% → page 5
+      // 10 image pages + detail tail = 11 navigation items; 50% rounds to item 6.
       fireEvent.pointerDown(slider, { clientX: 150, pointerId: 1 })
-      expect(slider).toHaveAttribute('aria-valuenow', '5')
+      expect(slider).toHaveAttribute('aria-valuenow', '6')
       expect(scrollIntoView).toHaveBeenCalledExactlyOnceWith({ behavior: 'instant', block: 'start' })
       expect(scrollIntoView.mock.contexts[0]).toBe(targetPage)
     })
@@ -599,6 +700,7 @@ describe('ComicReaderModal', () => {
       await userEvent.click(screen.getByText('第 1 話'))
       const nextBtn = screen.getByLabelText('下一章')
       expect(nextBtn).toBeEnabled()
+      expect(screen.queryByTestId('comic-detail-reader')).not.toBeInTheDocument()
       fetchChapterUrls.mockClear()
 
       // 点击「下一章」加载第 2 章
@@ -607,6 +709,29 @@ describe('ComicReaderModal', () => {
 
       // 已到末章 → 「下一章」禁用
       expect(screen.getByLabelText('下一章')).toBeDisabled()
+      expect(screen.getByTestId('comic-detail-reader')).toBeInTheDocument()
+    })
+
+    it('recognises a history-direct last chapter from ComicInfo metadata', async () => {
+      const chapters = [
+        { id: '999001', name: '第 1 話', index: 1 },
+        { id: '999002', name: '第 2 話', index: 2 },
+      ]
+      useReaderStore.setState({ initialChapterId: '999002' })
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: ['https://img.example.com/chapter-page.jpg'],
+        totalPages: 1,
+        currentPage: 1,
+        chapters: [],
+      }))
+      render(
+        <ComicReaderModal
+          comic={{ ...multiChapterComic, chapters }}
+          open={true}
+          onClose={vi.fn()}
+        />,
+      )
+      await waitFor(() => expect(screen.getByTestId('comic-detail-reader')).toBeInTheDocument())
     })
 
     it('first chapter has 上一章 disabled', async () => {

@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState } from 'react'
+import { useRef, useCallback, useEffect, useState, type ReactNode } from 'react'
 import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import type { DisplayMode, BlankPosition } from '../hooks/useReaderSettings'
 import {
@@ -8,7 +8,7 @@ import {
   usePageFlipVariants,
   useReducedMotionPreference,
 } from '../lib/anim'
-import { resolveReaderSpread } from '../lib/reader-mode'
+import { resolveReaderSpread, resolveReaderTailNavigation } from '../lib/reader-mode'
 import { buildImageUrl } from '@/lib/image-url'
 import { ReaderPagePlaceholder } from './common/ReaderPagePlaceholder'
 
@@ -65,6 +65,8 @@ interface PageFlipViewProps {
   imageLoader?: (url: string, index: number) => Promise<string>
   /** Shared mode-transition gate; separate from ordinary page-flip locking. */
   modeTransitioning?: boolean
+  /** Optional non-image page rendered after the final image/spread. */
+  tailContent?: ReactNode
 }
 
 export function PageFlipView({
@@ -88,6 +90,7 @@ export function PageFlipView({
   retryGen,
   imageLoader,
   modeTransitioning = false,
+  tailContent,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [panOffset, setPanOffset] = useState(0)
@@ -128,11 +131,16 @@ export function PageFlipView({
   const animateModeLayout = modeTransitioning && !reduceMotion
 
   const effectiveTotal = isDoubleMode && blankPosition === 'front' ? totalPages + 1 : totalPages
+  const tailNavigation = resolveReaderTailNavigation(totalPages, displayMode, blankPosition)
+  const hasTail = tailContent !== undefined && tailContent !== null
+  const isTailActive = hasTail && currentPage === tailNavigation.tailPosition
 
-  const canGoPrev = currentPage > 1
-  const canGoNext = isDoubleMode
-    ? currentPage + step <= effectiveTotal
-    : currentPage < effectiveTotal
+  const canGoPrev = isTailActive || currentPage > 1
+  const canGoNext = hasTail
+    ? !isTailActive && currentPage <= tailNavigation.lastImagePosition
+    : isDoubleMode
+      ? currentPage + step <= effectiveTotal
+      : currentPage < effectiveTotal
 
   const pageVariants = usePageFlipVariants()
 
@@ -155,17 +163,21 @@ export function PageFlipView({
 
   const goNext = useCallback(() => {
     if (!canGoNext || interactionLocked) return
-    const next = Math.min(currentPage + step, effectiveTotal)
+    const next = hasTail && currentPage >= tailNavigation.lastImagePosition
+      ? tailNavigation.tailPosition
+      : Math.min(currentPage + step, hasTail ? tailNavigation.lastImagePosition : effectiveTotal)
     setCurrentPage(next)
     setPanOffset(0)
-  }, [canGoNext, currentPage, step, effectiveTotal, interactionLocked, setCurrentPage])
+  }, [canGoNext, currentPage, step, hasTail, tailNavigation, effectiveTotal, interactionLocked, setCurrentPage])
 
   const goPrev = useCallback(() => {
     if (!canGoPrev || interactionLocked) return
-    const prev = Math.max(currentPage - step, 1)
+    const prev = isTailActive
+      ? tailNavigation.lastImagePosition
+      : Math.max(currentPage - step, 1)
     setCurrentPage(prev)
     setPanOffset(0)
-  }, [canGoPrev, currentPage, interactionLocked, step, setCurrentPage])
+  }, [canGoPrev, currentPage, interactionLocked, isTailActive, tailNavigation, step, setCurrentPage])
 
   const clampPanOffset = useCallback((offset: number) => {
     const container = containerRef.current
@@ -278,7 +290,31 @@ export function PageFlipView({
 
   /* eslint-disable react-hooks/refs -- shared cache is intentionally a ref-backed render cache */
   const pageSlots: Array<{ key: string; content: React.ReactNode }> = []
-  if (isDoubleMode) {
+  if (isTailActive) {
+    pageSlots.push({
+      key: 'reader-detail-tail',
+      content: (
+        <div
+          data-testid="reader-detail-tail"
+          className="relative h-full w-full overflow-y-auto overscroll-contain"
+          onPointerDown={(event) => event.stopPropagation()}
+          onWheel={(event) => {
+            event.stopPropagation()
+            if (event.deltaY < 0 && event.currentTarget.scrollTop <= 0) goPrev()
+          }}
+        >
+          <button
+            type="button"
+            onClick={goPrev}
+            className="sticky top-3 left-3 z-10 px-3 py-1.5 rounded-md bg-white/10 text-white text-sm hover:bg-white/20"
+          >
+            ← 返回末页
+          </button>
+          {tailContent}
+        </div>
+      ),
+    })
+  } else if (isDoubleMode) {
     if (leftIsBlank) pageSlots.push({ key: 'blank-front', content: <BlankPage /> })
     else if (leftRealIdx !== null) pageSlots.push({ key: `page-${leftRealIdx}`, content: renderPage(leftRealIdx) })
     if (rightIsBlank) pageSlots.push({ key: 'blank-end', content: <BlankPage /> })
@@ -338,8 +374,8 @@ export function PageFlipView({
           // spread is height-driven instead: leaving width automatic gives
           // both aspect-ratio-preserving pages enough room to reach h-full
           // without stretching them horizontally.
-          width: isDoubleMode ? undefined : `${imageWidth}%`,
-          transform: `translateX(${panOffset}px) scale(${zoom})`,
+          width: isTailActive || isDoubleMode ? undefined : `${imageWidth}%`,
+          transform: isTailActive ? 'none' : `translateX(${panOffset}px) scale(${zoom})`,
           transition: isPanning.current ? 'none' : undefined, // eslint-disable-line react-hooks/refs
         }}
       >
@@ -367,7 +403,7 @@ export function PageFlipView({
       {/* Click-to-flip overlay：左右边缘条带（各 ~20%）+ 中央拖拽安全区（~60%）。
           安全区 pointer-events-none 让指针事件穿透到容器的拖拽平移 / 滚轮 handler；
           边缘按钮保留 stopPropagation 以独占"翻页点击"语义。详见 shrink-pageflip-trigger-zones design.md。 */}
-      <div className="absolute inset-0 flex pointer-events-none">
+      {!isTailActive && <div className="absolute inset-0 flex pointer-events-none">
         <button
           aria-label="上一页"
           aria-disabled={!canGoPrev || interactionLocked}
@@ -403,7 +439,7 @@ export function PageFlipView({
             <path d="M12 8l8 8-8 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-      </div>
+      </div>}
     </div>
   )
 }

@@ -38,6 +38,8 @@ interface ReaderShellProps {
   title: string
   /** 当前页（1-based） */
   currentPage: number
+  /** Synthetic/non-image item label, e.g. the online detail tail. */
+  currentItemLabel?: string
   /** 含补白页的有效总页数（用于滑块 aria-valuemax） */
   effectiveTotal: number
   /** 章节列表；传入则渲染上/下一章按钮 */
@@ -86,6 +88,7 @@ export function ReaderShell({
   onClose,
   title,
   currentPage,
+  currentItemLabel,
   effectiveTotal,
   chapters,
   currentChapterIndex = -1,
@@ -136,6 +139,7 @@ export function ReaderShell({
   if (!open) return null
 
   const progress = effectiveTotal > 0 ? Math.round((currentPage / effectiveTotal) * 100) : 0
+  const pageText = currentItemLabel ?? `${currentPage} / ${effectiveTotal}`
   const hasChapters = Boolean(chapters && chapters.length > 1)
   const hasPrevChapter = hasChapters && currentChapterIndex > 0
   const hasNextChapter = hasChapters && currentChapterIndex >= 0 && currentChapterIndex < (chapters!.length - 1)
@@ -189,7 +193,7 @@ export function ReaderShell({
                   className="px-2.5 py-1 rounded-full text-xs text-white"
                   style={{ background: 'rgba(255,255,255,0.15)' }}
                 >
-                  {currentPage} / {effectiveTotal}
+                  {pageText}
                 </span>
               )}
             </div>
@@ -216,7 +220,7 @@ export function ReaderShell({
                   ‹ 上一章
                 </button>
               )}
-              <span className="text-xs text-gray-500">{currentPage} / {effectiveTotal}</span>
+              <span className="text-xs text-gray-500">{pageText}</span>
               <div
                 ref={sliderRef}
                 data-track
@@ -224,6 +228,7 @@ export function ReaderShell({
                 aria-valuemin={1}
                 aria-valuemax={effectiveTotal}
                 aria-valuenow={currentPage}
+                aria-valuetext={currentItemLabel ? `漫画${currentItemLabel}` : undefined}
                 aria-label="页面进度"
                 className="flex-1 h-6 flex items-center cursor-pointer"
                 style={{ padding: '8px 0' }}

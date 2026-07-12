@@ -15,6 +15,12 @@ export interface ReaderModeTarget {
   targetBlankPosition: BlankPosition
 }
 
+export interface ReaderTailNavigation {
+  imageEffectiveTotal: number
+  lastImagePosition: number
+  tailPosition: number
+}
+
 function clampPage(page: number, totalPages: number): number {
   if (totalPages <= 0) return 0
   return Math.max(1, Math.min(totalPages, Math.trunc(page) || 1))
@@ -57,6 +63,38 @@ export function resolveReaderSpread(
   }
 }
 
+/**
+ * Resolves the synthetic, non-image detail tail without inserting a sentinel
+ * URL into the image list. In double mode the tail follows the final spread
+ * and owns a dedicated navigation position even when a front blank exists.
+ */
+export function resolveReaderTailNavigation(
+  totalPages: number,
+  displayMode: DisplayMode,
+  blankPosition: BlankPosition,
+): ReaderTailNavigation {
+  const safeTotal = Math.max(0, totalPages)
+  if (displayMode !== 'double') {
+    return {
+      imageEffectiveTotal: safeTotal,
+      lastImagePosition: safeTotal,
+      tailPosition: safeTotal + 1,
+    }
+  }
+
+  const hasFrontBlank = blankPosition === 'front'
+  const imageEffectiveTotal = safeTotal + (hasFrontBlank ? 1 : 0)
+  const lastImagePosition = hasFrontBlank
+    ? (safeTotal % 2 === 0 ? safeTotal + 1 : safeTotal)
+    : (safeTotal % 2 === 0 ? Math.max(1, safeTotal - 1) : safeTotal)
+
+  return {
+    imageEffectiveTotal,
+    lastImagePosition: safeTotal > 0 ? lastImagePosition : 0,
+    tailPosition: imageEffectiveTotal + 1,
+  }
+}
+
 function resolveActualAnchor(
   currentMode: DisplayMode,
   currentPage: number,
@@ -82,8 +120,24 @@ export function resolveReaderModeTarget(
   currentPage: number,
   totalPages: number,
   blankPosition: BlankPosition,
+  hasTail = false,
 ): ReaderModeTarget {
   const safeTotal = Math.max(0, totalPages)
+  if (hasTail) {
+    const currentTail = resolveReaderTailNavigation(safeTotal, currentMode, blankPosition)
+    if (currentPage === currentTail.tailPosition) {
+      const targetBlankPosition = targetMode === 'double'
+        ? (currentMode === 'double' ? blankPosition : 'none')
+        : 'none'
+      const targetTail = resolveReaderTailNavigation(safeTotal, targetMode, targetBlankPosition)
+      return {
+        anchorPage: safeTotal + 1,
+        targetPage: targetTail.tailPosition,
+        effectiveTotal: targetTail.tailPosition,
+        targetBlankPosition,
+      }
+    }
+  }
   const anchorPage = resolveActualAnchor(currentMode, currentPage, safeTotal, blankPosition)
 
   if (targetMode !== 'double') {
