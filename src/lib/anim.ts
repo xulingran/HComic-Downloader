@@ -61,7 +61,7 @@ export const modalPresenceVariants: Variants = {
 export const overlayPresenceVariants: Variants = {
   initial: { opacity: 0 },
   animate: { opacity: 1 },
-  exit: { opacity: 0 },
+  exit: { opacity: 0, pointerEvents: 'none' },
 }
 
 /** ComicInfoDrawer：从右滑入。 */
@@ -75,7 +75,7 @@ export const drawerPresenceVariants: Variants = {
 export const readerPresenceVariants: Variants = {
   initial: { y: '100%' },
   animate: { y: 0, transition: springTransition },
-  exit: { y: '100%', transition: springTransition },
+  exit: { y: '100%', pointerEvents: 'none', transition: springTransition },
 }
 
 /** Toast：从上方滑入（y 用 rem 单位保持与原 -1rem 一致）。 */

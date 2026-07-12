@@ -13,21 +13,41 @@ import type { LibraryAssetDetail } from '@shared/types'
 interface LocalReaderState {
   readerAsset: LibraryAssetDetail | null
   open: boolean
+  sessionId: number
+  closingSessionId: number | null
   justClosedAssetId: string | null
   openReader: (asset: LibraryAssetDetail) => void
   closeReader: () => void
+  finalizeClose: (sessionId: number | null) => void
 }
 
 export const useLocalReaderStore = create<LocalReaderState>((set) => ({
   readerAsset: null,
   open: false,
+  sessionId: 0,
+  closingSessionId: null,
   justClosedAssetId: null,
-  openReader: (asset) => set({ readerAsset: asset, open: true, justClosedAssetId: null }),
+  openReader: (asset) => set((state) => ({
+    readerAsset: asset,
+    open: true,
+    sessionId: state.sessionId + 1,
+    closingSessionId: null,
+    justClosedAssetId: null,
+  })),
   closeReader: () =>
-    set((state) => ({
+    set((state) => state.open ? ({
       open: false,
-      // 资产引用延迟清除：让 modal 的关闭动画/卸载 effect 仍能读到 assetId
+      closingSessionId: state.sessionId,
       justClosedAssetId: state.readerAsset?.assetId ?? null,
-      readerAsset: null,
-    })),
+    }) : state),
+  finalizeClose: (sessionId) =>
+    set((state) => (
+      sessionId !== null
+      && !state.open
+      && state.closingSessionId === sessionId
+      && state.sessionId === sessionId
+    ) ? {
+        readerAsset: null,
+        closingSessionId: null,
+      } : state),
 }))

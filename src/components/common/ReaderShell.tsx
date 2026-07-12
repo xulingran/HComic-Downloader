@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import {
   readerModeIndicatorTransition,
   readerPresenceVariants,
@@ -35,6 +35,7 @@ interface ReaderShellProps {
   /** 外壳显隐；false 时渲染 null（与 modal open 语义一致） */
   open: boolean
   onClose: () => void
+  onExitComplete?: () => void
   title: string
   /** 当前页（1-based） */
   currentPage: number
@@ -86,6 +87,7 @@ interface ReaderShellProps {
 export function ReaderShell({
   open,
   onClose,
+  onExitComplete,
   title,
   currentPage,
   currentItemLabel,
@@ -136,8 +138,6 @@ export function ReaderShell({
     return () => document.removeEventListener('mousedown', handler)
   }, [settingsOpen, setSettingsOpen])
 
-  if (!open) return null
-
   const progress = effectiveTotal > 0 ? Math.round((currentPage / effectiveTotal) * 100) : 0
   const pageText = currentItemLabel ?? `${currentPage} / ${effectiveTotal}`
   const hasChapters = Boolean(chapters && chapters.length > 1)
@@ -145,14 +145,17 @@ export function ReaderShell({
   const hasNextChapter = hasChapters && currentChapterIndex >= 0 && currentChapterIndex < (chapters!.length - 1)
 
   return (
-    <div className="fixed inset-0 z-50">
-      <div>
+    <AnimatePresence onExitComplete={onExitComplete}>
+      {open && (
+      <div key="reader-shell" className="fixed inset-0 z-50" data-testid="reader-shell">
         <motion.div
           key="reader-overlay"
           variants={overlayPresenceVariants}
           initial="initial"
           animate="animate"
+          exit="exit"
           className="absolute inset-0 bg-black/50"
+          data-testid="reader-overlay"
           onClick={onClose}
         />
         <motion.div
@@ -160,7 +163,9 @@ export function ReaderShell({
           variants={readerVariants}
           initial="initial"
           animate="animate"
+          exit="exit"
           className="absolute inset-0 flex flex-col bg-[#1a1a2e]"
+          data-testid="reader-content"
         >
           {/* Header */}
           <div
@@ -388,7 +393,8 @@ export function ReaderShell({
           )}
         </motion.div>
       </div>
-    </div>
+      )}
+    </AnimatePresence>
   )
 }
 

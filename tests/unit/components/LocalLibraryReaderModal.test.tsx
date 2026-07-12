@@ -237,6 +237,48 @@ describe('LocalLibraryReaderModal', () => {
     expect(await screen.findByTestId('local-page-flip')).toBeInTheDocument()
   })
 
+  it('keeps the rendered asset visible until the shared exit completes', async () => {
+    const singleChapterAsset = { ...asset, chapters: [asset.chapters[0]], albumTotalChapters: 1 }
+    libraryApi.detail.mockResolvedValue(singleChapterAsset)
+    const onExitComplete = vi.fn()
+    const { rerender } = render(
+      <LocalLibraryReaderModal asset={singleChapterAsset} open onClose={() => {}} onExitComplete={onExitComplete} />,
+    )
+    await screen.findByTestId('local-reader-page-0')
+
+    rerender(
+      <LocalLibraryReaderModal asset={singleChapterAsset} open={false} onClose={() => {}} onExitComplete={onExitComplete} />,
+    )
+
+    expect(screen.getByText('Album')).toBeInTheDocument()
+    expect(screen.getByTestId('local-reader-page-0')).toBeInTheDocument()
+    await waitFor(() => expect(onExitComplete).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('local-reader-page-0')).not.toBeInTheDocument()
+  })
+
+  it('flushes a pending current-page progress update as soon as closing starts', async () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(100_000)
+    const singleChapterAsset = { ...asset, chapters: [asset.chapters[0]], albumTotalChapters: 1 }
+    libraryApi.detail.mockResolvedValue(singleChapterAsset)
+    const { rerender } = render(
+      <LocalLibraryReaderModal asset={singleChapterAsset} open onClose={() => {}} />,
+    )
+    await screen.findByTestId('local-reader-page-1')
+    await waitFor(() => expect(libraryApi.saveReadingProgress).toHaveBeenCalledWith('asset-1', 'ch1', 1, 2))
+
+    const secondPage = screen.getByTestId('local-reader-page-1').parentElement!
+    act(() => {
+      latestIntersectionCallback?.(
+        [{ isIntersecting: true, target: secondPage, boundingClientRect: { top: 0 } }] as unknown as IntersectionObserverEntry[],
+        {} as IntersectionObserver,
+      )
+    })
+    rerender(<LocalLibraryReaderModal asset={singleChapterAsset} open={false} onClose={() => {}} />)
+
+    await waitFor(() => expect(libraryApi.saveReadingProgress).toHaveBeenCalledWith('asset-1', 'ch1', 2, 2))
+    nowSpy.mockRestore()
+  })
+
   it('reuses a materialized local page when switching from scroll to single mode', async () => {
     const singleChapterAsset = { ...asset, chapters: [asset.chapters[0]], albumTotalChapters: 1 }
     libraryApi.detail.mockResolvedValue(singleChapterAsset)

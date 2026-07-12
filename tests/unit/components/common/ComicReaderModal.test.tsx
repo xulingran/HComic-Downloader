@@ -258,6 +258,20 @@ describe('ComicReaderModal', () => {
     expect(screen.getAllByText('1 / 3').length).toBeGreaterThanOrEqual(2)
   })
 
+  it('routes Escape and overlay clicks through the same close request', async () => {
+    const onClose = vi.fn()
+    const { unmount } = render(
+      <ComicReaderModal comic={mockComic} open={true} onClose={onClose} />,
+    )
+    fireEvent.keyDown(window, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledTimes(1)
+    unmount()
+
+    render(<ComicReaderModal comic={mockComic} open={true} onClose={onClose} />)
+    await userEvent.click(screen.getByTestId('reader-overlay'))
+    expect(onClose).toHaveBeenCalledTimes(2)
+  })
+
   it('renders a semantic detail endpoint without requesting a synthetic image', () => {
     mockDisplayMode = 'single'
     vi.mocked(useComicReader).mockReturnValue(createReaderState({

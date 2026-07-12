@@ -119,8 +119,20 @@ function App() {
   // 切走不卸载、切回复用实例，消除重复 mount 与 stagger 重播。
   const [visitedPages, setVisitedPages] = useState<string[]>(['search'])
   const { pendingSearch } = useDrawerStore()
-  const { readerComic, closeReader } = useReaderStore()
-  const { readerAsset: localReaderAsset, open: localReaderOpen, closeReader: closeLocalReader } = useLocalReaderStore()
+  const {
+    readerComic,
+    open: readerOpen,
+    closingSessionId: readerClosingSessionId,
+    closeReader,
+    finalizeClose: finalizeReaderClose,
+  } = useReaderStore()
+  const {
+    readerAsset: localReaderAsset,
+    open: localReaderOpen,
+    closingSessionId: localReaderClosingSessionId,
+    closeReader: closeLocalReader,
+    finalizeClose: finalizeLocalReaderClose,
+  } = useLocalReaderStore()
 
   const getPageDirection = useCallback((from: string, to: string) => {
     const oldIndex = TAB_ORDER.indexOf(from as typeof TAB_ORDER[number])
@@ -300,13 +312,15 @@ function App() {
       <Suspense fallback={null}><ComicInfoDrawer /></Suspense>
       <Suspense fallback={null}><ComicReaderModal
         comic={readerComic}
-        open={!!readerComic}
+        open={readerOpen}
         onClose={closeReader}
+        onExitComplete={() => finalizeReaderClose(readerClosingSessionId)}
       /></Suspense>
       <Suspense fallback={null}><LocalLibraryReaderModal
         asset={localReaderAsset}
         open={localReaderOpen}
         onClose={closeLocalReader}
+        onExitComplete={() => finalizeLocalReaderClose(localReaderClosingSessionId)}
       /></Suspense>
       {updateInfo && (
         <Suspense fallback={null}><UpdateDialog

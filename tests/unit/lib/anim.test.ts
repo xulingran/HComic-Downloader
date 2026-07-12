@@ -8,6 +8,8 @@ import {
   readerModeFadeVariants,
   readerModeLayoutTransition,
   readerModePhaseTransition,
+  readerPresenceVariants,
+  reduceSafe,
   smoothTransition,
 } from '@/lib/anim'
 
@@ -87,5 +89,17 @@ describe('reader mode transition variants', () => {
     expect(variants.hidden).toEqual({ opacity: 0 })
     expect(variants.visible).toEqual({ opacity: 1, transition: { duration: DURATION.fast } })
     expect(JSON.stringify(variants)).not.toMatch(/"[xyscale]+"/)
+  })
+})
+
+describe('reader presence variants', () => {
+  it('disables pointer interaction while the reader exits', () => {
+    expect(readerPresenceVariants.exit).toMatchObject({ y: '100%', pointerEvents: 'none' })
+  })
+
+  it('removes vertical movement from the reduced-motion exit path', () => {
+    const reduced = reduceSafe(readerPresenceVariants)
+    expect(reduced.exit).toMatchObject({ pointerEvents: 'none' })
+    expect(reduced.exit).not.toHaveProperty('y')
   })
 })

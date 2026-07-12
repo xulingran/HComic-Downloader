@@ -25,9 +25,10 @@ interface ComicReaderModalProps {
   comic: ComicInfo | null
   open: boolean
   onClose: () => void
+  onExitComplete?: () => void
 }
 
-export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps) {
+export function ComicReaderModal({ comic, open, onClose, onExitComplete }: ComicReaderModalProps) {
   const {
     imageUrls,
     totalPages,
@@ -279,7 +280,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   // 多章节专辑且尚未选章时，显示选章首屏而非翻页视图
   const showChapterPicker = chapters.length > 1 && !selectedChapterId
 
-  // Fetch URLs when modal opens
+  // Fetch URLs when modal opens. Closing only stops the active session here;
+  // render data is retained until ReaderShell reports that its exit completed.
   useEffect(() => {
     if (open && comic) {
       if (initialChapterId) {
@@ -290,7 +292,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       } else {
         fetchUrls(comic)
       }
-    } else {
+    } else if (comic) {
       // Modal closing — save current page immediately if needed
       const c = comicRef.current
       const imagePage = Math.min(currentPage, totalPages)
@@ -315,20 +317,23 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current)
       }
-      lastRecordedPageRef.current = 0
-      setSelectedChapterId(null)
-      setCurrentChapterIndex(-1)
-      setChapterFlipHint(null)
-      reset()
-      clearCache()
-      // 清理失败页聚合状态与残留 Toast，避免下本漫画看到上一本的失败提示
-      prevFailedCountRef.current = 0
-      hadFailedToastRef.current = false
-      clearFailedPages()
-      useToastStore.getState().dismiss()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, comic?.id, fetchUrls, fetchChapterUrls, reset, clearCache, clearFailedPages])
+
+  const handleExitComplete = useCallback(() => {
+    lastRecordedPageRef.current = 0
+    setSelectedChapterId(null)
+    setCurrentChapterIndex(-1)
+    setChapterFlipHint(null)
+    reset()
+    clearCache()
+    prevFailedCountRef.current = 0
+    hadFailedToastRef.current = false
+    clearFailedPages()
+    useToastStore.getState().dismiss()
+    onExitComplete?.()
+  }, [clearCache, clearFailedPages, onExitComplete, reset])
 
   // Debounced history recording on page change
   useEffect(() => {
@@ -493,6 +498,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     <ReaderShell
       open={open}
       onClose={onClose}
+      onExitComplete={handleExitComplete}
       title={comic?.title ?? ''}
       currentPage={currentPage}
       currentItemLabel={isDetailPage ? '详情' : undefined}

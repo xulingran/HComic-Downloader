@@ -18,10 +18,11 @@ interface LocalLibraryReaderModalProps {
   asset: LibraryAssetDetail | null
   open: boolean
   onClose: () => void
+  onExitComplete?: () => void
 }
 
 /** Local reader backed by the same presentation shell as remote preview. */
-export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryReaderModalProps) {
+export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }: LocalLibraryReaderModalProps) {
   const {
     imageUrls,
     totalPages,
@@ -72,12 +73,16 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
   useEffect(() => {
     if (open) return
     flush()
+  }, [open, flush])
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const handleExitComplete = useCallback(() => {
     reset()
     clearPageCache()
     setSettingsOpen(false)
     setChapterSelected(false)
-  }, [open, flush, reset, clearPageCache])
-  /* eslint-enable react-hooks/set-state-in-effect */
+    onExitComplete?.()
+  }, [clearPageCache, onExitComplete, reset])
 
   useEffect(() => {
     if (!open || !asset || loadingState !== 'loaded' || totalPages <= 0 || currentPage <= 0) return
@@ -257,7 +262,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     setChapterSelected(false)
   }, [flush])
 
-  if (!open || !asset) return null
+  if (!asset) return null
   const needsValidChapter = loadingState === 'loaded' && !currentChapterId && totalPages === 0
   const showChapterPicker = chapters.length > 1
     && (!chapterSelected || needsValidChapter)
@@ -268,6 +273,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     <ReaderShell
       open={open}
       onClose={onClose}
+      onExitComplete={handleExitComplete}
       title={asset.title}
       currentPage={currentPage}
       effectiveTotal={effectiveTotal}

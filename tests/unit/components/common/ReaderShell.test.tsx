@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { ReaderShell } from '@/components/common/ReaderShell'
 import type { ChapterInfo } from '@shared/types'
@@ -94,6 +94,25 @@ describe('ReaderShell', () => {
     expect(screen.getByLabelText('双页显示')).toBeInTheDocument()
     expect(screen.getByLabelText('连续滚动')).toHaveAttribute('aria-pressed', 'true')
     expect(screen.getByTestId('reader-mode-indicator')).toBeInTheDocument()
+  })
+
+  it('retains content during exit and reports completion before unmounting', async () => {
+    const onExitComplete = vi.fn()
+    const { rerender } = render(
+      <ReaderShell {...defaultProps({ onExitComplete })}>
+        <div data-testid="exiting-reader-page">page</div>
+      </ReaderShell>,
+    )
+
+    rerender(
+      <ReaderShell {...defaultProps({ open: false, onExitComplete })}>
+        <div data-testid="exiting-reader-page">page</div>
+      </ReaderShell>,
+    )
+
+    expect(screen.getByTestId('exiting-reader-page')).toBeInTheDocument()
+    await waitFor(() => expect(onExitComplete).toHaveBeenCalledTimes(1))
+    expect(screen.queryByTestId('exiting-reader-page')).not.toBeInTheDocument()
   })
 
   it('sends a display-mode intent and exposes the controlled active mode', async () => {
