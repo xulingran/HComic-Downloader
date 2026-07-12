@@ -108,6 +108,18 @@ describe('displayMode', () => {
     expect(localStorage.getItem('hcomic-reader-display-mode')).toBe('single')
   })
 
+  it('keeps multiple mounted reader settings instances synchronized', () => {
+    const first = renderHook(() => useReaderSettings())
+    const second = renderHook(() => useReaderSettings())
+
+    act(() => first.result.current.setDisplayMode('double'))
+    expect(second.result.current.displayMode).toBe('double')
+
+    act(() => second.result.current.setDisplayMode('single'))
+    expect(first.result.current.displayMode).toBe('single')
+    expect(localStorage.getItem('hcomic-reader-display-mode')).toBe('single')
+  })
+
   it('falls back to "scroll" for invalid localStorage values', () => {
     localStorage.setItem('hcomic-reader-display-mode', 'invalid')
     const { result } = renderHook(() => useReaderSettings())

@@ -58,8 +58,28 @@ vi.mock('@/components/ReaderPage', () => ({
   ),
 }))
 vi.mock('@/components/PageFlipView', () => ({
-  PageFlipView: ({ currentPage }: { currentPage: number }) => (
-    <div data-testid="local-page-flip">page {currentPage}</div>
+  PageFlipView: ({
+    currentPage,
+    imageUrls,
+    imageLoader,
+    onCached,
+  }: {
+    currentPage: number
+    imageUrls: string[]
+    imageLoader?: (url: string, index: number) => Promise<string>
+    onCached?: (index: number, imageUrl: string) => void
+  }) => (
+    <button
+      data-testid="local-page-flip"
+      onClick={() => {
+        const index = Math.max(0, currentPage - 1)
+        if (!imageLoader) return
+        void imageLoader(imageUrls[index], index).then((imageUrl) => {
+          onCached?.(index, imageUrl)
+          pageLoaded(imageUrl)
+        })
+      }}
+    >page {currentPage}</button>
   ),
 }))
 
@@ -217,6 +237,48 @@ describe('LocalLibraryReaderModal', () => {
     expect(await screen.findByTestId('local-page-flip')).toBeInTheDocument()
   })
 
+  it('reuses a materialized local page when switching from scroll to single mode', async () => {
+    const singleChapterAsset = { ...asset, chapters: [asset.chapters[0]], albumTotalChapters: 1 }
+    libraryApi.detail.mockResolvedValue(singleChapterAsset)
+    render(<LocalLibraryReaderModal asset={singleChapterAsset} open onClose={() => {}} />)
+
+    await userEvent.click(await screen.findByTestId('local-reader-page-0'))
+    await waitFor(() => expect(libraryApi.getPage).toHaveBeenCalledTimes(1))
+
+    await userEvent.click(screen.getByLabelText('阅读设置'))
+    await userEvent.click(screen.getByLabelText('单页显示'))
+    const flip = await screen.findByTestId('local-page-flip')
+    await waitFor(() => expect(screen.getByTestId('reader-mode-stage')).toHaveAttribute('data-phase', 'idle'))
+    await userEvent.click(flip)
+
+    await waitFor(() => expect(pageLoaded).toHaveBeenLastCalledWith('app-image://library/hash'))
+    const currentPageReads = libraryApi.getPage.mock.calls.filter((call) => Number(call[2]) === 1)
+    expect(currentPageReads).toHaveLength(1)
+  })
+
+  it('positions the anchor page before a paged-to-scroll transition becomes visible', async () => {
+    const singleChapterAsset = { ...asset, chapters: [asset.chapters[0]], albumTotalChapters: 1 }
+    libraryApi.detail.mockResolvedValue(singleChapterAsset)
+    const scrollIntoView = vi.fn()
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView
+    HTMLElement.prototype.scrollIntoView = scrollIntoView
+
+    try {
+      render(<LocalLibraryReaderModal asset={singleChapterAsset} open onClose={() => {}} />)
+      await screen.findByTestId('local-reader-page-0')
+      await userEvent.click(screen.getByLabelText('阅读设置'))
+      await userEvent.click(screen.getByLabelText('单页显示'))
+      await screen.findByTestId('local-page-flip')
+      await waitFor(() => expect(screen.getByTestId('reader-mode-stage')).toHaveAttribute('data-phase', 'idle'))
+
+      await userEvent.click(screen.getByLabelText('连续滚动'))
+      await waitFor(() => expect(scrollIntoView).toHaveBeenCalledWith({ behavior: 'instant', block: 'start' }))
+      expect(screen.getByTestId('reader-mode-stage')).not.toHaveAttribute('data-phase', 'preparing')
+    } finally {
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView
+    }
+  })
+
   it('drags the progress bar to the matching scroll page without observer rollback', async () => {
     const pages = Array.from({ length: 10 }, (_, index) => ({ index, mediaType: 'image/jpeg' }))
     const singleChapterAsset = {
@@ -259,6 +321,8 @@ describe('LocalLibraryReaderModal', () => {
 
     await userEvent.click(screen.getByLabelText('阅读设置'))
     await userEvent.click(screen.getByLabelText('单页显示'))
+    await screen.findByTestId('local-page-flip')
+    await waitFor(() => expect(screen.getByTestId('reader-mode-stage')).toHaveAttribute('data-phase', 'idle'))
     let slider = screen.getByRole('slider', { name: '页面进度' })
     slider.getBoundingClientRect = vi.fn(() => ({
       left: 0, width: 200, right: 200, top: 0, bottom: 24, height: 24, x: 0, y: 0,
@@ -270,6 +334,7 @@ describe('LocalLibraryReaderModal', () => {
 
     await userEvent.click(screen.getByLabelText('双页显示'))
     await userEvent.click(screen.getByLabelText('前补白'))
+    await waitFor(() => expect(screen.getByTestId('reader-mode-stage')).toHaveAttribute('data-phase', 'idle'))
     slider = screen.getByRole('slider', { name: '页面进度' })
     slider.getBoundingClientRect = vi.fn(() => ({
       left: 0, width: 200, right: 200, top: 0, bottom: 24, height: 24, x: 0, y: 0,

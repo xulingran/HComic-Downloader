@@ -10,6 +10,7 @@ interface ReaderProgressNavigationOptions {
   loadingState: string
   pageRefs: React.MutableRefObject<(HTMLDivElement | null)[]>
   onDragEnd?: (page: number) => void
+  disabled?: boolean
 }
 
 /**
@@ -25,6 +26,7 @@ export function useReaderProgressNavigation({
   loadingState,
   pageRefs,
   onDragEnd,
+  disabled = false,
 }: ReaderProgressNavigationOptions) {
   const freezePageTrackingRef = useRef(false)
   const previousDragPageRef = useRef(currentPage)
@@ -51,7 +53,7 @@ export function useReaderProgressNavigation({
     onDragEnd?.(page)
   }, [onDragEnd])
 
-  const slider = useSliderDrag(totalPages, changePageFromSlider, finishDrag, beginDrag)
+  const slider = useSliderDrag(totalPages, changePageFromSlider, finishDrag, beginDrag, disabled)
 
   const scrollToPage = useCallback((page: number, immediate = false) => {
     const element = pageRefsRef.current.current[page - 1]
@@ -84,13 +86,17 @@ export function useReaderProgressNavigation({
 
   useEffect(() => {
     clearReleaseTimer()
+    if (disabled) {
+      freezePageTrackingRef.current = true
+      return
+    }
     if (slider.isDragging) return
     releaseTimerRef.current = setTimeout(() => {
       freezePageTrackingRef.current = false
       releaseTimerRef.current = null
     }, 200)
     return clearReleaseTimer
-  }, [clearReleaseTimer, slider.isDragging])
+  }, [clearReleaseTimer, disabled, slider.isDragging])
 
   useEffect(() => () => {
     clearReleaseTimer()

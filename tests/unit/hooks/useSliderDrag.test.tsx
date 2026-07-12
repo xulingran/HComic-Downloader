@@ -7,6 +7,7 @@ interface SliderHarnessProps {
   onPageChange: (page: number) => void
   onDragEnd: (page: number) => void
   onDragStart: () => void
+  disabled?: boolean
 }
 
 function SliderHarness({
@@ -14,8 +15,9 @@ function SliderHarness({
   onPageChange,
   onDragEnd,
   onDragStart,
+  disabled = false,
 }: SliderHarnessProps) {
-  const slider = useSliderDrag(totalPages, onPageChange, onDragEnd, onDragStart)
+  const slider = useSliderDrag(totalPages, onPageChange, onDragEnd, onDragStart, disabled)
   return (
     <div
       ref={slider.sliderRef}
@@ -110,5 +112,24 @@ describe('useSliderDrag', () => {
     expect(onDragStart).toHaveBeenCalledTimes(2)
     expect(onPageChange.mock.calls).toEqual([[5], [10]])
     expect(onDragEnd.mock.calls).toEqual([[10]])
+  })
+
+  it('ignores pointer input while reader mode transition gating is active', () => {
+    render(
+      <SliderHarness
+        disabled
+        onPageChange={onPageChange}
+        onDragEnd={onDragEnd}
+        onDragStart={onDragStart}
+      />,
+    )
+    const slider = screen.getByRole('slider')
+    slider.getBoundingClientRect = vi.fn(() => ({ left: 0, width: 200 }) as DOMRect)
+    slider.setPointerCapture = vi.fn()
+
+    fireEvent.pointerDown(slider, { clientX: 100, pointerId: 6 })
+    expect(onDragStart).toHaveBeenCalledTimes(0)
+    expect(onPageChange).toHaveBeenCalledTimes(0)
+    expect(slider).toHaveAttribute('data-dragging', 'false')
   })
 })

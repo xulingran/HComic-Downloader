@@ -4,6 +4,10 @@ import {
   DURATION,
   getDirectionalPageVariants,
   getReducedPageVariants,
+  getReducedReaderModeVariants,
+  readerModeFadeVariants,
+  readerModeLayoutTransition,
+  readerModePhaseTransition,
   smoothTransition,
 } from '@/lib/anim'
 
@@ -60,5 +64,28 @@ describe('reader page flip variants', () => {
       opacity: 0,
       transition: { duration: DURATION.fast },
     })
+  })
+})
+
+describe('reader mode transition variants', () => {
+  it('uses two 150ms opacity-only phases for scroll/paged fade-through', () => {
+    expect(readerModePhaseTransition).toMatchObject({ type: 'tween', duration: DURATION.fast })
+    expect(readerModeFadeVariants.hidden).toEqual({ opacity: 0, transition: readerModePhaseTransition })
+    expect(readerModeFadeVariants.visible).toEqual({ opacity: 1, transition: readerModePhaseTransition })
+  })
+
+  it('uses a non-overshooting tween for single/double layout reflow', () => {
+    expect(readerModeLayoutTransition).toMatchObject({
+      type: 'tween',
+      duration: DURATION.slow,
+      ease: smoothTransition.ease,
+    })
+  })
+
+  it('removes displacement and scaling in reduced-motion mode', () => {
+    const variants = getReducedReaderModeVariants()
+    expect(variants.hidden).toEqual({ opacity: 0 })
+    expect(variants.visible).toEqual({ opacity: 1, transition: { duration: DURATION.fast } })
+    expect(JSON.stringify(variants)).not.toMatch(/"[xyscale]+"/)
   })
 })

@@ -275,6 +275,44 @@ export const tabPhaseTransition: Transition = {
   duration: DURATION.fast,
 }
 
+/** One half of the sequential reader-mode fade-through (150ms + 150ms). */
+export const readerModePhaseTransition: Transition = {
+  type: 'tween',
+  ease: smoothTransition.ease,
+  duration: DURATION.fast,
+}
+
+/** Reader content stage: opacity only, so long scroll lists are never transformed. */
+export const readerModeFadeVariants: Variants = {
+  hidden: { opacity: 0, transition: readerModePhaseTransition },
+  visible: { opacity: 1, transition: readerModePhaseTransition },
+}
+
+/** Stable-page layout reflow used by single/double mode changes. */
+export const readerModeLayoutTransition: Transition = {
+  type: 'tween',
+  ease: smoothTransition.ease,
+  duration: DURATION.slow,
+}
+
+/** Companion page presence during single/double layout reflow. */
+export const readerModeCompanionVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: readerModeLayoutTransition },
+  exit: { opacity: 0, transition: readerModePhaseTransition },
+}
+
+/** Mode segmented-control indicator; page content itself never consumes this spring. */
+export const readerModeIndicatorTransition: Transition = springTransition
+
+export function getReducedReaderModeVariants(): Variants {
+  return {
+    hidden: { opacity: 0 },
+    visible: { opacity: 1, transition: { duration: DURATION.fast } },
+    exit: { opacity: 0, transition: { duration: DURATION.fast } },
+  }
+}
+
 /** 进入动画起点：向右导航从右侧进入，向左导航从左侧进入。 */
 export function getTabPageEnterStart(dir: number): Variant {
   return {

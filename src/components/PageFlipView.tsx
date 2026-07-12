@@ -1,7 +1,14 @@
 import { useRef, useCallback, useEffect, useState } from 'react'
-import { AnimatePresence, motion } from 'framer-motion'
+import { AnimatePresence, LayoutGroup, motion } from 'framer-motion'
 import type { DisplayMode, BlankPosition } from '../hooks/useReaderSettings'
-import { usePageFlipVariants } from '../lib/anim'
+import {
+  getReducedReaderModeVariants,
+  readerModeCompanionVariants,
+  readerModeLayoutTransition,
+  usePageFlipVariants,
+  useReducedMotionPreference,
+} from '../lib/anim'
+import { resolveReaderSpread } from '../lib/reader-mode'
 import { buildImageUrl } from '@/lib/image-url'
 import { ReaderPagePlaceholder } from './common/ReaderPagePlaceholder'
 
@@ -56,6 +63,8 @@ interface PageFlipViewProps {
   retryGen?: number
   /** Optional local/custom image loader. Returns a final browser-readable URL. */
   imageLoader?: (url: string, index: number) => Promise<string>
+  /** Shared mode-transition gate; separate from ordinary page-flip locking. */
+  modeTransitioning?: boolean
 }
 
 export function PageFlipView({
@@ -78,6 +87,7 @@ export function PageFlipView({
   onCached,
   retryGen,
   imageLoader,
+  modeTransitioning = false,
 }: PageFlipViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [panOffset, setPanOffset] = useState(0)
@@ -88,14 +98,11 @@ export function PageFlipView({
   // 4 个翻页触发路径（键盘/点击/wheel/滑块）都最终走 setCurrentPage，
   // 此处统一在渲染期间推断 direction，无需改外部接口。
   const [direction, setDirection] = useState<'forward' | 'backward'>('forward')
-  // 关键修复：direction 必须在渲染期间同步推断（React 的 "adjust state while
-  // rendering" 模式）。原实现把 setDirection 放进 useEffect，导致 currentPage 变化
-  // 触发的首次提交里 AnimatePresence 仍带着"旧 direction"启动退出页动画——
-  // 典型表现为"先下一页、再上一页"时旧页依旧向左飞出（应为向右）。
-  // 现在用 state 保存上一页，渲染期间对比 currentPage 与 prevPage 同步 setDirection +
-  // setPrevPage。React 检测到 state 变化会丢弃当前渲染输出并立即用新值重渲染，
-  // AnimatePresence 的 custom 因此在同一提交里就与 key 一致；值稳定后自动退出。
-  const [prevPage, setPrevPage] = useState(currentPage)
+  const [renderIdentity, setRenderIdentity] = useState({
+    page: currentPage,
+    mode: displayMode,
+    navigationKey: 0,
+  })
   const [isFlipping, setIsFlipping] = useState(false)
   // 标记组件是否已完成首次挂载。用于让"currentPage 变化即上锁"的 effect 跳过
   // 首次执行——AnimatePresence initial={false} 首次挂载不播动画、不触发
@@ -112,6 +119,13 @@ export function PageFlipView({
 
   const isDoubleMode = displayMode === 'double'
   const step = isDoubleMode ? 2 : 1
+  const reduceMotion = useReducedMotionPreference()
+  const interactionLocked = isFlipping || modeTransitioning
+  // Page-slot layout animation is reserved for single/double mode reflow.
+  // Keeping it enabled during ordinary navigation makes it compete with the
+  // outer directional page-flip transform and produces an unnatural combined
+  // trajectory.
+  const animateModeLayout = modeTransitioning && !reduceMotion
 
   const effectiveTotal = isDoubleMode && blankPosition === 'front' ? totalPages + 1 : totalPages
 
@@ -122,19 +136,36 @@ export function PageFlipView({
 
   const pageVariants = usePageFlipVariants()
 
+  // Page navigation and mode reflow are different transitions. Only a page
+  // change within the same mode advances navigationKey and drives the existing
+  // directional AnimatePresence. An atomic page+mode update keeps the key
+  // stable so single/double reflow cannot masquerade as a content flip.
+  if (currentPage !== renderIdentity.page || displayMode !== renderIdentity.mode) {
+    const modeChanged = displayMode !== renderIdentity.mode
+    if (!modeChanged) {
+      const inferred = inferPageDirection(currentPage, renderIdentity.page)
+      if (inferred) setDirection(inferred)
+    }
+    setRenderIdentity({
+      page: currentPage,
+      mode: displayMode,
+      navigationKey: modeChanged ? renderIdentity.navigationKey : renderIdentity.navigationKey + 1,
+    })
+  }
+
   const goNext = useCallback(() => {
-    if (!canGoNext) return
+    if (!canGoNext || interactionLocked) return
     const next = Math.min(currentPage + step, effectiveTotal)
     setCurrentPage(next)
     setPanOffset(0)
-  }, [canGoNext, currentPage, step, effectiveTotal, setCurrentPage])
+  }, [canGoNext, currentPage, step, effectiveTotal, interactionLocked, setCurrentPage])
 
   const goPrev = useCallback(() => {
-    if (!canGoPrev) return
+    if (!canGoPrev || interactionLocked) return
     const prev = Math.max(currentPage - step, 1)
     setCurrentPage(prev)
     setPanOffset(0)
-  }, [canGoPrev, currentPage, step, setCurrentPage])
+  }, [canGoPrev, currentPage, interactionLocked, step, setCurrentPage])
 
   const clampPanOffset = useCallback((offset: number) => {
     const container = containerRef.current
@@ -145,11 +176,11 @@ export function PageFlipView({
   }, [zoom])
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    if (isFlipping) return // 翻页动画中忽略拖拽
+    if (interactionLocked) return
     isPanning.current = true
     panStart.current = { x: e.clientX, offset: panOffset }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
-  }, [panOffset, isFlipping])
+  }, [interactionLocked, panOffset])
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
     if (!isPanning.current) return
@@ -165,22 +196,10 @@ export function PageFlipView({
   // 变更 3：wheel 节流改为 isFlipping 门控——动画完成才响应下一次 wheel，
   // 避免固定 200ms 节流导致 AnimatePresence 内页面层堆积。
   const handleWheel = useCallback((e: React.WheelEvent) => {
-    if (isFlipping) return
+    if (interactionLocked) return
     if (e.deltaY > 0) goNext()
     else if (e.deltaY < 0) goPrev()
-  }, [goNext, goPrev, isFlipping])
-
-  // 翻页方向推断：必须在渲染期间同步 setDirection（adjust-state-while-rendering）。
-  // useEffect 内 set 会让 AnimatePresence 在首次提交时拿到 stale direction，
-  // 导致"下一页→上一页"等回退场景的退出页朝错误方向飞出。
-  // prevPage 是 state：渲染期间比较两个 state 安全；调用 setDirection/setPrevPage 后
-  // React 丢弃本次渲染输出并立即以新 state 重渲染，AnimatePresence 的 custom 因此
-  // 在同一提交里就与 key 一致。prevPage 稳定后条件为假，自动退出，无无限循环。
-  if (currentPage !== prevPage) {
-    const inferred = inferPageDirection(currentPage, prevPage)
-    if (inferred) setDirection(inferred)
-    setPrevPage(currentPage)
-  }
+  }, [goNext, goPrev, interactionLocked])
 
   // onPageChange 仍需在每次翻页后触发预加载。上面渲染期间已把 prevPage 追平，
   // 这里用独立 ref 记录"上次已触发 onPageChange 的页码"，仅作 effect 内提交判断，
@@ -194,24 +213,11 @@ export function PageFlipView({
     }
   }, [currentPage, onPageChange])
 
-  let leftRealIdx: number
-  let rightRealIdx: number | null
-  let leftIsBlank = false
-  let rightIsBlank = false
-
-  if (isDoubleMode && blankPosition === 'front') {
-    leftRealIdx = currentPage - 2
-    rightRealIdx = currentPage - 1
-    leftIsBlank = leftRealIdx < 0
-    rightIsBlank = rightRealIdx >= totalPages
-  } else if (isDoubleMode && blankPosition === 'end') {
-    leftRealIdx = currentPage - 1
-    rightRealIdx = currentPage < totalPages ? currentPage : null
-    rightIsBlank = rightRealIdx === null
-  } else {
-    leftRealIdx = currentPage - 1
-    rightRealIdx = isDoubleMode && currentPage < totalPages ? currentPage : null
-  }
+  const spread = resolveReaderSpread(currentPage, totalPages, blankPosition)
+  const leftRealIdx = isDoubleMode ? spread.leftIndex : currentPage - 1
+  const rightRealIdx = isDoubleMode ? spread.rightIndex : null
+  const leftIsBlank = isDoubleMode && spread.leftBlank
+  const rightIsBlank = isDoubleMode && spread.rightBlank
 
   // cacheVersion triggers re-render to pick up newly preloaded images from imageCacheRef
   void cacheVersion
@@ -263,35 +269,56 @@ export function PageFlipView({
       flipLockTimerRef.current = null
       setIsFlipping(false)
     }, FLIP_LOCK_TIMEOUT)
-  }, [currentPage])
+  }, [renderIdentity.navigationKey])
 
-  const renderPageContent = () => {
-    if (isDoubleMode) {
-      // double 模式：左右两页 + 可能的空白页用同一 motion.div 包裹，整体滑动
-      return (
-        <div className="h-full flex items-center justify-center" style={{ gap: '4px' }}>
-          <div className="h-full flex items-center justify-center">
-            {leftIsBlank ? <BlankPage /> : (
-              <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} imageLoader={imageLoader} />
-            )}
-          </div>
-          {(rightRealIdx !== null || rightIsBlank) && (
-            <div className="h-full flex items-center justify-center">
-              {rightIsBlank ? <BlankPage /> : (
-                <FlipPage url={imageUrls[rightRealIdx!]} index={rightRealIdx!} cachedUrlHash={imageCacheRef.current?.get(rightRealIdx!)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} imageLoader={imageLoader} />
-              )}
-            </div>
-          )}
-        </div>
-      )
-    }
-    // single 模式
-    return (
-      <div className="h-full flex items-center justify-center">
-        <FlipPage url={imageUrls[leftRealIdx]} index={leftRealIdx} cachedUrlHash={imageCacheRef.current?.get(leftRealIdx)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} imageLoader={imageLoader} />
-      </div>
-    )
+  const imageCache = imageCacheRef.current
+  const renderPage = (index: number) => (
+    <FlipPage url={imageUrls[index]} index={index} cachedUrlHash={imageCache?.get(index)} scrambleId={scrambleId} comicId={comicId} imageQuality={imageQuality} onFailed={onFailed} onLoaded={onLoaded} onCached={onCached} retryGen={retryGen} imageLoader={imageLoader} />
+  )
+
+  /* eslint-disable react-hooks/refs -- shared cache is intentionally a ref-backed render cache */
+  const pageSlots: Array<{ key: string; content: React.ReactNode }> = []
+  if (isDoubleMode) {
+    if (leftIsBlank) pageSlots.push({ key: 'blank-front', content: <BlankPage /> })
+    else if (leftRealIdx !== null) pageSlots.push({ key: `page-${leftRealIdx}`, content: renderPage(leftRealIdx) })
+    if (rightIsBlank) pageSlots.push({ key: 'blank-end', content: <BlankPage /> })
+    else if (rightRealIdx !== null) pageSlots.push({ key: `page-${rightRealIdx}`, content: renderPage(rightRealIdx) })
+  } else if (leftRealIdx !== null && leftRealIdx >= 0 && leftRealIdx < totalPages) {
+    pageSlots.push({ key: `page-${leftRealIdx}`, content: renderPage(leftRealIdx) })
   }
+  /* eslint-enable react-hooks/refs */
+
+  const renderPageContent = () => (
+    <LayoutGroup id="reader-mode-layout">
+      <div
+        data-testid="reader-page-layout"
+        data-layout-animated={animateModeLayout ? 'true' : 'false'}
+        className="h-full w-full flex items-center justify-center"
+        style={{ gap: 0 }}
+      >
+        <AnimatePresence initial={false}>
+          {pageSlots.map((slot) => (
+            <motion.div
+              key={slot.key}
+              layout={animateModeLayout}
+              transition={modeTransitioning ? readerModeLayoutTransition : undefined}
+              variants={modeTransitioning
+                ? (reduceMotion ? getReducedReaderModeVariants() : readerModeCompanionVariants)
+                : undefined}
+              initial={modeTransitioning ? 'hidden' : false}
+              animate={modeTransitioning ? 'visible' : undefined}
+              exit={modeTransitioning ? 'exit' : undefined}
+              className={isDoubleMode
+                ? 'h-full flex-1 min-w-0 flex items-center justify-center'
+                : 'h-full flex items-center justify-center'}
+            >
+              {slot.content}
+            </motion.div>
+          ))}
+        </AnimatePresence>
+      </div>
+    </LayoutGroup>
+  )
 
   return (
     <div
@@ -304,9 +331,14 @@ export function PageFlipView({
       onPointerCancel={handlePointerUp}
     >
       <div
+        data-testid="reader-page-viewport"
         className="flex items-center justify-center h-full"
         style={{
-          width: `${imageWidth}%`,
+          // imageWidth is a single-page sizing preference. A double-page
+          // spread is height-driven instead: leaving width automatic gives
+          // both aspect-ratio-preserving pages enough room to reach h-full
+          // without stretching them horizontally.
+          width: isDoubleMode ? undefined : `${imageWidth}%`,
           transform: `translateX(${panOffset}px) scale(${zoom})`,
           transition: isPanning.current ? 'none' : undefined, // eslint-disable-line react-hooks/refs
         }}
@@ -317,18 +349,16 @@ export function PageFlipView({
             custom={direction} 把方向传给 variants 函数。 */}
         <AnimatePresence custom={direction} mode="popLayout" initial={false}>
           <motion.div
-            key={currentPage}
+            key={renderIdentity.navigationKey}
             variants={pageVariants}
             custom={direction}
             initial="enter"
             animate="center"
             exit="exit"
             onAnimationComplete={handleAnimationComplete}
-            className="h-full flex items-center justify-center"
-            style={{ pointerEvents: isFlipping ? 'none' : undefined, willChange: isFlipping ? 'transform' : undefined }}
+            className="h-full w-full flex items-center justify-center"
+            style={{ pointerEvents: interactionLocked ? 'none' : undefined, willChange: isFlipping ? 'transform' : undefined }}
           >
-            {/* renderPageContent 读取 imageCacheRef.current 取预加载图，属原模式 */}
-            {/* eslint-disable-next-line react-hooks/refs */}
             {renderPageContent()}
           </motion.div>
         </AnimatePresence>
@@ -340,7 +370,7 @@ export function PageFlipView({
       <div className="absolute inset-0 flex pointer-events-none">
         <button
           aria-label="上一页"
-          aria-disabled={!canGoPrev}
+          aria-disabled={!canGoPrev || interactionLocked}
           className="w-1/5 h-full pointer-events-auto cursor-pointer flex items-center justify-start pl-4 group"
           onClick={goPrev}
           onPointerDown={(e) => e.stopPropagation()}
@@ -359,7 +389,7 @@ export function PageFlipView({
         <div className="flex-1 h-full pointer-events-none" data-testid="flip-drag-safe-zone" />
         <button
           aria-label="下一页"
-          aria-disabled={!canGoNext}
+          aria-disabled={!canGoNext || interactionLocked}
           className="w-1/5 h-full pointer-events-auto cursor-pointer flex items-center justify-end pr-4 group"
           onClick={goNext}
           onPointerDown={(e) => e.stopPropagation()}
@@ -490,7 +520,7 @@ function FlipPage({ url, index, cachedUrlHash, scrambleId, comicId, imageQuality
     <img
       src={imageLoader ? urlHash : buildImageUrl('preview', urlHash)}
       alt={`第 ${index + 1} 页`}
-      className="h-full w-auto max-w-none"
+      className="h-full w-auto max-w-full object-contain"
       draggable={false}
       onError={() => {
         setError(true)

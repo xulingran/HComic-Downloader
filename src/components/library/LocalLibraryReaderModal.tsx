@@ -4,12 +4,15 @@ import { useLocalLibraryProgress, useLocalLibraryReader } from '../../hooks/useL
 import { useReaderSettings, type BlankPosition } from '../../hooks/useReaderSettings'
 import { usePageTracking } from '../../hooks/usePageTracking'
 import { useReaderProgressNavigation } from '../../hooks/useReaderProgressNavigation'
+import { useReaderModeTransition } from '../../hooks/useReaderModeTransition'
+import { prepareScrollAnchor, type ScrollAnchorController } from '../../lib/reader-scroll'
 import { useZoom } from '../../hooks/useZoom'
 import { useFailedPages } from '../../hooks/useFailedPages'
 import { ChapterPicker } from '../ChapterPicker'
 import { PageFlipView } from '../PageFlipView'
 import { ReaderPage } from '../ReaderPage'
 import { ReaderShell, ReaderLoadingState, ReaderErrorState } from '../common/ReaderShell'
+import { ReaderModeStage } from '../common/ReaderModeStage'
 
 interface LocalLibraryReaderModalProps {
   asset: LibraryAssetDetail | null
@@ -116,11 +119,47 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     }
   }, [asset, imageUrls, loadLocalImage, totalPages])
 
-  useEffect(() => {
-    if (open && loadingState === 'loaded' && displayMode !== 'scroll') preloadAround(currentPage)
-  }, [open, loadingState, displayMode, currentPage, preloadAround])
+  const scrollAnchorRef = useRef<ScrollAnchorController | null>(null)
+  const prepareModeTarget = useCallback((mode: 'scroll' | 'single' | 'double', anchorPage: number) => {
+    if (mode !== 'scroll' || anchorPage <= 0) return true
+    scrollAnchorRef.current?.clear()
+    scrollAnchorRef.current = prepareScrollAnchor((idx) => pageRefs.current[idx] ?? null, anchorPage)
+    return true
+  }, [])
+  const {
+    visibleMode,
+    targetMode,
+    phase: modeTransitionPhase,
+    isModeTransitioning,
+    reduceMotion: reduceModeMotion,
+    requestDisplayMode,
+  } = useReaderModeTransition({
+    displayMode,
+    setDisplayMode,
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    blankPosition,
+    setBlankPosition,
+    enabled: open && loadingState === 'loaded' && totalPages > 0,
+    prepareTarget: prepareModeTarget,
+  })
 
-  const effectiveTotal = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+  useEffect(() => {
+    if (open && loadingState === 'loaded' && visibleMode !== 'scroll') preloadAround(currentPage)
+  }, [open, loadingState, visibleMode, currentPage, preloadAround])
+
+  // Stop pinning the scroll anchor once the mode transition has shown the
+  // target view; the ResizeObserver re-scroll is only needed while preparing.
+  useEffect(() => {
+    if (modeTransitionPhase === 'idle' && scrollAnchorRef.current) {
+      scrollAnchorRef.current.clear()
+      scrollAnchorRef.current = null
+    }
+  }, [modeTransitionPhase])
+  useEffect(() => () => scrollAnchorRef.current?.clear(), [])
+
+  const effectiveTotal = targetMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
   const {
     isDragging,
     sliderRef,
@@ -133,10 +172,11 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     totalPages: effectiveTotal,
     currentPage,
     setCurrentPage,
-    displayMode,
+    displayMode: visibleMode,
     loadingState,
     pageRefs,
     onDragEnd: preloadAround,
+    disabled: isModeTransitioning,
   })
 
   usePageTracking(
@@ -147,15 +187,17 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     setCurrentPage,
     loadingState,
     imageUrls.length,
+    visibleMode,
     freezePageTrackingRef,
+    isModeTransitioning,
   )
 
   useEffect(() => {
     if (!open) return
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
-      if (displayMode === 'scroll' || loadingState !== 'loaded' || totalPages <= 0) return
-      const step = displayMode === 'double' ? 2 : 1
+      if (isModeTransitioning || visibleMode === 'scroll' || loadingState !== 'loaded' || totalPages <= 0) return
+      const step = visibleMode === 'double' ? 2 : 1
       if (event.key === 'ArrowRight' || event.key === 'PageDown') {
         event.preventDefault()
         setCurrentPage(Math.min(effectiveTotal, currentPage + step))
@@ -166,7 +208,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [open, onClose, displayMode, loadingState, totalPages, currentPage, effectiveTotal, setCurrentPage])
+  }, [open, onClose, visibleMode, isModeTransitioning, loadingState, totalPages, currentPage, effectiveTotal, setCurrentPage])
 
   const handleCached = useCallback((index: number, imageUrl: string) => {
     if (imageCacheRef.current.get(index) === imageUrl) return
@@ -234,8 +276,8 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
       onGoToChapter={handleGoToChapter}
       onOpenChapterPicker={handleOpenChapterPicker}
       navigationEnabled={navigationEnabled}
-      displayMode={displayMode}
-      setDisplayMode={setDisplayMode}
+      displayMode={targetMode}
+      onDisplayModeRequest={requestDisplayMode}
       imageWidth={imageWidth}
       setImageWidth={setImageWidth}
       pageGap={pageGap}
@@ -256,6 +298,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
       cancelDrag={cancelDrag}
       preloadedRanges={[]}
     >
+      <ReaderModeStage phase={modeTransitionPhase} reduceMotion={reduceModeMotion}>
       {/* 内容区：loading/error/ChapterPicker/scroll/PageFlipView 分支 */}
       {showChapterPicker ? (
         <ChapterPicker chapters={chapters} onSelect={(id) => void handleChapterSelect(id)} title={asset.title} />
@@ -268,7 +311,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
           onClose={onClose}
           className="flex-1"
         />
-      ) : displayMode === 'scroll' ? (
+      ) : visibleMode === 'scroll' ? (
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto" onPointerUp={cancelDrag}>
           <div className="mx-auto" style={{ width: `${imageWidth}%`, transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
             {imageUrls.map((url, index) => (
@@ -294,7 +337,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
           totalPages={totalPages}
           currentPage={currentPage}
           setCurrentPage={setCurrentPage}
-          displayMode={displayMode}
+          displayMode={visibleMode}
           imageWidth={imageWidth}
           zoom={zoom}
           imageCacheRef={imageCacheRef}
@@ -306,8 +349,10 @@ export function LocalLibraryReaderModal({ asset, open, onClose }: LocalLibraryRe
           onLoaded={markLoaded}
           onCached={handleCached}
           retryGen={retryGen}
+          modeTransitioning={isModeTransitioning}
         />
       )}
+      </ReaderModeStage>
 
       {/* 失败页重试浮层（本地版用内联 banner；在线版用阈值 Toast） */}
       {failedCount > 0 && (

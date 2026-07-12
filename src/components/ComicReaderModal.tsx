@@ -6,6 +6,8 @@ import { usePreloadManager } from '../hooks/usePreloadManager'
 import { usePageTracking } from '../hooks/usePageTracking'
 import { useZoom } from '../hooks/useZoom'
 import { useReaderProgressNavigation } from '../hooks/useReaderProgressNavigation'
+import { useReaderModeTransition } from '../hooks/useReaderModeTransition'
+import { prepareScrollAnchor, type ScrollAnchorController } from '../lib/reader-scroll'
 import { useFailedPages } from '../hooks/useFailedPages'
 import { useHistory } from '../hooks/useIpc'
 import { useHistoryStore } from '../stores/useHistoryStore'
@@ -15,6 +17,7 @@ import { PageFlipView } from './PageFlipView'
 import { ReaderPage } from './ReaderPage'
 import { ChapterPicker } from './ChapterPicker'
 import { ReaderShell, ReaderLoadingState, ReaderErrorState, ReaderEmptyState } from './common/ReaderShell'
+import { ReaderModeStage } from './common/ReaderModeStage'
 
 interface ComicReaderModalProps {
   comic: ComicInfo | null
@@ -145,7 +148,45 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
 
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<(HTMLDivElement | null)[]>([])
-  const effectiveTotalPages = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+  const scrollAnchorRef = useRef<ScrollAnchorController | null>(null)
+  const prepareModeTarget = useCallback((mode: 'scroll' | 'single' | 'double', anchorPage: number) => {
+    if (mode !== 'scroll' || anchorPage <= 0) return true
+    scrollAnchorRef.current?.clear()
+    const controller = prepareScrollAnchor((idx) => pageRefs.current[idx] ?? null, anchorPage)
+    scrollAnchorRef.current = controller
+    // controller.clear detaches its own ResizeObserver; defer so coordinator
+    // token checks still run, but the anchor pinning stops on the next tick.
+    return true
+  }, [])
+  const {
+    visibleMode,
+    targetMode,
+    phase: modeTransitionPhase,
+    isModeTransitioning,
+    reduceMotion: reduceModeMotion,
+    requestDisplayMode,
+  } = useReaderModeTransition({
+    displayMode,
+    setDisplayMode,
+    currentPage,
+    setCurrentPage,
+    totalPages,
+    blankPosition,
+    setBlankPosition,
+    enabled: open && loadingState === 'loaded' && totalPages > 0,
+    prepareTarget: prepareModeTarget,
+  })
+  const effectiveTotalPages = targetMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+
+  // Stop pinning the scroll anchor once the mode transition has shown the
+  // target view; the ResizeObserver re-scroll is only needed while preparing.
+  useEffect(() => {
+    if (modeTransitionPhase === 'idle' && scrollAnchorRef.current) {
+      scrollAnchorRef.current.clear()
+      scrollAnchorRef.current = null
+    }
+  }, [modeTransitionPhase])
+  useEffect(() => () => scrollAnchorRef.current?.clear(), [])
   const {
     isDragging,
     sliderRef,
@@ -154,20 +195,20 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     handleSliderPointerUp,
     cancelDrag,
     freezePageTrackingRef,
-    scrollToPage,
   } = useReaderProgressNavigation({
     totalPages: effectiveTotalPages,
     currentPage,
     setCurrentPage,
-    displayMode,
+    displayMode: visibleMode,
     loadingState,
     pageRefs,
     onDragEnd: setPreloadTarget,
+    disabled: isModeTransitioning,
   })
 
   usePageTracking(
     pageRefs, scrollContainerRef, isDragging, currentPage, setCurrentPage,
-    loadingState, imageUrls.length, freezePageTrackingRef,
+    loadingState, imageUrls.length, visibleMode, freezePageTrackingRef, isModeTransitioning,
   )
 
   // Keep preload target in sync with current page during scroll mode
@@ -176,10 +217,10 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
   // Suppress during drag — onDragEnd in useSliderDrag handles the final target
   useEffect(() => {
     if (isDragging) return
-    if (displayMode === 'scroll' && loadingState === 'loaded' && imageUrls.length > 9) {
+    if (visibleMode === 'scroll' && loadingState === 'loaded' && imageUrls.length > 9) {
       setPreloadTarget(currentPage)
     }
-  }, [displayMode, currentPage, loadingState, imageUrls.length, isDragging, setPreloadTarget])
+  }, [visibleMode, currentPage, loadingState, imageUrls.length, isDragging, setPreloadTarget])
 
   // Jump to initial page when opening from history
   useEffect(() => {
@@ -296,7 +337,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       } else if (e.key === '0' && e.ctrlKey) {
         e.preventDefault()
         resetZoom()
-      } else if (displayMode === 'scroll') {
+      } else if (visibleMode === 'scroll') {
+        if (isModeTransitioning) return
         if (e.key === 'ArrowDown' || e.key === ' ') {
           e.preventDefault()
           scrollContainerRef.current?.scrollBy({ top: 300, behavior: 'smooth' })
@@ -305,8 +347,9 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           scrollContainerRef.current?.scrollBy({ top: -300, behavior: 'smooth' })
         }
       } else {
-        const step = displayMode === 'double' ? 2 : 1
-        const navTotal = displayMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
+        if (isModeTransitioning) return
+        const step = visibleMode === 'double' ? 2 : 1
+        const navTotal = visibleMode === 'double' && blankPosition === 'front' ? totalPages + 1 : totalPages
         if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ' || e.key === 'PageDown') {
           e.preventDefault()
           if (currentPage + step <= navTotal) {
@@ -337,25 +380,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, onClose, displayMode, blankPosition, currentPage, totalPages, setCurrentPage,
+  }, [open, onClose, visibleMode, blankPosition, currentPage, totalPages, setCurrentPage, isModeTransitioning,
       chapters.length, hasNextChapter, hasPrevChapter, chapterFlipHint, currentChapterIndex, goToChapter])
-
-  const prevDisplayModeRef = useRef(displayMode)
-  useEffect(() => {
-    const prevMode = prevDisplayModeRef.current
-    prevDisplayModeRef.current = displayMode
-
-    if (prevMode === displayMode) return
-
-    if (displayMode === 'double' && currentPage > 1 && currentPage % 2 === 0) {
-      setCurrentPage(currentPage - 1)
-    }
-
-    if (displayMode === 'scroll' && currentPage > 1 && loadingState === 'loaded') {
-      scrollToPage(currentPage)
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [displayMode])
 
   // 失败页阈值 Toast 逻辑（详见 openspec/changes/preview-retry-toast/design.md 决策 3）：
   // - failedCount > 3：常驻 Toast，文案"N 页加载失败"，带"全部重试"按钮
@@ -440,8 +466,8 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       currentChapterIndex={currentChapterIndex}
       onGoToChapter={goToChapter}
       navigationEnabled={loadingState === 'loaded' && imageUrls.length > 0 && !showChapterPicker}
-      displayMode={displayMode}
-      setDisplayMode={setDisplayMode}
+      displayMode={targetMode}
+      onDisplayModeRequest={requestDisplayMode}
       imageWidth={imageWidth}
       setImageWidth={setImageWidth}
       pageGap={pageGap}
@@ -463,6 +489,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
       preloadedRanges={preloadedRanges}
       bikaImageQualitySlot={bikaImageQualitySlot}
     >
+      <ReaderModeStage phase={modeTransitionPhase} reduceMotion={reduceModeMotion}>
       {/* 内容区：各 loading/error/empty/ChapterPicker/scroll/PageFlipView 分支 */}
       {showChapterPicker ? (
         <ChapterPicker
@@ -470,7 +497,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
           onSelect={handleSelectChapter}
           title={comic?.title}
         />
-      ) : displayMode === 'scroll' ? (
+      ) : visibleMode === 'scroll' ? (
         <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
           {(loadingState === 'loading' || loadingState === 'idle') && (
             <ReaderLoadingState className="h-full" />
@@ -529,7 +556,7 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               totalPages={totalPages}
               currentPage={currentPage}
               setCurrentPage={setCurrentPage}
-              displayMode={displayMode}
+              displayMode={visibleMode}
               imageWidth={imageWidth}
               zoom={zoom}
               imageCacheRef={imageCacheRef}
@@ -543,10 +570,12 @@ export function ComicReaderModal({ comic, open, onClose }: ComicReaderModalProps
               onLoaded={markLoaded}
               onCached={handleCached}
               retryGen={retryGen}
+              modeTransitioning={isModeTransitioning}
             />
           )}
         </>
       )}
+      </ReaderModeStage>
 
       {/* 边界翻章提示浮层 */}
       {chapterFlipHint && (

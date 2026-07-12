@@ -420,6 +420,20 @@ describe('ComicReaderModal', () => {
       expect(screen.getByLabelText('双页显示')).toBeInTheDocument()
     })
 
+    it('keeps the latest display-mode intent during a rapid scroll-to-paged switch', async () => {
+      render(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+      await userEvent.click(screen.getByLabelText('阅读设置'))
+
+      await userEvent.click(screen.getByLabelText('单页显示'))
+      await userEvent.click(screen.getByLabelText('双页显示'))
+
+      expect(screen.getByLabelText('双页显示')).toHaveAttribute('aria-pressed', 'true')
+      await waitFor(() => expect(screen.getByTestId('reader-mode-stage')).toHaveAttribute('data-phase', 'idle'))
+      expect(mockSetDisplayMode).toHaveBeenLastCalledWith('double')
+      expect(screen.getByAltText('第 1 页')).toBeInTheDocument()
+      expect(screen.getByAltText('第 2 页')).toBeInTheDocument()
+    })
+
     // reader-image-cache 规范核心场景：切换显示模式时已加载页命中共享缓存、不重载。
     // 模拟真实路径——scroll 模式下当前页由 ReaderPage 懒加载（IntersectionObserver
     // mock 立即触发 isIntersecting），回写共享缓存后切到 single，FlipPage 必须命中。
@@ -458,6 +472,62 @@ describe('ComicReaderModal', () => {
         (c) => c[0] === 'https://img.example.com/1.jpg',
       )
       expect(callsForPage1).toHaveLength(0)
+    })
+
+    // Bug A 回归：scroll→paged→scroll 后，usePageTracking 的 IntersectionObserver
+    // 必须以新的 scroll 容器为 root 重建，否则页追踪会相对视口而非滚动容器。
+    it('rebuilds the page-tracking observer against the scroll container when re-entering scroll mode', async () => {
+      const constructedRoots: Array<Element | null> = []
+      class RootRecordingObserver {
+        readonly root: Element | null
+        readonly rootMargin = ''
+        readonly thresholds: ReadonlyArray<number> = []
+        private callback: IntersectionObserverCallback
+        constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+          this.callback = callback
+          this.root = options?.root ?? null
+          constructedRoots.push(this.root)
+        }
+        observe(target: Element) {
+          // 立即触发可见，让 ReaderPage 懒加载与 usePageTracking 都能推进。
+          this.callback(
+            [{ isIntersecting: true, target, boundingClientRect: { top: 0 } }] as unknown as IntersectionObserverEntry[],
+            this as unknown as IntersectionObserver,
+          )
+        }
+        unobserve() {}
+        disconnect() {}
+        takeRecords(): IntersectionObserverEntry[] { return [] }
+      }
+      globalThis.IntersectionObserver = RootRecordingObserver as unknown as typeof IntersectionObserver
+
+      vi.mocked(useComicReader).mockReturnValue(createReaderState({
+        imageUrls: Array.from({ length: 12 }, (_, i) => `https://img.example.com/${i + 1}.jpg`),
+        totalPages: 12,
+        currentPage: 1,
+      }))
+      mockFetchPreviewImage.mockResolvedValue({ urlHash: 'f'.repeat(64) })
+
+      const { rerender } = render(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+      await waitFor(() => expect(screen.getAllByRole('img')).toHaveLength(12))
+      const rootsAfterScrollLoad = constructedRoots.length
+
+      // 切到 single（paged 模式：scroll 容器卸载）
+      mockDisplayMode = 'single'
+      rerender(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+      await waitFor(() => expect(screen.getByTestId('reader-mode-stage')).toHaveAttribute('data-phase', 'idle'))
+
+      // 切回 scroll：observer 必须重建，且新 root 必须是当前 scroll 容器（非 null）
+      mockDisplayMode = 'scroll'
+      rerender(<ComicReaderModal comic={mockComic} open={true} onClose={vi.fn()} />)
+      await waitFor(() => expect(screen.getByTestId('reader-mode-stage')).toHaveAttribute('data-phase', 'idle'))
+
+      expect(constructedRoots.length).toBeGreaterThan(rootsAfterScrollLoad)
+      const lastRoot = constructedRoots[constructedRoots.length - 1]
+      expect(lastRoot).not.toBeNull()
+      // 重建的 root 必须是滚动容器本身（带 overflow-y-auto）。
+      expect(lastRoot).toBeInstanceOf(HTMLElement)
+      expect((lastRoot as HTMLElement).className).toContain('overflow-y-auto')
     })
   })
 

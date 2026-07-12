@@ -16,7 +16,7 @@ function defaultProps(overrides: Record<string, unknown> = {}) {
     effectiveTotal: 10,
     navigationEnabled: true,
     displayMode: 'scroll' as const,
-    setDisplayMode: noop,
+    onDisplayModeRequest: noop,
     imageWidth: 70,
     setImageWidth: noop,
     pageGap: 4,
@@ -92,6 +92,25 @@ describe('ReaderShell', () => {
     expect(screen.getByLabelText('连续滚动')).toBeInTheDocument()
     expect(screen.getByLabelText('单页显示')).toBeInTheDocument()
     expect(screen.getByLabelText('双页显示')).toBeInTheDocument()
+    expect(screen.getByLabelText('连续滚动')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByTestId('reader-mode-indicator')).toBeInTheDocument()
+  })
+
+  it('sends a display-mode intent and exposes the controlled active mode', async () => {
+    const onDisplayModeRequest = vi.fn()
+    const { rerender } = render(
+      <ReaderShell {...defaultProps({ settingsOpen: true, onDisplayModeRequest })}>content</ReaderShell>,
+    )
+
+    await userEvent.click(screen.getByLabelText('双页显示'))
+    expect(onDisplayModeRequest).toHaveBeenCalledWith('double')
+
+    rerender(
+      <ReaderShell {...defaultProps({ settingsOpen: true, displayMode: 'double', onDisplayModeRequest })}>content</ReaderShell>,
+    )
+    expect(screen.getByLabelText('双页显示')).toHaveAttribute('aria-pressed', 'true')
+    expect(screen.getByLabelText('连续滚动')).toHaveAttribute('aria-pressed', 'false')
+    expect(screen.getAllByTestId('reader-mode-indicator')).toHaveLength(1)
   })
 
   it('does not render chapter nav buttons when chapters are absent', () => {

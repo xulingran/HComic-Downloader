@@ -58,10 +58,20 @@ describe('PageFlipView', () => {
 
   it('renders two pages side by side in double mode', async () => {
     render(<PageFlipView {...defaultProps} displayMode="double" />)
+    const viewport = screen.getByTestId('reader-page-viewport')
+    expect(viewport).toHaveClass('h-full')
+    expect(viewport.style.width).toBe('')
+    expect(screen.getByTestId('reader-page-layout')).toHaveStyle({ gap: 0 })
+    expect(screen.getByTestId('reader-page-layout')).toHaveAttribute('data-layout-animated', 'false')
     await waitFor(() => {
       expect(mockFetchPreviewImage).toHaveBeenCalledWith('url1', undefined, undefined, undefined)
       expect(mockFetchPreviewImage).toHaveBeenCalledWith('url2', undefined, undefined, undefined)
     })
+  })
+
+  it('keeps the configured image width in single mode', () => {
+    render(<PageFlipView {...defaultProps} imageWidth={65} />)
+    expect(screen.getByTestId('reader-page-viewport')).toHaveStyle({ width: '65%' })
   })
 
   it('renders only left page when currentPage is the last odd page in double mode', async () => {
@@ -306,6 +316,60 @@ describe('PageFlipView', () => {
     act(() => { vi.advanceTimersByTime(600) })
     fireEvent.wheel(container.firstChild as Element, { deltaY: 100 })
     expect(setCurrentPage).toHaveBeenCalledWith(3)
+  })
+
+  it('treats an atomic single-to-double update as layout reflow, not an ordinary flip lock', () => {
+    const setCurrentPage = vi.fn()
+    const imageCacheRef = { current: new Map<number, string>([[0, 'a'.repeat(64)], [1, 'b'.repeat(64)]]) }
+    const { container, rerender } = render(
+      <PageFlipView {...defaultProps} currentPage={2} displayMode="single" imageCacheRef={imageCacheRef} setCurrentPage={setCurrentPage} />
+    )
+
+    rerender(
+      <PageFlipView {...defaultProps} currentPage={1} displayMode="double" imageCacheRef={imageCacheRef} setCurrentPage={setCurrentPage} />
+    )
+
+    expect(screen.getByAltText('第 1 页')).toBeInTheDocument()
+    expect(screen.getByAltText('第 2 页')).toBeInTheDocument()
+    fireEvent.wheel(container.firstChild as Element, { deltaY: 100 })
+    expect(setCurrentPage).toHaveBeenCalledWith(3)
+  })
+
+  it('blocks wheel and edge clicks while a shared mode transition is active', () => {
+    const setCurrentPage = vi.fn()
+    const { container } = render(
+      <PageFlipView {...defaultProps} modeTransitioning setCurrentPage={setCurrentPage} />
+    )
+
+    fireEvent.wheel(container.firstChild as Element, { deltaY: 100 })
+    fireEvent.click(screen.getByLabelText('下一页'))
+    expect(setCurrentPage).not.toHaveBeenCalled()
+    expect(screen.getByLabelText('下一页')).toHaveAttribute('aria-disabled', 'true')
+    expect(screen.getByTestId('reader-page-layout')).toHaveAttribute('data-layout-animated', 'true')
+  })
+
+  it.each([
+    ['front', 1, '第 1 页'],
+    ['end', 3, '第 3 页'],
+  ] as const)('renders a legal actual page beside the %s blank slot', (blankPosition, currentPage, alt) => {
+    const cachedMap = new Map<number, string>([
+      [0, 'a'.repeat(64)],
+      [2, 'c'.repeat(64)],
+    ])
+    render(
+      <PageFlipView
+        {...defaultProps}
+        imageUrls={['url1', 'url2', 'url3']}
+        totalPages={3}
+        currentPage={currentPage}
+        displayMode="double"
+        blankPosition={blankPosition}
+        imageCacheRef={{ current: cachedMap }}
+      />
+    )
+
+    expect(screen.getByAltText(alt)).toBeInTheDocument()
+    expect(mockFetchPreviewImage).not.toHaveBeenCalledWith(undefined, undefined, undefined, undefined)
   })
 })
 

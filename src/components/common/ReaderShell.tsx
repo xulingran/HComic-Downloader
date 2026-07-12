@@ -1,6 +1,12 @@
 import { useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
-import { readerPresenceVariants, overlayPresenceVariants, reduceSafe, useReducedMotionPreference } from '../../lib/anim'
+import {
+  readerModeIndicatorTransition,
+  readerPresenceVariants,
+  overlayPresenceVariants,
+  reduceSafe,
+  useReducedMotionPreference,
+} from '../../lib/anim'
 import type { DisplayMode, BlankPosition } from '../../hooks/useReaderSettings'
 import type { ChapterInfo } from '@shared/types'
 
@@ -45,7 +51,7 @@ interface ReaderShellProps {
   navigationEnabled: boolean
   /** 阅读设置状态与 setter（来自共享 useReaderSettings） */
   displayMode: DisplayMode
-  setDisplayMode: (mode: DisplayMode) => void
+  onDisplayModeRequest: (mode: DisplayMode) => void
   imageWidth: number
   setImageWidth: (value: number) => void
   pageGap: number
@@ -87,7 +93,7 @@ export function ReaderShell({
   onOpenChapterPicker,
   navigationEnabled,
   displayMode,
-  setDisplayMode,
+  onDisplayModeRequest,
   imageWidth,
   setImageWidth,
   pageGap,
@@ -133,11 +139,6 @@ export function ReaderShell({
   const hasChapters = Boolean(chapters && chapters.length > 1)
   const hasPrevChapter = hasChapters && currentChapterIndex > 0
   const hasNextChapter = hasChapters && currentChapterIndex >= 0 && currentChapterIndex < (chapters!.length - 1)
-
-  const handleSetDisplayMode = (mode: DisplayMode) => {
-    setDisplayMode(mode)
-    if (mode !== 'double') setBlankPosition('none')
-  }
 
   return (
     <div className="fixed inset-0 z-50">
@@ -306,9 +307,9 @@ export function ReaderShell({
                 <div className="flex flex-col gap-3">
                   {/* 显示模式切换 */}
                   <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
-                    <ModeButton label="连续滚动" icon={scrollIcon} active={displayMode === 'scroll'} onClick={() => handleSetDisplayMode('scroll')} />
-                    <ModeButton label="单页显示" icon={singleIcon} active={displayMode === 'single'} onClick={() => handleSetDisplayMode('single')} />
-                    <ModeButton label="双页显示" icon={doubleIcon} active={displayMode === 'double'} onClick={() => handleSetDisplayMode('double')} />
+                    <ModeButton label="连续滚动" icon={scrollIcon} active={displayMode === 'scroll'} indicatorId="reader-display-mode-indicator" reduceMotion={reduceMotion} onClick={() => onDisplayModeRequest('scroll')} />
+                    <ModeButton label="单页显示" icon={singleIcon} active={displayMode === 'single'} indicatorId="reader-display-mode-indicator" reduceMotion={reduceMotion} onClick={() => onDisplayModeRequest('single')} />
+                    <ModeButton label="双页显示" icon={doubleIcon} active={displayMode === 'double'} indicatorId="reader-display-mode-indicator" reduceMotion={reduceMotion} onClick={() => onDisplayModeRequest('double')} />
                   </div>
                   {displayMode === 'double' && (
                     <div className="flex rounded-md overflow-hidden" style={{ background: 'rgba(255,255,255,0.05)' }}>
@@ -388,24 +389,36 @@ export function ReaderShell({
 
 // ── 设置面板图标按钮与 SVG ──────────────────────────────────────────
 
-function ModeButton({ label, icon, active, onClick }: {
+function ModeButton({ label, icon, active, onClick, indicatorId, reduceMotion = false }: {
   label: string
   icon: React.ReactNode
   active: boolean
   onClick: () => void
+  indicatorId?: string
+  reduceMotion?: boolean
 }) {
   return (
     <button
       aria-label={label}
+      aria-pressed={active}
       title={label}
       onClick={onClick}
-      className="flex-1 flex items-center justify-center py-1.5 transition-colors"
+      className="relative flex-1 flex items-center justify-center py-1.5 transition-colors"
       style={{
-        background: active ? 'rgba(108,140,255,0.2)' : 'transparent',
+        background: active && !indicatorId ? 'rgba(108,140,255,0.2)' : 'transparent',
         color: active ? '#6c8cff' : 'rgba(255,255,255,0.4)',
       }}
     >
-      {icon}
+      {active && indicatorId && (
+        <motion.span
+          data-testid="reader-mode-indicator"
+          layoutId={indicatorId}
+          className="absolute inset-0"
+          style={{ background: 'rgba(108,140,255,0.2)' }}
+          transition={reduceMotion ? { duration: 0 } : readerModeIndicatorTransition}
+        />
+      )}
+      <span className="relative z-10 flex items-center justify-center">{icon}</span>
     </button>
   )
 }

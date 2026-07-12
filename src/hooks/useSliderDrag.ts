@@ -1,10 +1,11 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useRef, useCallback, useEffect } from 'react'
 
 export function useSliderDrag(
   totalPages: number,
   onPageChange: (page: number) => void,
   onDragEnd?: (page: number) => void,
   onDragStart?: () => void,
+  disabled = false,
 ) {
   const [isDragging, setIsDragging] = useState(false)
   const isDraggingRef = useRef(false)
@@ -28,6 +29,7 @@ export function useSliderDrag(
   }, [getDragPage, onPageChange])
 
   const handleSliderPointerDown = useCallback((e: React.PointerEvent) => {
+    if (disabled) return
     const page = getDragPage(e)
     if (page === null) return
     e.preventDefault()
@@ -38,12 +40,13 @@ export function useSliderDrag(
     setIsDragging(true)
     dragPageRef.current = page
     onPageChange(page)
-  }, [getDragPage, onDragStart, onPageChange])
+  }, [disabled, getDragPage, onDragStart, onPageChange])
 
   const handleSliderPointerMove = useCallback((e: React.PointerEvent) => {
+    if (disabled) return
     if (!isDraggingRef.current) return
     updateDragPosition(e)
-  }, [updateDragPosition])
+  }, [disabled, updateDragPosition])
 
   const handleSliderPointerUp = useCallback(() => {
     if (!isDraggingRef.current) return
@@ -62,6 +65,10 @@ export function useSliderDrag(
     dragPageRef.current = 0
     setIsDragging(false)
   }, [])
+
+  useEffect(() => {
+    if (disabled) cancelDrag()
+  }, [cancelDrag, disabled])
 
   return {
     isDragging,
