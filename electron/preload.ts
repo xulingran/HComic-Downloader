@@ -332,7 +332,7 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.GET_CHAPTER_PREVIEW_URLS, chapterId, albumId ?? undefined, sourceSite ?? undefined)
   },
 
-  fetchPreviewImage: (imageUrl: unknown, scrambleId?: unknown, comicId?: unknown, imageQuality?: unknown) => {
+  fetchPreviewImage: (imageUrl: unknown, scrambleId?: unknown, comicId?: unknown, imageQuality?: unknown, generation?: unknown) => {
     if (typeof imageUrl !== 'string' || imageUrl.length === 0 || imageUrl.length > 2048) throw new Error('Invalid preview image URL')
     // scrambleId/comicId 早期类型守卫：主进程会做权威校验，这里仅拒绝明显错误类型，
     // 保持与其他字段的契约对称（避免任意类型透传）。
@@ -341,7 +341,22 @@ contextBridge.exposeInMainWorld('hcomic', {
     if (imageQuality !== undefined && imageQuality !== null) {
       if (typeof imageQuality !== 'string' || !IMAGE_QUALITIES.includes(imageQuality as typeof IMAGE_QUALITIES[number])) throw new Error('Invalid imageQuality')
     }
-    return ipcRenderer.invoke(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, imageUrl, scrambleId, comicId, imageQuality ?? undefined)
+    // generation（预加载优先级代数）可选；缺省视为当前活跃代（向后兼容）。
+    if (generation !== undefined && generation !== null && (typeof generation !== 'number' || !Number.isFinite(generation) || generation < 0)) {
+      throw new Error('Invalid generation')
+    }
+    return ipcRenderer.invoke(
+      IPC_CHANNELS.FETCH_PREVIEW_IMAGE,
+      imageUrl,
+      scrambleId,
+      comicId,
+      imageQuality ?? undefined,
+      generation ?? undefined,
+    )
+  },
+  cancelPreviewGenerations: (before: unknown) => {
+    if (typeof before !== 'number' || !Number.isFinite(before) || before < 0) throw new Error('Invalid before')
+    return ipcRenderer.invoke(IPC_CHANNELS.CANCEL_PREVIEW_GENERATIONS, before)
   },
 
   checkDownloadedStatus: (comics: unknown) => {

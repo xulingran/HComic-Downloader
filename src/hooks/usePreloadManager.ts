@@ -72,6 +72,12 @@ export function usePreloadManager(
     { start: number; end: number }[]
   >([])
   const [preloadTarget, setPreloadTarget] = useState<number | null>(null)
+  // 预加载优先级代数：每次 preloadTarget 切换（effect 重启）+1，随
+  // fetchPreviewImage 携带到后端。后端 worker 取出任务时若 generation <
+  // cancelled_floor 则跳过（reader-jump-preload-priority 规范），使进度条
+  // 跳转后的目标页请求不被旧 target 残留请求堵在后端 FIFO 队列后面。
+  // 用 ref 持有当前代，worker 闭包读 ref 取最新值（避免进入依赖数组抖动）。
+  const generationRef = useRef(0)
 
   // useFlipPace 始终运行（开销极小）；adaptive 关闭时其输出被忽略
   const { effectiveInterval, isFlippingFast, reset: resetPace } = useFlipPace(preloadTarget ?? -1)
@@ -81,6 +87,10 @@ export function usePreloadManager(
     setCacheVersion(0)
     setPreloadedRanges([])
     setPreloadTarget(null)
+    // 换章/关闭 modal 时同步重置 generation 并通知后端丢弃 generation=0
+    // 的初始批次排队请求（若有）。失败静默：旧后端无此 IPC 时不阻塞清理。
+    generationRef.current = 0
+    window.hcomic?.cancelPreviewGenerations?.(1)?.catch?.(() => {})
     resetPace() // 同步清空翻页节奏样本，避免残留间隔影响新漫画/章节的初始判定
   }, [resetPace])
 
@@ -128,6 +138,13 @@ export function usePreloadManager(
 
   useEffect(() => {
     if (preloadTarget == null || loadingState !== 'loaded') return
+    // 每次 target 切换重启 worker pool 时推进 generation：新批次的请求携带
+    // 新代数，后端据此跳过旧代排队请求。同时通知后端推进 cancelled_floor，
+    // 使仍排队的旧代请求在 worker 取出时被丢弃，把槽位让给本批目标页请求。
+    // （reader-jump-preload-priority 规范）
+    generationRef.current += 1
+    const currentGeneration = generationRef.current
+    window.hcomic?.cancelPreviewGenerations?.(currentGeneration)?.catch?.(() => {})
     let cancelled = false
     const cache = imageCacheRef.current
     // params 通过 ref 读取（避免 alternation 抖动重启）；
@@ -167,6 +184,7 @@ export function usePreloadManager(
                   scrambleId,
                   comicId,
                   imageQuality,
+                  currentGeneration,
                 )
               if (cancelled) return
               if (result?.urlHash) {

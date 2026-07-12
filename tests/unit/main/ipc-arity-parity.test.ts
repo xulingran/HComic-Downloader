@@ -72,6 +72,50 @@ describe('IPC preload→main→python 参数透传契约（H4 类回归防护）
     })
   })
 
+  describe('fetchPreviewImage: generation 必须端到端透传（reader-jump-preload-priority）', () => {
+    // 同型 H4 防护：generation（预加载优先级代数）也跨 preload→main→python 三层，
+    // 任一层漏读都会让阅读器跳转优先级静默失效。三层都必须出现。
+    it('preload 收集 generation 并转发给 invoke', () => {
+      expect(preloadSrc).toMatch(/fetchPreviewImage:\s*\([^)]*generation[^)]*\)/)
+      expect(preloadSrc).toMatch(/ipcRenderer\.invoke\(\s*IPC_CHANNELS\.FETCH_PREVIEW_IMAGE[\s\S]*?generation/)
+    })
+
+    it('main handler 形参列表必须包含 generation', () => {
+      const handlerRe = /ipcMain\.handle\(\s*IPC_CHANNELS\.FETCH_PREVIEW_IMAGE\s*,\s*async\s*\(([^)]*)\)\s*=>/
+      const m = handlerRe.exec(mainSrc)
+      expect(m, '未找到 FETCH_PREVIEW_IMAGE 的 ipcMain.handle 注册').not.toBeNull()
+      expect(m![1], 'main handler 形参缺少 generation').toContain('generation')
+    })
+
+    it('main handler 必须把 generation 写入发给 Python 的 params', () => {
+      const handlerBlockRe = /ipcMain\.handle\(\s*IPC_CHANNELS\.FETCH_PREVIEW_IMAGE[\s\S]*?bridge\.call\('fetch_preview_image'[\s\S]*?\)\s*\)/
+      const m = handlerBlockRe.exec(mainSrc)
+      expect(m, '未找到 fetch_preview_image 的 bridge.call').not.toBeNull()
+      expect(m![0], 'main 未把 generation 加入 params').toContain('generation')
+    })
+
+    it('Python ipc_server.py dispatch 必须读取并传递 generation', () => {
+      const dispatchRe = /if method == "fetch_preview_image":([\s\S]*?)(?=if method ==|await self\._dispatch_request)/
+      const m = dispatchRe.exec(pythonServerSrc)
+      expect(m, '未找到 Python fetch_preview_image dispatch 分支').not.toBeNull()
+      const block = m![1]
+      expect(block, 'Python dispatch 未读取 generation 参数').toContain('generation')
+      expect(block, 'Python dispatch 未把 generation 传给 _preview_executor.submit')
+        .toContain('generation=generation')
+    })
+
+    it('cancel_preview_generations 通道三层注册一致', () => {
+      // preload 暴露 cancelPreviewGenerations
+      expect(preloadSrc).toMatch(/cancelPreviewGenerations:\s*\([^)]*before[^)]*\)/)
+      expect(preloadSrc).toMatch(/IPC_CHANNELS\.CANCEL_PREVIEW_GENERATIONS/)
+      // main 注册 ipcMain.handle
+      expect(mainSrc).toMatch(/ipcMain\.handle\(\s*IPC_CHANNELS\.CANCEL_PREVIEW_GENERATIONS/)
+      expect(mainSrc).toMatch(/bridge\.call\('cancel_preview_generations'/)
+      // Python dispatch 表注册方法名
+      expect(pythonServerSrc).toMatch(/"cancel_preview_generations":\s*"handle_cancel_preview_generations"/)
+    })
+  })
+
   describe('openDownloadDir / openCacheDir: 路径校验契约对称', () => {
     it('preload 必须做对称的下载目录校验（绝对路径/遍历/控制字符）', () => {
       // H1/H2 修复点：preload 不应再是仅 length>0 的弱校验

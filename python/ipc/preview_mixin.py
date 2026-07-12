@@ -262,3 +262,18 @@ class PreviewMixin:
                     "error": {"code": -32000, "message": str(e)},
                 }
             )
+
+    def handle_cancel_preview_generations(self, before: int) -> dict:
+        """Advance the preview executor's cancelled-generation floor.
+
+        Marks all queued preview tasks whose ``generation < before`` for skipping
+        at dequeue time, so a reader jump's new target page requests are not
+        blocked behind stale requests from the previous target. Already-running
+        tasks are unaffected (best-effort; they free their slot on completion).
+        """
+        if not isinstance(before, int) or before < 0:
+            # Defensive: main-process validator already rejects non-finite /
+            # negative values; this guards direct dispatch / malformed input.
+            raise ValueError("before must be a non-negative integer")
+        floor = self._preview_executor.advance_cancelled_floor(before)
+        return {"cancelled_floor": floor}

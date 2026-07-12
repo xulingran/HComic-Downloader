@@ -160,9 +160,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 93 total (75 original + 18 library)
+      // 94 total (75 original + 18 library + 1 cancel_preview_generations)
       const count = handleCalls.length
-      expect(count).toBe(93)
+      expect(count).toBe(94)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -287,7 +287,7 @@ describe('main.ts', () => {
       const validMethods = new Set([
         'search', 'random', 'download', 'download_batch_as_album', 'check_download_conflict', 'get_favourites', 'get_config', 'set_config',
         'get_downloads', 'cancel_download', 'apply_auth', 'verify_auth', 'shutdown',
-        'fetch_cover', 'fetch_preview_image', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
+        'fetch_cover', 'fetch_preview_image', 'cancel_preview_generations', 'pause_task', 'resume_task', 'retry_task', 'toggle_global_pause',
         'get_proxy_status', 'get_available_fonts', 'open_download_dir', 'get_download_detail', 'get_preview_urls',
         'get_chapter_preview_urls',
         'check_downloaded_status', 'start_migration', 'confirm_migration', 'pause_migration', 'resume_migration',

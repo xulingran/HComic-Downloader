@@ -55,6 +55,7 @@ from ipc.history_mixin import HistoryMixin  # noqa: E402
 from ipc.library_mixin import LibraryMixin  # noqa: E402
 from ipc.maintenance_mixin import MaintenanceMixin  # noqa: E402
 from ipc.migration_mixin import MigrationMixin  # noqa: E402
+from ipc.preview_executor import PriorityPreviewExecutor  # noqa: E402
 from ipc.preview_mixin import PreviewMixin  # noqa: E402
 from ipc.search_mixin import SearchMixin  # noqa: E402
 from ipc.tag_list_mixin import TagListMixin  # noqa: E402
@@ -183,7 +184,9 @@ class IPCServer(
         self._cover_executor = ThreadPoolExecutor(max_workers=_COVER_POOL_MAX_WORKERS, thread_name_prefix="cover")
         try:
             # Reader page fetches must not queue behind cover thumbnails.
-            self._preview_executor = ThreadPoolExecutor(
+            # PriorityPreviewExecutor serves jump targets first and skips stale
+            # generations on dequeue (see reader-jump-preload-priority change).
+            self._preview_executor = PriorityPreviewExecutor(
                 max_workers=_PREVIEW_POOL_MAX_WORKERS, thread_name_prefix="preview"
             )
         except Exception:
@@ -326,6 +329,7 @@ class IPCServer(
         "get_preview_urls": "handle_get_preview_urls",
         "get_chapter_preview_urls": "handle_get_chapter_preview_urls",
         "fetch_preview_image": "handle_fetch_preview_image",
+        "cancel_preview_generations": "handle_cancel_preview_generations",
         "check_downloaded_status": "handle_check_downloaded_status",
         "get_comic_detail": "handle_get_comic_detail",
         "start_migration": "handle_start_migration",
@@ -529,6 +533,19 @@ class IPCServer(
                 scramble_id = params.get("scramble_id", "")
                 comic_id = params.get("comic_id", "")
                 image_quality = params.get("image_quality", "")
+                # generation（预加载优先级代数）可选：前端阅读器跳转时推进，
+                # 后端 worker 取出任务时若 generation < cancelled_floor 则跳过。
+                # 缺省（非有限正整数）视为当前活跃代（priority=0, generation=0），
+                # 向后兼容非阅读器调用（详情页封面等）。
+                raw_generation = params.get("generation")
+                if (
+                    isinstance(raw_generation, (int, float))
+                    and raw_generation == int(raw_generation)
+                    and raw_generation >= 0
+                ):
+                    generation = int(raw_generation)
+                else:
+                    generation = 0
                 if not isinstance(image_quality, str) or image_quality not in ("", "low", "medium", "high", "original"):
                     self._write_response(
                         {
@@ -556,6 +573,8 @@ class IPCServer(
                     scramble_id=scramble_id,
                     comic_id=comic_id,
                     image_quality=image_quality,
+                    priority=0,
+                    generation=generation,
                 )
                 return
 

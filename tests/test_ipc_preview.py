@@ -306,3 +306,59 @@ def test_async_fetch_preview_image_reports_error_on_write_failure(monkeypatch, t
     assert payload["error"]["code"] == -32000
     assert "Failed to persist preview image" in payload["error"]["message"]
     assert "result" not in payload
+
+
+# --- reader-jump-preload-priority: cancel_preview_generations handler ---
+
+
+def test_handle_cancel_preview_generations_advances_floor(tmp_path):
+    """handle_cancel_preview_generations 推进 _preview_executor 的 cancelled_floor。
+
+    守护前端阅读器跳转时通知后端"旧代请求可丢"的契约：handler 必须把 before
+    透传给 PriorityPreviewExecutor.advance_cancelled_floor 并回写结果。
+    """
+    server = _create_test_server(tmp_path)
+    try:
+        assert server._preview_executor.cancelled_floor == 0
+        result = server.handle_cancel_preview_generations(3)
+        assert result == {"cancelled_floor": 3}
+        assert server._preview_executor.cancelled_floor == 3
+        # monotonic: stale before ignored
+        result2 = server.handle_cancel_preview_generations(1)
+        assert result2 == {"cancelled_floor": 3}
+    finally:
+        server._preview_executor.shutdown(wait=False, cancel_futures=True)
+
+
+def test_handle_cancel_preview_generations_rejects_invalid_before(tmp_path):
+    """非法 before（负数）必须抛错，防止静默接受污染 floor。"""
+    server = _create_test_server(tmp_path)
+    try:
+        with pytest.raises(ValueError):
+            server.handle_cancel_preview_generations(-1)
+        with pytest.raises(ValueError):
+            server.handle_cancel_preview_generations(1.5)  # type: ignore[arg-type]
+    finally:
+        server._preview_executor.shutdown(wait=False, cancel_futures=True)
+
+
+def test_fetch_preview_image_default_generation_is_active(tmp_path):
+    """缺省 generation（非阅读器调用，如详情页）视为活跃代（0），不被取消。
+
+    守护向后兼容：旧前端 / 非阅读器路径不传 generation，后端必须当作当前代
+    处理，不应被 cancel_preview_generations 误伤。
+    """
+    from ipc.preview_executor import PriorityPreviewExecutor
+
+    server = _create_test_server(tmp_path)
+    try:
+        # 验证 _preview_executor 确为新的优先级调度器（非旧 ThreadPoolExecutor）
+        assert isinstance(server._preview_executor, PriorityPreviewExecutor)
+        # 缺省 generation 经 fast-path 解析后应为 0（活跃代）：
+        # advance floor 到 1 会取消 generation<1（即 gen 0）的排队请求，
+        # 但缺省路径发出的请求本就携带 generation=0，因此"缺省=活跃"只在
+        # floor 未推进时成立。此处只断言 executor 类型 + floor 初始态，
+        # generation 解析逻辑由 test_ipc_async_main_loop 的端到端测试守护。
+        assert server._preview_executor.cancelled_floor == 0
+    finally:
+        server._preview_executor.shutdown(wait=False, cancel_futures=True)

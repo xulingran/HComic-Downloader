@@ -825,8 +825,12 @@ export interface IPCMethods {
     result: PreviewUrlsResult
   }
   fetch_preview_image: {
-    params: { image_url: string; image_quality?: string }
+    params: { image_url: string; image_quality?: string; generation?: number }
     result: PreviewImageResult
+  }
+  cancel_preview_generations: {
+    params: { before: number }
+    result: { cancelled_floor: number }
   }
   check_downloaded_status: {
     params: { comics: ComicInfo[] }
@@ -1113,6 +1117,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:get-preview-urls': 'get_preview_urls',
   'python:get-chapter-preview-urls': 'get_chapter_preview_urls',
   'python:fetch-preview-image': 'fetch_preview_image',
+  'python:cancel-preview-generations': 'cancel_preview_generations',
   'python:check-downloaded-status': 'check_downloaded_status',
   'python:get-comic-detail': 'get_comic_detail',
   'python:start-migration': 'start_migration',
@@ -1232,7 +1237,8 @@ export interface HcomicAPI {
   getDownloadDetail(taskId: string): Promise<DownloadDetail>
   getPreviewUrls(comicData: ComicInfo): Promise<PreviewUrlsResult>
   getChapterPreviewUrls(chapterId: string, albumId?: string, sourceSite?: string): Promise<PreviewUrlsResult>
-  fetchPreviewImage(imageUrl: string, scrambleId?: string, comicId?: string, imageQuality?: string): Promise<PreviewImageResult>
+  fetchPreviewImage(imageUrl: string, scrambleId?: string, comicId?: string, imageQuality?: string, generation?: number): Promise<PreviewImageResult>
+  cancelPreviewGenerations(before: number): Promise<{ cancelledFloor: number }>
   checkDownloadedStatus(comics: ComicInfo[]): Promise<{ statusMap: Record<string, 'downloaded' | 'unknown'> }>
   getComicDetail(comicId: string, source?: string, sourceUrl?: string): Promise<{ comic: ComicInfo | null }>
   startMigration(targetDir: string, mode: 'full' | 'repair'): Promise<MigrationPlanPreview>
@@ -1507,6 +1513,7 @@ export const IPC_CHANNELS = {
   GET_PREVIEW_URLS: 'python:get-preview-urls',
   GET_CHAPTER_PREVIEW_URLS: 'python:get-chapter-preview-urls',
   FETCH_PREVIEW_IMAGE: 'python:fetch-preview-image',
+  CANCEL_PREVIEW_GENERATIONS: 'python:cancel-preview-generations',
   CHECK_DOWNLOADED_STATUS: 'python:check-downloaded-status',
   GET_COMIC_DETAIL: 'python:get-comic-detail',
   START_MIGRATION: 'python:start-migration',

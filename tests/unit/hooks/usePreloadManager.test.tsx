@@ -308,3 +308,78 @@ describe('换章清缓存 (reader-chapter-cache-invalidation 规范)', () => {
     expect(result.current.cacheVersion).toBe(1)
   })
 })
+
+// reader-jump-preload-priority 规范：generation 推进 + cancelPreviewGenerations 通知 +
+// fetchPreviewImage 携带 generation。守护"前端在 target 切换时推进代数并通知后端丢弃
+// 旧代排队请求"的核心契约。
+describe('usePreloadManager generation (reader-jump-preload-priority 规范)', () => {
+  let mockFetch: ReturnType<typeof vi.fn>
+  let mockCancel: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockFetch = vi.fn().mockResolvedValue({ urlHash: 'c'.repeat(64) })
+    mockCancel = vi.fn().mockResolvedValue({ cancelledFloor: 0 })
+    Object.defineProperty(window, 'hcomic', {
+      value: { fetchPreviewImage: mockFetch, cancelPreviewGenerations: mockCancel },
+      configurable: true,
+    })
+  })
+
+  it('target 切换时推进 generation 并通知后端取消旧代', async () => {
+    const urls = Array.from({ length: 20 }, (_, i) => `u${i + 1}`)
+    const { result } = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
+    )
+    // 第一次设 target → generation 推进到 1
+    act(() => result.current.setPreloadTarget(2))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled(), { timeout: 2000 })
+    // cancelPreviewGenerations(1) 被调用：取消所有 generation < 1 的请求
+    expect(mockCancel).toHaveBeenCalledWith(1)
+
+    // 第二次设 target（跳转）→ generation 推进到 2
+    act(() => result.current.setPreloadTarget(15))
+    await waitFor(() => expect(mockCancel).toHaveBeenCalledWith(2), { timeout: 2000 })
+  })
+
+  it('fetchPreviewImage 携带当前 generation 参数', async () => {
+    const urls = Array.from({ length: 20 }, (_, i) => `u${i + 1}`)
+    const { result } = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
+    )
+    act(() => result.current.setPreloadTarget(3))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled(), { timeout: 2000 })
+    // 第 5 个参数是 generation，第一次 target 切换后应为 1
+    expect(mockFetch.mock.calls[0][4]).toBe(1)
+  })
+
+  it('clearCache 重置 generation 并通知后端清空初始代', () => {
+    const urls = Array.from({ length: 10 }, (_, i) => `u${i + 1}`)
+    const { result } = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
+    )
+    act(() => {
+      result.current.setPreloadTarget(3)
+      result.current.clearCache()
+    })
+    // clearCache 调 cancelPreviewGenerations(1) 清空 generation=0 的初始批次
+    expect(mockCancel).toHaveBeenCalledWith(1)
+  })
+
+  it('cancelPreviewGenerations 失败时静默不阻塞预加载', async () => {
+    mockCancel.mockRejectedValue(new Error('IPC unavailable'))
+    const urls = Array.from({ length: 10 }, (_, i) => `u${i + 1}`)
+    const { result } = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
+    )
+    // 即使 cancel 失败，预加载流程仍应正常推进：fetch 不仅被调用，
+    // 其结果必须真正写入共享缓存——这才是"cancel 失败不阻塞预加载"的
+    // 可观察行为证据（而非仅 mock 被调用）。
+    act(() => result.current.setPreloadTarget(2))
+    await waitFor(() => {
+      // u3 → idx 2，邻居写入缓存说明整条 fetch→cache 链路未被 cancel 失败打断
+      return result.current.imageCacheRef.current.get(2) === 'c'.repeat(64)
+    }, { timeout: 2000 })
+    expect(result.current.imageCacheRef.current.get(2)).toBe('c'.repeat(64))
+  })
+})

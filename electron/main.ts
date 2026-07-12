@@ -1216,7 +1216,7 @@ function registerPreviewHandlers(bridge: Bridge) {
     return bridge.call('get_chapter_preview_urls', params)
   })
 
-  ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown, scrambleId?: unknown, comicId?: unknown, imageQuality?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.FETCH_PREVIEW_IMAGE, async (_, imageUrl: unknown, scrambleId?: unknown, comicId?: unknown, imageQuality?: unknown, generation?: unknown) => {
     assert(and(string(), length(1, 2048)), imageUrl, 'preview image URL')
     let parsed: URL
     try { parsed = new URL(imageUrl) } catch { throw new Error('Invalid preview image URL format') }
@@ -1230,7 +1230,19 @@ function registerPreviewHandlers(bridge: Bridge) {
       }
       params.image_quality = imageQuality
     }
+    // 预加载优先级代数：阅读器跳转时前端推进 generation，后端据此跳过旧代排队请求。
+    // 缺省（undefined）视为当前活跃代，向后兼容旧前端 / 非阅读器调用（如详情页封面）。
+    if (typeof generation === 'number' && Number.isFinite(generation) && generation >= 0) {
+      params.generation = generation
+    }
     return bridge.call('fetch_preview_image', params)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.CANCEL_PREVIEW_GENERATIONS, async (_, before: unknown) => {
+    if (typeof before !== 'number' || !Number.isFinite(before) || before < 0) {
+      throw new Error('Invalid before')
+    }
+    return bridge.call('cancel_preview_generations', { before })
   })
 
   ipcMain.handle(IPC_CHANNELS.CHECK_DOWNLOADED_STATUS, async (_, comics: unknown) => {

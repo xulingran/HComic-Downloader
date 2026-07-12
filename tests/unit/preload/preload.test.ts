@@ -254,7 +254,28 @@ describe('preload.ts', () => {
   describe('fetchPreviewImage', () => {
     it('should invoke python:fetch-preview-image with URL', async () => {
       await exposedApi.fetchPreviewImage('https://h-comic.link/api/nh/media123/pages/1')
-      expect(mockInvoke).toHaveBeenCalledWith('python:fetch-preview-image', 'https://h-comic.link/api/nh/media123/pages/1', undefined, undefined, undefined)
+      expect(mockInvoke).toHaveBeenCalledWith('python:fetch-preview-image', 'https://h-comic.link/api/nh/media123/pages/1', undefined, undefined, undefined, undefined)
+    })
+
+    it('should forward generation to IPC when provided (reader-jump-preload-priority)', async () => {
+      await exposedApi.fetchPreviewImage('https://h-comic.link/api/nh/media123/pages/1', undefined, undefined, undefined, 3)
+      expect(mockInvoke).toHaveBeenCalledWith('python:fetch-preview-image', 'https://h-comic.link/api/nh/media123/pages/1', undefined, undefined, undefined, 3)
+    })
+
+    it('should reject invalid generation', () => {
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', undefined, undefined, undefined, -1)).toThrow('Invalid generation')
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', undefined, undefined, undefined, NaN)).toThrow('Invalid generation')
+      expect(() => exposedApi.fetchPreviewImage('https://x/y.jpg', undefined, undefined, undefined, '3' as unknown as number)).toThrow('Invalid generation')
+    })
+
+    it('should expose cancelPreviewGenerations and forward to IPC', async () => {
+      await exposedApi.cancelPreviewGenerations(2)
+      expect(mockInvoke).toHaveBeenCalledWith('python:cancel-preview-generations', 2)
+    })
+
+    it('should reject invalid cancelPreviewGenerations before', () => {
+      expect(() => exposedApi.cancelPreviewGenerations(-1)).toThrow('Invalid before')
+      expect(() => exposedApi.cancelPreviewGenerations('2' as unknown as number)).toThrow('Invalid before')
     })
 
     it('should reject invalid preview image URL', () => {
