@@ -128,6 +128,7 @@ function App() {
   } = useReaderStore()
   const {
     readerAsset: localReaderAsset,
+    launchMode: localReaderLaunchMode,
     open: localReaderOpen,
     closingSessionId: localReaderClosingSessionId,
     closeReader: closeLocalReader,
@@ -318,6 +319,7 @@ function App() {
       /></Suspense>
       <Suspense fallback={null}><LocalLibraryReaderModal
         asset={localReaderAsset}
+        launchMode={localReaderLaunchMode}
         open={localReaderOpen}
         onClose={closeLocalReader}
         onExitComplete={() => finalizeLocalReaderClose(localReaderClosingSessionId)}

@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -36,26 +37,31 @@ vi.mock('@/components/ReaderPage', () => ({
     index,
     imageLoader,
     onCached,
+    onLoaded,
   }: {
     url: string
     index: number
     imageLoader: (url: string, index: number) => Promise<string>
     onCached: (index: number, imageUrl: string) => void
-  }) => (
-    <button
-      data-testid={`local-reader-page-${index}`}
-      onClick={() => {
-        void imageLoader(url, index)
-          .then((imageUrl) => {
-            onCached(index, imageUrl)
-            pageLoaded(imageUrl)
-          })
-          .catch(() => {})
-      }}
-    >
-      page {index + 1}
-    </button>
-  ),
+    onLoaded: (index: number) => void
+  }) => {
+    useEffect(() => onLoaded(index), [index, onLoaded])
+    return (
+      <button
+        data-testid={`local-reader-page-${index}`}
+        onClick={() => {
+          void imageLoader(url, index)
+            .then((imageUrl) => {
+              onCached(index, imageUrl)
+              pageLoaded(imageUrl)
+            })
+            .catch(() => {})
+        }}
+      >
+        page {index + 1}
+      </button>
+    )
+  },
 }))
 vi.mock('@/components/PageFlipView', () => ({
   PageFlipView: ({
@@ -235,6 +241,33 @@ describe('LocalLibraryReaderModal', () => {
     await userEvent.click(screen.getByLabelText('阅读设置'))
     await userEvent.click(screen.getByLabelText('双页显示'))
     expect(await screen.findByTestId('local-page-flip')).toBeInTheDocument()
+  })
+
+  it('restarts a multi-chapter asset at the first chapter without showing the picker', async () => {
+    const resumedAsset = { ...asset, readingChapterId: 'ch2', readingPage: 2 }
+    render(<LocalLibraryReaderModal asset={resumedAsset} launchMode="restart" open onClose={() => {}} />)
+
+    expect(await screen.findByTestId('local-reader-page-0')).toBeInTheDocument()
+    expect(screen.queryByText(/请选择章节/)).not.toBeInTheDocument()
+    expect(libraryApi.pageManifest).toHaveBeenCalledWith('asset-1', 'ch1')
+  })
+
+  it('resumes a multi-chapter asset at its saved chapter and page', async () => {
+    const resumedAsset = { ...asset, readingChapterId: 'ch2', readingPage: 2 }
+    render(<LocalLibraryReaderModal asset={resumedAsset} launchMode="resume" open onClose={() => {}} />)
+
+    expect(await screen.findByTestId('local-reader-page-0')).toBeInTheDocument()
+    expect(libraryApi.pageManifest).toHaveBeenCalledWith('asset-1', 'ch2')
+    expect(screen.getAllByText('2 / 2').length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('keeps the saved progress when restart manifest loading fails', async () => {
+    const resumedAsset = { ...asset, readingChapterId: 'ch2', readingPage: 2 }
+    libraryApi.pageManifest.mockRejectedValue(new Error('restart failed'))
+    render(<LocalLibraryReaderModal asset={resumedAsset} launchMode="restart" open onClose={() => {}} />)
+
+    expect(await screen.findByText('restart failed')).toBeInTheDocument()
+    expect(libraryApi.saveReadingProgress).not.toHaveBeenCalled()
   })
 
   it('keeps the rendered asset visible until the shared exit completes', async () => {

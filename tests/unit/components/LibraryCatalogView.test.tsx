@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { LibraryAssetSummary } from '@shared/types'
 import { useLibraryStore } from '@/stores/useLibraryStore'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useLocalReaderStore } from '@/stores/useLocalReaderStore'
 
 const { libraryApi, scanApi } = vi.hoisted(() => ({
   libraryApi: {
@@ -18,7 +19,12 @@ vi.mock('@/hooks/useIpc', () => ({
   useLibraryScanProgress: () => ({ progress: null, clear: vi.fn() }),
 }))
 vi.mock('@/components/library/LocalLibraryReaderModal', () => ({ LocalLibraryReaderModal: () => null }))
-vi.mock('@/components/library/LibraryAssetDetailDrawer', () => ({ LibraryAssetDetailDrawer: () => null }))
+vi.mock('@/components/library/LibraryAssetDetailDrawer', () => ({
+  LibraryAssetDetailDrawer: ({ asset, onOpenReader }: {
+    asset: { assetId: string } | null
+    onOpenReader: (assetId: string, mode: 'resume' | 'restart') => void
+  }) => asset ? <button onClick={() => onOpenReader(asset.assetId, 'restart')}>mock restart</button> : null,
+}))
 
 class ImmediateIntersectionObserver {
   private callback: IntersectionObserverCallback
@@ -48,12 +54,14 @@ describe('LibraryCatalogView', () => {
     vi.clearAllMocks()
     useLibraryStore.getState().reset()
     useSettingsStore.setState({ sfwMode: false })
+    useLocalReaderStore.setState({ readerAsset: null, launchMode: 'resume', open: false })
     libraryApi.list.mockResolvedValue({ items: [item], pagination: { currentPage: 1, totalPages: 1, totalItems: 1 } })
     libraryApi.stats.mockResolvedValue({
       totalAssets: 1, totalPages: 12, totalSizeBytes: 1024,
       byFormat: { cbz: 1, zip: 0, folder: 0 }, bySource: { jm: 1 }, byHealth: { healthy: 1 },
     })
     libraryApi.cover.mockResolvedValue({ coverKey: 'a'.repeat(64), mediaType: 'image/jpeg' })
+    libraryApi.detail.mockResolvedValue({ ...item, chapters: [], readingPage: 8, readingChapterId: null, version: 1 })
     scanApi.status.mockResolvedValue({
       phase: 'idle', scanId: null, isScanning: false, current: 0, total: 0, currentLabel: '',
       lastScanCompletedAt: 1, lastScanCancelled: false, lastScanError: null,
@@ -73,5 +81,18 @@ describe('LibraryCatalogView', () => {
     expect(await screen.findByRole('img', { name: 'Local Comic' })).toHaveAttribute(
       'src', `app-image://library/${'a'.repeat(64)}`,
     )
+  })
+
+  it('refreshes detail and forwards the selected launch mode to the root reader store', async () => {
+    render(<LibraryCatalogView />)
+    await userEvent.click(await screen.findByTestId('library-card-asset-1'))
+    await userEvent.click(await screen.findByRole('button', { name: 'mock restart' }))
+
+    expect(libraryApi.detail).toHaveBeenCalledTimes(2)
+    expect(useLocalReaderStore.getState()).toMatchObject({
+      readerAsset: expect.objectContaining({ assetId: 'asset-1' }),
+      launchMode: 'restart',
+      open: true,
+    })
   })
 })

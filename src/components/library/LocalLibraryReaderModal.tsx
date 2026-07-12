@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { LibraryAssetDetail } from '@shared/types'
+import type { LocalReaderLaunchMode } from '../../stores/useLocalReaderStore'
 import { useLocalLibraryProgress, useLocalLibraryReader } from '../../hooks/useLocalLibraryReader'
 import { useReaderSettings, type BlankPosition } from '../../hooks/useReaderSettings'
 import { usePageTracking } from '../../hooks/usePageTracking'
@@ -16,13 +17,14 @@ import { ReaderModeStage } from '../common/ReaderModeStage'
 
 interface LocalLibraryReaderModalProps {
   asset: LibraryAssetDetail | null
+  launchMode?: LocalReaderLaunchMode
   open: boolean
   onClose: () => void
   onExitComplete?: () => void
 }
 
 /** Local reader backed by the same presentation shell as remote preview. */
-export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }: LocalLibraryReaderModalProps) {
+export function LocalLibraryReaderModal({ asset, launchMode = 'resume', open, onClose, onExitComplete }: LocalLibraryReaderModalProps) {
   const {
     imageUrls,
     totalPages,
@@ -41,6 +43,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }
   const [blankPosition, setBlankPosition] = useState<BlankPosition>('none')
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [chapterSelected, setChapterSelected] = useState(false)
+  const [hasLoadedPage, setHasLoadedPage] = useState(false)
   const { zoom, zoomIn, zoomOut, resetZoom } = useZoom(open)
   const { failedCount, retryGen, retryAll, markFailed, markLoaded, clearAll } = useFailedPages()
   const { saveProgress, flush } = useLocalLibraryProgress(asset?.assetId ?? null)
@@ -59,6 +62,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }
     pendingLoadsRef.current.clear()
     setCachedPageUrls(new Map())
     setCacheVersion((version) => version + 1)
+    setHasLoadedPage(false)
     clearAll()
   }, [clearAll])
 
@@ -66,9 +70,12 @@ export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }
   useEffect(() => {
     if (!open || !asset) return
     clearPageCache()
-    setChapterSelected(Boolean(asset.readingChapterId))
-    void fetchAsset(asset.assetId, asset.readingChapterId, asset.readingPage)
-  }, [open, asset, clearPageCache, fetchAsset])
+    const restartChapterId = asset.chapters.length > 1 ? asset.chapters[0]?.chapterId ?? null : null
+    const initialChapterId = launchMode === 'restart' ? restartChapterId : asset.readingChapterId
+    const initialPage = launchMode === 'restart' ? 1 : asset.readingPage
+    setChapterSelected(launchMode === 'restart' || Boolean(asset.readingChapterId))
+    void fetchAsset(asset.assetId, initialChapterId, initialPage)
+  }, [open, asset, launchMode, clearPageCache, fetchAsset])
 
   useEffect(() => {
     if (open) return
@@ -85,9 +92,14 @@ export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }
   }, [clearPageCache, onExitComplete, reset])
 
   useEffect(() => {
-    if (!open || !asset || loadingState !== 'loaded' || totalPages <= 0 || currentPage <= 0) return
+    if (!open || !asset || !hasLoadedPage || loadingState !== 'loaded' || totalPages <= 0 || currentPage <= 0) return
     saveProgress(currentChapterId, currentPage, totalPages)
-  }, [open, asset, currentChapterId, currentPage, totalPages, loadingState, saveProgress])
+  }, [open, asset, hasLoadedPage, currentChapterId, currentPage, totalPages, loadingState, saveProgress])
+
+  const handlePageLoaded = useCallback((index: number) => {
+    setHasLoadedPage(true)
+    markLoaded(index)
+  }, [markLoaded])
 
   const loadLocalImage = useCallback(async (_url: string, index: number): Promise<string> => {
     if (!asset) throw new Error('漫画资产已关闭')
@@ -329,7 +341,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }
                   cachedUrlHash={cachedPageUrls.get(index)}
                   imageLoader={loadLocalImage}
                   onFailed={markFailed}
-                  onLoaded={markLoaded}
+                  onLoaded={handlePageLoaded}
                   onCached={handleCached}
                   retryGen={retryGen}
                 />
@@ -352,7 +364,7 @@ export function LocalLibraryReaderModal({ asset, open, onClose, onExitComplete }
           blankPosition={blankPosition}
           imageLoader={loadLocalImage}
           onFailed={markFailed}
-          onLoaded={markLoaded}
+          onLoaded={handlePageLoaded}
           onCached={handleCached}
           retryGen={retryGen}
           modeTransitioning={isModeTransitioning}

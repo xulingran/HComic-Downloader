@@ -1,6 +1,8 @@
 import { create } from 'zustand'
 import type { LibraryAssetDetail } from '@shared/types'
 
+export type LocalReaderLaunchMode = 'resume' | 'restart'
+
 /**
  * 本地漫画库阅读器状态。
  *
@@ -12,23 +14,26 @@ import type { LibraryAssetDetail } from '@shared/types'
  */
 interface LocalReaderState {
   readerAsset: LibraryAssetDetail | null
+  launchMode: LocalReaderLaunchMode
   open: boolean
   sessionId: number
   closingSessionId: number | null
   justClosedAssetId: string | null
-  openReader: (asset: LibraryAssetDetail) => void
+  openReader: (asset: LibraryAssetDetail, launchMode?: LocalReaderLaunchMode) => void
   closeReader: () => void
   finalizeClose: (sessionId: number | null) => void
 }
 
 export const useLocalReaderStore = create<LocalReaderState>((set) => ({
   readerAsset: null,
+  launchMode: 'resume',
   open: false,
   sessionId: 0,
   closingSessionId: null,
   justClosedAssetId: null,
-  openReader: (asset) => set((state) => ({
+  openReader: (asset, launchMode = 'resume') => set((state) => ({
     readerAsset: asset,
+    launchMode,
     open: true,
     sessionId: state.sessionId + 1,
     closingSessionId: null,

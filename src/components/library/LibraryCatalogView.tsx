@@ -7,6 +7,7 @@ import { useSettingsStore } from '../../stores/useSettingsStore'
 import { LIBRARY_FORMATS, LIBRARY_SORTS } from '@shared/types'
 import type { LibraryFormat, LibrarySort, LibraryAssetDetail } from '@shared/types'
 import { useLocalReaderStore } from '../../stores/useLocalReaderStore'
+import type { LocalReaderLaunchMode } from '../../stores/useLocalReaderStore'
 import { LibraryAssetDetailDrawer } from './LibraryAssetDetailDrawer'
 
 /** 活跃下载任务数（供漫画库头部显示）。 */
@@ -176,11 +177,11 @@ export function LibraryCatalogView() {
   )
 
   // 从详情抽屉打开阅读器
-  const handleOpenReader = useCallback(async (assetId: string) => {
+  const handleOpenReader = useCallback(async (assetId: string, launchMode: LocalReaderLaunchMode) => {
     try {
       const detail = await library.detail(assetId)
       setDetailOpen(false)
-      openLocalReader(detail)
+      openLocalReader(detail, launchMode)
     } catch {
       // ignore
     }

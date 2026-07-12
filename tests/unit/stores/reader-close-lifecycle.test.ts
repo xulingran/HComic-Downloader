@@ -20,6 +20,7 @@ describe('reader close lifecycle stores', () => {
     })
     useLocalReaderStore.setState({
       readerAsset: null,
+      launchMode: 'resume',
       open: false,
       sessionId: 0,
       closingSessionId: null,
@@ -82,12 +83,12 @@ describe('reader close lifecycle stores', () => {
   })
 
   it('does not let an old local exit callback clear a newly opened asset', () => {
-    useLocalReaderStore.getState().openReader(assetA)
+    useLocalReaderStore.getState().openReader(assetA, 'resume')
     const oldSessionId = useLocalReaderStore.getState().sessionId
     useLocalReaderStore.getState().closeReader()
-    useLocalReaderStore.getState().openReader(assetB)
+    useLocalReaderStore.getState().openReader(assetB, 'restart')
 
     useLocalReaderStore.getState().finalizeClose(oldSessionId)
-    expect(useLocalReaderStore.getState()).toMatchObject({ readerAsset: assetB, open: true })
+    expect(useLocalReaderStore.getState()).toMatchObject({ readerAsset: assetB, launchMode: 'restart', open: true })
   })
 })

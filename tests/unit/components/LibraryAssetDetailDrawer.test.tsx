@@ -13,9 +13,12 @@ const asset: LibraryAssetDetail = {
   readingChapterId: null, pathSummary: 'Old Title.cbz', metadataOverridden: false, version: 1,
 }
 
-function Harness() {
+function Harness({ currentAsset = asset, onOpenReader = () => {} }: {
+  currentAsset?: LibraryAssetDetail
+  onOpenReader?: (assetId: string, mode: 'resume' | 'restart') => void
+}) {
   const [open, setOpen] = useState(true)
-  return <><Toaster /><LibraryAssetDetailDrawer asset={asset} open={open} onClose={() => setOpen(false)} onOpenReader={() => {}} onChanged={() => {}} /></>
+  return <><Toaster /><LibraryAssetDetailDrawer asset={currentAsset} open={open} onClose={() => setOpen(false)} onOpenReader={onOpenReader} onChanged={() => {}} /></>
 }
 
 describe('LibraryAssetDetailDrawer', () => {
@@ -39,5 +42,46 @@ describe('LibraryAssetDetailDrawer', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('library-detail-drawer')).not.toBeInTheDocument()
     })
+  })
+
+  it('offers resume and restart when the saved progress is valid', async () => {
+    const onOpenReader = vi.fn()
+    const resumedAsset = { ...asset, readingPage: 2, lastReadAt: 10 }
+    render(<Harness currentAsset={resumedAsset} onOpenReader={onOpenReader} />)
+
+    expect(screen.getByTestId('detail-reading-progress')).toHaveTextContent('上次读到第 2 页')
+    await userEvent.click(screen.getByRole('button', { name: '从头开始' }))
+    await userEvent.click(screen.getByRole('button', { name: '继续阅读' }))
+
+    expect(onOpenReader).toHaveBeenNthCalledWith(1, 'asset-1', 'restart')
+    expect(onOpenReader).toHaveBeenNthCalledWith(2, 'asset-1', 'resume')
+  })
+
+  it('does not offer resume when the saved chapter is no longer valid', async () => {
+    const onOpenReader = vi.fn()
+    const invalidAsset = {
+      ...asset,
+      albumTotalChapters: 2,
+      readingPage: 2,
+      readingChapterId: 'missing',
+      chapters: [
+        { chapterId: 'ch1', name: '第一章', index: 0, pageCount: 2 },
+        { chapterId: 'ch2', name: '第二章', index: 1, pageCount: 2 },
+      ],
+    }
+    render(<Harness currentAsset={invalidAsset} onOpenReader={onOpenReader} />)
+
+    expect(screen.queryByRole('button', { name: '继续阅读' })).not.toBeInTheDocument()
+    expect(screen.getByTestId('detail-invalid-progress')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '从头开始' }))
+    expect(onOpenReader).toHaveBeenCalledWith('asset-1', 'restart')
+  })
+
+  it('shows a single start action when there is no progress', async () => {
+    const onOpenReader = vi.fn()
+    render(<Harness onOpenReader={onOpenReader} />)
+    expect(screen.queryByRole('button', { name: '继续阅读' })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: '开始阅读' }))
+    expect(onOpenReader).toHaveBeenCalledWith('asset-1', 'restart')
   })
 })

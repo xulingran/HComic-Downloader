@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { LibraryAssetDetail } from '@shared/types'
+import type { LocalReaderLaunchMode } from '../../stores/useLocalReaderStore'
 import { useToastStore } from '../../stores/useToastStore'
 import {
   drawerPresenceVariants,
@@ -13,7 +14,7 @@ interface LibraryAssetDetailDrawerProps {
   asset: LibraryAssetDetail | null
   open: boolean
   onClose: () => void
-  onOpenReader: (assetId: string) => void
+  onOpenReader: (assetId: string, launchMode: LocalReaderLaunchMode) => void
   onChanged: () => void
 }
 
@@ -125,6 +126,16 @@ export function LibraryAssetDetailDrawer({
   // 与 ComicInfoDrawer 一致的动画令牌：reduced-motion 时降级为纯 opacity
   const reduceMotion = useReducedMotionPreference()
   const drawerVariants = reduceMotion ? reduceSafe(drawerPresenceVariants) : drawerPresenceVariants
+  const hasSavedProgress = asset?.readingPage != null
+  const savedChapterValid = Boolean(asset && (
+    asset.chapters.length <= 1
+      ? hasSavedProgress
+      : hasSavedProgress && asset.readingChapterId
+        && asset.chapters.some((chapter) => chapter.chapterId === asset.readingChapterId)
+  ))
+  const savedChapterName = asset?.chapters.find(
+    (chapter) => chapter.chapterId === asset.readingChapterId,
+  )?.name
 
   return (
     <AnimatePresence>
@@ -224,13 +235,44 @@ export function LibraryAssetDetailDrawer({
 
         {/* 操作按钮 */}
         <div className="space-y-2">
-          <button
-            onClick={() => onOpenReader(asset.assetId)}
-            className="w-full rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white hover:bg-[var(--accent-hover)]"
-            data-testid="detail-read-btn"
-          >
-            {asset.readingPage ? `继续阅读 (第 ${asset.readingPage} 页)` : '阅读'}
-          </button>
+          {savedChapterValid ? (
+            <div className="space-y-2" data-testid="detail-reading-actions">
+              <p className="text-xs text-[var(--text-secondary)]" data-testid="detail-reading-progress">
+                上次读到{savedChapterName ? `${savedChapterName} · ` : ''}第 {asset.readingPage} 页
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => onOpenReader(asset.assetId, 'restart')}
+                  className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] hover:bg-[var(--bg-tertiary)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                  data-testid="detail-restart-btn"
+                >
+                  从头开始
+                </button>
+                <button
+                  onClick={() => onOpenReader(asset.assetId, 'resume')}
+                  className="min-w-0 flex-1 rounded-lg bg-[var(--accent)] px-3 py-2 text-sm text-white hover:bg-[var(--accent-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                  data-testid="detail-read-btn"
+                >
+                  继续阅读
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1">
+              {hasSavedProgress && (
+                <p className="text-xs text-[var(--text-secondary)]" data-testid="detail-invalid-progress">
+                  原阅读章节已失效，请从头开始
+                </p>
+              )}
+              <button
+                onClick={() => onOpenReader(asset.assetId, 'restart')}
+                className="w-full rounded-lg bg-[var(--accent)] px-4 py-2 text-sm text-white hover:bg-[var(--accent-hover)] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                data-testid="detail-read-btn"
+              >
+                {hasSavedProgress ? '从头开始' : '开始阅读'}
+              </button>
+            </div>
+          )}
 
           <div className="flex gap-2">
             <button
