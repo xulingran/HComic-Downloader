@@ -22,7 +22,6 @@ import { useSettingsStore } from '../stores/useSettingsStore'
 import { useFavouritesStore, type FavouritesPageCache } from '../stores/useFavouritesStore'
 import { usePaginatedPreloader, type PreloadReason } from '../hooks/usePaginatedPreloader'
 import { prefetchCovers } from '@/lib/cover-prefetch'
-import { useReaderStore } from '../stores/useReaderStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import type { DownloadProgressData } from '../hooks/useIpc'
 import { isAuthError } from '../utils/auth'
@@ -65,7 +64,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     handleBatchDownloadAsAlbum,
     selectedComics,
   } = useBatchDownload(comics)
-  const { openReader } = useReaderStore()
   const [downloadedStatus, setDownloadedStatus] = useState<Record<string, 'downloaded' | 'unknown'>>({})
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const latestUserRequestRef = useRef(0)
@@ -244,10 +242,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
     })
     return unsubscribe
   }, [])
-
-  const handleOpenReader = (comic: ComicInfo) => {
-    openReader(comic)
-  }
 
   const handleSourceChange = useCallback((selectedSource: string) => {
     if (!noSourceSelected && !showPicker && selectedSource === source) return
@@ -464,7 +458,6 @@ export function FavouritesPage({ onNavigateToSettings }: FavouritesPageProps) {
                   <AnimatedCardWrapper key={getComicKey(comic)} index={index}>
                     <ComicCard
                       comic={comic}
-                      onOpenReader={handleOpenReader}
                       batchMode={batchMode}
                       selected={selectedIds.has(getComicKey(comic))}
                       onToggleSelect={toggleSelect}

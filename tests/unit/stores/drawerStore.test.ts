@@ -15,6 +15,7 @@ describe('useDrawerStore', () => {
     useDrawerStore.setState({
       drawerComic: null,
       pendingSearch: null,
+      resumeInfo: null,
       isOpen: false
     })
   })
@@ -23,6 +24,7 @@ describe('useDrawerStore', () => {
     const state = useDrawerStore.getState()
     expect(state.drawerComic).toBeNull()
     expect(state.pendingSearch).toBeNull()
+    expect(state.resumeInfo).toBeNull()
     expect(state.isOpen).toBe(false)
   })
 
@@ -31,14 +33,21 @@ describe('useDrawerStore', () => {
     const state = useDrawerStore.getState()
     expect(state.drawerComic).toEqual(mockComic)
     expect(state.isOpen).toBe(true)
+    expect(state.resumeInfo).toBeNull()
   })
 
-  it('应能关闭 drawer', () => {
-    useDrawerStore.getState().openDrawer(mockComic)
+  it('openDrawer 可注入 resumeInfo 断点续读上下文', () => {
+    useDrawerStore.getState().openDrawer(mockComic, { lastPage: 5, lastChapterId: 'ch3' })
+    const state = useDrawerStore.getState()
+    expect(state.resumeInfo).toEqual({ lastPage: 5, lastChapterId: 'ch3' })
+  })
+
+  it('closeDrawer 必须清空 resumeInfo', () => {
+    useDrawerStore.getState().openDrawer(mockComic, { lastPage: 5 })
     useDrawerStore.getState().closeDrawer()
     const state = useDrawerStore.getState()
     expect(state.isOpen).toBe(false)
-    expect(state.drawerComic).toEqual(mockComic)
+    expect(state.resumeInfo).toBeNull()
   })
 
   it('应能设置 pendingSearch', () => {

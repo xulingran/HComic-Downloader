@@ -24,7 +24,6 @@ import type { ComicInfo, PaginationInfo, SearchResult, SearchSection } from '@sh
 import { useSettingsStore } from '../stores/useSettingsStore'
 import { useSearchHistory } from '../hooks/useSearchHistory'
 import { useDrawerStore } from '../stores/useDrawerStore'
-import { useReaderStore } from '../stores/useReaderStore'
 import { useSearchCacheStore, createSearchContextKey, type SearchPageCache } from '../stores/useSearchCacheStore'
 import { useSearchPreloader } from '../hooks/useSearchPreloader'
 import { useDownloadStore } from '../stores/useDownloadStore'
@@ -48,9 +47,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const [mode, setMode] = useState('keyword')
   const [source, setSource] = useState('hcomic')
   const [searchTags, setSearchTags] = useState('')
-  // NH「仅显示中文」筛选：运行期状态、默认关闭、不持久化（add-nh-chinese-language-filter spec）。
-  // 非 NH 来源不应用该筛选——effectiveNhLanguageFilter 仅在 source === 'nh' 时非空。
-  const [nhLanguageFilter, setNhLanguageFilter] = useState<'chinese' | undefined>(undefined)
+  // NH / moeimg「仅显示中文」筛选：运行期状态、默认关闭、不持久化。
+  const [languageFilter, setLanguageFilter] = useState<'chinese' | undefined>(undefined)
   const [showJumpDialog, setShowJumpDialog] = useState(false)
   const [showHistory, setShowHistory] = useState(false)
   const [showAlbumDialog, setShowAlbumDialog] = useState(false)
@@ -111,7 +109,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const { cardStyle, tagBlacklist, myTags, filterEnabled, setFilterEnabled } = useSettingsStore()
   const { pendingSearch, clearPendingSearch } = useDrawerStore()
   // clearPendingSearch also used by handleRandom below
-  const { openReader } = useReaderStore()
   const { history, add: addHistory, remove: removeHistory, clear: clearHistory } = useSearchHistory()
   const { favouriteTagHighlight, favouriteTagMinMatches } = useSettingsStore()
   const { progress: tagListProgress } = useTagListProgress(source)
@@ -155,11 +152,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   modeRef.current = mode // eslint-disable-line react-hooks/refs
   const sourceRef = useRef(source)
   sourceRef.current = source // eslint-disable-line react-hooks/refs
-  const nhLanguageFilterRef = useRef(nhLanguageFilter)
-  nhLanguageFilterRef.current = nhLanguageFilter // eslint-disable-line react-hooks/refs
+  const languageFilterRef = useRef(languageFilter)
+  languageFilterRef.current = languageFilter // eslint-disable-line react-hooks/refs
 
-  // 仅 NH 应用筛选；切换到其他来源时该值为 undefined，确保请求不携带 languageFilter
-  const effectiveNhLanguageFilter = source === 'nh' ? nhLanguageFilter : undefined
+  // 仅受支持来源应用筛选；切换到其他来源时请求不得携带 languageFilter。
+  const effectiveLanguageFilter = source === 'nh' || source === 'moeimg' ? languageFilter : undefined
 
   // 列表容器 key：派生自「已加载的搜索上下文」（loadedContextKey）+ 当前页码，而非实时输入 query。
   // 仅在真正完成一次搜索后（applySearchResult / handleSearch / pendingSearch effect 等）才变化，
@@ -199,8 +196,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       setMode(cached.mode)
       setSource(cached.source)
       setSearchTags(cached.searchTags)
-      // 恢复筛选状态：仅 NH 缓存可能携带 languageFilter（其他来源落盘时该字段为空）
-      setNhLanguageFilter(cached.source === 'nh' && cached.languageFilter === 'chinese' ? 'chinese' : undefined)
+      const cachedSupportsLanguageFilter = cached.source === 'nh' || cached.source === 'moeimg'
+      setLanguageFilter(cachedSupportsLanguageFilter && cached.languageFilter === 'chinese' ? 'chinese' : undefined)
       if (cached.searchTags) {
         const restored = cached.searchTags.split(',').filter(Boolean)
         tagPanel.setSelectedTags(restored)
@@ -356,7 +353,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       source,
       finalTags,
       true,
-      effectiveNhLanguageFilter,
+      effectiveLanguageFilter,
     ).then(result => {
       if (gen !== searchGenRef.current) return
       applySearchResult(result)
@@ -366,7 +363,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         mode: finalMode,
         source,
         searchTags: finalTags,
-        languageFilter: effectiveNhLanguageFilter,
+        languageFilter: effectiveLanguageFilter,
       })
       setLoadedContextKey(contextKey)
       cacheSearchPage(contextKey, result.pagination?.currentPage ?? 1, {
@@ -374,7 +371,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         mode: finalMode,
         source,
         searchTags: finalTags,
-        languageFilter: effectiveNhLanguageFilter,
+        languageFilter: effectiveLanguageFilter,
         comics: result.comics,
         pagination: result.pagination ?? null,
         sections: result.sections,
@@ -385,7 +382,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     }).finally(() => {
       if (gen === searchGenRef.current) setLoading(false)
     })
-  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setQuery, setMode, tagPanel, cacheSearchPage, applySearchResult, clearSearchResult, effectiveNhLanguageFilter])
+  }, [pendingSearch, clearPendingSearch, source, search, addHistory, clearSelection, setLoading, setError, setQuery, setMode, tagPanel, cacheSearchPage, applySearchResult, clearSearchResult, effectiveLanguageFilter])
 
   // 推荐高亮数据源：用户主动确认的 my_tags（取代旧版被动反推的 favourite_tag_index）。
   // favourite_tag_index 降级为设置页「检测标签」候选池，仅供展示，不再直接驱动高亮。
@@ -400,12 +397,18 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     const blocked = new Set(tagBlacklist[key].map(t => t.toLowerCase()))
     const hasBlockedTags = blocked.size > 0
     return comics.map(c => {
-      const isBlocked = filterEnabled && hasBlockedTags && (c.tags?.some(t => blocked.has(t.toLowerCase())) ?? false)
+      const isTagBlocked = filterEnabled && hasBlockedTags && (c.tags?.some(t => blocked.has(t.toLowerCase())) ?? false)
+      const normalizedLanguage = c.language?.trim().toLowerCase()
+      const isLanguageBlocked = source === 'moeimg'
+        && effectiveLanguageFilter === 'chinese'
+        && Boolean(normalizedLanguage)
+        && normalizedLanguage !== 'chinese'
+      const isBlocked = isTagBlocked || isLanguageBlocked
       const matchCount = c.tags?.filter(t => recommendedTags.has(t.toLowerCase())).length ?? 0
       const isRecommended = !isBlocked && recommendedTags.size > 0 && matchCount >= favouriteTagMinMatches
       return { comic: c, isBlocked, isRecommended }
     })
-  }, [comics, filterEnabled, tagBlacklist, source, recommendedTags, favouriteTagMinMatches])
+  }, [comics, filterEnabled, tagBlacklist, source, recommendedTags, favouriteTagMinMatches, effectiveLanguageFilter])
 
   const blockedCount = useMemo(() => filteredComics.filter(f => f.isBlocked).length, [filteredComics])
 
@@ -444,7 +447,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         setLoadedContextKey(null)
         return
       }
-      const languageFilter = sourceRef.current === 'nh' ? nhLanguageFilterRef.current : undefined
+      const currentSource = sourceRef.current
+      const languageFilter = currentSource === 'nh' || currentSource === 'moeimg' ? languageFilterRef.current : undefined
       const contextKey = createSearchContextKey({
         query: queryRef.current,
         mode: modeRef.current,
@@ -492,9 +496,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     // 由进入/退出入口体系的显式动作（handleNh* / handleBackToNhEntry / handleSourceChange /
     // handleRandom）决定。详见 design.md 决策 1 写入规则表。
 
-    // 语言筛选读 ref 而非闭包 effectiveNhLanguageFilter：toggle handler 在同一事件里
-    // setNhLanguageFilter 后立即调 handleSearch(1)，闭包值尚未更新，ref 已同步最新值。
-    const currentLanguageFilter = sourceRef.current === 'nh' ? nhLanguageFilterRef.current : undefined
+    // 语言筛选读 ref 而非闭包 effectiveLanguageFilter：toggle handler 在同一事件里
+    // setLanguageFilter 后立即调 handleSearch(1)，闭包值尚未更新，ref 已同步最新值。
+    const currentSource = sourceRef.current
+    const currentLanguageFilter = currentSource === 'nh' || currentSource === 'moeimg' ? languageFilterRef.current : undefined
     const contextKey = createSearchContextKey({ query, mode, source, searchTags, languageFilter: currentLanguageFilter })
     const cachedPage = searchCacheRef.current.getPage(contextKey, page)
     if (cachedPage) {
@@ -583,7 +588,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     queryRef.current = ''
     setViewingNhEntry(true)
     setShowBackToNhEntry(true)
-    await withLoading(() => search('', 'keyword', 1, 'nh', undefined, undefined, nhLanguageFilterRef.current))
+    await withLoading(() => search('', 'keyword', 1, 'nh', undefined, undefined, languageFilterRef.current))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
 
   const handleNhPopular = useCallback(async () => {
@@ -599,7 +604,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     queryRef.current = 'popular-today'
     setViewingNhEntry(true)
     setShowBackToNhEntry(true)
-    await withLoading(() => search('popular-today', 'ranking', 1, 'nh', undefined, undefined, nhLanguageFilterRef.current))
+    await withLoading(() => search('popular-today', 'ranking', 1, 'nh', undefined, undefined, languageFilterRef.current))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
 
   const handleNhRankingChange = useCallback(async (sortValue: string) => {
@@ -608,7 +613,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setSearchTags('')
     searchTagsRef.current = ''
     setShowBackToNhEntry(true)
-    await withLoading(() => search(sortValue, 'ranking', 1, 'nh', undefined, undefined, nhLanguageFilterRef.current))
+    await withLoading(() => search(sortValue, 'ranking', 1, 'nh', undefined, undefined, languageFilterRef.current))
   }, [withLoading, search])
 
   const handleNhEntryTag = useCallback(async (tag: string) => {
@@ -624,7 +629,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     queryRef.current = tag
     setViewingNhEntry(true)
     setShowBackToNhEntry(true)
-    await withLoading(() => search(tag, 'tag', 1, 'nh', undefined, undefined, nhLanguageFilterRef.current))
+    await withLoading(() => search(tag, 'tag', 1, 'nh', undefined, undefined, languageFilterRef.current))
   }, [clearSelection, clearPendingSearch, tagPanel, withLoading, search])
 
   const handleBackToNhEntry = useCallback(() => {
@@ -642,13 +647,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setError(null)
   }, [clearSelection, tagPanel, clearSearchResult, setError])
 
-  // NH「仅显示中文」开关（add-nh-chinese-language-filter spec）。
+  // NH / moeimg「仅显示中文」开关。
   // 入口页本体（!viewingNhEntry 即网格显示中）：只更新状态不请求，下一次显式入口动作才应用筛选。
   // 已有结果（viewingNhEntry=true 或 comics 非空）：清除批量选择并从第 1 页重新搜索。
-  const handleNhLanguageFilterToggle = useCallback((next: boolean) => {
+  const handleLanguageFilterToggle = useCallback((next: boolean) => {
     const nextFilter = next ? ('chinese' as const) : undefined
-    setNhLanguageFilter(nextFilter)
-    nhLanguageFilterRef.current = nextFilter
+    setLanguageFilter(nextFilter)
+    languageFilterRef.current = nextFilter
     // 入口页本体：无可见结果，遵循「禁止自动内容请求」的入口页契约
     if (!viewingNhEntry && comics.length === 0) return
     clearSelection()
@@ -735,10 +740,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setShowAlbumDialog(false)
   }, [])
 
-  const handleOpenReader = (comic: ComicInfo) => {
-    openReader(comic)
-  }
-
   const handleDownload = async (comic: ComicInfo) => {
     const enriched = await probeChaptersBeforeDownload(comic)
     if (enriched) {
@@ -759,7 +760,6 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       ) : (
         <ComicCard
           comic={comic}
-          onOpenReader={handleOpenReader}
           batchMode={batchMode}
           selected={selectedIds.has(getComicKey(comic))}
           onToggleSelect={toggleSelect}
@@ -782,7 +782,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     mode,
     source,
     searchTags,
-    languageFilter: effectiveNhLanguageFilter,
+    languageFilter: effectiveLanguageFilter,
     searchFn: search,
     currentPage: pagination?.currentPage ?? 1,
     totalPages: pagination?.totalPages ?? 1,
@@ -820,10 +820,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         newSearchTags || undefined,
         // 用户主动切换标签触发的搜索，JM 来源遇挑战时应能触发恢复
         true,
-        // 语言筛选仅对 NH 生效（add-nh-chinese-language-filter spec）：切换到非 NH 来源时
-        // nhLanguageFilterRef 仍保留状态以便切回 NH 恢复，但此处必须加来源守卫，
-        // 否则非 NH 标签搜索会携带残留筛选触发主进程跨来源拒绝。
-        sourceRef.current === 'nh' ? nhLanguageFilterRef.current : undefined,
+        // 语言筛选仅对 NH / moeimg 生效；其他来源不得携带该参数。
+        sourceRef.current === 'nh' || sourceRef.current === 'moeimg' ? languageFilterRef.current : undefined,
       ))
     }
   }, [tagPanel, withLoading, search, clearSelection])
@@ -853,7 +851,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         // 用户主动清除标签触发的搜索，JM 来源遇挑战时应能触发恢复（与 handleToggleTag 一致）
         true,
         // 语言筛选来源守卫同 handleToggleTag
-        sourceRef.current === 'nh' ? nhLanguageFilterRef.current : undefined,
+        sourceRef.current === 'nh' || sourceRef.current === 'moeimg' ? languageFilterRef.current : undefined,
       ))
     }
   }, [tagPanel, withLoading, search, clearSelection])
@@ -896,8 +894,8 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         hasFilterEnabled={filterEnabled}
         onFilterToggle={() => setFilterEnabled(!filterEnabled)}
         hasBlacklistedTags={tagBlacklist[normalizeSourceKey(source)].length > 0}
-        nhLanguageFilter={nhLanguageFilter}
-        onNhLanguageFilterChange={handleNhLanguageFilterToggle}
+        languageFilter={languageFilter}
+        onLanguageFilterChange={handleLanguageFilterToggle}
         pagination={pagination}
         blockedCount={blockedCount}
         hasComics={comics.length > 0}
@@ -1092,7 +1090,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         || (source === 'nh' && !viewingNhEntry && !error)
       ) && <EmptyState message="暂无搜索结果" />}
 
-      {!isLoading && !needsLogin && comics.length > 0 && blockedCount === comics.length && <EmptyState message="所有结果均已被标签过滤" />}
+      {!isLoading && !needsLogin && comics.length > 0 && blockedCount === comics.length && <EmptyState message="所有结果均已被筛选" />}
     </div>
   )
 }

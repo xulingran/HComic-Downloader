@@ -3,7 +3,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useSettingsStore } from '../stores/useSettingsStore'
+import { useReaderStore } from '../stores/useReaderStore'
 import { useAddToFavourites, useRemoveFromFavourites, useCheckFavourite, useComicDetail } from '../hooks/useIpc'
+import { useCoverImage } from '../hooks/useCoverImage'
+import { CoverImage } from './common/ComicCard'
 import { Toast } from './common/Toast'
 import { Modal } from './common/Modal'
 import { drawerPresenceVariants, overlayPresenceVariants, reduceSafe, tagListVariants, tagItemVariants, useReducedMotionPreference } from '../lib/anim'
@@ -55,8 +58,9 @@ interface ComicDetailSurfaceProps {
  * Business state intentionally lives here so enrichment, favourites and tag actions cannot drift.
  */
 export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose }: ComicDetailSurfaceProps) {
-  const { setPendingSearch } = useDrawerStore()
-  const { tagBlacklist, myTags, favouriteTagHighlight, addTag, removeTag, addMyTag, removeMyTag } = useSettingsStore()
+  const { setPendingSearch, resumeInfo } = useDrawerStore()
+  const { tagBlacklist, myTags, favouriteTagHighlight, addTag, removeTag, addMyTag, removeMyTag, sfwMode } = useSettingsStore()
+  const { openReader } = useReaderStore()
   const { addToFavourites } = useAddToFavourites()
   const { removeFromFavourites } = useRemoveFromFavourites()
   const { checkFavourite } = useCheckFavourite()
@@ -83,6 +87,13 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
   const [enrichState, setEnrichState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   // retryCount 驱动 enrich effect 重新执行（点击重试时自增），避免把 fetch 逻辑抽成独立函数。
   const [retryCount, setRetryCount] = useState(0)
+  // 抽屉封面图容器 ref（useCoverImage 需要 IntersectionObserver 容器）。
+  const drawerCoverRef = useRef<HTMLDivElement>(null)
+  const { coverSrc: drawerCoverSrc, retry: retryDrawerCover } = useCoverImage(
+    surface === 'drawer' ? (comic?.coverUrl ?? '') : '',
+    drawerCoverRef,
+    sfwMode,
+  )
 
   const comicSource = comic?.sourceSite || 'hcomic'
 
@@ -202,6 +213,15 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
     onClose()
   }
 
+  // 抽屉"开始阅读"入口：用 enrich 后的 displayComic（标题/来源等更完整）启动预览阅读器，
+  // 先关抽屉再开阅读器。resumeInfo 存在时（来自历史页）支持续读，否则从第 0 页开始。
+  const handleStartReading = (startPage: number, chapterId?: string) => {
+    const target = displayComic ?? comic
+    if (!target) return
+    onClose()
+    openReader(target, startPage, chapterId)
+  }
+
   // 点击 tag 加入搜索但不关闭抽屉，方便用户多选 tag 连续搜索。
   // parodies/characters/author 等替换式搜索仍走 handleSearch（关闭抽屉）。
   const handleTagSearch = (tag: string) => {
@@ -314,7 +334,7 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
       data-testid={`comic-detail-${surface}`}
       className={surface === 'drawer'
         ? 'fixed inset-0 z-50 flex justify-end pointer-events-none'
-        : 'relative w-full h-full flex justify-center pointer-events-auto'}
+        : 'relative w-full min-h-full flex justify-center pointer-events-auto'}
       style={readerSurfaceStyle}
     >
       <div className="pointer-events-auto">
@@ -355,8 +375,8 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
               animate={surface === 'drawer' ? 'animate' : undefined}
               exit={surface === 'drawer' ? 'exit' : undefined}
               className={surface === 'drawer'
-                ? 'relative w-80 max-w-[85vw] bg-[var(--bg-primary)] shadow-2xl flex flex-col overflow-y-auto pointer-events-auto'
-                : 'relative w-full max-w-3xl h-full bg-[var(--bg-primary)] flex flex-col overflow-y-auto pointer-events-auto rounded-xl'}
+                ? 'relative w-full max-w-md bg-[var(--bg-primary)] shadow-2xl flex flex-col overflow-y-auto pointer-events-auto'
+                : 'relative w-full max-w-3xl min-h-full bg-[var(--bg-primary)] flex flex-col pointer-events-auto rounded-xl'}
             >
         {surface === 'drawer' && (
         <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
@@ -374,6 +394,19 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
         )}
 
         <div className={surface === 'drawer' ? 'px-5 py-4 space-y-4' : 'px-6 py-8 md:px-10 space-y-5'}>
+          {surface === 'drawer' && comic?.coverUrl && (
+            <div ref={drawerCoverRef} className="w-full aspect-[6/7] max-h-[40vh] overflow-hidden rounded-lg flex-shrink-0">
+              <CoverImage
+                coverUrl={comic.coverUrl}
+                coverSrc={drawerCoverSrc}
+                sfwMode={sfwMode}
+                title={displayComic?.title ?? comic.title}
+                retry={retryDrawerCover}
+                variant="cover"
+                onClick={() => {}}
+              />
+            </div>
+          )}
           <h3 className="text-base font-medium text-[var(--text-primary)] leading-relaxed select-text">
             {displayComic?.title}
           </h3>
@@ -468,6 +501,34 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
                       : '加入收藏'}
                 </span>
               </button>
+            </div>
+          )}
+
+          {surface === 'drawer' && (
+            <div className="flex gap-2 flex-wrap">
+              {resumeInfo ? (
+                <>
+                  <button
+                    onClick={() => handleStartReading(resumeInfo.lastPage, resumeInfo.lastChapterId)}
+                    className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 transition-colors font-medium"
+                  >
+                    继续阅读
+                  </button>
+                  <button
+                    onClick={() => handleStartReading(0)}
+                    className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
+                  >
+                    从头开始
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => handleStartReading(0)}
+                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 transition-colors font-medium"
+                >
+                  开始阅读
+                </button>
+              )}
             </div>
           )}
 

@@ -115,11 +115,11 @@ describe('ComicCard', () => {
       vi.mocked(useDrawerStore).mockReturnValue({ openDrawer: vi.fn() })
     })
 
-    it('CoverCard: 非批量模式、仅传 onOpenReader（未传 onClick）时，点击 body 区必须打开抽屉', async () => {
+    it('CoverCard: 非批量模式、未传 onClick 时，点击 body 区必须打开抽屉', async () => {
       const openDrawer = vi.fn()
       vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
       const { container } = render(
-        <ComicCard comic={mockComic} onOpenReader={vi.fn()} />
+        <ComicCard comic={mockComic} />
       )
       // 点卡片容器（body 区）—— 封面/标题各自的 stopPropagation 会让点击落在容器
       const card = container.querySelector('div[class*="rounded-xl"]')!
@@ -127,12 +127,12 @@ describe('ComicCard', () => {
       expect(openDrawer).toHaveBeenCalledTimes(1)
     })
 
-    it('CoverCard: 非批量模式、同时传 onClick 与 onOpenReader 时，点击 body 区走 onClick 且不打开抽屉', async () => {
+    it('CoverCard: 非批量模式、传 onClick 时，点击 body 区走 onClick 且不打开抽屉', async () => {
       const openDrawer = vi.fn()
       vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
       const onClick = vi.fn()
       const { container } = render(
-        <ComicCard comic={mockComic} onClick={onClick} onOpenReader={vi.fn()} />
+        <ComicCard comic={mockComic} onClick={onClick} />
       )
       const card = container.querySelector('div[class*="rounded-xl"]')!
       await userEvent.click(card)
@@ -153,13 +153,47 @@ describe('ComicCard', () => {
       expect(openDrawer).not.toHaveBeenCalled()
     })
 
-    it('DetailedCard: 非批量模式、仅传 onOpenReader 时，点击行 body 区（作者文字）必须打开抽屉', async () => {
+    it('CoverCard: 非批量模式下点击封面区（aspect-[6/7]）必须打开详情抽屉', async () => {
+      const openDrawer = vi.fn()
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
+      const { container } = render(<ComicCard comic={mockComic} />)
+      // 封面区容器带 aspect-[6/7]
+      const coverArea = container.querySelector('.aspect-\\[6\\/7\\]')!
+      await userEvent.click(coverArea)
+      expect(openDrawer).toHaveBeenCalledTimes(1)
+    })
+
+    it('CoverCard: SFW 模式下点击封面区仍打开详情抽屉（SFW 不吞没点击）', async () => {
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: true })
+      const openDrawer = vi.fn()
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
+      const { container } = render(<ComicCard comic={mockComic} />)
+      const coverArea = container.querySelector('.aspect-\\[6\\/7\\]')!
+      await userEvent.click(coverArea)
+      expect(openDrawer).toHaveBeenCalledTimes(1)
+      vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'cover', sfwMode: false })
+    })
+
+    it('CoverCard: 批量模式下点击封面区切换选择而非打开抽屉', async () => {
+      const openDrawer = vi.fn()
+      vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
+      const onToggleSelect = vi.fn()
+      const { container } = render(
+        <ComicCard comic={mockComic} batchMode={true} onToggleSelect={onToggleSelect} />
+      )
+      const coverArea = container.querySelector('.aspect-\\[6\\/7\\]')!
+      await userEvent.click(coverArea)
+      expect(onToggleSelect).toHaveBeenCalledWith(mockComic)
+      expect(openDrawer).not.toHaveBeenCalled()
+    })
+
+    it('DetailedCard: 非批量模式时，点击行 body 区（作者文字）必须打开抽屉', async () => {
       vi.mocked(useSettingsStore).mockReturnValue({ cardStyle: 'detailed', sfwMode: false })
       const openDrawer = vi.fn()
       vi.mocked(useDrawerStore).mockReturnValue({ openDrawer })
       const comic: ComicInfo = { ...mockComic, author: '作者A', pages: 128 }
       render(
-        <ComicCard comic={comic} onOpenReader={vi.fn()} />
+        <ComicCard comic={comic} />
       )
       // 点击作者文字（无独立 handler，会冒泡到行容器 body 区）
       const authorEl = screen.getByText('作者A')

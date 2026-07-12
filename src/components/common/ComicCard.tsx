@@ -160,7 +160,6 @@ interface ComicCardProps {
   batchMode?: boolean
   onToggleSelect?: (comic: ComicInfo) => void
   onDownload?: (comic: ComicInfo) => void
-  onOpenReader?: (comic: ComicInfo) => void
   downloadStatus?: 'downloaded' | 'unknown'
   isRecommended?: boolean
   recommendedTags?: Set<string>
@@ -170,22 +169,22 @@ interface ComicCardProps {
   onTagClick?: (tag: string) => void
 }
 
-export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, isRecommended, recommendedTags, activeDownload, onTagClick }: ComicCardProps) {
+export function ComicCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, downloadStatus, isRecommended, recommendedTags, activeDownload, onTagClick }: ComicCardProps) {
   const { cardStyle } = useSettingsStore()
   const { openDrawer } = useDrawerStore()
 
   if (cardStyle === 'detailed') {
-    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} onTagClick={onTagClick} />
+    return <DetailedCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} onTagClick={onTagClick} />
   }
-  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} onOpenReader={onOpenReader} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} />
+  return <CoverCard comic={comic} onClick={onClick} selected={selected} batchMode={batchMode} onToggleSelect={onToggleSelect} onDownload={onDownload} downloadStatus={downloadStatus} onOpenDrawer={() => openDrawer(comic)} isRecommended={isRecommended} recommendedTags={recommendedTags} activeDownload={activeDownload} />
 }
 
-function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, activeDownload }: ComicCardProps & { onOpenDrawer: () => void }) {
+function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, downloadStatus, onOpenDrawer, isRecommended, activeDownload }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const { handleCardClick, handleReaderClick, handleTitleClick } = useCardInteraction({
-    comic, batchMode, sfwMode, onToggleSelect, onClick, onOpenDrawer, onOpenReader,
+    comic, batchMode, onToggleSelect, onClick, onOpenDrawer,
   })
 
   return (
@@ -240,13 +239,13 @@ function CoverCard({ comic, onClick, selected, batchMode, onToggleSelect, onDown
   )
 }
 
-function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, onOpenReader, downloadStatus, onOpenDrawer, isRecommended, recommendedTags, activeDownload, onTagClick }: ComicCardProps & { onOpenDrawer: () => void }) {
+function DetailedCard({ comic, onClick, selected, batchMode, onToggleSelect, onDownload, downloadStatus, onOpenDrawer, isRecommended, recommendedTags, activeDownload, onTagClick }: ComicCardProps & { onOpenDrawer: () => void }) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { sfwMode } = useSettingsStore()
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
   const [showAllTags, setShowAllTags] = useState(false)
   const { handleCardClick, handleReaderClick, handleTitleClick } = useCardInteraction({
-    comic, batchMode, sfwMode, onToggleSelect, onClick, onOpenDrawer, onOpenReader,
+    comic, batchMode, onToggleSelect, onClick, onOpenDrawer,
   })
 
   return (
