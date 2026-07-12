@@ -319,11 +319,21 @@ def test_nh_language_filter_rejects_unsupported_value():
         mixin.handle_search(query="", mode="keyword", page=1, source="nh", language_filter="japanese")
 
 
-def test_non_nh_source_language_filter_is_rejected():
-    """非 NH 来源携带 language_filter 必须被显式拒绝，禁止静默吞掉。"""
+def test_moeimg_language_filter_chinese_forwarded_to_parser():
+    """moeimg 与 NH 共用受限的中文筛选契约。"""
     mixin = _FakeSearchMixin()
 
-    with pytest.raises(ValueError, match="only supported for source nh"):
+    mixin.handle_search(query="sample", mode="keyword", page=2, source="moeimg", language_filter=" Chinese ")
+
+    assert mixin.calls[-1]["source"] == "moeimg"
+    assert mixin.calls[-1]["language_filter"] == "chinese"
+
+
+def test_unsupported_source_language_filter_is_rejected():
+    """NH / moeimg 之外的来源携带 language_filter 必须被显式拒绝。"""
+    mixin = _FakeSearchMixin()
+
+    with pytest.raises(ValueError, match="only supported for sources nh and moeimg"):
         mixin.handle_search(query="x", mode="keyword", page=1, source="hcomic", language_filter="chinese")
 
 

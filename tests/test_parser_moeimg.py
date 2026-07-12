@@ -5,6 +5,7 @@ from typing import Any
 import pytest
 import requests as _requests
 
+from sources.base import ParserResponseError
 from sources.moeimg import MoeImgParser
 
 
@@ -94,6 +95,124 @@ def test_search_empty_keyword_uses_latest_manga_endpoint(monkeypatch):
     assert pagination.total_pages == 2
     assert called_urls == [f"{parser.BASE_URL}/spa/latest-manga"]
     assert called_params == [{"page": 1}]
+
+
+def test_search_empty_keyword_with_chinese_filter_uses_language_endpoint(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    payload = {
+        "manga_list": [{"manga_id": 1, "manga_name": "中文", "language": " Chinese "}],
+        "pagi": {"cur_page": 2, "pages": [{"page": 1}, {"page": 2}], "offset": 40},
+    }
+    called = []
+
+    def fake_get(url, params=None, timeout=30):
+        called.append((url, params))
+        return _MockResponse(payload)
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comics, pagination = parser.search("", page=2, language_filter="chinese")
+
+    assert called == [(f"{parser.BASE_URL}/spa/language/chinese", {"page": 2})]
+    assert comics[0].language == "Chinese"
+    assert pagination is not None
+    assert pagination.current_page == 2
+
+
+def test_chinese_language_endpoint_failure_falls_back_to_latest(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    latest = {
+        "manga_list": [{"manga_id": 2, "manga_name": "回退", "language": "japanese"}],
+        "pagi": {"cur_page": 1, "pages": [{"page": 1}], "offset": 0},
+    }
+    called = []
+
+    def fake_get(url, params=None, timeout=30):
+        called.append((url, params))
+        if url.endswith("/spa/language/chinese"):
+            raise _requests.HTTPError("HTTP 500")
+        return _MockResponse(latest)
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comics, _ = parser.search("", language_filter="chinese")
+
+    assert [url for url, _ in called] == [
+        f"{parser.BASE_URL}/spa/language/chinese",
+        f"{parser.BASE_URL}/spa/latest-manga",
+    ]
+    assert comics[0].language == "japanese"
+
+
+def test_chinese_language_endpoint_invalid_structure_falls_back(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    responses = iter(
+        [
+            _MockResponse({"manga_list": "invalid", "pagi": {}}),
+            _MockResponse({"manga_list": [], "pagi": {"cur_page": 1, "offset": 0}}),
+        ]
+    )
+    monkeypatch.setattr(parser.session, "get", lambda *args, **kwargs: next(responses))
+
+    comics, _ = parser.search("", language_filter="chinese")
+
+    assert comics == []
+
+
+def test_chinese_language_endpoint_invalid_json_falls_back(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    invalid_json = _MockResponse(None)
+    invalid_json.json = lambda: (_ for _ in ()).throw(ValueError("invalid json"))
+    latest = _MockResponse({"manga_list": [], "pagi": {"cur_page": 1, "offset": 0}})
+    responses = iter([invalid_json, latest])
+    monkeypatch.setattr(parser.session, "get", lambda *args, **kwargs: next(responses))
+
+    comics, _ = parser.search("", language_filter="chinese")
+
+    assert comics == []
+
+
+def test_chinese_language_endpoint_and_fallback_failure_raise(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    monkeypatch.setattr(
+        parser.session,
+        "get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(_requests.HTTPError("offline")),
+    )
+
+    with pytest.raises(ParserResponseError, match="latest-manga"):
+        parser.search("", language_filter="chinese")
+
+
+def test_chinese_language_endpoint_valid_empty_does_not_fall_back(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    payload = {"manga_list": [], "pagi": {"cur_page": 1, "offset": 0}}
+    called = []
+
+    def fake_get(url, params=None, timeout=30):
+        called.append(url)
+        return _MockResponse(payload)
+
+    monkeypatch.setattr(parser.session, "get", fake_get)
+
+    comics, pagination = parser.search("", language_filter="chinese")
+
+    assert comics == []
+    assert pagination is not None
+    assert called == [f"{parser.BASE_URL}/spa/language/chinese"]
+
+
+def test_search_list_missing_language_remains_unknown(monkeypatch):
+    parser = MoeImgParser(timeout=5)
+    payload = {
+        "manga_list": [{"manga_id": 3, "manga_name": "未知"}],
+        "pagi": {"cur_page": 1, "pages": [{"page": 1}], "offset": 0},
+    }
+    monkeypatch.setattr(parser.session, "get", lambda *args, **kwargs: _MockResponse(payload))
+
+    comics, _ = parser.search("test")
+
+    assert comics[0].language is None
 
 
 def test_search_does_not_request_detail_immediately(monkeypatch):

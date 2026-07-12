@@ -533,6 +533,19 @@ describe('main.ts', () => {
       })
     })
 
+    it('python:search forwards language_filter for moeimg when valid', async () => {
+      const handler = handleCalls.find(h => h.channel === 'python:search')!
+      await handler.handler({}, '', 'keyword', 2, 'moeimg', undefined, false, 'chinese')
+
+      expect(mockBridgeCall).toHaveBeenCalledWith('search', {
+        query: '',
+        mode: 'keyword',
+        page: 2,
+        source: 'moeimg',
+        language_filter: 'chinese',
+      })
+    })
+
     it('python:search omits language_filter when not provided', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:search')!
       await handler.handler({}, 'sample', 'keyword', 1, 'nh')
@@ -541,11 +554,11 @@ describe('main.ts', () => {
       expect(callArgs.language_filter).toBeUndefined()
     })
 
-    it('python:search rejects language_filter from non-NH source', async () => {
+    it('python:search rejects language_filter from an unsupported source', async () => {
       const handler = handleCalls.find(h => h.channel === 'python:search')!
       await expect(
         handler.handler({}, 'sample', 'keyword', 1, 'hcomic', undefined, false, 'chinese'),
-      ).rejects.toThrow('languageFilter is only supported for source nh')
+      ).rejects.toThrow('languageFilter is only supported for sources nh and moeimg')
     })
 
     it.each([
