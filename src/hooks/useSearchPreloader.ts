@@ -40,7 +40,7 @@ interface UseSearchPreloaderArgs {
   mode: string
   source: string
   searchTags: string
-  /** NH 仅中文筛选：作为独立维度参与 contextKey 与相邻页预加载请求（add-nh-chinese-language-filter spec）。 */
+  /** NH / moeimg 仅中文筛选：作为独立维度参与 contextKey 与相邻页预加载请求。 */
   languageFilter?: 'chinese'
   /** 唯一外部依赖：真实 IPC 边界（生产）/ deferred mock（集成测试）。 */
   searchFn: SearchFn

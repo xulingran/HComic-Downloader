@@ -306,7 +306,7 @@ export function PageFlipView({
           <button
             type="button"
             onClick={goPrev}
-            className="sticky top-3 left-3 z-10 px-3 py-1.5 rounded-md bg-white/10 text-white text-sm hover:bg-white/20"
+            className="absolute top-3 left-3 z-10 px-3 py-1.5 rounded-md bg-white/10 text-white text-sm hover:bg-white/20"
           >
             ← 返回末页
           </button>

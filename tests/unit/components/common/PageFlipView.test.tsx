@@ -188,6 +188,25 @@ describe('PageFlipView', () => {
     expect(mockFetchPreviewImage).not.toHaveBeenCalled()
   })
 
+  it('does not force a scrollbar on the detail tail when content fits the viewport', () => {
+    // tail 容器高度等于视口；若返回按钮作为占高度的兄弟元素（sticky/relative）+ 内容 min-h-full，
+    // 总高度必然超过视口而永久显示滚动条。返回按钮应浮于内容之上（绝对定位），
+    // 让短详情内容不再溢出。jsdom 不加载 Tailwind CSS，故直接断言 className。
+    const setCurrentPage = vi.fn()
+    render(
+      <PageFlipView
+        {...defaultProps}
+        currentPage={5}
+        setCurrentPage={setCurrentPage}
+        tailContent={<div>详情操作</div>}
+      />,
+    )
+    const backButton = screen.getByRole('button', { name: '← 返回末页' })
+    // absolute（浮层）而非 sticky（占流内高度）
+    expect(backButton.className).toMatch(/(^|\s)absolute(\s|$)/)
+    expect(backButton.className).not.toMatch(/sticky/)
+  })
+
   it.each([
     ['none', 3, 5],
     ['front', 5, 6],

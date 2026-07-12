@@ -84,6 +84,21 @@ def test_set_source_and_search_delegation(monkeypatch):
     assert called == [("abc", 3, "")]
 
 
+def test_moeimg_language_filter_search_delegation(monkeypatch):
+    parser = MultiSourceParser(timeout=5)
+    called = []
+
+    def fake_search(keyword, page=1, *, tag="", language_filter=""):
+        called.append((keyword, page, tag, language_filter))
+        return [], None
+
+    monkeypatch.setattr(parser.parsers["moeimg"], "search", fake_search)
+
+    parser.search("abc", page=2, source="moeimg", language_filter="chinese")
+
+    assert called == [("abc", 2, "", "chinese")]
+
+
 def test_prepare_for_download_uses_moeimg_detail(monkeypatch):
     parser = MultiSourceParser(timeout=5, default_source="moeimg")
     source_comic = ComicInfo(id="100", title="T", source_site="moeimg", pages=0, image_urls=[])

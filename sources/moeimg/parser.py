@@ -113,24 +113,38 @@ class MoeImgParser(ParserContextMixin):
         self._stored_username = username or ""
         self._stored_password = password or ""
 
-    def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
+    def search(
+        self,
+        keyword: str,
+        page: int = 1,
+        *,
+        tag: str = "",
+        language_filter: str = "",
+    ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。"""
         mode, keyword = self._parse_query_mode(keyword)
+        normalized_language = (language_filter or "").strip().lower()
+        if normalized_language not in ("", "chinese"):
+            raise ValueError(f"Unsupported language_filter for moeimg: {language_filter!r}")
         try:
             page_num = max(1, int(page))
         except (TypeError, ValueError):
             page_num = 1
 
-        try:
-            data: dict | None = None
-            if mode == "keyword" and not keyword:
+        data: dict | None = None
+        if mode == "keyword" and not keyword and normalized_language == "chinese":
+            try:
+                data = self._request_json("/spa/language/chinese", params={"page": page_num})
+                self._validate_search_response(data)
+            except ParserResponseError as exc:
+                logger.warning("MoeImg Chinese listing unavailable, falling back to latest manga: %s", exc)
                 data = self._request_json("/spa/latest-manga", params={"page": page_num})
-            elif mode == "keyword":
-                data = self._request_json("/spa/search", params={"query": keyword, "page": page_num})
-            else:
-                data = self._search_entity(mode=mode, keyword=keyword, page=page_num)
-        except ParserResponseError:
-            raise
+        elif mode == "keyword" and not keyword:
+            data = self._request_json("/spa/latest-manga", params={"page": page_num})
+        elif mode == "keyword":
+            data = self._request_json("/spa/search", params={"query": keyword, "page": page_num})
+        else:
+            data = self._search_entity(mode=mode, keyword=keyword, page=page_num)
 
         if not data:
             return [], None
@@ -143,6 +157,16 @@ class MoeImgParser(ParserContextMixin):
             current_count=len(comics),
         )
         return comics, pagination
+
+    @staticmethod
+    def _validate_search_response(data: Any) -> None:
+        """验证专用语言列表响应，区分合法空结果与结构漂移。"""
+        if (
+            not isinstance(data, dict)
+            or not isinstance(data.get("manga_list"), list)
+            or not isinstance(data.get("pagi"), dict)
+        ):
+            raise ParserResponseError("MoeImg language listing returned an invalid response structure")
 
     def favourites(
         self, page: int = 1, raise_errors: bool = False
@@ -703,6 +727,7 @@ class MoeImgParser(ParserContextMixin):
 
             title = (item.get("manga_name") or "").strip() or "未知标题"
             cover_url = item.get("manga_cover_img")
+            language = str(item.get("language") or "").strip() or None
             preview_url = f"{self.BASE_URL}/post/fa{manga_id}"
             comics.append(
                 ComicInfo(
@@ -718,6 +743,7 @@ class MoeImgParser(ParserContextMixin):
                     media_id=str(manga_id),
                     comic_source="MOEIMG",
                     source_site="moeimg",
+                    language=language,
                 )
             )
         return comics

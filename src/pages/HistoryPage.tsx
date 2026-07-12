@@ -17,7 +17,6 @@ import { useToastStore } from '../stores/useToastStore'
 import { useDownloadStore } from '../stores/useDownloadStore'
 import { useHistoryStore, type HistoryPageCache } from '../stores/useHistoryStore'
 import { usePaginatedPreloader, type PreloadReason } from '../hooks/usePaginatedPreloader'
-import { useReaderStore } from '../stores/useReaderStore'
 import { useDrawerStore } from '../stores/useDrawerStore'
 import { useCoverImage } from '../hooks/useCoverImage'
 
@@ -74,7 +73,6 @@ export function HistoryPage() {
   const [chapterDialogComic, setChapterDialogComic] = useState<ComicInfo | null>(null)
   const { getHistory, deleteHistory, clearHistory } = useHistory()
   const { cardStyle } = useSettingsStore()
-  const { openReader } = useReaderStore()
   const { openDrawer } = useDrawerStore()
   const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const { probeChaptersBeforeDownload } = useChapterProbe()
@@ -159,11 +157,12 @@ export function HistoryPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleOpenReader = (item: HistoryItem) => {
-    openReader(
+  // 历史卡片点击统一打开详情抽屉并注入断点续读上下文（lastPage/lastChapterId），
+  // 由抽屉的"继续阅读"/"从头开始"入口启动预览阅读器，与搜索/收藏页交互一致。
+  const handleOpenDrawer = (item: HistoryItem) => {
+    openDrawer(
       historyItemToComicInfo(item),
-      item.lastPage > 0 ? item.lastPage : undefined,
-      item.lastChapterId || undefined,
+      { lastPage: item.lastPage > 0 ? item.lastPage : 0, lastChapterId: item.lastChapterId || undefined },
     )
   }
 
@@ -308,8 +307,7 @@ export function HistoryPage() {
                     <HistoryCard
                       item={item}
                       cardStyle={cardStyle}
-                      onOpen={() => handleOpenReader(item)}
-                      onOpenDrawer={() => openDrawer(historyItemToComicInfo(item))}
+                      onOpenDrawer={() => handleOpenDrawer(item)}
                       onDelete={() => handleDelete(item)}
                       onDownload={handleDownload}
                       activeDownload={activeDownloadMap.get(item.comicId)}
@@ -385,7 +383,7 @@ export function HistoryPage() {
   )
 }
 
-function HistoryCoverThumb({ comic, onOpen }: { comic: ComicInfo; onOpen: () => void }) {
+function HistoryCoverThumb({ comic, onOpenDrawer }: { comic: ComicInfo; onOpenDrawer: () => void }) {
   const { sfwMode } = useSettingsStore()
   const containerRef = useRef<HTMLDivElement>(null)
   const { coverSrc, retry } = useCoverImage(comic.coverUrl, containerRef, sfwMode)
@@ -393,7 +391,7 @@ function HistoryCoverThumb({ comic, onOpen }: { comic: ComicInfo; onOpen: () => 
     <div
       ref={containerRef}
       className="flex-shrink-0 rounded-md cursor-pointer"
-      onClick={(e) => { e.stopPropagation(); onOpen() }}
+      onClick={(e) => { e.stopPropagation(); onOpenDrawer() }}
     >
       <CoverImage
         coverUrl={comic.coverUrl}
@@ -402,16 +400,15 @@ function HistoryCoverThumb({ comic, onOpen }: { comic: ComicInfo; onOpen: () => 
         title={comic.title}
         retry={retry}
         variant="detailed"
-        onClick={(e) => { e.stopPropagation(); onOpen() }}
+        onClick={(e) => { e.stopPropagation(); onOpenDrawer() }}
       />
     </div>
   )
 }
 
-function HistoryCard({ item, cardStyle, onOpen, onOpenDrawer, onDelete, onDownload, activeDownload }: {
+function HistoryCard({ item, cardStyle, onOpenDrawer, onDelete, onDownload, activeDownload }: {
   item: HistoryItem
   cardStyle: 'cover' | 'detailed'
-  onOpen: () => void
   onOpenDrawer: () => void
   onDelete: () => void
   onDownload: (comic: ComicInfo) => void
@@ -426,11 +423,11 @@ function HistoryCard({ item, cardStyle, onOpen, onOpenDrawer, onDelete, onDownlo
       <div
         className="flex items-center px-4 py-2.5 cursor-pointer transition-colors duration-150
                     border-b border-[var(--border)] hover:bg-[var(--bg-secondary)] group"
-        onClick={onOpen}
+        onClick={onOpenDrawer}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >
-        <HistoryCoverThumb comic={comic} onOpen={onOpen} />
+        <HistoryCoverThumb comic={comic} onOpenDrawer={onOpenDrawer} />
         <div className="flex-1 min-w-0 ml-3">
           <h3
             className="text-sm font-medium text-[var(--text-primary)] truncate cursor-pointer hover:text-[var(--accent)]"
@@ -471,7 +468,7 @@ function HistoryCard({ item, cardStyle, onOpen, onOpenDrawer, onDelete, onDownlo
     <div
       className="bg-[var(--bg-primary)] rounded-xl shadow-sm hover:shadow-md transition-shadow duration-200
                  cursor-pointer overflow-hidden group relative"
-      onClick={onOpen}
+      onClick={onOpenDrawer}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
@@ -488,7 +485,6 @@ function HistoryCard({ item, cardStyle, onOpen, onOpenDrawer, onDelete, onDownlo
       )}
       <ComicCard
         comic={comic}
-        onOpenReader={onOpen}
         onDownload={onDownload}
         activeDownload={activeDownload}
       />

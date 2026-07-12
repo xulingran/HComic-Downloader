@@ -11,6 +11,29 @@ vi.mock('@/components/common/Toast', () => ({
   Toast: ({ message, visible }: { message: string; visible: boolean }) =>
     visible ? <div>{message}</div> : null,
 }))
+// Mock IntersectionObserver for jsdom — 抽屉封面图复用 useCoverImage，需要观察器存在。
+class MockIntersectionObserver {
+  private callback: IntersectionObserverCallback
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback
+  }
+  observe(target: Element) {
+    this.callback(
+      [{ isIntersecting: true, target, boundingClientRect: { top: 0 } }] as unknown as IntersectionObserverEntry[],
+      this as unknown as IntersectionObserver,
+    )
+  }
+  unobserve() {}
+  disconnect() {}
+  takeRecords(): IntersectionObserverEntry[] { return [] }
+}
+;(globalThis as { IntersectionObserver: typeof IntersectionObserver }).IntersectionObserver =
+  MockIntersectionObserver as unknown as typeof IntersectionObserver
+// 抽屉封面获取不是这些用例的关注点，mock 为已加载成功（coverSrc 非 null），
+// 避免 CoverImage 渲染"加载失败 + 重试"按钮与 enrich 失败重试按钮文本冲突。
+vi.mock('@/hooks/useCoverImage', () => ({
+  useCoverImage: () => ({ coverSrc: 'mock-cover-data-url', retry: vi.fn() }),
+}))
 const { mockIsAuthError, mockAddToFavourites, mockRemoveFromFavourites } = vi.hoisted(() => ({
   mockIsAuthError: vi.fn((_error: unknown) => false),
   mockAddToFavourites: vi.fn().mockResolvedValue({ success: true }),
@@ -38,6 +61,7 @@ const resetSettingsState = () => {
     tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
     myTags: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
     favouriteTagHighlight: false,
+    sfwMode: false,
     addTag: mockAddTag,
     removeTag: mockRemoveTag,
     addMyTag: mockAddMyTag,
@@ -55,6 +79,10 @@ vi.mock('@/hooks/useIpc', () => ({
   useRemoveFromFavourites: () => ({ removeFromFavourites: mockRemoveFromFavourites }),
   useCheckFavourite: () => ({ checkFavourite: mockCheckFavourite }),
   useComicDetail: () => ({ getComicDetail: mockGetComicDetail }),
+}))
+const mockOpenReader = vi.fn()
+vi.mock('@/stores/useReaderStore', () => ({
+  useReaderStore: () => ({ openReader: mockOpenReader }),
 }))
 
 const { ComicInfoDrawer, ComicDetailSurface } = await import('@/components/ComicInfoDrawer')
@@ -84,6 +112,7 @@ const openDrawerWith = (comic: ComicInfo) => {
     drawerComic: comic,
     isOpen: true,
     pendingSearch: null,
+    resumeInfo: null,
     setPendingSearch: (...args: never[]) => setPendingSearchSpy(...args),
     closeDrawer: () => closeDrawerSpy(),
   })
@@ -92,6 +121,7 @@ const openDrawerWith = (comic: ComicInfo) => {
 beforeEach(() => {
   setPendingSearchSpy.mockClear()
   closeDrawerSpy.mockClear()
+  mockOpenReader.mockClear()
   resetSettingsState()
   mockAddTag.mockClear()
   mockAddTag.mockReturnValue(true)
@@ -120,6 +150,7 @@ afterEach(() => {
     drawerComic: null,
     isOpen: false,
     pendingSearch: null,
+    resumeInfo: null,
   })
 })
 
@@ -290,6 +321,22 @@ describe('ComicDetailSurface - 阅读器复用表面', () => {
     await user.click(screen.getByText('NTR'))
     expect(setPendingSearchSpy).toHaveBeenCalledWith('NTR', 'tag', true)
     expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('reader 表面详情面板自身不滚动，避免与阅读器外层形成嵌套滚动条', () => {
+    // 单页/双页模式下 PageFlipView 已提供外层 overflow-y-auto 滚动容器
+    // （reader-detail-tail），若详情面板再自带 overflow-y-auto 会产生嵌套滚动，
+    // 且因面板比外层窄（max-w-3xl），滚动条会夹在面板右内侧而显得违和。
+    // reader 分支应让内容自然撑高，把滚动职责完全交给外层。
+    render(
+      <ComicDetailSurface comic={comicWithTags} active surface="reader" onClose={vi.fn()} />,
+    )
+    const panel = screen.getByTestId('comic-detail-reader').querySelector('.max-w-3xl')
+    expect(panel, 'reader 详情面板应存在').not.toBeNull()
+    // 面板不应自带纵向滚动（既不 overflow-y-auto 也不 overflow-auto/scroll）
+    expect(panel!.className).not.toMatch(/overflow-y-(auto|scroll)/)
+    expect(panel!.className).not.toMatch(/overflow-auto/)
+    expect(panel!.className).not.toMatch(/overflow-scroll/)
   })
 })
 
@@ -630,5 +677,81 @@ describe('ComicInfoDrawer - 标签操作弹窗（推荐/屏蔽四态）', () => 
     expect(screen.getByText('× 加入屏蔽标签')).toBeInTheDocument()
     await user.click(screen.getByText('★ 加入推荐标签'))
     expect(mockAddMyTag).toHaveBeenCalledWith('hcomic', 'NTR')
+  })
+})
+
+// 抽屉新增的封面图与"开始阅读"入口行为（surface='drawer' 专属）。
+describe('ComicInfoDrawer - 抽屉封面与开始阅读入口', () => {
+  it('drawer 抽屉显示封面图（SFW 关闭）', async () => {
+    openDrawerWith(comicWithTags)
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    // useCoverImage mock 返回 coverSrc，CoverImage 渲染 <img>
+    const coverImg = document.querySelector('img[alt="测试漫画"]')
+    expect(coverImg).not.toBeNull()
+  })
+
+  it('SFW 模式下抽屉封面显示占位符而非真实图片', async () => {
+    ;(settingsState as { sfwMode: boolean }).sfwMode = true
+    openDrawerWith(comicWithTags)
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    // SFW 时 CoverImage 渲染 📖 占位符，不渲染 <img>
+    expect(document.querySelector('img[alt="测试漫画"]')).toBeNull()
+    expect(screen.getByText('📖')).toBeInTheDocument()
+  })
+
+  it('无 resumeInfo 时显示单一"开始阅读"按钮，点击启动 reader 从第 0 页', async () => {
+    const user = userEvent.setup()
+    openDrawerWith(comicWithTags)
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    const startBtn = screen.getByRole('button', { name: '开始阅读' })
+    await user.click(startBtn)
+
+    expect(closeDrawerSpy).toHaveBeenCalled()
+    // openReader(comic, 0) —— 无续读信息从第 0 页开始
+    expect(mockOpenReader).toHaveBeenCalledTimes(1)
+    expect(mockOpenReader).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }), 0, undefined)
+  })
+
+  it('有 resumeInfo 时显示"继续阅读"与"从头开始"两按钮', async () => {
+    const user = userEvent.setup()
+    store.setState({
+      drawerComic: comicWithTags,
+      isOpen: true,
+      pendingSearch: null,
+      resumeInfo: { lastPage: 5, lastChapterId: 'ch3' },
+      setPendingSearch: (...args: never[]) => setPendingSearchSpy(...args),
+      closeDrawer: () => closeDrawerSpy(),
+    })
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    const resumeBtn = screen.getByRole('button', { name: '继续阅读' })
+    const restartBtn = screen.getByRole('button', { name: '从头开始' })
+
+    // 继续阅读：传入 resumeInfo 的 lastPage / lastChapterId
+    await user.click(resumeBtn)
+    expect(mockOpenReader).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }), 5, 'ch3')
+
+    mockOpenReader.mockClear()
+    closeDrawerSpy.mockClear()
+
+    // 从头开始：从第 0 页，不传 chapterId
+    await user.click(restartBtn)
+    expect(mockOpenReader).toHaveBeenCalledWith(expect.objectContaining({ id: '1' }), 0, undefined)
+  })
+
+  it('reader 尾页（surface=reader）不渲染封面图与"开始阅读"按钮', async () => {
+    render(<ComicDetailSurface comic={comicWithTags} active surface="reader" onClose={vi.fn()} />)
+    await settle()
+
+    expect(screen.queryByRole('button', { name: '开始阅读' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '继续阅读' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '从头开始' })).not.toBeInTheDocument()
   })
 })

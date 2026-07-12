@@ -4,21 +4,17 @@ import { ComicInfo } from '@shared/types'
 interface UseCardInteractionParams {
   comic: ComicInfo
   batchMode?: boolean
-  sfwMode: boolean
   onToggleSelect?: (comic: ComicInfo) => void
   onClick?: (comic: ComicInfo) => void
   onOpenDrawer: () => void
-  onOpenReader?: (comic: ComicInfo) => void
 }
 
 export function useCardInteraction({
   comic,
   batchMode,
-  sfwMode,
   onToggleSelect,
   onClick,
   onOpenDrawer,
-  onOpenReader,
 }: UseCardInteractionParams) {
   const handleCardClick = useCallback(() => {
     if (batchMode) { onToggleSelect?.(comic); return }
@@ -28,12 +24,12 @@ export function useCardInteraction({
     onOpenDrawer()
   }, [batchMode, comic, onToggleSelect, onClick, onOpenDrawer])
 
+  // 封面区与标题区、body 区路由统一：都打开详情抽屉。
+  // SFW 仅作用于封面图片渲染（CoverImage / useCoverImage），不拦截点击导航。
   const handleReaderClick = useCallback(() => {
     if (batchMode) { onToggleSelect?.(comic); return }
-    if (!sfwMode && onOpenReader) {
-      onOpenReader(comic)
-    }
-  }, [batchMode, sfwMode, comic, onToggleSelect, onOpenReader])
+    onOpenDrawer()
+  }, [batchMode, comic, onToggleSelect, onOpenDrawer])
 
   const handleTitleClick = useCallback(() => {
     if (batchMode) {

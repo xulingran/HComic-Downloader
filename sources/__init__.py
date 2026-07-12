@@ -390,9 +390,8 @@ class MultiSourceParser:
     ) -> tuple[list[ComicInfo], PaginationInfo | None]:
         src = self._resolve_source(source)
         parser = self._get_parser(src)
-        # language_filter 仅对 NH 生效：调用方（SearchMixin）已做来源级限制，
-        # 这里再以 hasattr 防御，避免破坏其他解析器的既有签名。
-        if src == "nh" and language_filter:
+        # language_filter 仅对 NH / moeimg 生效；其他解析器保持既有签名。
+        if src in ("nh", "moeimg") and language_filter:
             return parser.search(keyword, page=page, tag=tag, language_filter=language_filter)  # type: ignore[call-arg]
         return parser.search(keyword, page=page, tag=tag)
 

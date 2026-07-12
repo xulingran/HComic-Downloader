@@ -33,6 +33,8 @@ coverage/
 .agents/
 .playwright-mcp/
 .reasonix/
+.zcode/
+.mimocode/
 .ruff_cache/
 *.swp
 *.swo

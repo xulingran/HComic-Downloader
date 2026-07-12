@@ -778,15 +778,15 @@ function registerSearchHandlers(bridge: Bridge) {
     // 交互挑战恢复开关：仅接受严格布尔，缺省/非布尔视为 false（保守默认）
     const interactiveFlag = allowInteractive === true
     const effectiveSource = typeof source === 'string' ? source : undefined
-    // NH 语言筛选：类型 + 枚举值校验，且仅允许 NH 来源携带（add-nh-chinese-language-filter spec）。
+    // NH / moeimg 语言筛选：类型 + 枚举值校验，并限制来源白名单。
     // 该参数是独立的查询数据参数，禁止与 allowInteractiveChallenge 这类 UI 控制参数混用。
     let effectiveLanguageFilter: 'chinese' | undefined
     if (languageFilter !== undefined && languageFilter !== null && languageFilter !== '') {
       assert(and(string(), oneOf(SEARCH_LANGUAGE_FILTERS)), languageFilter, 'search languageFilter')
       effectiveLanguageFilter = languageFilter as 'chinese'
     }
-    if (effectiveLanguageFilter && effectiveSource !== 'nh') {
-      throw new ValidationError('search languageFilter is only supported for source nh')
+    if (effectiveLanguageFilter && effectiveSource !== 'nh' && effectiveSource !== 'moeimg') {
+      throw new ValidationError('search languageFilter is only supported for sources nh and moeimg')
     }
     const params: Record<string, unknown> = { query, mode, page }
     withOptionalSource(params, effectiveSource, 'search')

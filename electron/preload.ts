@@ -118,7 +118,7 @@ contextBridge.exposeInMainWorld('hcomic', {
     ) {
       throw new Error('Invalid allowInteractiveChallenge')
     }
-    // NH 语言筛选：仅接受枚举内的字符串或空值，缺省视为未启用。
+    // NH / moeimg 语言筛选：仅接受枚举内的字符串或空值，来源由主进程权威校验。
     // 主进程会再次校验 source === 'nh'，preload 只做类型与枚举值早期拒绝。
     if (
       languageFilter !== undefined

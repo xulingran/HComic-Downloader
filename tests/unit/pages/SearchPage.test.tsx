@@ -1756,4 +1756,61 @@ describe('SearchPage', () => {
       expect(lastCall[6]).toBeUndefined() // 残留的 NH 筛选不得泄漏到 hcomic 标签搜索
     })
   })
+
+  describe('moeimg language filter', () => {
+    it('在 moeimg 来源显示默认关闭的中文筛选开关', async () => {
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'moeimg' } })
+
+      render(<SearchPage />)
+
+      await waitFor(() => expect(screen.getByText('MoeImg')).toBeInTheDocument())
+      const checkbox = screen.getByRole('checkbox', { name: /仅显示中文/ }) as HTMLInputElement
+      expect(checkbox.checked).toBe(false)
+    })
+
+    it('筛选开启后把已知非中文结果渲染为占位符，未知语言保持可见', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'moeimg' } })
+      vi.mocked(useSettingsStore).mockReturnValue({
+        cardStyle: 'cover',
+        sfwMode: false,
+        filterEnabled: false,
+        setFilterEnabled: vi.fn(),
+        tagBlacklist: { hcomic: [], moeimg: [], jm: [], bika: [], copymanga: [], nh: [] },
+        favouriteTagHighlight: true,
+        favouriteTagMinMatches: 1,
+        setFavouriteTagHighlight: vi.fn(),
+        myTags: { hcomic: [], moeimg: ['featured'], jm: [], bika: [], copymanga: [], nh: [] },
+      })
+      mockStoreState.comics = [
+        { id: 'jp', title: '日文漫画', url: '', coverUrl: '', source: 'moeimg', language: 'japanese', tags: ['featured'] },
+        { id: 'zh', title: '中文漫画', url: '', coverUrl: '', source: 'moeimg', language: ' Chinese ' },
+        { id: 'unknown', title: '未知语言漫画', url: '', coverUrl: '', source: 'moeimg' },
+      ]
+
+      render(<SearchPage />)
+      await waitFor(() => expect(screen.getByText('MoeImg')).toBeInTheDocument())
+      await user.click(screen.getByRole('checkbox', { name: /仅显示中文/ }))
+
+      await waitFor(() => expect(screen.getByText('日文漫画')).toHaveClass('line-through'))
+      expect(screen.getByText('中文漫画')).toBeInTheDocument()
+      expect(screen.getByText('未知语言漫画')).toBeInTheDocument()
+      expect(screen.getAllByTestId('comic-card').map(card => card.dataset.comicId)).toEqual(['zh', 'unknown'])
+    })
+
+    it('当前页全部为已知非中文时显示通用筛选提示', async () => {
+      const user = userEvent.setup()
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'moeimg' } })
+      mockStoreState.comics = [
+        { id: 'jp', title: '日文漫画', url: '', coverUrl: '', source: 'moeimg', language: 'japanese' },
+      ]
+
+      render(<SearchPage />)
+      await waitFor(() => expect(screen.getByText('MoeImg')).toBeInTheDocument())
+      await user.click(screen.getByRole('checkbox', { name: /仅显示中文/ }))
+
+      expect(await screen.findByText('所有结果均已被筛选')).toBeInTheDocument()
+      expect(screen.queryByText('所有结果均已被标签过滤')).toBeNull()
+    })
+  })
 })

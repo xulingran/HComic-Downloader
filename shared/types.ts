@@ -1331,8 +1331,8 @@ export type SearchMode = typeof SEARCH_MODES[number]
  * 受限的搜索语言筛选枚举（当前唯一合法值为 `chinese`）。
  *
  * 该筛选是独立的查询数据参数（区别于 `allowInteractiveChallenge` 这类 UI 控制参数），
- * 由 preload 与主进程逐层校验枚举值；主进程仅在 `source === 'nh'` 时将其映射为
- * Python 的 `language_filter` 字段转发（add-nh-chinese-language-filter spec）。
+ * 由 preload 与主进程逐层校验枚举值；主进程仅在 NH / moeimg 来源将其映射为
+ * Python 的 `language_filter` 字段转发。
  */
 export const SEARCH_LANGUAGE_FILTERS = ['chinese'] as const
 export type SearchLanguageFilter = typeof SEARCH_LANGUAGE_FILTERS[number]
