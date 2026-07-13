@@ -20,7 +20,9 @@
 | copymanga | 拷贝漫画         | ✅   | —   | curl 导入（Cookie）                    |
 
 - **搜索模式**：`keyword`（关键词）、`author`（作者）、`tag`（标签）、`ranking`（排行榜）
+- **首页档位**：hcomic、jm、bika、nh 提供首页/热门/最新分区入口
 - **随机推荐**：hcomic、jm、bika 支持
+- **语言筛选**：moeimg、nh 支持仅显示中文筛选
 - **漫画详情**：封面预览、标签、作者、章节列表（含 `album` 多章节本）
 
 ### 搜索与浏览
@@ -48,10 +50,12 @@
 - “漫画库”工作区同时提供本地书库与原有“下载任务”页签；切换到书库浏览时，下载任务仍会在后台持续更新
 - 以设置中的 `downloadDir` 作为唯一书库根目录，支持顶层 CBZ、ZIP、单本图片文件夹及多章节图片文件夹
 - 首次打开或更换下载目录后会扫描书库；后续下载完成、重命名或编辑会增量更新，也可手动刷新或取消扫描
-- 书库索引保存在独立 SQLite 数据库中，仅作为可重建缓存；索引损坏或删除不会修改漫画文件，重新扫描即可恢复
+- 书库索引保存在独立 SQLite 数据库（`~/.hcomic_downloader/library.db`）中，仅作为可重建缓存；索引损坏或删除不会修改漫画文件，重新扫描即可恢复
 - 支持搜索、来源/格式/健康状态筛选、排序、网格/列表视图、详情查看、章节阅读与阅读进度续读
 - 支持在文件管理器中显示、单项健康检查、安全重命名、元数据编辑和删除；删除使用操作系统回收站，不直接永久删除文件
 - CBZ 元数据编辑会原子写回唯一的 `ComicInfo.xml`；ZIP 与文件夹只保存应用内索引覆盖值，不改写原文件内容
+- 打开本地漫画时可选择「继续阅读」或「从头开始」
+- 图片字节经 `app-image://library/<sha256>` 协议按需流式交付，不进入 JSON-RPC 或渲染进程 JS 堆
 
 > 当前采用单根目录模型：漫画库只索引 `downloadDir` 下的内容。不要依赖 `library.db` 作为数据备份，漫画文件始终是事实来源。
 
@@ -61,6 +65,8 @@
 - 章节切换（适用于多章节本）
 - 图片懒加载 + 本地缓存（避免重复下载）
 - 阅读进度自动写入历史（支持续读）
+- **在线阅读器**：在不下载的情况下直接在线浏览漫画，含尾页详情与开始阅读入口
+- **跳转预加载**：拖动进度条时目标页请求优先于历史队列（优先级执行器），并按翻页速度自适应预加载
 
 ### 收藏与历史
 
@@ -105,7 +111,7 @@
 - **Zustand 4** — 状态管理
 - **Tailwind CSS 3.4** — 样式
 - **electron-vite 5** + **Vite 5** — 构建 / 开发服务器
-- **Vitest 4** + Testing Library — 单元测试（91 个 TS/TSX 测试文件，68 个 Python 测试文件）
+- **Vitest 4** + Testing Library — 单元测试（112 个 TS/TSX 测试文件，74 个 Python 测试文件）
 
 ### 后端技术栈
 
@@ -159,11 +165,12 @@ hcomic_downloader/
 │   │   └── AboutPage.tsx
 │   ├── components/            # 业务组件（Reader / Drawer / Sidebar / ChapterPicker 等）
 │   ├── components/common/     # 通用组件（Toast / Pagination / ProgressBar 等）
+│   ├── components/library/    # 本地漫画库组件（CatalogView / AssetDetailDrawer / LocalLibraryReaderModal / DownloadTasksView）
 │   ├── components/maintenance/# 维护中心面板（HealthCheckPanel / OrphanCleanupPanel / StorageStatsPanel）
 │   ├── components/settings/   # 设置面板分组（外观 / 下载 / 认证 / 通知 / 代理 / 缓存 / 标签过滤 / 推荐标签 / 迁移）
 │   ├── components/tools/      # 工具箱组件（DuplicateDetector / MissingChapterDetector 等）
 │   ├── hooks/                 # React hooks（useIpc / useTheme / useComicReader / useMigration 等）
-│   ├── stores/                # Zustand 状态仓库（12 个）
+│   ├── stores/                # Zustand 状态仓库（14 个）
 │   ├── lib/                   # 工具库（anim 动画 variants / image-url / prefetch / scheduler）
 │   └── styles/                # 全局样式
 │
@@ -183,8 +190,11 @@ hcomic_downloader/
 │       ├── history_mixin.py
 │       ├── favourite_tags_mixin.py  # 收藏标签推荐
 │       ├── tag_list_mixin.py        # 标签列表
+│       ├── library_mixin.py         # 本地漫画库索引 / 扫描 / 资产管理
 │       ├── cover_cache.py     # 封面缓存（SQLite）
 │       ├── preview_cache.py   # 预览图片缓存（带大小上限）
+│       ├── library_cache.py   # 漫画库图片缓存（按需提取 + LRU）
+│       ├── preview_executor.py # 优先级感知的预览图片执行器
 │       ├── image_utils.py
 │       └── types.py
 │
@@ -230,13 +240,15 @@ hcomic_downloader/
 │   └── extract-changelog.py   # CHANGELOG 提取
 │
 ├── tests/                     # 测试
-│   ├── test_*.py              # Python 单元测试（68 个）
-│   └── unit/                  # TypeScript/React 单元测试（91 个）
+│   ├── test_*.py              # Python 单元测试（74 个）
+│   └── unit/                  # TypeScript/React 单元测试（112 个）
 │
 ├── config.py                  # 配置管理（dataclass + JSON 持久化）
 ├── downloader.py              # 多线程下载器（断点续传 + 重试）
 ├── download_manager.py        # 下载任务队列与状态机
 ├── download_history.py        # 下载历史数据库（SQLite）
+├── library_db.py              # 漫画库索引数据库（SQLite，可重建缓存）
+├── library_indexer.py         # 漫画库资产发现与索引（发现→解析→提交→对账）
 ├── album_coordinator.py       # 多章节本下载编排
 ├── output_staging.py          # 输出暂存（临时目录 + 原子移动）
 ├── cbz_builder.py             # CBZ 打包 + ComicInfo.xml 生成
