@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { useSliderDrag } from '@/hooks/useSliderDrag'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -131,5 +131,36 @@ describe('useSliderDrag', () => {
     expect(onDragStart).toHaveBeenCalledTimes(0)
     expect(onPageChange).toHaveBeenCalledTimes(0)
     expect(slider).toHaveAttribute('data-dragging', 'false')
+  })
+
+  it('releases pointer capture and resets drag state on unmount mid-drag', () => {
+    const { unmount } = render(
+      <SliderHarness
+        onPageChange={onPageChange}
+        onDragEnd={onDragEnd}
+        onDragStart={onDragStart}
+      />,
+    )
+    const slider = screen.getByRole('slider')
+    slider.getBoundingClientRect = vi.fn(() => ({
+      left: 0, width: 200, right: 200, top: 0, bottom: 24, height: 24, x: 0, y: 0,
+    }) as DOMRect)
+    slider.setPointerCapture = vi.fn()
+    slider.releasePointerCapture = vi.fn()
+
+    // 进入拖拽（pointerId = 7），不触发 pointerUp 直接卸载
+    fireEvent.pointerDown(slider, { clientX: 50, pointerId: 7 })
+    expect(slider).toHaveAttribute('data-dragging', 'true')
+    expect(slider.setPointerCapture).toHaveBeenCalledWith(7)
+
+    unmount()
+
+    // 卸载时以记录的 pointerId 释放 capture 一次，避免遗留捕获
+    expect(slider.releasePointerCapture).toHaveBeenCalledWith(7)
+    expect(slider.releasePointerCapture).toHaveBeenCalledTimes(1)
+    // onDragEnd 不应在卸载路径触发（无有效最终页提交）
+    expect(onDragEnd).toHaveBeenCalledTimes(0)
+
+    cleanup()
   })
 })

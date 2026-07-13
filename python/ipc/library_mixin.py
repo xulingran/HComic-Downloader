@@ -582,6 +582,17 @@ class LibraryMixin:
             new_rel_path = safe_name + ext if item["format"] != "folder" else safe_name
             new_abs_path = os.path.join(root, new_rel_path)
 
+            # 防御纵深：清洗后的目标路径必须经 realpath 解析并断言仍位于漫画库根目录内，
+            # 与 reveal/delete 的 _resolve_asset_path 三重校验保持一致。
+            resolved = os.path.realpath(new_abs_path)
+            if resolved != root and not resolved.startswith(root + os.sep):
+                raise ValueError("新名称无效")
+
+            # 显式拒绝无意义的同名重命名（清洗+realpath 后等于源路径），
+            # 替换原「目标名称已存在」对该场景的误报。
+            if resolved == os.path.realpath(real_path):
+                raise ValueError("新名称与原名相同")
+
             # 冲突检查
             if os.path.exists(new_abs_path):
                 raise ValueError("目标名称已存在")
@@ -616,7 +627,9 @@ class LibraryMixin:
                 if os.path.exists(new_abs_path) and not os.path.exists(real_path):
                     with contextlib.suppress(OSError):
                         os.rename(new_abs_path, real_path)
-                raise ValueError(f"重命名失败，已回滚: {e}") from e
+                # 固定文案避免把含磁盘路径的 OS 错误透传给渲染进程；详情进日志。
+                logger.warning("rename failed for asset %s: %s", asset_id, e, exc_info=True)
+                raise ValueError("重命名失败，已回滚") from e
         else:
             self._library_db.update_item_title_author_tags(asset_id, title=safe_name)
             new_version = self._library_db.bump_item_version(asset_id)
@@ -670,8 +683,9 @@ class LibraryMixin:
             try:
                 written_to_file = self._rewrite_cbz_metadata(real_path, fields)
             except Exception as e:
-                logger.warning("CBZ metadata rewrite failed: %s", e)
-                raise ValueError(f"元数据写回失败: {e}") from e
+                # 固定文案避免把含磁盘路径的 OS 错误透传给渲染进程；详情进日志。
+                logger.warning("metadata rewrite failed for asset %s: %s", asset_id, e, exc_info=True)
+                raise ValueError("元数据写回失败") from e
 
             if written_to_file:
                 stat = os.stat(real_path)

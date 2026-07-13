@@ -226,3 +226,92 @@ class TestLibraryDetailContract:
         server = _create_test_server(tmp_path)
         with pytest.raises(ValueError):
             server.handle_library_detail("nonexistent")
+
+
+class TestLibraryRenamePathSafety:
+    """验证 _rename_library_asset 的路径防御纵深与错误消息收敛。
+
+    直接测试私有方法以隔离 _resolve_asset_path 的 size/mtime 匹配，
+    聚焦本次变更引入的 realpath 边界校验、同名拒绝与消息收敛。
+    """
+
+    @staticmethod
+    def _seed_cbz_asset(server: IPCServer, tmp_path, rel_path: str, content: bytes = b"data") -> str:
+        """在 download_dir 下创建真实 CBZ 文件并以匹配的 size/mtime 入库。"""
+        cbz_path = tmp_path / rel_path
+        cbz_path.parent.mkdir(parents=True, exist_ok=True)
+        cbz_path.write_bytes(content)
+        stat = os.stat(cbz_path)
+        return server._library_db.upsert_item(
+            {
+                "rel_path": rel_path,
+                "format": "cbz",
+                "title": rel_path,
+                "size_bytes": stat.st_size,
+                "mtime_ns": stat.st_mtime_ns,
+            }
+        )
+
+    def test_rename_rejects_target_outside_download_dir(self, tmp_path):
+        """清洗后目标经 realpath 落在根目录之外时拒绝，源文件不动。
+
+        正则清洗已剥离路径分隔符，此场景属防御纵深（防止 realpath 解析出逃逸）。
+        通过 patch os.path.realpath 使目标解析到根目录之外，确定性触发边界断言。
+        """
+        server = _create_test_server(tmp_path)
+        rel_path = "comic.cbz"
+        asset_id = self._seed_cbz_asset(server, tmp_path, rel_path)
+        real_path = os.path.join(os.path.realpath(str(tmp_path)), rel_path)
+        original_bytes = (tmp_path / rel_path).read_bytes()
+
+        root = os.path.realpath(str(tmp_path))
+        outside = os.path.join(os.path.dirname(root), "escape.cbz")
+        original_realpath = os.path.realpath
+
+        def fake_realpath(p, *args, **kwargs):  # noqa: ANN002, ANN003
+            # 仅对目标路径（newname.cbz 拼接）返回逃逸路径；其余路径保持真实解析。
+            if isinstance(p, str) and p.endswith(os.path.join(root, "newname.cbz")):
+                return outside
+            return original_realpath(p, *args, **kwargs)
+
+        with (
+            patch("ipc.library_mixin.os.path.realpath", side_effect=fake_realpath),
+            pytest.raises(ValueError) as exc_info,
+        ):
+            server._rename_library_asset(asset_id, real_path, "newname.cbz", True)
+        assert "新名称无效" in str(exc_info.value)
+
+        # 源文件字节未变
+        assert (tmp_path / rel_path).read_bytes() == original_bytes
+
+    def test_rename_rejects_same_name_after_normalization(self, tmp_path):
+        """清洗+realpath 后等于源路径时返回「新名称与原名相同」。"""
+        server = _create_test_server(tmp_path)
+        rel_path = "comic.cbz"
+        asset_id = self._seed_cbz_asset(server, tmp_path, rel_path)
+        real_path = os.path.join(os.path.realpath(str(tmp_path)), rel_path)
+
+        # 提交与原名相同的名称（仅大小写差异在 Windows realpath 下归一为相同路径）
+        with pytest.raises(ValueError) as exc_info:
+            server._rename_library_asset(asset_id, real_path, "comic.cbz", True)
+        assert "新名称与原名相同" in str(exc_info.value)
+
+    def test_rename_failure_message_does_not_leak_download_dir(self, tmp_path):
+        """rename 失败时返回给前端的消息不含 download_dir 绝对路径。"""
+        server = _create_test_server(tmp_path)
+        rel_path = "comic.cbz"
+        asset_id = self._seed_cbz_asset(server, tmp_path, rel_path)
+        real_path = os.path.join(os.path.realpath(str(tmp_path)), rel_path)
+
+        # 构造一个合法新名，但 patch os.rename 抛 OSError（含模拟路径的内部错误）
+        # 验证最终 ValueError 消息不含 download_dir 绝对路径。
+        download_dir_abs = os.path.realpath(str(tmp_path))
+        with (
+            patch("ipc.library_mixin.os.rename", side_effect=OSError(f"mock fail at {download_dir_abs}/x")),
+            pytest.raises(ValueError) as exc_info,
+        ):
+            server._rename_library_asset(asset_id, real_path, "newname.cbz", True)
+
+        message = str(exc_info.value)
+        assert download_dir_abs not in message
+        assert "重命名失败" in message
