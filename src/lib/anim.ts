@@ -108,8 +108,9 @@ function stripMotion(target: Variant | undefined): Variant {
 // ComicInfoDrawer tag 列表 stagger（变更 2 引入）
 //
 // 约束：tag 数量可能很多（几十个），全量 stagger 会让总时长过长。
-// 组件侧通过 STAGGER_LIMIT（40）实现封顶——仅前 40 个用 motion.button 参与 stagger，
-// 第 41 个及之后用普通 button 立即出现。本处只定义 variants，切片逻辑在组件。
+// 组件侧通过 TAG_STAGGER_LIMIT（20）实现封顶：drawer 仅对折叠态当前可见标签错峰，
+// reader 仅对前 20 个标签错峰；展开新增项与第 21 个及之后的标签立即出现。
+// 本处只定义 variants，切片与渐进展开逻辑在组件。
 // ─────────────────────────────────────────────────────────────────────────────
 
 /** tag 列表容器：错峰子项，20ms 间隔，起始延迟 100ms。 */

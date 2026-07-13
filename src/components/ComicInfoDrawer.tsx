@@ -46,6 +46,9 @@ const TAG_BUTTON_STATE: Record<TagButtonState, { action: TagConfirmAction; icon:
   plain: { action: 'block', icon: '+', color: 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]', title: '加入屏蔽' },
 }
 
+const COLLAPSED_TAG_LIMIT = 8
+const TAG_STAGGER_LIMIT = 20
+
 interface ComicDetailSurfaceProps {
   comic: ComicInfo | null
   active: boolean
@@ -87,6 +90,8 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
   const [enrichState, setEnrichState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   // retryCount 驱动 enrich effect 重新执行（点击重试时自增），避免把 fetch 逻辑抽成独立函数。
   const [retryCount, setRetryCount] = useState(0)
+  const [tagsExpanded, setTagsExpanded] = useState(false)
+  const [tagsHaveBeenExpanded, setTagsHaveBeenExpanded] = useState(false)
   // 抽屉封面图容器 ref（useCoverImage 需要 IntersectionObserver 容器）。
   const drawerCoverRef = useRef<HTMLDivElement>(null)
   const { coverSrc: drawerCoverSrc, retry: retryDrawerCover } = useCoverImage(
@@ -175,6 +180,15 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
   const tagsEmpty = !(displayComic?.tags && displayComic.tags.length > 0)
   const showEnrichLoading = shouldEnrich && tagsEmpty && enrichState === 'loading'
   const showEnrichError = shouldEnrich && tagsEmpty && enrichState === 'error'
+
+  // 标签展开状态属于单本漫画的 drawer 会话状态。切换漫画或重新打开时恢复紧凑摘要，
+  // 避免上一部漫画的长列表展开状态泄漏到下一部；reader 始终展示完整标签。
+  useEffect(() => {
+    if (surface !== 'drawer') return
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setTagsExpanded(false)
+    setTagsHaveBeenExpanded(false)
+  }, [active, comic?.id, surface])
 
   useEffect(() => {
     if (!active || !comic?.id || !sourceSupportsFavourites(comicSource)) {
@@ -320,6 +334,67 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
     return () => clearTimeout(timer)
   }, [showFavToast, favouritesState])
 
+  const favouriteAction = sourceSupportsFavourites(comicSource) ? (
+    <button
+      onClick={handleToggleFavourites}
+      disabled={favouritesState === 'loading'}
+      className={`flex flex-shrink-0 items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors ${
+        favouritesState === 'success'
+          ? 'bg-pink-500/10 text-pink-500 hover:bg-pink-500/20'
+          : 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
+      } disabled:opacity-60`}
+    >
+      <svg
+        className="h-4 w-4 flex-shrink-0"
+        viewBox="0 0 24 24"
+        fill={favouritesState === 'success' ? 'currentColor' : 'none'}
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
+        />
+      </svg>
+      <span>
+        {favouritesState === 'loading'
+          ? '处理中...'
+          : favouritesState === 'success'
+            ? '已加入收藏'
+            : '加入收藏'}
+      </span>
+    </button>
+  ) : null
+
+  const readingActions = surface === 'drawer' ? (
+    <div className="ml-auto flex min-w-0 flex-1 flex-wrap justify-end gap-2" data-testid="drawer-reading-actions">
+      {resumeInfo ? (
+        <>
+          <button
+            onClick={() => handleStartReading(0)}
+            className="min-w-0 whitespace-nowrap rounded-lg bg-[var(--bg-tertiary)] px-3 py-1.5 text-sm text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-secondary)]"
+          >
+            从头开始
+          </button>
+          <button
+            onClick={() => handleStartReading(resumeInfo.lastPage, resumeInfo.lastChapterId)}
+            className="min-w-0 whitespace-nowrap rounded-lg bg-[var(--accent)] px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent)]/90"
+          >
+            继续阅读
+          </button>
+        </>
+      ) : (
+        <button
+          onClick={() => handleStartReading(0)}
+          className="min-w-0 whitespace-nowrap rounded-lg bg-[var(--accent)] px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-[var(--accent)]/90"
+        >
+          开始阅读
+        </button>
+      )}
+    </div>
+  ) : null
+
   const readerSurfaceStyle = surface === 'reader' ? ({
     '--bg-primary': '#1a1a2e',
     '--bg-secondary': '#24253a',
@@ -333,7 +408,7 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
     <div
       data-testid={`comic-detail-${surface}`}
       className={surface === 'drawer'
-        ? 'fixed inset-0 z-50 flex justify-end pointer-events-none'
+        ? `fixed inset-0 z-50 flex justify-end ${active ? 'pointer-events-auto' : 'pointer-events-none'}`
         : 'relative w-full min-h-full flex justify-center pointer-events-auto'}
       style={readerSurfaceStyle}
     >
@@ -366,6 +441,7 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
                 exit="exit"
                 className="absolute inset-0 bg-black/50 pointer-events-auto"
                 onClick={onClose}
+                data-testid="drawer-overlay"
               />
             )}
             <motion.div
@@ -375,11 +451,14 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
               animate={surface === 'drawer' ? 'animate' : undefined}
               exit={surface === 'drawer' ? 'exit' : undefined}
               className={surface === 'drawer'
-                ? 'relative w-full max-w-md bg-[var(--bg-primary)] shadow-2xl flex flex-col overflow-y-auto pointer-events-auto'
+                ? 'relative h-full w-full max-w-lg bg-[var(--bg-primary)] shadow-2xl flex flex-col overflow-hidden pointer-events-auto'
                 : 'relative w-full max-w-3xl min-h-full bg-[var(--bg-primary)] flex flex-col pointer-events-auto rounded-xl'}
             >
         {surface === 'drawer' && (
-        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--border)]">
+        <div
+          className="flex flex-shrink-0 items-center justify-between border-b border-[var(--border)] px-5 py-3 [@media(max-height:700px)]:px-4 [@media(max-height:700px)]:py-2"
+          data-testid="drawer-header"
+        >
           <span className="text-sm text-[var(--text-secondary)]">漫画详情</span>
           <button
             onClick={onClose}
@@ -393,154 +472,146 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
         </div>
         )}
 
-        <div className={surface === 'drawer' ? 'px-5 py-4 space-y-4' : 'px-6 py-8 md:px-10 space-y-5'}>
-          {surface === 'drawer' && comic?.coverUrl && (
-            <div ref={drawerCoverRef} className="w-full aspect-[6/7] max-h-[40vh] overflow-hidden rounded-lg flex-shrink-0">
-              <CoverImage
-                coverUrl={comic.coverUrl}
-                coverSrc={drawerCoverSrc}
-                sfwMode={sfwMode}
-                title={displayComic?.title ?? comic.title}
-                retry={retryDrawerCover}
-                variant="cover"
-                onClick={() => {}}
-              />
-            </div>
-          )}
-          <h3 className="text-base font-medium text-[var(--text-primary)] leading-relaxed select-text">
-            {displayComic?.title}
-          </h3>
-
-          {displayComic?.author ? (
-            <div>
-              <span className="text-xs text-[var(--text-secondary)]">作者</span>
-              <button
-                onClick={() => handleSearch(displayComic.author!, 'author')}
-                className="block text-sm text-[var(--accent)] mt-0.5 cursor-pointer
-                           hover:underline select-text text-left"
-              >
-                {displayComic.author}
-              </button>
+        <div
+          className={surface === 'drawer'
+            ? 'min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4 [@media(max-height:700px)]:space-y-2 [@media(max-height:700px)]:px-4 [@media(max-height:700px)]:py-3'
+            : 'space-y-5 px-6 py-8 md:px-10'}
+          data-testid={surface === 'drawer' ? 'drawer-content' : undefined}
+        >
+          {surface === 'drawer' ? (
+            <div className="flex items-start gap-4 [@media(max-height:700px)]:gap-3" data-testid="drawer-summary">
+              {comic?.coverUrl && (
+                <div
+                  ref={drawerCoverRef}
+                  className="aspect-[3/4] w-28 flex-shrink-0 overflow-hidden rounded-lg bg-[var(--bg-secondary)] [@media(max-height:700px)]:w-[5.5rem]"
+                  data-testid="drawer-cover"
+                >
+                  <CoverImage
+                    coverUrl={comic.coverUrl}
+                    coverSrc={drawerCoverSrc}
+                    sfwMode={sfwMode}
+                    title={displayComic?.title ?? comic.title}
+                    retry={retryDrawerCover}
+                    variant="cover"
+                    onClick={() => {}}
+                  />
+                </div>
+              )}
+              <div className="min-w-0 flex-1 space-y-2 [@media(max-height:700px)]:space-y-1.5">
+                <h3
+                  className="line-clamp-2 select-text text-base font-medium leading-snug text-[var(--text-primary)]"
+                  title={displayComic?.title}
+                >
+                  {displayComic?.title}
+                </h3>
+                {displayComic?.author ? (
+                  <button
+                    onClick={() => handleSearch(displayComic.author!, 'author')}
+                    className="block max-w-full truncate text-left text-sm text-[var(--accent)] hover:underline"
+                    title={displayComic.author}
+                  >
+                    {displayComic.author}
+                  </button>
+                ) : (
+                  <p className="text-sm text-[var(--text-secondary)]">未知作者</p>
+                )}
+                <p className="select-text text-xs leading-relaxed text-[var(--text-secondary)]">
+                  {displayComic?.sourceSite || displayComic?.source}
+                  {displayComic?.pages != null && displayComic.pages > 0 && <> · {displayComic.pages} 页</>}
+                  {displayComic?.albumTotalChapters != null && displayComic.albumTotalChapters > 1 && (
+                    <> · {displayComic.albumTotalChapters} 章</>
+                  )}
+                  {displayComic?.publishDate && <> · 更新 {displayComic.publishDate}</>}
+                  {displayComic?.language && <> · {displayComic.language}</>}
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  {displayComic?.category && (
+                    <button
+                      onClick={() => handleSearch(displayComic.category!, 'category')}
+                      className="max-w-full truncate text-left text-xs text-[var(--accent)] hover:underline"
+                      title={displayComic.category}
+                    >
+                      {displayComic.category}
+                    </button>
+                  )}
+                  {displayComic?.url && (
+                    <button
+                      onClick={() => window.hcomic?.openUrl(displayComic.url)}
+                      className="flex-shrink-0 rounded-md bg-[var(--accent)]/10 px-2 py-0.5 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/20"
+                      title={displayComic.url}
+                    >
+                      打开原网页
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
-            <div>
-              <span className="text-xs text-[var(--text-secondary)]">作者</span>
-              <p className="text-sm text-[var(--text-secondary)] mt-0.5">未知作者</p>
-            </div>
-          )}
-
-          <div>
-            <span className="text-xs text-[var(--text-secondary)]">信息</span>
-            <div className="flex items-center gap-2 mt-0.5">
-              <p className="text-sm text-[var(--text-primary)] select-text">
-                {displayComic?.sourceSite || displayComic?.source}
-                {displayComic?.pages != null && displayComic.pages > 0 && (
-                  <> · {displayComic.pages} 页</>
-                )}
-                {displayComic?.albumTotalChapters != null && displayComic.albumTotalChapters > 1 && (
-                  <> · {displayComic.albumTotalChapters} 章</>
-                )}
-                {displayComic?.publishDate && (
-                  <> · 更新 {displayComic.publishDate}</>
-                )}
-                {displayComic?.language && (
-                  <> · {displayComic.language}</>
-                )}
-              </p>
-              {displayComic?.url && (
-                <button
-                  onClick={() => window.hcomic?.openUrl(displayComic.url)}
-                  className="text-xs px-2 py-0.5 rounded-md bg-[var(--accent)]/10 text-[var(--accent)]
-                             hover:bg-[var(--accent)]/20 transition-colors flex-shrink-0"
-                  title={displayComic.url}
-                >
-                  打开原网页
-                </button>
-              )}
-            </div>
-            {displayComic?.category && (
-              <button
-                onClick={() => handleSearch(displayComic.category!, 'category')}
-                className="block text-sm text-[var(--accent)] mt-1 cursor-pointer
-                           hover:underline select-text text-left"
-              >
-                {displayComic.category}
-              </button>
-            )}
-          </div>
-
-          {sourceSupportsFavourites(comicSource) && (
-            <div>
-              <button
-                onClick={handleToggleFavourites}
-                disabled={favouritesState === 'loading'}
-                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg transition-colors ${
-                  favouritesState === 'success'
-                    ? 'bg-pink-500/10 text-pink-500 hover:bg-pink-500/20'
-                    : 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
-                } disabled:opacity-60`}
-              >
-                <svg
-                  className="w-4 h-4 flex-shrink-0"
-                  viewBox="0 0 24 24"
-                  fill={favouritesState === 'success' ? 'currentColor' : 'none'}
-                  stroke="currentColor"
-                  strokeWidth={2}
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"
-                  />
-                </svg>
-                <span>
-                  {favouritesState === 'loading'
-                    ? '处理中...'
-                    : favouritesState === 'success'
-                      ? '已加入收藏'
-                      : '加入收藏'}
-                </span>
-              </button>
-            </div>
-          )}
-
-          {surface === 'drawer' && (
-            <div className="flex gap-2 flex-wrap">
-              {resumeInfo ? (
-                <>
+            <>
+              <h3 className="select-text text-base font-medium leading-relaxed text-[var(--text-primary)]">
+                {displayComic?.title}
+              </h3>
+              {displayComic?.author ? (
+                <div>
+                  <span className="text-xs text-[var(--text-secondary)]">作者</span>
                   <button
-                    onClick={() => handleStartReading(resumeInfo.lastPage, resumeInfo.lastChapterId)}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 transition-colors font-medium"
+                    onClick={() => handleSearch(displayComic.author!, 'author')}
+                    className="mt-0.5 block cursor-pointer select-text text-left text-sm text-[var(--accent)] hover:underline"
                   >
-                    继续阅读
+                    {displayComic.author}
                   </button>
-                  <button
-                    onClick={() => handleStartReading(0)}
-                    className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-[var(--bg-tertiary)] text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors"
-                  >
-                    从头开始
-                  </button>
-                </>
+                </div>
               ) : (
-                <button
-                  onClick={() => handleStartReading(0)}
-                  className="flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg bg-[var(--accent)] text-white hover:bg-[var(--accent)]/90 transition-colors font-medium"
-                >
-                  开始阅读
-                </button>
+                <div>
+                  <span className="text-xs text-[var(--text-secondary)]">作者</span>
+                  <p className="mt-0.5 text-sm text-[var(--text-secondary)]">未知作者</p>
+                </div>
               )}
-            </div>
+              <div>
+                <span className="text-xs text-[var(--text-secondary)]">信息</span>
+                <div className="mt-0.5 flex items-center gap-2">
+                  <p className="select-text text-sm text-[var(--text-primary)]">
+                    {displayComic?.sourceSite || displayComic?.source}
+                    {displayComic?.pages != null && displayComic.pages > 0 && <> · {displayComic.pages} 页</>}
+                    {displayComic?.albumTotalChapters != null && displayComic.albumTotalChapters > 1 && (
+                      <> · {displayComic.albumTotalChapters} 章</>
+                    )}
+                    {displayComic?.publishDate && <> · 更新 {displayComic.publishDate}</>}
+                    {displayComic?.language && <> · {displayComic.language}</>}
+                  </p>
+                  {displayComic?.url && (
+                    <button
+                      onClick={() => window.hcomic?.openUrl(displayComic.url)}
+                      className="flex-shrink-0 rounded-md bg-[var(--accent)]/10 px-2 py-0.5 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/20"
+                      title={displayComic.url}
+                    >
+                      打开原网页
+                    </button>
+                  )}
+                </div>
+                {displayComic?.category && (
+                  <button
+                    onClick={() => handleSearch(displayComic.category!, 'category')}
+                    className="mt-1 block cursor-pointer select-text text-left text-sm text-[var(--accent)] hover:underline"
+                  >
+                    {displayComic.category}
+                  </button>
+                )}
+              </div>
+              {favouriteAction}
+            </>
           )}
 
           {displayComic?.parodies && displayComic.parodies.length > 0 && (
-            <div>
-              <span className="text-xs text-[var(--text-secondary)]">原著</span>
-              <div className="flex flex-wrap gap-1.5 mt-2">
+            <div className={surface === 'drawer' ? 'flex items-start gap-3' : undefined}>
+              <span className={surface === 'drawer' ? 'w-10 flex-shrink-0 pt-1 text-xs text-[var(--text-secondary)]' : 'text-xs text-[var(--text-secondary)]'}>原著</span>
+              <div className={`flex min-w-0 flex-wrap gap-1.5 ${surface === 'drawer' ? '' : 'mt-2'}`}>
                 {displayComic.parodies.map((parody, i) => (
                   <span key={i} className="relative group">
                     <button
                       onClick={() => handleSearch(parody, 'tag')}
-                      className="text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors bg-purple-500/10 text-purple-400 hover:bg-purple-500/20"
+                      className="max-w-40 truncate rounded-full bg-purple-500/10 px-2.5 py-1 text-xs text-purple-400 transition-colors hover:bg-purple-500/20"
+                      title={parody}
                     >
                       {parody}
                     </button>
@@ -551,14 +622,15 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
           )}
 
           {displayComic?.characters && displayComic.characters.length > 0 && (
-            <div>
-              <span className="text-xs text-[var(--text-secondary)]">角色</span>
-              <div className="flex flex-wrap gap-1.5 mt-2">
+            <div className={surface === 'drawer' ? 'flex items-start gap-3' : undefined}>
+              <span className={surface === 'drawer' ? 'w-10 flex-shrink-0 pt-1 text-xs text-[var(--text-secondary)]' : 'text-xs text-[var(--text-secondary)]'}>角色</span>
+              <div className={`flex min-w-0 flex-wrap gap-1.5 ${surface === 'drawer' ? '' : 'mt-2'}`}>
                 {displayComic.characters.map((char, i) => (
                   <span key={i} className="relative group">
                     <button
                       onClick={() => handleSearch(char, 'tag')}
-                      className="text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/20"
+                      className="max-w-40 truncate rounded-full bg-cyan-500/10 px-2.5 py-1 text-xs text-cyan-400 transition-colors hover:bg-cyan-500/20"
+                      title={char}
                     >
                       {char}
                     </button>
@@ -569,14 +641,15 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
           )}
 
           {displayComic?.groups && displayComic.groups.length > 0 && (
-            <div>
-              <span className="text-xs text-[var(--text-secondary)]">制作组</span>
-              <div className="flex flex-wrap gap-1.5 mt-2">
+            <div className={surface === 'drawer' ? 'flex items-start gap-3' : undefined}>
+              <span className={surface === 'drawer' ? 'w-10 flex-shrink-0 pt-1 text-xs text-[var(--text-secondary)]' : 'text-xs text-[var(--text-secondary)]'}>制作组</span>
+              <div className={`flex min-w-0 flex-wrap gap-1.5 ${surface === 'drawer' ? '' : 'mt-2'}`}>
                 {displayComic.groups.map((group, i) => (
                   <span key={i} className="relative group">
                     <button
                       onClick={() => handleSearch(group, 'tag')}
-                      className="text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20"
+                      className="max-w-40 truncate rounded-full bg-emerald-500/10 px-2.5 py-1 text-xs text-emerald-400 transition-colors hover:bg-emerald-500/20"
+                      title={group}
                     >
                       {group}
                     </button>
@@ -589,14 +662,14 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
           {showEnrichLoading && (
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
-              <div className="mt-2 text-sm text-[var(--text-secondary)]">标签加载中...</div>
+              <div className="mt-1 text-sm text-[var(--text-secondary)]">标签加载中...</div>
             </div>
           )}
 
           {showEnrichError && (
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
-              <div className="flex items-center gap-2 mt-2">
+              <div className="mt-1 flex items-center gap-2">
                 <span className="text-sm text-[var(--error)]">标签加载失败</span>
                 <button
                   onClick={retryEnrich}
@@ -613,12 +686,11 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
             <div>
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
               {(() => {
-                // tag 列表错峰：前 STAGGER_LIMIT 个 tag 参与 stagger（20ms 间隔），
-                // 总时长 ≈ 100ms + (N-1) * 20ms，40 个 tag 约 0.88s。
-                // 超出部分用普通 span 立即渲染，避免大量 motion 元素造成无意义开销。
-                // reduced-motion 时全部用普通元素，不触发 stagger。
-                const STAGGER_LIMIT = 40
                 const tags = displayComic!.tags!
+                const isCollapsed = surface === 'drawer' && !tagsExpanded
+                const visibleTags = isCollapsed ? tags.slice(0, COLLAPSED_TAG_LIMIT) : tags
+                // 首次打开只让当前可见项错峰；用户展开/收起后全部直接出现，避免长列表重新级联。
+                const shouldStagger = !reduceMotion && !(surface === 'drawer' && tagsHaveBeenExpanded)
                 const renderTag = (tag: string, idx: number, animate: boolean) => {
                   const blocked = isTagBlocked(tag)
                   const favourited = isTagFavourited(tag)
@@ -642,13 +714,14 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
                     <Wrapper key={idx} className="relative group" {...wrapperProps}>
                       <button
                         onClick={() => handleTagSearch(tag)}
-                        className={`text-xs px-2.5 py-1 rounded-full cursor-pointer transition-colors ${
+                        className={`max-w-40 truncate rounded-full px-2.5 py-1 align-middle text-xs transition-colors ${
                           blocked
                             ? 'bg-[var(--error)]/10 text-[var(--error)] line-through opacity-60'
                             : isRec
                               ? 'bg-amber-500/20 text-amber-700 hover:bg-amber-500/30'
                               : 'bg-[var(--accent)]/10 text-[var(--accent)] hover:bg-[var(--accent)]/20'
                         }`}
+                        title={tag}
                       >
                         {tag}
                       </button>
@@ -663,19 +736,36 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
                     </Wrapper>
                   )
                 }
-                if (reduceMotion) {
+                if (!shouldStagger) {
                   return (
-                    <div className="flex flex-wrap gap-1.5 mt-2">
-                      {tags.map((tag, i) => renderTag(tag, i, false))}
-                    </div>
+                    <>
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {visibleTags.map((tag, i) => renderTag(tag, i, false))}
+                      </div>
+                      {surface === 'drawer' && tags.length > COLLAPSED_TAG_LIMIT && (
+                        <div className="mt-2 flex justify-end">
+                          <button
+                            type="button"
+                            aria-expanded={tagsExpanded}
+                            onClick={() => {
+                              setTagsHaveBeenExpanded(true)
+                              setTagsExpanded(expanded => !expanded)
+                            }}
+                            className="rounded-md px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                          >
+                            {tagsExpanded ? '收起' : `+${tags.length - COLLAPSED_TAG_LIMIT} 展开`}
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )
                 }
-                const staggered = tags.slice(0, STAGGER_LIMIT)
-                const rest = tags.slice(STAGGER_LIMIT)
+                const staggered = visibleTags.slice(0, TAG_STAGGER_LIMIT)
+                const rest = visibleTags.slice(TAG_STAGGER_LIMIT)
                 return (
                   <>
                     <motion.div
-                      className="flex flex-wrap gap-1.5 mt-2"
+                      className="mt-1.5 flex flex-wrap gap-1.5"
                       variants={tagListVariants}
                       initial="hidden"
                       animate="show"
@@ -683,8 +773,23 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
                       {staggered.map((tag, i) => renderTag(tag, i, true))}
                     </motion.div>
                     {rest.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {rest.map((tag, i) => renderTag(tag, STAGGER_LIMIT + i, false))}
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {rest.map((tag, i) => renderTag(tag, TAG_STAGGER_LIMIT + i, false))}
+                      </div>
+                    )}
+                    {surface === 'drawer' && tags.length > COLLAPSED_TAG_LIMIT && (
+                      <div className="mt-2 flex justify-end">
+                        <button
+                          type="button"
+                          aria-expanded={false}
+                          onClick={() => {
+                            setTagsHaveBeenExpanded(true)
+                            setTagsExpanded(true)
+                          }}
+                          className="rounded-md px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
+                        >
+                          +{tags.length - COLLAPSED_TAG_LIMIT} 展开
+                        </button>
                       </div>
                     )}
                   </>
@@ -693,6 +798,15 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
             </div>
           )}
         </div>
+        {surface === 'drawer' && (
+          <div
+            className="flex flex-shrink-0 flex-wrap items-center gap-2 border-t border-[var(--border)] bg-[var(--bg-primary)] px-5 py-3 [@media(max-height:700px)]:px-4 [@media(max-height:700px)]:py-2"
+            data-testid="drawer-actions"
+          >
+            {favouriteAction}
+            {readingActions}
+          </div>
+        )}
             </motion.div>
           </>
         )}

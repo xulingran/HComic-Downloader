@@ -34,6 +34,11 @@ class MockIntersectionObserver {
 vi.mock('@/hooks/useCoverImage', () => ({
   useCoverImage: () => ({ coverSrc: 'mock-cover-data-url', retry: vi.fn() }),
 }))
+const mockReducedMotion = vi.fn(() => false)
+vi.mock('@/lib/anim', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/anim')>()
+  return { ...actual, useReducedMotionPreference: () => mockReducedMotion() }
+})
 const { mockIsAuthError, mockAddToFavourites, mockRemoveFromFavourites } = vi.hoisted(() => ({
   mockIsAuthError: vi.fn((_error: unknown) => false),
   mockAddToFavourites: vi.fn().mockResolvedValue({ success: true }),
@@ -102,6 +107,13 @@ const comicWithTags: ComicInfo = {
   characters: ['角色Y'],
 }
 
+const comicWithManyTags = (id = 'many'): ComicInfo => ({
+  ...comicWithTags,
+  id,
+  title: `多标签漫画-${id}`,
+  tags: Array.from({ length: 10 }, (_, index) => `标签-${index + 1}`),
+})
+
 // 用真实 store，把 actions 替换为 spy，同时保留 store 内部一致性。
 const store = useDrawerStore
 const setPendingSearchSpy = vi.fn()
@@ -137,6 +149,8 @@ beforeEach(() => {
   mockRemoveFromFavourites.mockResolvedValue({ success: true })
   mockIsAuthError.mockReset()
   mockIsAuthError.mockReturnValue(false)
+  mockReducedMotion.mockReset()
+  mockReducedMotion.mockReturnValue(false)
   vi.mocked(sourceSupportsFavourites).mockImplementation(
     (source: string) => ['hcomic', 'moeimg', 'jm', 'bika', 'nh'].includes(source),
   )
@@ -753,5 +767,152 @@ describe('ComicInfoDrawer - 抽屉封面与开始阅读入口', () => {
     expect(screen.queryByRole('button', { name: '开始阅读' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '继续阅读' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '从头开始' })).not.toBeInTheDocument()
+  })
+})
+
+describe('ComicInfoDrawer - 紧凑抽屉布局', () => {
+  it('打开时遮罩接管点击并关闭抽屉，inactive 根层恢复穿透', async () => {
+    const onClose = vi.fn()
+    const backgroundClick = vi.fn()
+    const { rerender } = render(
+      <>
+        <button onClick={backgroundClick}>背景操作</button>
+        <ComicDetailSurface comic={comicWithTags} active surface="drawer" onClose={onClose} />
+      </>,
+    )
+
+    const root = screen.getByTestId('comic-detail-drawer')
+    expect(root.className).toContain('pointer-events-auto')
+    expect(root.className).not.toContain('pointer-events-none')
+    const overlay = screen.getByTestId('drawer-overlay')
+    expect(overlay.className).toContain('pointer-events-auto')
+
+    await userEvent.click(overlay)
+    expect(onClose).toHaveBeenCalledTimes(1)
+    expect(backgroundClick).not.toHaveBeenCalled()
+
+    rerender(
+      <>
+        <button onClick={backgroundClick}>背景操作</button>
+        <ComicDetailSurface comic={comicWithTags} active={false} surface="drawer" onClose={onClose} />
+      </>,
+    )
+    expect(screen.getByTestId('comic-detail-drawer').className).toContain('pointer-events-none')
+  })
+
+  it('使用固定头部、单一滚动内容区、紧凑摘要和固定操作区', async () => {
+    openDrawerWith(comicWithTags)
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    const drawer = screen.getByTestId('comic-detail-drawer').querySelector('.max-w-lg')
+    expect(drawer).not.toBeNull()
+    expect(drawer!.className).toContain('overflow-hidden')
+    expect(screen.getByTestId('drawer-header').className).toContain('flex-shrink-0')
+    expect(screen.getByTestId('drawer-content').className).toContain('overflow-y-auto')
+    expect(screen.getByTestId('drawer-summary')).toBeInTheDocument()
+    expect(screen.getByTestId('drawer-cover')).toBeInTheDocument()
+    expect(screen.getByTestId('drawer-actions').className).toContain('flex-shrink-0')
+    expect(screen.getByTestId('drawer-content').className).toContain('max-height:700px')
+  })
+
+  it('无封面时不保留空白封面列，长标题保留完整 title', async () => {
+    const title = '这是一个用于验证紧凑摘要两行截断但仍可访问完整文本的很长漫画标题'
+    openDrawerWith({ ...comicWithTags, title, coverUrl: '' })
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.queryByTestId('drawer-cover')).not.toBeInTheDocument()
+    const titleNode = screen.getByTitle(title)
+    expect(titleNode.className).toContain('line-clamp-2')
+    expect(titleNode.parentElement).toHaveClass('flex-1')
+  })
+
+  it('无收藏能力时操作区只保留阅读入口且允许换行', async () => {
+    openDrawerWith({ ...comicWithTags, sourceSite: 'copymanga' })
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.queryByRole('button', { name: '加入收藏' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '开始阅读' })).toBeInTheDocument()
+    expect(screen.getByTestId('drawer-actions').className).toContain('flex-wrap')
+    expect(screen.getByTestId('drawer-reading-actions').className).toContain('min-w-0')
+  })
+})
+
+describe('ComicInfoDrawer - 标签渐进展开', () => {
+  it('超过上限时默认显示 8 个标签，并可展开和收起完整列表', async () => {
+    const user = userEvent.setup()
+    openDrawerWith(comicWithManyTags())
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.getByText('标签-8')).toBeInTheDocument()
+    expect(screen.queryByText('标签-9')).not.toBeInTheDocument()
+    const expandButton = screen.getByRole('button', { name: '+2 展开' })
+    expect(expandButton).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(expandButton)
+    expect(screen.getByText('标签-10')).toBeInTheDocument()
+    const collapseButton = screen.getByRole('button', { name: '收起' })
+    expect(collapseButton).toHaveAttribute('aria-expanded', 'true')
+
+    await user.click(collapseButton)
+    expect(screen.queryByText('标签-9')).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '+2 展开' })).toBeInTheDocument()
+  })
+
+  it('标签未超过上限时不显示展开控件', async () => {
+    openDrawerWith(comicWithTags)
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    expect(screen.queryByRole('button', { name: /展开|收起/ })).not.toBeInTheDocument()
+  })
+
+  it('切换漫画后恢复默认折叠态', async () => {
+    const user = userEvent.setup()
+    const { rerender } = render(
+      <ComicDetailSurface comic={comicWithManyTags('first')} active surface="drawer" onClose={vi.fn()} />,
+    )
+    await user.click(screen.getByRole('button', { name: '+2 展开' }))
+    expect(screen.getByText('标签-10')).toBeInTheDocument()
+
+    rerender(<ComicDetailSurface comic={comicWithManyTags('second')} active surface="drawer" onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.queryByText('标签-10')).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: '+2 展开' })).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('详情补全成功后按折叠规则显示标签', async () => {
+    vi.mocked(sourceNeedsDetailEnrich).mockReturnValue(true)
+    mockGetComicDetail.mockResolvedValueOnce({ comic: comicWithManyTags('enriched') })
+    openDrawerWith({ ...comicWithTags, tags: [] })
+    render(<ComicInfoDrawer />)
+
+    expect(await screen.findByRole('button', { name: '+2 展开' })).toBeInTheDocument()
+    expect(screen.queryByText('标签-9')).not.toBeInTheDocument()
+    expect(screen.queryByText('标签加载失败')).not.toBeInTheDocument()
+  })
+
+  it('reduced-motion 下标签使用普通元素直接出现', async () => {
+    mockReducedMotion.mockReturnValue(true)
+    openDrawerWith(comicWithTags)
+    render(<ComicInfoDrawer />)
+    await settle()
+
+    const tagButton = screen.getByRole('button', { name: 'NTR' })
+    expect(tagButton.parentElement).not.toHaveAttribute('style')
+  })
+
+  it('reader 表面展示完整标签且不出现 drawer 专属结构', async () => {
+    render(<ComicDetailSurface comic={comicWithManyTags('reader')} active surface="reader" onClose={vi.fn()} />)
+    await settle()
+
+    expect(screen.getByText('标签-10')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /展开|收起/ })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('drawer-summary')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('drawer-actions')).not.toBeInTheDocument()
+    const panel = screen.getByTestId('comic-detail-reader').querySelector('.max-w-3xl')
+    expect(panel!.className).not.toMatch(/overflow-y-(auto|scroll)/)
   })
 })
