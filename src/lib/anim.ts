@@ -64,6 +64,18 @@ export const overlayPresenceVariants: Variants = {
   exit: { opacity: 0, pointerEvents: 'none' },
 }
 
+/**
+ * Drawer 遮罩：退出动画结束前继续接管指针事件。
+ *
+ * Drawer 下方通常就是可再次打开详情的漫画卡片。若复用 Modal 的 exit 配置，
+ * 第一次关闭会立刻释放 pointer-events，高频连点的下一次按下就会穿透并重新打开 Drawer。
+ */
+export const drawerOverlayPresenceVariants: Variants = {
+  initial: { opacity: 0 },
+  animate: { opacity: 1 },
+  exit: { opacity: 0, pointerEvents: 'auto', transition: springTransition },
+}
+
 /** ComicInfoDrawer：从右滑入。 */
 export const drawerPresenceVariants: Variants = {
   initial: { x: '100%' },

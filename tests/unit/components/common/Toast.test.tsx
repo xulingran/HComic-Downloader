@@ -5,19 +5,22 @@ import { Toast } from '@/components/common/Toast'
 
 describe('Toast', () => {
   it('renders nothing when visible is false', () => {
-    render(
+    const { container } = render(
       <Toast message="测试消息" visible={false} />
     )
     // 变更 2：Toast 外层定位 div 总是渲染（用于 left-1/2 居中），
     // visible=false 时内部 message 不渲染（AnimatePresence 控制）。
     expect(screen.queryByText('测试消息')).toBeNull()
+    expect(container.firstElementChild).toHaveClass('pointer-events-none')
   })
 
   it('renders message when visible is true', async () => {
     render(<Toast message="测试消息" visible={true} />)
 
     await vi.waitFor(() => {
-      expect(screen.getByText('测试消息')).toBeInTheDocument()
+      const message = screen.getByText('测试消息')
+      expect(message).toBeInTheDocument()
+      expect(message.parentElement).toHaveClass('pointer-events-auto')
     })
   })
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { SearchMode, type ComicInfo } from '@shared/types'
 import { useDrawerStore } from '../stores/useDrawerStore'
@@ -9,7 +9,7 @@ import { useCoverImage } from '../hooks/useCoverImage'
 import { CoverImage } from './common/ComicCard'
 import { Toast } from './common/Toast'
 import { Modal } from './common/Modal'
-import { drawerPresenceVariants, overlayPresenceVariants, reduceSafe, tagListVariants, tagItemVariants, useReducedMotionPreference } from '../lib/anim'
+import { drawerOverlayPresenceVariants, drawerPresenceVariants, reduceSafe, tagListVariants, tagItemVariants, useReducedMotionPreference } from '../lib/anim'
 import { isAuthError } from '../utils/auth'
 import { normalizeSourceKey, sourceSupportsFavourites, sourceSupportsTagRecommendation, sourceNeedsDetailEnrich } from '../utils/source'
 
@@ -392,6 +392,13 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
     '--border': 'rgba(255,255,255,0.12)',
   } as CSSProperties) : undefined
 
+  const handleDrawerOverlayPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // 阻止这次 pointerdown 继续合成/传播为背景点击；退出中的遮罩会继续吞掉后续连点。
+    event.preventDefault()
+    event.stopPropagation()
+    onClose()
+  }
+
   return (
     <div
       data-testid={`comic-detail-${surface}`}
@@ -423,12 +430,12 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
             {surface === 'drawer' && (
               <motion.div
                 key="drawer-overlay"
-                variants={overlayPresenceVariants}
+                variants={drawerOverlayPresenceVariants}
                 initial="initial"
                 animate="animate"
                 exit="exit"
                 className="absolute inset-0 bg-black/50 pointer-events-auto"
-                onClick={onClose}
+                onPointerDown={handleDrawerOverlayPointerDown}
                 data-testid="drawer-overlay"
               />
             )}

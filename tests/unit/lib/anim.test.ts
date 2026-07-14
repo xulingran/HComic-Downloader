@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { Variants } from 'framer-motion'
 import {
   DURATION,
+  drawerOverlayPresenceVariants,
   getDirectionalPageVariants,
   getReducedPageVariants,
   getReducedReaderModeVariants,
@@ -101,5 +102,14 @@ describe('reader presence variants', () => {
     const reduced = reduceSafe(readerPresenceVariants)
     expect(reduced.exit).toMatchObject({ pointerEvents: 'none' })
     expect(reduced.exit).not.toHaveProperty('y')
+  })
+})
+
+describe('drawer overlay presence variants', () => {
+  it('keeps intercepting rapid clicks until the drawer exit animation completes', () => {
+    expect(drawerOverlayPresenceVariants.exit).toMatchObject({
+      opacity: 0,
+      pointerEvents: 'auto',
+    })
   })
 })

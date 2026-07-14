@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { useDrawerStore } from '@/stores/useDrawerStore'
 import { sourceNeedsDetailEnrich, sourceSupportsFavourites, sourceSupportsTagRecommendation } from '@/utils/source'
@@ -787,9 +787,11 @@ describe('ComicInfoDrawer - 紧凑抽屉布局', () => {
     const overlay = screen.getByTestId('drawer-overlay')
     expect(overlay.className).toContain('pointer-events-auto')
 
-    await userEvent.click(overlay)
+    const pointerDown = new Event('pointerdown', { bubbles: true, cancelable: true })
+    fireEvent(overlay, pointerDown)
     expect(onClose).toHaveBeenCalledTimes(1)
     expect(backgroundClick).not.toHaveBeenCalled()
+    expect(pointerDown.defaultPrevented).toBe(true)
 
     rerender(
       <>

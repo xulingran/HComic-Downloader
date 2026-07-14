@@ -37,7 +37,10 @@ export function Toast({ message, type = 'info', actionLabel, onAction, onDismiss
   return (
     // Toast 通过 left-1/2 + 静态 x:-50% 实现水平居中，variants 仅控制 y 与 opacity。
     // AnimatePresence 在 visible 翻为 false 时保留 motion.div 直到 exit 动画结束。
-    <div className="fixed top-4 left-1/2 z-50" style={{ transform: 'translateX(-50%)' }}>
+    <div
+      className="pointer-events-none fixed top-4 left-1/2 z-50"
+      style={{ transform: 'translateX(-50%)' }}
+    >
       <AnimatePresence>
         {visible && (
           <motion.div
@@ -46,7 +49,7 @@ export function Toast({ message, type = 'info', actionLabel, onAction, onDismiss
             initial="initial"
             animate="animate"
             exit="exit"
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg
+            className={`pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-xl shadow-lg
                         bg-[var(--bg-primary)] border ${borderColor}
                         text-sm text-[var(--text-primary)] max-w-md`}
           >
