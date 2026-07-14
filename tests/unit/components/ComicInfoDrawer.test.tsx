@@ -840,26 +840,16 @@ describe('ComicInfoDrawer - 紧凑抽屉布局', () => {
   })
 })
 
-describe('ComicInfoDrawer - 标签渐进展开', () => {
-  it('超过上限时默认显示 8 个标签，并可展开和收起完整列表', async () => {
-    const user = userEvent.setup()
+describe('ComicInfoDrawer - 标签完整展示', () => {
+  it('超过原折叠上限时立即显示全部标签且无展开控件', async () => {
     openDrawerWith(comicWithManyTags())
     render(<ComicInfoDrawer />)
     await settle()
 
     expect(screen.getByText('标签-8')).toBeInTheDocument()
-    expect(screen.queryByText('标签-9')).not.toBeInTheDocument()
-    const expandButton = screen.getByRole('button', { name: '+2 展开' })
-    expect(expandButton).toHaveAttribute('aria-expanded', 'false')
-
-    await user.click(expandButton)
+    expect(screen.getByText('标签-9')).toBeInTheDocument()
     expect(screen.getByText('标签-10')).toBeInTheDocument()
-    const collapseButton = screen.getByRole('button', { name: '收起' })
-    expect(collapseButton).toHaveAttribute('aria-expanded', 'true')
-
-    await user.click(collapseButton)
-    expect(screen.queryByText('标签-9')).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '+2 展开' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /展开|收起/ })).not.toBeInTheDocument()
   })
 
   it('标签未超过上限时不显示展开控件', async () => {
@@ -870,27 +860,29 @@ describe('ComicInfoDrawer - 标签渐进展开', () => {
     expect(screen.queryByRole('button', { name: /展开|收起/ })).not.toBeInTheDocument()
   })
 
-  it('切换漫画后恢复默认折叠态', async () => {
-    const user = userEvent.setup()
+  it('切换漫画后显示新漫画的全部标签且无旧标签残留', async () => {
+    const firstComic = { ...comicWithManyTags('first'), tags: ['旧标签-1', '旧标签-2'] }
+    const secondComic = { ...comicWithManyTags('second'), tags: ['新标签-1', '新标签-2', '新标签-3'] }
     const { rerender } = render(
-      <ComicDetailSurface comic={comicWithManyTags('first')} active surface="drawer" onClose={vi.fn()} />,
+      <ComicDetailSurface comic={firstComic} active surface="drawer" onClose={vi.fn()} />,
     )
-    await user.click(screen.getByRole('button', { name: '+2 展开' }))
-    expect(screen.getByText('标签-10')).toBeInTheDocument()
+    expect(screen.getByText('旧标签-2')).toBeInTheDocument()
 
-    rerender(<ComicDetailSurface comic={comicWithManyTags('second')} active surface="drawer" onClose={vi.fn()} />)
-    await waitFor(() => expect(screen.queryByText('标签-10')).not.toBeInTheDocument())
-    expect(screen.getByRole('button', { name: '+2 展开' })).toHaveAttribute('aria-expanded', 'false')
+    rerender(<ComicDetailSurface comic={secondComic} active surface="drawer" onClose={vi.fn()} />)
+    await waitFor(() => expect(screen.queryByText('旧标签-2')).not.toBeInTheDocument())
+    expect(screen.getByText('新标签-3')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /展开|收起/ })).not.toBeInTheDocument()
   })
 
-  it('详情补全成功后按折叠规则显示标签', async () => {
+  it('详情补全成功后显示全部标签', async () => {
     vi.mocked(sourceNeedsDetailEnrich).mockReturnValue(true)
     mockGetComicDetail.mockResolvedValueOnce({ comic: comicWithManyTags('enriched') })
     openDrawerWith({ ...comicWithTags, tags: [] })
     render(<ComicInfoDrawer />)
 
-    expect(await screen.findByRole('button', { name: '+2 展开' })).toBeInTheDocument()
-    expect(screen.queryByText('标签-9')).not.toBeInTheDocument()
+    expect(await screen.findByText('标签-10')).toBeInTheDocument()
+    expect(screen.getByText('标签-9')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /展开|收起/ })).not.toBeInTheDocument()
     expect(screen.queryByText('标签加载失败')).not.toBeInTheDocument()
   })
 

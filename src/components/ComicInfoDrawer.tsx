@@ -46,7 +46,6 @@ const TAG_BUTTON_STATE: Record<TagButtonState, { action: TagConfirmAction; icon:
   plain: { action: 'block', icon: '+', color: 'bg-[var(--bg-tertiary)] text-[var(--text-primary)]', title: '加入屏蔽' },
 }
 
-const COLLAPSED_TAG_LIMIT = 8
 const TAG_STAGGER_LIMIT = 20
 
 interface ComicDetailSurfaceProps {
@@ -90,8 +89,6 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
   const [enrichState, setEnrichState] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
   // retryCount 驱动 enrich effect 重新执行（点击重试时自增），避免把 fetch 逻辑抽成独立函数。
   const [retryCount, setRetryCount] = useState(0)
-  const [tagsExpanded, setTagsExpanded] = useState(false)
-  const [tagsHaveBeenExpanded, setTagsHaveBeenExpanded] = useState(false)
   // 抽屉封面图容器 ref（useCoverImage 需要 IntersectionObserver 容器）。
   const drawerCoverRef = useRef<HTMLDivElement>(null)
   const { coverSrc: drawerCoverSrc, retry: retryDrawerCover } = useCoverImage(
@@ -180,15 +177,6 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
   const tagsEmpty = !(displayComic?.tags && displayComic.tags.length > 0)
   const showEnrichLoading = shouldEnrich && tagsEmpty && enrichState === 'loading'
   const showEnrichError = shouldEnrich && tagsEmpty && enrichState === 'error'
-
-  // 标签展开状态属于单本漫画的 drawer 会话状态。切换漫画或重新打开时恢复紧凑摘要，
-  // 避免上一部漫画的长列表展开状态泄漏到下一部；reader 始终展示完整标签。
-  useEffect(() => {
-    if (surface !== 'drawer') return
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setTagsExpanded(false)
-    setTagsHaveBeenExpanded(false)
-  }, [active, comic?.id, surface])
 
   useEffect(() => {
     if (!active || !comic?.id || !sourceSupportsFavourites(comicSource)) {
@@ -687,10 +675,8 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
               <span className="text-xs text-[var(--text-secondary)]">标签</span>
               {(() => {
                 const tags = displayComic!.tags!
-                const isCollapsed = surface === 'drawer' && !tagsExpanded
-                const visibleTags = isCollapsed ? tags.slice(0, COLLAPSED_TAG_LIMIT) : tags
-                // 首次打开只让当前可见项错峰；用户展开/收起后全部直接出现，避免长列表重新级联。
-                const shouldStagger = !reduceMotion && !(surface === 'drawer' && tagsHaveBeenExpanded)
+                // 完整展示标签；为避免超长列表产生过多级联动画，仅前 TAG_STAGGER_LIMIT 项错峰出现。
+                const shouldStagger = !reduceMotion
                 const renderTag = (tag: string, idx: number, animate: boolean) => {
                   const blocked = isTagBlocked(tag)
                   const favourited = isTagFavourited(tag)
@@ -740,28 +726,13 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
                   return (
                     <>
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {visibleTags.map((tag, i) => renderTag(tag, i, false))}
+                        {tags.map((tag, i) => renderTag(tag, i, false))}
                       </div>
-                      {surface === 'drawer' && tags.length > COLLAPSED_TAG_LIMIT && (
-                        <div className="mt-2 flex justify-end">
-                          <button
-                            type="button"
-                            aria-expanded={tagsExpanded}
-                            onClick={() => {
-                              setTagsHaveBeenExpanded(true)
-                              setTagsExpanded(expanded => !expanded)
-                            }}
-                            className="rounded-md px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                          >
-                            {tagsExpanded ? '收起' : `+${tags.length - COLLAPSED_TAG_LIMIT} 展开`}
-                          </button>
-                        </div>
-                      )}
                     </>
                   )
                 }
-                const staggered = visibleTags.slice(0, TAG_STAGGER_LIMIT)
-                const rest = visibleTags.slice(TAG_STAGGER_LIMIT)
+                const staggered = tags.slice(0, TAG_STAGGER_LIMIT)
+                const rest = tags.slice(TAG_STAGGER_LIMIT)
                 return (
                   <>
                     <motion.div
@@ -775,21 +746,6 @@ export function ComicDetailSurface({ comic, active, surface = 'drawer', onClose 
                     {rest.length > 0 && (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
                         {rest.map((tag, i) => renderTag(tag, TAG_STAGGER_LIMIT + i, false))}
-                      </div>
-                    )}
-                    {surface === 'drawer' && tags.length > COLLAPSED_TAG_LIMIT && (
-                      <div className="mt-2 flex justify-end">
-                        <button
-                          type="button"
-                          aria-expanded={false}
-                          onClick={() => {
-                            setTagsHaveBeenExpanded(true)
-                            setTagsExpanded(true)
-                          }}
-                          className="rounded-md px-2 py-1 text-xs text-[var(--accent)] transition-colors hover:bg-[var(--accent)]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]"
-                        >
-                          +{tags.length - COLLAPSED_TAG_LIMIT} 展开
-                        </button>
                       </div>
                     )}
                   </>
