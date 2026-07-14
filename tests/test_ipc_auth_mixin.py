@@ -66,6 +66,16 @@ def _wrap_save_with_lock_check(server):
     return save_calls
 
 
+def test_bika_check_in_delegates_to_runtime_parser(tmp_path):
+    server = _create_test_server(tmp_path)
+    bika_parser = MagicMock()
+    bika_parser.check_in.return_value = {"status": "checked_in"}
+    server.parser.parsers = {"bika": bika_parser}
+
+    assert server.handle_bika_check_in() == {"status": "checked_in"}
+    bika_parser.check_in.assert_called_once_with()
+
+
 # ---------------------------------------------------------------------------
 # handle_apply_auth: set_source_auth + save 必须在 _config_write_lock 内
 # ---------------------------------------------------------------------------

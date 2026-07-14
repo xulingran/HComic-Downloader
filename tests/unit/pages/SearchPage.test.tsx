@@ -3,6 +3,7 @@ import { render, screen, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { ComicInfo, SearchSection } from '@shared/types'
 import { useSettingsStore } from '@/stores/useSettingsStore'
+import { useToastStore } from '@/stores/useToastStore'
 
 // Hoist mock functions so they are available inside vi.mock factories
 const { mockSearch, mockRandom, mockStartDownload, mockStoreState } = vi.hoisted(() => {
@@ -30,6 +31,10 @@ const { mockGetConfig } = vi.hoisted(() => ({
 
 const { mockVerifyAuth } = vi.hoisted(() => ({
   mockVerifyAuth: vi.fn().mockResolvedValue({ valid: true })
+}))
+
+const { mockBikaCheckIn } = vi.hoisted(() => ({
+  mockBikaCheckIn: vi.fn().mockResolvedValue({ status: 'already_checked_in' })
 }))
 
 const { mockUseFavouriteTags } = vi.hoisted(() => ({
@@ -86,6 +91,7 @@ vi.mock('@/hooks/useIpc', () => ({
       categories: [{ id: 'bika-entry', title: '哔咔分类入口', thumb: '' }],
     }),
   }),
+  useBikaCheckIn: vi.fn().mockReturnValue({ checkIn: mockBikaCheckIn }),
 }))
 
 vi.mock('@/hooks/useDownloadHelper', () => ({
@@ -185,6 +191,7 @@ describe('SearchPage', () => {
     mockSearch.mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
     mockRandom.mockResolvedValue({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
     mockVerifyAuth.mockResolvedValue({ valid: true })
+    mockBikaCheckIn.mockResolvedValue({ status: 'already_checked_in' })
     mockGetConfig.mockResolvedValue({ config: { defaultSource: 'hcomic' } })
     mockStoreState.comics = []
     mockStoreState.pagination = null
@@ -202,6 +209,7 @@ describe('SearchPage', () => {
       getTagList: vi.fn().mockResolvedValue({ tags: [], total: 0 }),
       refreshTagList: vi.fn().mockResolvedValue(undefined),
     })
+    useToastStore.getState().dismiss()
   })
 
   it('renders search input area', () => {
@@ -920,6 +928,84 @@ describe('SearchPage', () => {
         await Promise.resolve()
       })
       expect(mockStoreState.setError).not.toHaveBeenCalled()
+    })
+
+    it('automatically checks in when Bika is the default authenticated source', async () => {
+      mockGetConfig.mockResolvedValue({ config: { defaultSource: 'bika' } })
+      mockBikaCheckIn.mockResolvedValue({ status: 'checked_in' })
+
+      render(<SearchPage />)
+
+      await waitFor(() => expect(mockBikaCheckIn).toHaveBeenCalledTimes(1))
+      expect(mockVerifyAuth).toHaveBeenCalledWith('bika')
+      expect(useToastStore.getState().toast).toMatchObject({
+        message: 'Bika 签到成功',
+        type: 'success',
+        visible: true,
+      })
+    })
+
+    it('checks in only once per mount when switching away from and back to Bika', async () => {
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'bika')
+      await waitFor(() => expect(mockBikaCheckIn).toHaveBeenCalledTimes(1))
+      await userEvent.selectOptions(screen.getByDisplayValue('哔咔'), 'hcomic')
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'bika')
+
+      expect(mockBikaCheckIn).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not show a success toast when Bika was already checked in', async () => {
+      mockBikaCheckIn.mockResolvedValue({ status: 'already_checked_in' })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'bika')
+
+      await waitFor(() => expect(mockBikaCheckIn).toHaveBeenCalledTimes(1))
+      expect(useToastStore.getState().toast.visible).toBe(false)
+    })
+
+    it('keeps the Bika entry usable when automatic check-in fails', async () => {
+      mockBikaCheckIn.mockRejectedValue(new Error('check-in unavailable'))
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'bika')
+
+      expect(await screen.findByText('哔咔分类入口')).toBeInTheDocument()
+      expect(mockBikaCheckIn).toHaveBeenCalledTimes(1)
+      expect(mockStoreState.setError).not.toHaveBeenCalledWith('check-in unavailable')
+    })
+
+    it('does not trigger automatic check-in when Bika authentication fails', async () => {
+      mockVerifyAuth.mockResolvedValue({ valid: false })
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'bika')
+
+      expect(await screen.findByText('哔咔 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+      expect(mockBikaCheckIn).toHaveBeenCalledTimes(0)
+    })
+
+    it('suppresses a late Bika success toast after switching to another source', async () => {
+      let resolveCheckIn!: (value: { status: 'checked_in' }) => void
+      mockBikaCheckIn.mockReturnValue(new Promise(resolve => { resolveCheckIn = resolve }))
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'bika')
+      await waitFor(() => expect(mockBikaCheckIn).toHaveBeenCalledTimes(1))
+      await userEvent.selectOptions(screen.getByDisplayValue('哔咔'), 'hcomic')
+
+      await act(async () => {
+        resolveCheckIn({ status: 'checked_in' })
+        await Promise.resolve()
+      })
+      expect(useToastStore.getState().toast.visible).toBe(false)
     })
 
     it('keeps the explicit JM random button behavior', async () => {

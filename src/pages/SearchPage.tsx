@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { AnimatePresence, LayoutGroup } from 'framer-motion'
 import { useComicStore } from '../stores/useComicStore'
-import { useSearch, useRandom, useConfig, useDownloadProgress, useAuth, useTagListProgress } from '../hooks/useIpc'
+import { useSearch, useRandom, useConfig, useDownloadProgress, useAuth, useTagListProgress, useBikaCheckIn } from '../hooks/useIpc'
 import { useDownloadHelper, useChapterProbe } from '../hooks/useDownloadHelper'
 import { useBatchDownload, getComicKey } from '../hooks/useBatchDownload'
 import { ComicCard } from '../components/common/ComicCard'
@@ -32,6 +32,7 @@ import type { DownloadProgressData } from '../hooks/useIpc'
 import { requiresAuth, isAuthError } from '../utils/auth'
 import { sourceLabel } from '../utils/source'
 import { useTagPanel } from '../hooks/useTagPanel'
+import { useToastStore } from '../stores/useToastStore'
 
 
 interface SearchPageProps {
@@ -77,8 +78,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   const { downloadWithConflictCheck, downloadChapters } = useDownloadHelper()
   const { getConfig } = useConfig()
   const { verifyAuth } = useAuth()
+  const { checkIn: checkInBika } = useBikaCheckIn()
   const verifySourceAuth = useCallback(async (src: string): Promise<boolean> => {
-    if (!requiresAuth(src)) return true
+    // Bika 的来源元数据允许未登录浏览部分入口，但自动签到必须先做真实认证校验。
+    if (!requiresAuth(src) && src !== 'bika') return true
     try {
       const result = await verifyAuth(src)
       if (!result.valid) {
@@ -152,11 +155,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   modeRef.current = mode // eslint-disable-line react-hooks/refs
   const sourceRef = useRef(source)
   sourceRef.current = source // eslint-disable-line react-hooks/refs
+  const bikaCheckInTriggeredRef = useRef(false)
   const languageFilterRef = useRef(languageFilter)
   languageFilterRef.current = languageFilter // eslint-disable-line react-hooks/refs
 
   // 仅受支持来源应用筛选；切换到其他来源时请求不得携带 languageFilter。
   const effectiveLanguageFilter = source === 'nh' || source === 'moeimg' ? languageFilter : undefined
+  const sourceRequiresPageAuth = requiresAuth(source) || source === 'bika'
 
   // 列表容器 key：派生自「已加载的搜索上下文」（loadedContextKey）+ 当前页码，而非实时输入 query。
   // 仅在真正完成一次搜索后（applySearchResult / handleSearch / pendingSearch effect 等）才变化，
@@ -186,12 +191,25 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
     setSections([])
   }, [setComics, setPagination])
 
+  const triggerBikaCheckIn = useCallback(() => {
+    if (bikaCheckInTriggeredRef.current) return
+    bikaCheckInTriggeredRef.current = true
+    void checkInBika().then(result => {
+      if (result.status === 'checked_in' && sourceRef.current === 'bika') {
+        useToastStore.getState().success('Bika 签到成功')
+      }
+    }).catch(() => {
+      // 自动签到是 best-effort 行为；错误由 IPC/后端日志保留，不阻塞搜索页。
+    })
+  }, [checkInBika])
+
   useEffect(() => {
     const cachedContextKey = searchCacheRef.current.currentContextKey
     const cached = cachedContextKey
       ? searchCacheRef.current.getPage(cachedContextKey, searchCacheRef.current.currentPage)
       : undefined
     if (cached) {
+      sourceRef.current = cached.source
       setQuery(cached.query)
       setMode(cached.mode)
       setSource(cached.source)
@@ -211,6 +229,11 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       // 旧逻辑 `cached.mode !== 'keyword'` 会让 keyword 搜索恢复时网格错误重现、按钮消失。
       setViewingNhEntry(cached.source === 'nh')
       setShowBackToNhEntry(cached.source === 'nh')
+      if (cached.source === 'bika') {
+        void verifySourceAuth('bika').then(isValid => {
+          if (isValid && sourceRef.current === 'bika') triggerBikaCheckIn()
+        })
+      }
       return
     }
 
@@ -242,11 +265,16 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         setError(null)
         return undefined
       }
-      if (requiresAuth(mountedSource)) {
+      if (requiresAuth(mountedSource) || mountedSource === 'bika') {
         return verifySourceAuth(mountedSource).then(isValid => {
           if (cancelled || gen !== searchGenRef.current) return undefined
           if (!isValid) {
             setNeedsLogin(true)
+            return undefined
+          }
+          if (mountedSource === 'bika') {
+            triggerBikaCheckIn()
+            clearSearchResult()
             return undefined
           }
           // mount effect 仅对非 NH 来源走到此分支（NH 在上方 early-return），
@@ -484,7 +512,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }, [setLoading, setError, cacheSearchPage, applySearchResult, clearSearchResult])
 
   const handleSearch = useCallback(async (page: number = 1) => {
-    if (requiresAuth(source) && needsLogin) return
+    if (sourceRequiresPageAuth && needsLogin) return
     clearSelection()
     setShowHistory(false)
     if (query.trim()) {
@@ -533,10 +561,10 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       () => search(query, mode, page, source, searchTags || undefined, true, currentLanguageFilter),
       { keepExisting: isPaging },
     )
-  }, [source, needsLogin, query, mode, searchTags, loadedContextKey, clearSelection, addHistory, withLoading, search, setError, cacheSearchPage, applySearchResult])
+  }, [source, sourceRequiresPageAuth, needsLogin, query, mode, searchTags, loadedContextKey, clearSelection, addHistory, withLoading, search, setError, cacheSearchPage, applySearchResult])
 
   const handleRandom = async () => {
-    if (requiresAuth(source) && needsLogin) return
+    if (sourceRequiresPageAuth && needsLogin) return
     clearSelection()
     clearPendingSearch()
     setQuery('')
@@ -706,7 +734,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
       setQuery('')
       queryRef.current = ''
     }
-    if (requiresAuth(newSource)) {
+    if (requiresAuth(newSource) || newSource === 'bika') {
       setLoading(true)
       // 认证校验窗口：旧结果仍在，按"整页替换前奏"标注为 strong（重模糊）。
       setOverlayIntensity('strong')
@@ -718,13 +746,14 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
         setNeedsLogin(true)
         return
       }
-      if (newSource === 'jm') {
+      if (newSource === 'bika') {
+        triggerBikaCheckIn()
+        clearSearchResult()
+      } else if (newSource === 'jm') {
         withLoading(() => search('', 'keyword', 1, 'jm', undefined, true, undefined))
       } else {
         withLoading(() => random(newSource))
       }
-    } else if (newSource === 'bika') {
-      clearSearchResult()
     } else {
       withLoading(() => search('', mode, 1, newSource, undefined, undefined, undefined))
     }
@@ -945,7 +974,7 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
 
       <ErrorDisplay message={error} onRetry={error ? () => handleSearch() : undefined} />
 
-      {!isLoading && needsLogin && requiresAuth(source) && (
+      {!isLoading && needsLogin && sourceRequiresPageAuth && (
         <div className="text-center py-12">
           <div className="text-[var(--text-secondary)] mb-4">{sourceLabel(source)} 登录信息已过期或未配置，请前往设置页面重新登录</div>
           {onNavigateToSettings && (

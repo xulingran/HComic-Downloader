@@ -57,7 +57,7 @@ describe('IPC Channel Consistency', () => {
       'get_history', 'add_history', 'delete_history', 'clear_history',
       'get_comic_detail',       'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
       'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
-      'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'nh_apply_api_key', 'clear_source_auth', 'get_jm_domains',
+      'moeimg_login', 'bika_login', 'bika_check_in', 'bika_categories', 'hcomic_login', 'nh_apply_api_key', 'clear_source_auth', 'get_jm_domains',
       'force_pack_album', 'get_album_progress',
       'pause_album', 'resume_album', 'cancel_album',
       'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',

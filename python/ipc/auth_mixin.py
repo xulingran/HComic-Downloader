@@ -214,6 +214,13 @@ class AuthMixin:
     def handle_bika_login(self, username: str, password: str) -> dict:
         return self._do_password_login("bika", username, password, credential_kind="bearer_token")
 
+    def handle_bika_check_in(self) -> dict:
+        """检查并按需完成 Bika 每日签到。"""
+        parser = self.parser.parsers.get("bika")
+        if not parser:
+            raise ValueError("bika 来源不可用")
+        return parser.check_in()
+
     def handle_hcomic_login(self, username: str, password: str) -> dict:
         return self._do_password_login(
             "hcomic",

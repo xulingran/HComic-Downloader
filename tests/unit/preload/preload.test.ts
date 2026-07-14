@@ -122,6 +122,14 @@ describe('preload.ts', () => {
     })
   })
 
+  describe('bikaCheckIn', () => {
+    it('invokes the dedicated channel without credentials or other arguments', async () => {
+      await exposedApi.bikaCheckIn()
+
+      expect(mockInvoke).toHaveBeenCalledWith('python:bika-check-in')
+    })
+  })
+
   describe('download', () => {
     it('should invoke python:download with correct args', async () => {
       const comicData = { title: 'Test', url: 'http://x.com', source: 'hcomic' }

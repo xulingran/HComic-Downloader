@@ -1,5 +1,7 @@
 """Bika 解析器单元测试。"""
 
+from unittest.mock import MagicMock
+
 import pytest
 import requests
 
@@ -188,6 +190,69 @@ class TestBikaLogin:
 
         with pytest.raises(ParserResponseError, match="连接失败"):
             bika_parser.login("user@example.com", "password")
+
+
+# ---------------------------------------------------------------------------
+# 每日签到
+# ---------------------------------------------------------------------------
+
+
+class TestBikaCheckIn:
+    """测试资料检查与按需签到使用同一个已配置 Session。"""
+
+    def test_check_in_posts_when_profile_is_not_punched(self, bika_parser, monkeypatch):
+        bika_parser._token = "jwt_token"
+        calls = []
+
+        def fake_request(method, url, **kwargs):
+            calls.append((method, url, kwargs.get("headers", {})))
+            if url.endswith("users/profile"):
+                return _make_json_response({"data": {"user": {"isPunched": False}}})
+            return _make_json_response({"code": 200, "data": {}})
+
+        monkeypatch.setattr(bika_parser.session, "request", fake_request)
+
+        assert bika_parser.check_in() == {"status": "checked_in"}
+        assert [(method, url.rsplit("/", 2)[-2:]) for method, url, _ in calls] == [
+            ("GET", ["users", "profile"]),
+            ("POST", ["users", "punch-in"]),
+        ]
+        assert all(headers["authorization"] == "jwt_token" for _, _, headers in calls)
+
+    def test_check_in_skips_post_when_already_punched(self, bika_parser, monkeypatch):
+        bika_parser._token = "jwt_token"
+        session_request = MagicMock(return_value=_make_json_response({"data": {"user": {"isPunched": True}}}))
+        monkeypatch.setattr(bika_parser.session, "request", session_request)
+
+        assert bika_parser.check_in() == {"status": "already_checked_in"}
+        assert session_request.call_count == 1
+        assert session_request.call_args.args[0] == "GET"
+        assert session_request.call_args.args[1].endswith("users/profile")
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {},
+            {"data": {}},
+            {"data": {"user": {}}},
+            {"data": {"user": {"isPunched": 1}}},
+        ],
+    )
+    def test_check_in_rejects_unknown_profile_shape(self, bika_parser, monkeypatch, payload):
+        bika_parser._token = "jwt_token"
+        monkeypatch.setattr(bika_parser.session, "request", lambda *args, **kwargs: _make_json_response(payload))
+
+        with pytest.raises(ParserResponseError, match="签到状态响应格式异常"):
+            bika_parser.check_in()
+
+    def test_check_in_requires_auth_before_request(self, bika_parser, monkeypatch):
+        session_request = MagicMock()
+        monkeypatch.setattr(bika_parser.session, "request", session_request)
+
+        with pytest.raises(ParserResponseError, match="未登录"):
+            bika_parser.check_in()
+
+        assert session_request.call_count == 0
 
 
 # ---------------------------------------------------------------------------

@@ -308,6 +308,7 @@ class IPCServer(
         "verify_auth": "handle_verify_auth",
         "moeimg_login": "handle_moeimg_login",
         "bika_login": "handle_bika_login",
+        "bika_check_in": "handle_bika_check_in",
         "bika_categories": "handle_bika_categories",
         "hcomic_login": "handle_hcomic_login",
         "nh_apply_api_key": "handle_nh_apply_api_key",

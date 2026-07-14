@@ -243,6 +243,8 @@ contextBridge.exposeInMainWorld('hcomic', {
     return ipcRenderer.invoke(IPC_CHANNELS.BIKA_LOGIN, username, password)
   },
 
+  bikaCheckIn: () => ipcRenderer.invoke(IPC_CHANNELS.BIKA_CHECK_IN),
+
   bikaCategories: () => ipcRenderer.invoke(IPC_CHANNELS.BIKA_CATEGORIES),
 
   hcomicLogin: (username: unknown, password: unknown) => {

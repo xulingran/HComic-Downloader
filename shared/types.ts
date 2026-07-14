@@ -760,6 +760,10 @@ export interface IPCMethods {
     params: { username: string; password: string }
     result: { success: boolean; message: string }
   }
+  bika_check_in: {
+    params: Record<string, never>
+    result: { status: 'checked_in' | 'already_checked_in' }
+  }
   bika_categories: {
     params: Record<string, never>
     result: { categories: Array<{ id: string; title: string; thumb: string }> }
@@ -1100,6 +1104,7 @@ export const PYTHON_IPC_CHANNEL_MAP = {
   'python:verify-auth': 'verify_auth',
   'python:moeimg-login': 'moeimg_login',
   'python:bika-login': 'bika_login',
+  'python:bika-check-in': 'bika_check_in',
   'python:bika-categories': 'bika_categories',
   'python:hcomic-login': 'hcomic_login',
   'python:nh-apply-api-key': 'nh_apply_api_key',
@@ -1214,6 +1219,7 @@ export interface HcomicAPI {
   verifyAuth(source?: string): Promise<{ valid: boolean; message: string }>
   moeimgLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   bikaLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
+  bikaCheckIn(): Promise<{ status: 'checked_in' | 'already_checked_in' }>
   bikaCategories(): Promise<{ categories: Array<{ id: string; title: string; thumb: string }> }>
   hcomicLogin(username: string, password: string): Promise<{ success: boolean; message: string }>
   nhApplyApiKey(apiKey: string): Promise<{ success: boolean; message: string }>
@@ -1464,6 +1470,7 @@ export const IPC_CHANNELS = {
   VERIFY_AUTH: 'python:verify-auth',
   MOEIMG_LOGIN: 'python:moeimg-login',
   BIKA_LOGIN: 'python:bika-login',
+  BIKA_CHECK_IN: 'python:bika-check-in',
   BIKA_CATEGORIES: 'python:bika-categories',
   HCOMIC_LOGIN: 'python:hcomic-login',
   NH_APPLY_API_KEY: 'python:nh-apply-api-key',

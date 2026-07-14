@@ -1079,6 +1079,10 @@ function registerAuthHandlers(bridge: Bridge) {
     return bridge.call('bika_login', { username: username.trim(), password: password.trim() })
   })
 
+  ipcMain.handle(IPC_CHANNELS.BIKA_CHECK_IN, async () => {
+    return bridge.call('bika_check_in', {})
+  })
+
   ipcMain.handle(IPC_CHANNELS.BIKA_CATEGORIES, async () => {
     return bridge.call('bika_categories', {})
   })

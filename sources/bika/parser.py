@@ -235,6 +235,32 @@ class BikaParser(ParserContextMixin):
                     return False, f"自动重新登录失败: {e2}"
             return False, error_msg
 
+    def check_in(self) -> dict[str, str]:
+        """检查 Bika 当日签到状态，并在尚未签到时自动签到。
+
+        所有请求均经过当前解析器的 Session，因此复用现有认证、自动重登录
+        与系统代理配置。
+
+        Returns:
+            ``status`` 为 ``checked_in``（本次完成）或
+            ``already_checked_in``（此前已完成）。
+
+        Raises:
+            ParserResponseError: 未登录、响应结构异常或签到请求失败
+        """
+        self._ensure_token()
+        profile = self._request(Method.GET, "users/profile")
+        data = profile.get("data")
+        user = data.get("user") if isinstance(data, dict) else None
+        is_punched = user.get("isPunched") if isinstance(user, dict) else None
+        if not isinstance(is_punched, bool):
+            raise ParserResponseError("签到状态响应格式异常")
+        if is_punched:
+            return {"status": "already_checked_in"}
+
+        self._request(Method.POST, "users/punch-in")
+        return {"status": "checked_in"}
+
     def search(self, keyword: str, page: int = 1, *, tag: str = "") -> tuple[list[ComicInfo], PaginationInfo | None]:
         """搜索漫画。
 

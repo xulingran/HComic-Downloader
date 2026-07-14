@@ -160,9 +160,9 @@ describe('main.ts', () => {
     })
 
     it('should register all IPC handlers', () => {
-      // 94 total (75 original + 18 library + 1 cancel_preview_generations)
+      // 95 total (94 existing + 1 bika_check_in)
       const count = handleCalls.length
-      expect(count).toBe(94)
+      expect(count).toBe(95)
     })
 
     it('should call get_config on startup to sync notification settings', () => {
@@ -229,6 +229,7 @@ describe('main.ts', () => {
       'python:bika-categories',
       'python:moeimg-login',
       'python:bika-login',
+      'python:bika-check-in',
       'python:hcomic-login',
       'python:nh-apply-api-key',
       'python:clear-auth',
@@ -297,7 +298,7 @@ describe('main.ts', () => {
         'get_history', 'add_history', 'delete_history', 'clear_history',
         'get_comic_detail', 'get_favourite_tags', 'clear_favourite_tags', 'remove_favourite_tag',
         'sync_favourite_tags', 'get_tag_list', 'refresh_tag_list',
-        'moeimg_login', 'bika_login', 'bika_categories', 'hcomic_login', 'nh_apply_api_key', 'clear_source_auth', 'get_jm_domains',
+        'moeimg_login', 'bika_login', 'bika_check_in', 'bika_categories', 'hcomic_login', 'nh_apply_api_key', 'clear_source_auth', 'get_jm_domains',
         'force_pack_album', 'get_album_progress',
         'pause_album', 'resume_album', 'cancel_album',
         'run_health_check', 'scan_orphan_temps', 'cleanup_orphan_temps', 'get_storage_stats',

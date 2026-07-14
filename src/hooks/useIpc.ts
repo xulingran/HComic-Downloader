@@ -338,6 +338,16 @@ export function useBikaCategories() {
   return { getBikaCategories }
 }
 
+export function useBikaCheckIn() {
+  const { invoke } = useIpc()
+
+  const checkIn = useCallback(async () => {
+    return invoke(() => window.hcomic!.bikaCheckIn())
+  }, [invoke])
+
+  return { checkIn }
+}
+
 export function useAlbumProgress() {
   const [progress, setProgress] = useState<Record<string, {
     sourceSite: string
