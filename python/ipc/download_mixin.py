@@ -72,11 +72,20 @@ class DownloadMixin:
         except Exception:
             logger.warning("Failed to record download history for %s", comic.title, exc_info=True)
 
-        # 下载最终产物落盘后触发单路径增量索引（仅最终原子产物，不含临时目录阶段）
+        # 下载最终产物落盘后触发单路径增量索引。
+        # 专辑章节回调给出的是 ``下载目录/专辑/章节``：CBZ 模式下它只是待打包
+        # 的中间产物，最终 CBZ 由 album ``packed`` 事件索引；folder 模式下则应
+        # 索引顶层专辑目录，而不是把章节 basename 错记成顶层资产路径。
         try:
             index_fn = getattr(self, "index_completed_download", None)
             if index_fn and output_path:
-                index_fn(output_path)
+                root = os.path.realpath(self.config.download_dir)
+                resolved_output = os.path.realpath(output_path)
+                parent = os.path.dirname(resolved_output)
+                if parent == root:
+                    index_fn(resolved_output)
+                elif output_format == "folder" and os.path.dirname(parent) == root:
+                    index_fn(parent)
         except Exception:
             logger.warning("Failed to index completed download: %s", output_path, exc_info=True)
 
@@ -368,6 +377,10 @@ class DownloadMixin:
         worker = getattr(self._download_manager, "_worker_thread", None)
         if worker and worker.is_alive():
             self._download_manager.wait_active_downloads(timeout=10.0)
+        indexer = getattr(self, "_library_indexer", None)
+        if indexer is not None and indexer.is_scanning():
+            indexer.cancel_scan()
+            indexer.wait_for_scan(timeout=5.0)
         self._cover_executor.shutdown(cancel_futures=True, wait=False)
         self._preview_executor.shutdown(cancel_futures=True, wait=False)
         self._request_executor.shutdown(cancel_futures=True, wait=False)

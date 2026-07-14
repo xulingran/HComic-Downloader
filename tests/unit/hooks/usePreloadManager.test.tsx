@@ -331,15 +331,19 @@ describe('usePreloadManager generation (reader-jump-preload-priority 规范)', (
     const { result } = renderHook(() =>
       usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
     )
-    // 第一次设 target → generation 推进到 1
+    // 第一次设 target → 获取进程级单调 generation
     act(() => result.current.setPreloadTarget(2))
     await waitFor(() => expect(mockFetch).toHaveBeenCalled(), { timeout: 2000 })
-    // cancelPreviewGenerations(1) 被调用：取消所有 generation < 1 的请求
-    expect(mockCancel).toHaveBeenCalledWith(1)
+    const firstGeneration = mockFetch.mock.calls[0][4] as number
+    expect(firstGeneration).toBeGreaterThan(0)
+    expect(mockCancel).toHaveBeenCalledWith(firstGeneration)
 
-    // 第二次设 target（跳转）→ generation 推进到 2
+    // 第二次设 target（跳转）→ generation 必须继续递增
     act(() => result.current.setPreloadTarget(15))
-    await waitFor(() => expect(mockCancel).toHaveBeenCalledWith(2), { timeout: 2000 })
+    await waitFor(() => {
+      const generations = mockCancel.mock.calls.map(([generation]) => generation as number)
+      expect(generations.some((generation) => generation > firstGeneration)).toBe(true)
+    }, { timeout: 2000 })
   })
 
   it('fetchPreviewImage 携带当前 generation 参数', async () => {
@@ -349,11 +353,12 @@ describe('usePreloadManager generation (reader-jump-preload-priority 规范)', (
     )
     act(() => result.current.setPreloadTarget(3))
     await waitFor(() => expect(mockFetch).toHaveBeenCalled(), { timeout: 2000 })
-    // 第 5 个参数是 generation，第一次 target 切换后应为 1
-    expect(mockFetch.mock.calls[0][4]).toBe(1)
+    // 第 5 个参数是跨阅读器实例单调递增的 generation
+    expect(mockFetch.mock.calls[0][4]).toEqual(expect.any(Number))
+    expect(mockFetch.mock.calls[0][4]).toBeGreaterThan(0)
   })
 
-  it('clearCache 重置 generation 并通知后端清空初始代', () => {
+  it('clearCache 推进 generation 并通知后端清空旧批次', () => {
     const urls = Array.from({ length: 10 }, (_, i) => `u${i + 1}`)
     const { result } = renderHook(() =>
       usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
@@ -362,8 +367,30 @@ describe('usePreloadManager generation (reader-jump-preload-priority 规范)', (
       result.current.setPreloadTarget(3)
       result.current.clearCache()
     })
-    // clearCache 调 cancelPreviewGenerations(1) 清空 generation=0 的初始批次
-    expect(mockCancel).toHaveBeenCalledWith(1)
+    const generations = mockCancel.mock.calls.map(([generation]) => generation as number)
+    expect(generations.length).toBeGreaterThan(0)
+    expect(generations.every((generation) => Number.isSafeInteger(generation) && generation > 0)).toBe(true)
+  })
+
+  it('新阅读器实例不会把 generation 重置到旧 floor 以下', async () => {
+    const urls = Array.from({ length: 10 }, (_, i) => `u${i + 1}`)
+    const first = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
+    )
+    act(() => first.result.current.setPreloadTarget(2))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled(), { timeout: 2000 })
+    const firstGeneration = mockFetch.mock.calls[0][4] as number
+    first.unmount()
+
+    mockFetch.mockClear()
+    const second = renderHook(() =>
+      usePreloadManager(urls, 'loaded', undefined, undefined, undefined, 2, 0, 2),
+    )
+    act(() => second.result.current.setPreloadTarget(2))
+    await waitFor(() => expect(mockFetch).toHaveBeenCalled(), { timeout: 2000 })
+    const secondGeneration = mockFetch.mock.calls[0][4] as number
+
+    expect(secondGeneration).toBeGreaterThan(firstGeneration)
   })
 
   it('cancelPreviewGenerations 失败时静默不阻塞预加载', async () => {

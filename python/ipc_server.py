@@ -270,7 +270,14 @@ class IPCServer(
     # ── album event notification ─────────────────────────────────────────
 
     def _on_album_event(self, album_key, event, **kwargs):
-        """推送 album_progress JSON-RPC 通知到 stdout。"""
+        """推送 album_progress 通知，并在最终产物落盘后增量入库。"""
+        if event == "packed":
+            output_path = kwargs.get("output_path")
+            if isinstance(output_path, str) and output_path:
+                try:
+                    self.index_completed_download(output_path)
+                except Exception:
+                    logger.warning("Failed to index packed album: %s", output_path, exc_info=True)
         notification = {
             "jsonrpc": "2.0",
             "method": "album_progress",

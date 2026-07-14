@@ -176,6 +176,21 @@ class LibraryDB:
                 (id, root_generation, phase, is_scanning, current, total, current_label)
             VALUES (1, 1, 'idle', 0, 0, 0, '')
             """)
+        # 进程启动时不可能存在属于当前 LibraryDB 实例的扫描线程。若上次应用在
+        # 扫描期间退出，持久化的 is_scanning=1 只是崩溃快照，必须恢复为可重试
+        # 状态，否则 UI 会永久认为已有扫描运行，取消也没有旧线程负责收尾。
+        conn.execute("""
+            UPDATE library_scan_state
+            SET scan_id = NULL,
+                phase = 'idle',
+                is_scanning = 0,
+                current = 0,
+                total = 0,
+                current_label = '',
+                last_scan_cancelled = 1,
+                last_scan_error = COALESCE(last_scan_error, '上次扫描被应用退出中断')
+            WHERE id = 1 AND is_scanning = 1
+            """)
         conn.commit()
 
     def _migrate(self, conn: sqlite3.Connection, from_version: int) -> None:

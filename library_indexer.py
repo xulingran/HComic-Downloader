@@ -170,6 +170,13 @@ class LibraryIndexer:
             return True
         return False
 
+    def wait_for_scan(self, timeout: float | None = None) -> bool:
+        """等待当前扫描释放互斥锁，返回是否在超时前结束。"""
+        acquired = self._scan_lock.acquire(timeout=timeout) if timeout is not None else self._scan_lock.acquire()
+        if acquired:
+            self._scan_lock.release()
+        return acquired
+
     def _run_scan(self, scan_id: str) -> None:
         """执行完整扫描四阶段。"""
         try:
@@ -602,6 +609,11 @@ class LibraryIndexer:
         try:
             _validate_path_in_dir(abs_path, self._download_dir)
         except ValueError:
+            return None
+
+        # 漫画库采用单根目录、顶层资产模型。拒绝把专辑内部章节误记为
+        # ``download_dir/<chapter basename>``，否则索引会立即变成不可解析的悬空项。
+        if os.path.dirname(os.path.realpath(abs_path)) != self._download_dir:
             return None
 
         entry = os.path.basename(abs_path)

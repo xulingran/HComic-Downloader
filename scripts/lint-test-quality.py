@@ -249,7 +249,9 @@ def main(argv: list[str] | None = None) -> int:
     violations = scan_path(args.root)
 
     if not violations:
-        print(f"✓ 测试质量检查通过：{args.root} 下无裸 mock 调用断言违规。")
+        # 保持默认 Windows GBK 控制台可编码；避免仅因装饰性 Unicode 符号
+        # 让质量门槛在规则全部通过后仍以 UnicodeEncodeError 退出。
+        print(f"[OK] 测试质量检查通过：{args.root} 下无裸 mock 调用断言违规。")
         return 0
 
     print(f"发现 {len(violations)} 处测试质量违规（裸 mock 调用断言，缺少真实行为断言）：\n")

@@ -1,6 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useFlipPace, computeAdaptiveParams, buildPreloadQueue } from './adaptive-preload'
 
+// Python 预览执行器贯穿整个应用进程，cancelled_floor 也是全局单调值，因此
+// generation 不能在每个阅读器 hook 实例中从 1 重启。以当前时间为进程序列
+// 基值可覆盖渲染器刷新，随后仅单调递增，保证新阅读器永远高于旧会话的 floor。
+let nextPreviewGeneration = Date.now() * 1000
+
+function claimPreviewGeneration(): number {
+  nextPreviewGeneration += 1
+  return nextPreviewGeneration
+}
+
 /**
  * Compute contiguous 1-based page ranges from a set of 0-based cache indices.
  *
@@ -76,9 +86,6 @@ export function usePreloadManager(
   // fetchPreviewImage 携带到后端。后端 worker 取出任务时若 generation <
   // cancelled_floor 则跳过（reader-jump-preload-priority 规范），使进度条
   // 跳转后的目标页请求不被旧 target 残留请求堵在后端 FIFO 队列后面。
-  // 用 ref 持有当前代，worker 闭包读 ref 取最新值（避免进入依赖数组抖动）。
-  const generationRef = useRef(0)
-
   // useFlipPace 始终运行（开销极小）；adaptive 关闭时其输出被忽略
   const { effectiveInterval, isFlippingFast, reset: resetPace } = useFlipPace(preloadTarget ?? -1)
 
@@ -87,10 +94,9 @@ export function usePreloadManager(
     setCacheVersion(0)
     setPreloadedRanges([])
     setPreloadTarget(null)
-    // 换章/关闭 modal 时同步重置 generation 并通知后端丢弃 generation=0
-    // 的初始批次排队请求（若有）。失败静默：旧后端无此 IPC 时不阻塞清理。
-    generationRef.current = 0
-    window.hcomic?.cancelPreviewGenerations?.(1)?.catch?.(() => {})
+    // 换章/关闭 modal 时推进全局 generation，通知后端丢弃此前所有预加载。
+    // 失败静默：旧后端无此 IPC 时不阻塞清理。
+    window.hcomic?.cancelPreviewGenerations?.(claimPreviewGeneration())?.catch?.(() => {})
     resetPace() // 同步清空翻页节奏样本，避免残留间隔影响新漫画/章节的初始判定
   }, [resetPace])
 
@@ -142,8 +148,7 @@ export function usePreloadManager(
     // 新代数，后端据此跳过旧代排队请求。同时通知后端推进 cancelled_floor，
     // 使仍排队的旧代请求在 worker 取出时被丢弃，把槽位让给本批目标页请求。
     // （reader-jump-preload-priority 规范）
-    generationRef.current += 1
-    const currentGeneration = generationRef.current
+    const currentGeneration = claimPreviewGeneration()
     window.hcomic?.cancelPreviewGenerations?.(currentGeneration)?.catch?.(() => {})
     let cancelled = false
     const cache = imageCacheRef.current

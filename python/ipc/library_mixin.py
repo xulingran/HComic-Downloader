@@ -750,13 +750,13 @@ class LibraryMixin:
         # 构建/更新 ComicInfo.xml
         root = ET.fromstring(comic_info_xml) if comic_info_xml else ET.Element("ComicInfo")
 
-        if isinstance(fields.get("title"), str) and fields["title"]:
+        if "title" in fields and isinstance(fields["title"], str):
             for tag in ("Title", "Series"):
                 elem = root.find(tag)
                 if elem is None:
                     elem = ET.SubElement(root, tag)
                 elem.text = fields["title"]
-        if isinstance(fields.get("author"), str) and fields["author"]:
+        if "author" in fields and isinstance(fields["author"], str):
             elem = root.find("Writer")
             if elem is None:
                 elem = ET.SubElement(root, "Writer")

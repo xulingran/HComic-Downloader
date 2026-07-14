@@ -293,6 +293,15 @@ class TestSinglePathIndex:
         make_cbz(path)
         assert indexer.index_single_path(path) is None
 
+    def test_index_nested_album_chapter_returns_none(self, indexer, download_dir, db):
+        chapter = os.path.join(download_dir, "album", "chapter-1")
+        make_single_folder(chapter, image_count=1)
+
+        assert indexer.index_single_path(chapter) is None
+        items, total = db.query_items()
+        assert total == 0
+        assert items == []
+
     def test_index_nonexistent_returns_none(self, indexer, download_dir):
         assert indexer.index_single_path(os.path.join(download_dir, "nope.cbz")) is None
 

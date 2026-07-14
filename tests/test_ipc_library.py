@@ -10,7 +10,9 @@ from __future__ import annotations
 
 import os
 import sys
+import zipfile
 from unittest.mock import MagicMock, patch
+from xml.etree import ElementTree as ET
 
 import pytest
 
@@ -98,6 +100,72 @@ class TestLibraryListContract:
         assert isinstance(pg["currentPage"], int)
         assert isinstance(pg["totalPages"], int)
         assert isinstance(pg["totalItems"], int)
+
+
+class TestLibraryDownloadIndexLifecycle:
+    def test_cbz_album_chapter_is_not_indexed_before_pack(self, tmp_path):
+        server = _create_test_server(tmp_path)
+        comic = MagicMock(title="chapter", pages=1)
+        chapter_path = tmp_path / "album" / "chapter-1"
+        chapter_path.mkdir(parents=True)
+        (chapter_path / "001.jpg").write_bytes(b"image")
+
+        server._on_download_success_record(comic, str(chapter_path), "cbz")
+
+        items, total = server._library_db.query_items()
+        assert total == 0
+        assert items == []
+
+    def test_folder_album_indexes_top_level_album(self, tmp_path):
+        server = _create_test_server(tmp_path)
+        comic = MagicMock(title="chapter", pages=1)
+        album_path = tmp_path / "album"
+        chapter_path = album_path / "chapter-1"
+        chapter_path.mkdir(parents=True)
+        (chapter_path / "001.jpg").write_bytes(b"image")
+
+        server._on_download_success_record(comic, str(chapter_path), "folder")
+
+        items, total = server._library_db.query_items()
+        assert total == 1
+        assert items[0]["title"] == "album"
+        indexed = server._library_db.find_item_by_path("album")
+        assert indexed is not None
+
+    def test_packed_album_event_indexes_final_output(self, tmp_path):
+        server = _create_test_server(tmp_path)
+        notifications = []
+        server._write_response = notifications.append
+        final_path = tmp_path / "album.cbz"
+        with zipfile.ZipFile(final_path, "w") as archive:
+            archive.writestr("001.jpg", b"image")
+
+        server._on_album_event(("jm", "album-1"), "packed", output_path=str(final_path))
+
+        indexed = server._library_db.find_item_by_path("album.cbz")
+        assert indexed is not None
+        assert indexed["format"] == "cbz"
+        assert notifications[0]["params"]["event"] == "packed"
+
+
+class TestLibraryMetadataRewrite:
+    def test_empty_title_and_author_clear_comicinfo(self, tmp_path):
+        server = _create_test_server(tmp_path)
+        cbz_path = tmp_path / "comic.cbz"
+        with zipfile.ZipFile(cbz_path, "w") as archive:
+            archive.writestr(
+                "ComicInfo.xml",
+                "<ComicInfo><Title>Old</Title><Series>Old</Series><Writer>Author</Writer></ComicInfo>",
+            )
+            archive.writestr("001.jpg", b"image")
+
+        server._rewrite_cbz_metadata(str(cbz_path), {"title": "", "author": "", "tags": []})
+
+        with zipfile.ZipFile(cbz_path) as archive:
+            root = ET.fromstring(archive.read("ComicInfo.xml"))
+        assert root.findtext("Title", default="") == ""
+        assert root.findtext("Series", default="") == ""
+        assert root.findtext("Writer", default="") == ""
 
 
 class TestLibraryStatsContract:

@@ -137,4 +137,3 @@
 - **当** 集成测试触发某页封面预载（mock `fetchCover` 返回 urlHash），预载完成后挂载 `ComicCard`（内部 `useCoverImage`）
 - **那么** `useCoverImage` 命中 `coverOutcome` memo，**禁止**再次调用 `fetchCover` IPC
 - **且** `coverSrc` 直接为 `app-image://cover/{urlHash}`（经 `buildImageUrl` 构建）
-

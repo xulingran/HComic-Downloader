@@ -47,6 +47,31 @@ class TestSchemaCreation:
         assert state["current"] == 0
         assert state["total"] == 0
 
+    def test_reopen_recovers_interrupted_scan_state(self, tmp_path):
+        db_path = str(tmp_path / "library.db")
+        db = LibraryDB(db_path)
+        db.set_scan_state(
+            scan_id="stale-scan",
+            phase="parsing",
+            is_scanning=True,
+            current=3,
+            total=10,
+        )
+        db.close()
+
+        reopened = LibraryDB(db_path)
+        try:
+            state = reopened.get_scan_state()
+            assert state["phase"] == "idle"
+            assert state["scanId"] is None
+            assert state["isScanning"] is False
+            assert state["current"] == 0
+            assert state["total"] == 0
+            assert state["lastScanCancelled"] is True
+            assert state["lastScanError"] == "上次扫描被应用退出中断"
+        finally:
+            reopened.close()
+
     def test_default_root_generation_is_one(self, db):
         assert db.get_root_generation() == 1
 

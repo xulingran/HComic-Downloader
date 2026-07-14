@@ -297,9 +297,13 @@ def test_handle_shutdown_shuts_down_request_executor(tmp_path):
     server._cover_executor = MagicMock()
     server._preview_executor = MagicMock()
     server._request_executor = MagicMock()
+    server._library_indexer = MagicMock()
+    server._library_indexer.is_scanning.return_value = True
 
     server.handle_shutdown()
 
     server._cover_executor.shutdown.assert_called_once_with(cancel_futures=True, wait=False)
     server._preview_executor.shutdown.assert_called_once_with(cancel_futures=True, wait=False)
     server._request_executor.shutdown.assert_called_once_with(cancel_futures=True, wait=False)
+    server._library_indexer.cancel_scan.assert_called_once_with()
+    server._library_indexer.wait_for_scan.assert_called_once_with(timeout=5.0)
