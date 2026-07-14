@@ -81,6 +81,11 @@ vi.mock('@/hooks/useIpc', () => ({
   useJmDomains: () => ({ getJmDomains: vi.fn(), jmDomains: [] }),
   useTagList: mockUseTagList,
   useTagListProgress: vi.fn().mockReturnValue({ progress: null, clear: vi.fn() }),
+  useBikaCategories: vi.fn().mockReturnValue({
+    getBikaCategories: vi.fn().mockResolvedValue({
+      categories: [{ id: 'bika-entry', title: '哔咔分类入口', thumb: '' }],
+    }),
+  }),
 }))
 
 vi.mock('@/hooks/useDownloadHelper', () => ({
@@ -166,8 +171,12 @@ interface SearchResult {
 // 控制某次 search 的返回时机，用于模拟迟到完成的预加载请求
 function createDeferredSearch() {
   let resolve!: (value: SearchResult) => void
-  const promise = new Promise<SearchResult>((res) => { resolve = res })
-  return { promise, resolve }
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<SearchResult>((res, rej) => {
+    resolve = res
+    reject = rej
+  })
+  return { promise, resolve, reject }
 }
 
 describe('SearchPage', () => {
@@ -867,6 +876,50 @@ describe('SearchPage', () => {
       expect(mockVerifyAuth).toHaveBeenCalledWith('jm')
       expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true, undefined)
       expect(screen.getByText('JM 登录信息已过期或未配置，请前往设置页面重新登录')).toBeInTheDocument()
+    })
+
+    it('clears a failed JM search state before showing the bika entry page', async () => {
+      mockVerifyAuth.mockResolvedValue({ valid: true })
+      mockSearch
+        .mockResolvedValueOnce({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+        .mockRejectedValueOnce(new Error('JM 未登录'))
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'jm')
+      await waitFor(() => expect(mockStoreState.setError).toHaveBeenCalledWith('JM 未登录'))
+
+      mockStoreState.setError.mockClear()
+      mockStoreState.setLoading.mockClear()
+      await userEvent.selectOptions(screen.getByDisplayValue('JM'), 'bika')
+
+      expect(mockStoreState.setError).toHaveBeenCalledWith(null)
+      expect(mockStoreState.setLoading).toHaveBeenCalledWith(false)
+      expect(await screen.findByText('哔咔分类入口')).toBeInTheDocument()
+    })
+
+    it('ignores a late JM failure after switching to the bika entry page', async () => {
+      mockVerifyAuth.mockResolvedValue({ valid: true })
+      const jmSearch = createDeferredSearch()
+      mockSearch
+        .mockResolvedValueOnce({ comics: [], pagination: { currentPage: 1, totalPages: 1, totalItems: 0 } })
+        .mockReturnValueOnce(jmSearch.promise)
+
+      render(<SearchPage />)
+      await screen.findByPlaceholderText('输入搜索内容...')
+
+      await userEvent.selectOptions(screen.getByDisplayValue('HComic'), 'jm')
+      await waitFor(() => expect(mockSearch).toHaveBeenCalledWith('', 'keyword', 1, 'jm', undefined, true, undefined))
+      await userEvent.selectOptions(screen.getByDisplayValue('JM'), 'bika')
+      expect(await screen.findByText('哔咔分类入口')).toBeInTheDocument()
+
+      mockStoreState.setError.mockClear()
+      await act(async () => {
+        jmSearch.reject(new Error('JM 未登录'))
+        await Promise.resolve()
+      })
+      expect(mockStoreState.setError).not.toHaveBeenCalled()
     })
 
     it('keeps the explicit JM random button behavior', async () => {

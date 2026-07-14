@@ -663,6 +663,13 @@ export function SearchPage({ onNavigateToSettings }: SearchPageProps) {
   }, [viewingNhEntry, comics.length, clearSelection, handleSearch])
 
   const handleSourceChange = async (newSource: string) => {
+    // 来源切换是新的搜索上下文。先让旧来源的在途请求失效，并清掉其加载/错误状态；
+    // bika / NH 会直接进入功能入口而不发起新请求，若不在这里收口，JM 的迟到失败
+    // 或已落盘的未登录错误会继续命中入口页的 `!error` / `!isLoading` 渲染门槛。
+    ++searchGenRef.current
+    setLoading(false)
+    setOverlayIntensity(null)
+    setError(null)
     setSource(newSource)
     sourceRef.current = newSource
     setSearchTags('')
