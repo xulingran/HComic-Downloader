@@ -4,6 +4,14 @@ import userEvent from '@testing-library/user-event'
 import { FavouriteSourceSidebar } from '@/components/favourites/FavouriteSourceSidebar'
 
 describe('FavouriteSourceSidebar', () => {
+  it('将粘性定位应用在侧边栏容器上，使其不随漫画内容滚动', () => {
+    render(<FavouriteSourceSidebar activeSource="hcomic" onSelect={vi.fn()} />)
+
+    const sidebar = screen.getByRole('complementary', { name: '收藏来源' })
+    expect(sidebar).toHaveClass('sticky', 'top-0', 'self-start')
+    expect(sidebar.querySelector('nav')).not.toHaveClass('sticky')
+  })
+
   it('只渲染支持收藏夹的五个来源', () => {
     render(<FavouriteSourceSidebar activeSource="hcomic" onSelect={vi.fn()} />)
 
