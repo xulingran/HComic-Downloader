@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { AnimatePresence, motion } from 'framer-motion'
 import type { LibraryAssetDetail } from '@shared/types'
 import type { LocalReaderLaunchMode } from '../../stores/useLocalReaderStore'
@@ -137,7 +138,7 @@ export function LibraryAssetDetailDrawer({
     (chapter) => chapter.chapterId === asset.readingChapterId,
   )?.name
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && asset && (
         <>
@@ -396,7 +397,8 @@ export function LibraryAssetDetailDrawer({
       </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body,
   )
 }
 

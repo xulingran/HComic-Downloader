@@ -28,6 +28,17 @@ describe('LibraryAssetDetailDrawer', () => {
     } as unknown as HcomicAPI
   })
 
+  it('portals the full-screen overlay outside transformed page containers', () => {
+    const { container } = render(<Harness />)
+    const overlay = screen.getByTestId('detail-drawer-overlay')
+    const drawer = screen.getByTestId('library-detail-drawer')
+
+    expect(container).not.toContainElement(overlay)
+    expect(container).not.toContainElement(drawer)
+    expect(document.body).toContainElement(overlay)
+    expect(overlay).toHaveClass('fixed', 'inset-0')
+  })
+
   it('edits CBZ metadata and closes after the atomic write succeeds', async () => {
     render(<Harness />)
     await userEvent.click(screen.getByTestId('detail-edit-metadata-btn'))
